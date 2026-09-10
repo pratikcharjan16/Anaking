@@ -24,8 +24,9 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const fire=(el,type)=>el.dispatchEvent(new w.Event(type,{bubbles:true}));
   const mdown=el=>el.dispatchEvent(new w.MouseEvent("mousedown",{bubbles:true,cancelable:true}));
 
+  w.Element.prototype.scrollIntoView=function(){};
   // open Q3 (has two earlier questions)
-  $$("[data-act=qedit]")[2].click(); await sleep(50);
+  $$(".st-qi")[2].click(); await sleep(50);
   check("Pipe button present on question text, help text", $$("[data-pipe-for=f-stem-rich]").length===1 && $$("[data-pipe-for=f-help-rich]").length===1);
   // put the caret in the middle of "Tell us more" (after "Tell ")
   const rich=$("#f-stem-rich"); rich.focus();
@@ -42,27 +43,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   $$(".st-pipe-item").find(b=>b.getAttribute("data-token")==="{Q1}").click(); await sleep(30);
   check("token inserted at the caret as a chip", rich.querySelector("span.pipe") && rich.querySelector("span.pipe").textContent==="{Q1}" && rich.textContent.startsWith("Tell {Q1}"), rich.textContent);
   check("picker closed after insert", pop.hidden);
-  check("live preview resolves it ('Tell Oncology')", /Tell Oncology/.test($("#st-ed-prev-body h2").textContent), $("#st-ed-prev-body h2").textContent);
+  check("live preview resolves it ('Tell Oncology')", /Tell Oncology/.test($("#st-prev-body h2").textContent), $("#st-prev-body h2").textContent);
   // insert a fixed option label from Q2 at end
   const r2=w.document.createRange(); r2.selectNodeContents(rich); r2.collapse(false); sel.removeAllRanges(); sel.addRange(r2);
   mdown(btn); btn.click(); await sleep(30);
   $$(".st-pipe-item").find(b=>b.getAttribute("data-token")==="{Q2.opt:2}").click(); await sleep(30);
-  check("second token appended", rich.querySelectorAll("span.pipe").length===2 && /IO/.test($("#st-ed-prev-body h2").textContent));
-  $("[data-act=qsave]").click(); await sleep(450);
-  // Answers tab: option label pipe on a select question (Q2)
-  $$("[data-act=qedit]")[1].click(); await sleep(100); $("[data-edtab=answers]").click(); await sleep(30);
+  check("second token appended", rich.querySelectorAll("span.pipe").length===2 && /IO/.test($("#st-prev-body h2").textContent));
+  // option label pipe on a select question (Q2)
+  $$(".st-qi")[1].click(); await sleep(100);
   check("pipe buttons beside each option label", $$("[data-pipe-for^=f-opt-]").length===2);
   const inp=$("#f-opt-0"); inp.focus(); inp.setSelectionRange(5,5);          // after "Chemo"
   const b0=$("[data-pipe-for=f-opt-0]"); mdown(b0); b0.click(); await sleep(30);
   check("picker for option shows only Q1", $$(".st-pipe-q").length===1);
   $$(".st-pipe-item").find(b=>b.getAttribute("data-token")==="{Q1}").click(); await sleep(30);
   check("token inserted into option label at caret", $("#f-opt-0").value==="Chemo{Q1}", $("#f-opt-0").value);
-  check("preview option shows piped 'ChemoOncology'", /ChemoOncology/.test($("#st-ed-prev-body").textContent));
-  $("[data-act=qsave]").click(); await sleep(450);
-  // re-open Q3 & save the study; check stored HTML is plain (no chips)
-  $$("[data-act=qedit]")[2].click(); await sleep(100);
+  check("preview option shows piped 'ChemoOncology'", /ChemoOncology/.test($("#st-prev-body").textContent));
+  // re-open Q3; wait for autosave; check stored HTML is plain (no chips)
+  $$(".st-qi")[2].click(); await sleep(100);
   check("re-opened editor shows existing tokens as chips", $$("#f-stem-rich span.pipe").length===2 && $("#f-stem-rich").textContent.includes("{Q2.opt:2}"));
-  $("[data-act=qsave]").click(); await sleep(450); $("[data-act=save]").click(); await sleep(600);
+  await sleep(1600);
   const saved=JSON.parse(await get("/api/studio/study?slug="+slug)).cfg;
   check("saved Q3 stem_html holds plain tokens, no chip markup", /Tell \{Q1\}/.test(saved.questions[2].stem_html) && !/class="pipe"/.test(saved.questions[2].stem_html) && saved.questions[2].stem.includes("{Q2.opt:2}"), saved.questions[2].stem_html);
   check("saved Q2 option label carries token", saved.questions[1].options[0].label==="Chemo{Q1}");

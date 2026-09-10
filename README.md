@@ -86,20 +86,30 @@ Configuration (environment variables): `ADMIN_TOKEN`, `PORT`, `HOST`, `DB_PATH`,
 `VOICE_DIR`, `NARRATION_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`,
 respondent recordings in `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
 
-### Question editor (Studio → Questions → ✎)
+### Studio workspace (Studio → Questions)
 
-Each question opens in a two-pane editor: the form on the left, a live **test view** on the
-right that renders the question with the same code respondents run (interactive, nothing saved;
-▶ on any row in the question list opens the same test view for the saved draft).
+The builder is a three-pane workspace - nothing to open or apply, and **every change autosaves**
+about a second after you stop typing (toggle in the top bar; `Ctrl/⌘+S` or **Save now** forces it;
+the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not saved - Retry*).
 
-| Tab | What you can do |
+| Pane | What it does |
 |---|---|
-| **Content** | Rich question text — bold / italic / underline / strike / superscript, text colour and highlight colour pickers, bulleted and numbered lists, bigger/smaller, clear formatting; font family, size and alignment for the whole question; rich help text. |
-| **Piping** | Every text field (question text, help, each answer option, grid rows, media caption, placeholder) has a **➔ Pipe in answer** button. Click where the answer should appear, press the button and pick from a searchable, plain-English list grouped by earlier question — "Their answer (as text)", "Their answer code", "First / last option they ticked", "What they typed in Other", a fixed option label, a grid row's rating, the question wording. Each row shows an "e.g." using the sample answers, and the live preview resolves the token immediately. Tokens show as chips in the editor but are stored as plain text (`{Q3}`, `{Q3.code}`, `{Q3.opt:2}`, `{Q3.first}`/`{Q3.last}`, `{Q3.other}`, `{Q3.row:a}`, `{Q3.r:a}`, `{Q3.stem}`); an unanswered reference renders as "…". |
-| **Answers** | Option table (code, label, **Pin**, **Exclusive**, **Other**), move / delete, per-option image, one-click "None of these", "Not applicable" (exclusive) and "Other (please specify)", paste a list; layout (list / grid / inline chips), hide codes, max selections. **Randomise**: fixed, shuffle, rotate, or flip 50/50 — pinned items keep their place; the order each respondent saw is exported as `Qx_order_shown`. Rows of grid / rank / sum questions accept `*` to pin. |
-| **Show-if logic** | Rules against any question (`selected`, `not selected`, `any of`, `none of`, `=`, `≠`, `<`, `≤`, `>`, `≥`, `contains`, `answered`, `skipped`, `row rating equals`), matched ALL or ANY, optionally inverted. Hidden questions are skipped and their answers cleared; "Try it" shows the outcome for the sample answers. Rules appear in the export's data dictionary. |
-| **Image / video** | Upload (png / jpg / gif / webp / svg / mp4 / webm / mov, ≤ 10 MB → `uploads/media/<study>/`, served at `/media/…`) or paste a URL; width, alignment, autoplay (muted), caption (supports piping), alt text. |
-| **Advanced** | The raw question JSON — load edited JSON back into the form. |
+| **Outline** (left) | Sections with their questions. Click a row to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Section titles are edited in place. |
+| **Editor** (middle) | One scrolling form for the selected question, with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (inline list with code, label, ➔ Pipe in answer, Pin / Exclusive / Other chips, image, reorder, one-click *None of these* / *Not applicable* / *Other*, paste a list), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Show only when…** (conditions in sentence form - *when Q1 has selected Oncology*, and/or, invert), **Image or video**, **Advanced (JSON)**. Id, type (convertible - compatible answers are kept), section and Required sit in the header. |
+| **Live preview** (right) | The question rendered by the same code respondents run; updates as you type. Sample answers for piping / logic, reshuffle, desktop / phone width, ▶ **Test** opens it full size. |
+
+Rich text: bold / italic / underline / strike / superscript, text & highlight colour, lists,
+bigger / smaller, clear formatting. **Piping:** every text field has a **➔ Pipe in answer**
+button - click where the answer should appear, press it, pick from a searchable list grouped by
+earlier question ("Their answer (as text)", "Answer code", "First / last option they ticked",
+"Text typed in Other", a fixed option label, a row's rating, the question wording), each with an
+*e.g.* from the sample answers. Tokens show as chips in the editor and are stored as plain text
+(`{Q3}`, `{Q3.code}`, `{Q3.opt:2}`, `{Q3.first}`/`{Q3.last}`, `{Q3.other}`, `{Q3.row:a}`,
+`{Q3.r:a}`, `{Q3.stem}`); an unanswered reference renders as "…".
+
+The dashboard (Studio home) lists studies as cards with completion stats, search and a
+draft / live / closed filter; status is switched from the segment in the builder bar
+(launching asks for confirmation and flushes any pending save first).
 
 Rich text is whitelisted on save (`core/sanitize.py`) and again in the browser
 (`static/js/qlogic.js`), so only formatting survives — no scripts, event handlers or unsafe URLs.
@@ -107,7 +117,7 @@ The plain-text `stem` is kept in step with the rich `stem_html` for exports, nar
 `static/css/preview-skin.css` is generated from `survey.css` by
 `python3 scripts/build_preview_skin.py` (re-run after changing survey styles).
 
-### Product walkthrough (Studio → "Product profile" tab)
+### Product walkthrough (Studio → "Walkthrough" tab)
 
 The animated walkthrough respondents see before the survey is an editable list of **scenes**.
 Each scene has a title, caption, an artwork picked from the built-in set (patient, trial,
@@ -128,6 +138,7 @@ python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
 python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset & reuse
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
+node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 ```
 
