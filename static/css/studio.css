@@ -93,3 +93,25 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-toast{position:fixed;bottom:22px;left:50%;transform:translateX(-50%);background:var(--accent);
   color:#fff;border-radius:999px;padding:9px 20px;font-weight:700;font-size:13px;z-index:60;
   box-shadow:0 12px 30px rgba(11,79,108,.4)}
+
+/* ---- TPP walkthrough preview ---- */
+.st-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:6px}
+.st-muted{font-size:12px;color:var(--warn);font-weight:600}
+.st-btn.sm{padding:5px 10px;font-size:12px;line-height:1}
+.st-scenes{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:10px}
+.st-scene{display:flex;align-items:center;gap:12px;background:var(--soft);border-radius:10px;
+  padding:10px 12px;border:1px solid transparent;transition:border-color .15s}
+.st-scene:hover{border-color:var(--accent2)}
+.st-scene.empty{opacity:.65}
+.st-scene.empty em{color:var(--warn);font-style:normal}
+.st-scene-thumb{flex:0 0 84px;height:50px;border-radius:7px;overflow:hidden;
+  background:linear-gradient(180deg,#fbfdfe,#e6eff4);display:block}
+.st-scene-thumb svg{width:100%;height:100%;display:block}
+.st-scene-thumb *{animation:none !important}
+.st-scene-txt{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.st-scene-txt strong{font-size:13px}
+.st-scene-txt span{font-size:12px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* the preview overlay must sit above the studio drawer */
+#explainer.overlay{z-index:80}
+.st-btn.play{background:var(--good);color:#fff;border-color:var(--good);font-weight:700}
+.st-btn.play:hover{filter:brightness(1.08)}

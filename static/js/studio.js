@@ -153,7 +153,11 @@
     api("/api/studio/save", { slug: cur.slug, title: cur.title, cfg: cur.cfg })
       .then(function (r) {
         if (r.error) toast("Save failed: " + r.error);
-        else { toast("Saved"); if (cb) cb(); }
+        else {
+          toast("Saved");
+          var d = document.getElementById("tpp-dirty"); if (d) d.hidden = true;
+          if (cb) cb();
+        }
       });
   }
 
@@ -388,8 +392,10 @@
       ["mechanism", "Mechanism of action"], ["efficacy", "Headline efficacy"],
       ["safety", "Safety summary"], ["administration", "Administration"],
       ["cdx", "Companion diagnostic"]];
-    var html = '<div class="st-note">The animated walkthrough is generated from this text - ' +
-      "edit it, regenerate, and the respondent-facing visualization updates on save." +
+    var html = '<div class="st-note">The animated walkthrough is generated from this text. ' +
+      "Edit it and press <strong>Preview walkthrough</strong> to watch exactly what respondents " +
+      "will see - the preview always uses the text currently in these boxes, saved or not. " +
+      "<strong>Save study</strong> publishes it." +
       (cur.cfg.use_tts ? " This study uses browser-voice narration." : "") + "</div>" +
       fields.map(function (f) {
         return '<div class="st-field"><label>' + f[1] + '</label><textarea data-tpp="' + f[0] +
@@ -398,19 +404,97 @@
       '<div class="st-field"><label><input type="checkbox" id="f-tts" style="width:auto" ' +
       (cur.cfg.use_tts ? "checked" : "") + '> Narrate the walkthrough with browser ' +
       "text-to-speech</label></div>" +
-      '<button class="st-btn on" data-act="regen">Regenerate walkthrough from text</button>' +
+      '<div class="st-row">' +
+      '<button class="st-btn play" data-act="preview-tpp">&#9654; Preview walkthrough</button>' +
+      '<button class="st-btn on" data-act="regen">Regenerate scenes from text</button>' +
+      '<span class="st-muted" id="tpp-dirty" hidden>Unsaved changes &middot; press Save study to publish</span>' +
+      "</div>" +
       '<div id="scene-prev" style="margin-top:12px"></div>';
     return html;
+  }
+
+  // scenes derived from the text currently in the TPP boxes (not yet saved)
+  function draftTpp() {
+    var tpp = {};
+    root.querySelectorAll("[data-tpp]").forEach(function (n) {
+      tpp[n.getAttribute("data-tpp")] = n.value;
+    });
+    return tpp;
   }
 
   function renderScenePrev() {
     var el = document.getElementById("scene-prev");
     if (!el) return;
-    el.innerHTML = (cur.cfg.explainer_scenes || []).map(function (s, i) {
-      return '<div class="st-note"><strong>' + (i + 1) + ". " + esc(s.title) + "</strong><br>" +
-        esc(s.caption) + "</div>";
-    }).join("");
+    var scenes = cur.cfg.explainer_scenes || [];
+    el.innerHTML = '<div class="st-scenes">' + scenes.map(function (s, i) {
+      var empty = !(s.caption || "").trim();
+      return '<div class="st-scene' + (empty ? " empty" : "") + '" data-scene-i="' + i + '">' +
+        '<span class="st-scene-thumb">' + sceneThumb(s.id) + "</span>" +
+        '<div class="st-scene-txt"><strong>' + (i + 1) + ". " + esc(s.title) + "</strong>" +
+        "<span>" + (empty ? "<em>no text yet - fill in the box above</em>" : esc(s.caption)) +
+        "</span></div>" +
+        '<button class="st-btn sm" data-act="preview-scene" data-i="' + i + '" title="Play from this scene">' +
+        "&#9654;</button></div>";
+    }).join("") + "</div>";
   }
+
+  // tiny static rendering of the scene artwork, reused from the explainer
+  function sceneThumb(id) {
+    var art = (window.BEACON_ART || {})[id];
+    return art ? art : '<svg viewBox="0 0 400 240"></svg>';
+  }
+
+  // ------------------------------------------------------------ walkthrough preview
+  var previewer = null;
+  function closePreview() {
+    var ov = document.getElementById("explainer");
+    if (!ov || ov.hidden) return;
+    ov.hidden = true;
+    if (previewer) { try { previewer.finish(); } catch (e) {} previewer = null; }
+    document.getElementById("ex-mount").innerHTML = "";
+  }
+
+  function previewWalkthrough(startAt) {
+    if (!window.BeaconExplainer) { toast("Explainer script not loaded"); return; }
+    // always preview the draft: what is typed right now, plus the TTS toggle as set
+    var tpp = draftTpp();
+    var scenes = scenesFromTpp(tpp);
+    var ttsBox = document.getElementById("f-tts");
+    var tts = ttsBox ? ttsBox.checked : !!cur.cfg.use_tts;
+    var filled = scenes.filter(function (s) { return (s.caption || "").trim(); }).length;
+    if (!filled) { toast("Type some TPP text first - all scenes are empty"); return; }
+    var ov = document.getElementById("explainer");
+    document.getElementById("ex-hint").textContent = filled < scenes.length
+      ? (scenes.length - filled) + " scene(s) still empty"
+      : (tts ? "Browser voice narration on" : "Silent, timed walkthrough");
+    ov.hidden = false;
+    closePreviewer();
+    previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
+      scenes: scenes,
+      narration: cur.cfg.narration || {},
+      muted: false,
+      tts: tts,
+      onDone: function () { previewer = null; closePreview(); }
+    });
+    previewer.start();
+    if (startAt) previewer.loadScene(startAt);
+  }
+  function closePreviewer() { if (previewer) { try { previewer.finish(); } catch (e) {} previewer = null; } }
+
+  window.addEventListener("keydown", function (e) { if (e.key === "Escape") closePreview(); });
+  document.addEventListener("click", function (e) {
+    if (e.target && e.target.id === "ex-close") closePreview();
+  });
+  document.addEventListener("input", function (e) {
+    var t = e.target;
+    if (t && t.hasAttribute && t.hasAttribute("data-tpp")) {
+      // keep the scene list in step with the text as it is typed
+      cur.cfg.tpp = draftTpp();
+      cur.cfg.explainer_scenes = scenesFromTpp(cur.cfg.tpp);
+      renderScenePrev();
+      var d = document.getElementById("tpp-dirty"); if (d) d.hidden = false;
+    }
+  });
 
   function conjointTab() {
     var cj = cur.cfg.conjoint;
@@ -640,16 +724,14 @@
       var a2 = cur.cfg.questions; var t2 = a2[i + 1]; a2[i + 1] = a2[i]; a2[i] = t2; renderTab();
     }
     if (act === "regen") {
-      var tpp = {};
-      root.querySelectorAll("[data-tpp]").forEach(function (n) {
-        tpp[n.getAttribute("data-tpp")] = n.value;
-      });
-      cur.cfg.tpp = tpp;
+      cur.cfg.tpp = draftTpp();
       cur.cfg.use_tts = document.getElementById("f-tts").checked;
-      cur.cfg.explainer_scenes = scenesFromTpp(tpp);
+      cur.cfg.explainer_scenes = scenesFromTpp(cur.cfg.tpp);
       renderScenePrev();
-      toast("Walkthrough regenerated - save to publish");
+      toast("Scenes regenerated - press Save study to publish");
     }
+    if (act === "preview-tpp") previewWalkthrough(0);
+    if (act === "preview-scene") previewWalkthrough(i || 0);
     if (act === "genconj") {
       var attrs = String(document.getElementById("f-attrs").value).split("\n")
         .filter(function (l) { return l.trim(); }).map(function (l) {
