@@ -21,7 +21,7 @@ WHAT THIS SCRIPT DOES
    usable standard errors. The recovered numbers validate the DESIGN - they are not market
    research findings, because no respondents were surveyed.
 
-OUTPUT (./output):
+OUTPUT (../data/design):
     dce_design.csv            long format: one row per (task, alternative)
     dce_design_wide.csv       wide format: one row per task
     respondent_task_map.csv   randomised task order + alternative position per respondent
@@ -44,7 +44,7 @@ import numpy as np
 
 RNG = np.random.default_rng(20260909)  # fixed seed: the fielded design is reproducible
 
-OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output")
+OUT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "design")
 os.makedirs(OUT, exist_ok=True)
 
 # ======================================================================================

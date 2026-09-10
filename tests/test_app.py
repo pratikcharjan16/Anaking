@@ -1,7 +1,7 @@
 """
 In-process tests for the Flask platform (no running server needed).
 
-    cd oncology_launch_study/webapp && python3 -m pytest -q
+    python3 -m pytest
 """
 
 import base64
@@ -36,12 +36,14 @@ def test_survey_pages_inject_study_slug(client):
         r = client.get(path)
         assert r.status_code == 200
         assert b'window.STUDY={slug:"beacon"}' in r.data
+        assert b"/static/js/survey.js" in r.data
     assert client.get("/s/does-not-exist").status_code == 404
 
 
 def test_static_assets_served(client):
-    assert client.get("/survey.js").status_code == 200
-    assert client.get("/survey.css").mimetype == "text/css"
+    assert client.get("/static/js/survey.js").status_code == 200
+    assert client.get("/static/css/survey.css").mimetype == "text/css"
+    assert client.get("/survey.js").status_code == 404   # old flat paths are gone
     assert client.get("/audio/welcome.mp3").mimetype == "audio/mpeg"
     r = client.get("/audio/welcome.mp3", headers={"Range": "bytes=0-9"})
     assert r.status_code == 206 and len(r.data) == 10

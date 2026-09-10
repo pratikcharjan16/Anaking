@@ -5,7 +5,7 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from beacon import create_app  # noqa: E402
+from app import create_app  # noqa: E402
 
 TOKEN = "test-token"
 

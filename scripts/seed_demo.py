@@ -6,7 +6,7 @@ Useful for checking the export format before real fielding, and for rehearsing t
 analysis pipeline. Everything it creates is marked as TEST data, so a single
 "Clear test data" on the admin dashboard removes it.
 
-Usage: python3 seed_demo.py [base_url] [--keep]
+Usage: python3 scripts/seed_demo.py [base_url] [--keep]
        --keep leaves the demo records in place instead of clearing them afterwards.
 """
 import json
@@ -123,7 +123,9 @@ for label, style in PROFILES:
 
 print("\nDownloading sample workbook...")
 blob = call(f"/admin/export.xlsx?token={TOKEN}&scope=all")
-out = "../BEACON_sample_export.xlsx"
+import os
+out = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                   "study_design", "BEACON_sample_export.xlsx")
 with open(out, "wb") as f:
     f.write(blob)
 print(f"  wrote {out} ({len(blob):,} bytes)")

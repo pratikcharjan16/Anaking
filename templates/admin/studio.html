@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BEACON Studio - survey platform</title>
-<link rel="stylesheet" href="/studio.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/studio.css') }}">
 </head>
 <body>
 <header class="st-top">
@@ -19,6 +19,6 @@
 <main id="st-root"></main>
 <div class="st-drawer" id="st-drawer" hidden></div>
 <div class="st-toast" id="st-toast" hidden></div>
-<script src="/studio.js"></script>
+<script src="{{ url_for('static', filename='js/studio.js') }}"></script>
 </body>
 </html>

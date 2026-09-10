@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROJECT BEACON — Admin</title>
-<link rel="stylesheet" href="/admin.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
 </head>
 <body>
 <header class="topbar">
@@ -91,6 +91,6 @@
 </main>
 
 <div class="toast" id="toast" hidden></div>
-<script src="/admin.js"></script>
+<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
 </body>
 </html>

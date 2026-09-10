@@ -228,7 +228,7 @@ check("scope=real xlsx contains only R codes",
 # ---------------------------------------------------------------- stdlib fallback
 print("\n--- standard-library xlsx fallback ---")
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from beacon import xlsx_export  # noqa: E402
+from core import xlsx_export  # noqa: E402
 mini = xlsx_export.MiniXlsx()
 mini.add_sheet("One", [["a", "b"], [1, "two"], [3, None]])
 mini.add_sheet("Two", [["x"], ["y"]])

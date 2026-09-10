@@ -1,19 +1,19 @@
 """
 Seeds the original PROJECT BEACON oncology study (slug ``beacon``) from ``survey_spec``
-and the pre-generated conjoint design in ``../output``.
+and the pre-generated conjoint design in ``data/design/``.
 """
 
 from __future__ import annotations
 
 import csv
 import json
-import time
 
 from flask import current_app
 
+from models import Study
+
 from . import survey_spec as spec
 
-from .db import connect, write_lock
 
 def load_design() -> dict:
     with open(current_app.config["DESIGN_PATH"]) as f:
@@ -87,22 +87,12 @@ def beacon_config() -> dict:
 
 
 
-def seed_beacon() -> None:
-    conn = connect()
-    try:
-        with write_lock, conn:
-            if conn.execute("SELECT 1 FROM studies WHERE slug='beacon'").fetchone():
-                return
-            now = time.strftime("%Y-%m-%dT%H:%M:%S")
-            conn.execute(
-                "INSERT INTO studies (slug, title, status, cfg, created_at, updated_at) "
-                "VALUES (?,?,?,?,?,?)",
-                ("beacon", "PROJECT BEACON - US Oncologist Brand Demand Study", "live",
-                 json.dumps(beacon_config()), now, now))
-            # attach any pre-platform respondents to the beacon study
-            conn.execute("UPDATE respondents SET study_id=1 WHERE study_id IS NULL")
-    finally:
-        conn.close()
+def seed_beacon() -> bool:
+    """Insert the BEACON study if missing. Returns True when it was created."""
+    if Study.get("beacon"):
+        return False
+    return Study.seed("beacon", "PROJECT BEACON - US Oncologist Brand Demand Study",
+                      beacon_config(), status="live")
 
 
 def scenes_from_tpp(tpp: dict) -> list:

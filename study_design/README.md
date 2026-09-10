@@ -10,7 +10,7 @@ The instrument is fieldable as a web app, and built to be re-run as many times a
 for testing.
 
 ```bash
-cd webapp
+# from the repository root
 pip install -r requirements.txt
 python3 app.py --port 8000 --admin-token beacon-admin
 ```
@@ -26,10 +26,10 @@ python3 app.py --port 8000 --admin-token beacon-admin
 | `/admin/export.json?token=...&scope=...` | Nested JSON |
 | `POST /admin/reset?token=...&scope=test\|real\|all` | Clear stored responses |
 
-A Flask application (`webapp/beacon/`, app factory + three blueprints) on SQLite. The Excel
+A Flask application (`app.py`, `routes.py`, `models.py`, `core/` at the repo root) on SQLite. The Excel
 export uses openpyxl when present and falls back to a standard-library OOXML writer
 otherwise — either way you get a real `.xlsx`, never a renamed CSV. Responses live in
-`webapp/survey.db`.
+`data/survey.db`.
 
 ### Reusing the link for repeated testing
 
@@ -58,31 +58,31 @@ The dashboard's *Clear test data* button is the normal loop: test, download, cle
 
 `BEACON_sample_export.xlsx` in this folder is a real workbook generated from 7 seeded demo
 respondents, so you can inspect the format before fielding. Regenerate it with
-`python3 webapp/scripts/seed_demo.py`.
+`python3 scripts/seed_demo.py`.
 
 ### Verification
 
 An in-process pytest suite plus two scripts that run against a live server:
 
-- `webapp/tests/` — `python3 -m pytest` — pages, auth, respondent flow, Studio lifecycle,
+- `tests/` — `python3 -m pytest` — pages, auth, respondent flow, Studio lifecycle,
   conjoint generator, exports and reset, all through Flask's test client on a temp DB.
-- `webapp/scripts/e2e_live_server.py` — 35 checks: submit, screen-out logic, QC flagging,
+- `scripts/e2e_live_server.py` — 35 checks: submit, screen-out logic, QC flagging,
   CSV/JSON export, access control. Resets first, so it is deterministic.
-- `webapp/scripts/e2e_reuse_live_server.py` — 45 checks: test-mode sequences, scope filtering,
+- `scripts/e2e_reuse_live_server.py` — 45 checks: test-mode sequences, scope filtering,
   xlsx structure and sheet contents, the standard-library xlsx fallback, reset behaviour.
 
 All currently pass in full.
 
 ### What it implements
 
-- **All 20 questions render from `webapp/beacon/survey_spec.py`**, a machine-readable spec that
+- **All 20 questions render from `core/survey_spec.py`**, a machine-readable spec that
   mirrors the questionnaire. Edit the spec, and the survey changes — no HTML editing.
 - **Screener logic**: radiation/surgical/primary-care and industry-conflict respondents are
   terminated with the reason recorded; hematology-only respondents are held to the
   10-patient threshold; under-5-patient respondents are screened out.
-- **Conjoint rendering** pulls the 9 tasks from `output/design.json` and applies the
+- **Conjoint rendering** pulls the 9 tasks from `data/design/design.json` and applies the
   per-respondent task order and alternative-position randomisation from
-  `output/respondent_task_map.csv`. Codes outside R001–R100 get a randomisation seeded from
+  `data/design/respondent_task_map.csv`. Codes outside R001–R100 get a randomisation seeded from
   the code itself, so it is reproducible rather than changing on each restart.
 - **Validation**: required fields, numeric ranges, sum-to-100 grids, minimum verbatim length.
 - **Progress persistence**: answers autosave server-side and to localStorage, so a refresh or
@@ -136,14 +136,14 @@ rather than stalling.
 |---|---|
 | `BEACON_survey_questionnaire.md` | **The deliverable.** Full 20-question instrument: 4 screeners, 15 main questions, 1 conjoint (9 choice tasks), classification block, quotas, QC rules, analysis plan, fielding notes. |
 | `BEACON_survey_questionnaire.docx` | Same instrument, formatted for client circulation. |
-| `webapp/` | The online survey: server, spec, front end, explainer, audio, tests. |
-| `conjoint_design.py` | Generates and validates the conjoint design. Re-run to regenerate everything in `output/`. |
-| `output/dce_design_wide.csv` | The 9 choice tasks — load this into the survey platform. |
-| `output/dce_design.csv` | Same design in long format (one row per task/alternative). |
-| `output/respondent_task_map.csv` | Per-respondent task order and alternative position randomisation. |
-| `output/design_checks.txt` | Design diagnostics: level balance, orthogonality, dominance, D-efficiency, analysis-path check. |
-| `output/analysis_check.json` | Machine-readable output of the analysis-path check. |
-| `output/design.json` | The design as structured data for downstream analysis code. |
+| repo root | The online survey: `app.py`, `routes.py`, `models.py`, `core/`, `templates/`, `static/`, tests. |
+| `conjoint_design.py` | Generates and validates the conjoint design. Re-run to regenerate everything in `data/design/`. |
+| `data/design/dce_design_wide.csv` | The 9 choice tasks — load this into the survey platform. |
+| `data/design/dce_design.csv` | Same design in long format (one row per task/alternative). |
+| `data/design/respondent_task_map.csv` | Per-respondent task order and alternative position randomisation. |
+| `data/design/design_checks.txt` | Design diagnostics: level balance, orthogonality, dominance, D-efficiency, analysis-path check. |
+| `data/design/analysis_check.json` | Machine-readable output of the analysis-path check. |
+| `data/design/design.json` | The design as structured data for downstream analysis code. |
 
 ## The conjoint design
 
@@ -157,7 +157,7 @@ which every level of every attribute appears exactly 9 times — then partitione
 tasks by hill-climbing that forbids dominant alternatives and maximises the conditional
 logit information determinant.
 
-Verified checks (see `output/design_checks.txt`):
+Verified checks (see `data/design/design_checks.txt`):
 
 - Every attribute level appears exactly 9 times (33.3% each) — perfectly balanced.
 - Cross-attribute correlation: max |r| = 0.0000 — attributes are orthogonal, so each utility

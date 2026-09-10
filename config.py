@@ -1,0 +1,55 @@
+"""
+Application configuration.
+
+Every setting can be overridden with an environment variable so the same code runs on a
+laptop, in a container or behind a production WSGI server.
+"""
+
+import os
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_DIR = os.path.join(BASE_DIR, "data")
+UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+
+
+class Config:
+    SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
+
+    # Shared secret for the Studio builder and the admin dashboard (?token=...).
+    ADMIN_TOKEN = os.environ.get("ADMIN_TOKEN", "beacon-admin")
+
+    # SQLite database holding studies, respondents and answers.
+    DB_PATH = os.environ.get("DB_PATH", os.path.join(DATA_DIR, "survey.db"))
+
+    # Respondent voice recordings (never committed to git).
+    VOICE_DIR = os.environ.get("VOICE_DIR", os.path.join(UPLOAD_DIR, "voice"))
+
+    # Pre-generated conjoint design + respondent task map for the seeded BEACON study.
+    DESIGN_PATH = os.path.join(DATA_DIR, "design", "design.json")
+    TASKMAP_PATH = os.path.join(DATA_DIR, "design", "respondent_task_map.csv")
+
+    # Largest accepted request body (voice clips are base64, capped at ~2.5 MB raw).
+    MAX_CONTENT_LENGTH = 4 * 1024 * 1024
+
+    SEND_FILE_MAX_AGE_DEFAULT = 3600
+    JSON_SORT_KEYS = False
+
+
+class DevelopmentConfig(Config):
+    DEBUG = True
+
+
+class ProductionConfig(Config):
+    DEBUG = False
+
+
+class TestingConfig(Config):
+    TESTING = True
+    ADMIN_TOKEN = "test-token"
+
+
+CONFIGS = {
+    "development": DevelopmentConfig,
+    "production": ProductionConfig,
+    "testing": TestingConfig,
+}
