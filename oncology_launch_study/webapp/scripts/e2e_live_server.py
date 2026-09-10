@@ -6,7 +6,7 @@ Simulates real respondents against the running server: one full completer, one s
 specialist, one who fails the attention check, and one speeder. Then verifies that the data
 lands correctly in the export, and that the quality-control flags fire as intended.
 
-Usage: python3 test_e2e.py [base_url]
+Usage: python3 scripts/e2e_live_server.py [base_url]   (server must be running)
 """
 import json
 import random

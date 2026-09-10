@@ -706,7 +706,7 @@ def question_ids():
 
 
 def sections_in_order():
-    seen, out = [], []
+    out = []
     for s in SECTIONS:
         qs = [q["id"] for q in Q if q["section"] == s["id"]]
         if qs:

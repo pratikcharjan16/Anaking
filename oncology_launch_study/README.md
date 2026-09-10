@@ -10,7 +10,9 @@ The instrument is fieldable as a web app, and built to be re-run as many times a
 for testing.
 
 ```bash
-cd webapp && python3 app.py --port 8000 --admin-token beacon-admin
+cd webapp
+pip install -r requirements.txt
+python3 app.py --port 8000 --admin-token beacon-admin
 ```
 
 | URL | What it is |
@@ -24,7 +26,7 @@ cd webapp && python3 app.py --port 8000 --admin-token beacon-admin
 | `/admin/export.json?token=...&scope=...` | Nested JSON |
 | `POST /admin/reset?token=...&scope=test\|real\|all` | Clear stored responses |
 
-Built on the Python standard library for the server (`http.server`, `sqlite3`). The Excel
+A Flask application (`webapp/beacon/`, app factory + three blueprints) on SQLite. The Excel
 export uses openpyxl when present and falls back to a standard-library OOXML writer
 otherwise — either way you get a real `.xlsx`, never a renamed CSV. Responses live in
 `webapp/survey.db`.
@@ -56,22 +58,24 @@ The dashboard's *Clear test data* button is the normal loop: test, download, cle
 
 `BEACON_sample_export.xlsx` in this folder is a real workbook generated from 7 seeded demo
 respondents, so you can inspect the format before fielding. Regenerate it with
-`python3 webapp/seed_demo.py`.
+`python3 webapp/scripts/seed_demo.py`.
 
 ### Verification
 
-Two suites run against the live server:
+An in-process pytest suite plus two scripts that run against a live server:
 
-- `webapp/test_e2e.py` — 34 checks: submit, screen-out logic, QC flagging, CSV/JSON export,
-  access control. Resets first, so it is deterministic.
-- `webapp/test_reuse.py` — 44 checks: test-mode sequences, scope filtering, xlsx structure and
-  sheet contents, the standard-library xlsx fallback, reset behaviour and code reuse.
+- `webapp/tests/` — `python3 -m pytest` — pages, auth, respondent flow, Studio lifecycle,
+  conjoint generator, exports and reset, all through Flask's test client on a temp DB.
+- `webapp/scripts/e2e_live_server.py` — 35 checks: submit, screen-out logic, QC flagging,
+  CSV/JSON export, access control. Resets first, so it is deterministic.
+- `webapp/scripts/e2e_reuse_live_server.py` — 45 checks: test-mode sequences, scope filtering,
+  xlsx structure and sheet contents, the standard-library xlsx fallback, reset behaviour.
 
-Both currently pass in full.
+All currently pass in full.
 
 ### What it implements
 
-- **All 20 questions render from `webapp/survey_spec.py`**, a machine-readable spec that
+- **All 20 questions render from `webapp/beacon/survey_spec.py`**, a machine-readable spec that
   mirrors the questionnaire. Edit the spec, and the survey changes — no HTML editing.
 - **Screener logic**: radiation/surgical/primary-care and industry-conflict respondents are
   terminated with the reason recorded; hematology-only respondents are held to the

@@ -9,10 +9,11 @@ Covers what test_e2e.py does not:
   * reset endpoints clear the right records and let codes restart cleanly
   * scope filtering keeps test data out of real-data exports
 
-Usage: python3 test_reuse.py [base_url]
+Usage: python3 scripts/e2e_reuse_live_server.py [base_url]   (server must be running)
 """
 import io
 import json
+import os
 import random
 import sys
 import urllib.error
@@ -226,8 +227,8 @@ check("scope=real xlsx contains only R codes",
 
 # ---------------------------------------------------------------- stdlib fallback
 print("\n--- standard-library xlsx fallback ---")
-sys.path.insert(0, ".")
-import xlsx_export  # noqa: E402
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from beacon import xlsx_export  # noqa: E402
 mini = xlsx_export.MiniXlsx()
 mini.add_sheet("One", [["a", "b"], [1, "two"], [3, None]])
 mini.add_sheet("Two", [["x"], ["y"]])
