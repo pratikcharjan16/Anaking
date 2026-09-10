@@ -293,6 +293,7 @@
           '<div class="st-tabs st-tabs-sm">' + tabs.map(function (t) {
             return '<button class="st-tab' + (edTab === t[0] ? " on" : "") + '" data-edtab="' + t[0] + '">' + t[1] + "</button>";
           }).join("") + "</div>" +
+          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
           '<div id="st-ed-body">' + drawerBody() + "</div>" +
           '<div class="st-draw-actions"><button class="st-btn on" data-act="qsave" data-qi="' + edQi + '">Apply to study</button>' +
             '<button class="st-btn" data-act="qclose">Cancel</button>' +
@@ -328,15 +329,15 @@
         return "<option" + (x === t ? " selected" : "") + ">" + x + "</option>"; }).join("") + "</select></div>" : "") +
       "</div>" +
       '<div class="st-field"><label>Question text</label>' + richToolbar("f-stem-rich") +
-        '<div class="st-rich" id="f-stem-rich" contenteditable="true" data-rich="stem_html">' + Q.sanitize(ed.stem_html || "") + "</div>" +
-        '<div class="st-meta">Select text and use the toolbar. Piped values like <code>{Q3}</code> are filled from the respondent\'s earlier answers.</div></div>' +
+        '<div class="st-rich" id="f-stem-rich" contenteditable="true" data-rich="stem_html">' + chipify(Q.sanitize(ed.stem_html || "")) + "</div>" +
+        '<div class="st-meta">Select text and use the toolbar to format it. Use <b>&#10132; Pipe in answer</b> to insert something a respondent said earlier - e.g. <code>{Q1}</code> becomes their Q1 answer.</div></div>' +
       '<div class="st-grid3">' +
         '<div class="st-field"><label>Font</label><select id="f-font">' + FONTS.map(function (f) { return '<option value="' + esc(f[0]) + '"' + (st.font === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
         '<div class="st-field"><label>Size</label><select id="f-size">' + SIZES.map(function (f) { return '<option value="' + f[0] + '"' + (st.size === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
         '<div class="st-field"><label>Align</label><select id="f-align">' + [["", "Left"], ["center", "Centre"], ["right", "Right"]].map(function (f) { return '<option value="' + f[0] + '"' + ((st.align || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
       "</div>" +
       '<div class="st-field"><label>Help text (optional)</label>' + richToolbar("f-help-rich", true) +
-        '<div class="st-rich sm" id="f-help-rich" contenteditable="true" data-rich="help_html">' + Q.sanitize(ed.help_html || esc(ed.help || "")) + "</div></div>" +
+        '<div class="st-rich sm" id="f-help-rich" contenteditable="true" data-rich="help_html">' + chipify(Q.sanitize(ed.help_html || esc(ed.help || ""))) + "</div></div>" +
       '<div class="st-inline-row">' +
         '<label class="st-inline"><input type="checkbox" id="f-required"' + (ed.required !== false ? " checked" : "") + "> Required</label>" +
         '<label class="st-inline"><input type="checkbox" id="f-hidenum"' + (ed.hide_number ? " checked" : "") + "> Hide question number</label>" +
@@ -358,12 +359,130 @@
       b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
       (small ? "" : b("fontSize", "A&#8593;", "Bigger", "5") + b("fontSize", "A&#8595;", "Smaller", "2")) +
       '<span class="st-tb-sep"></span>' +
-      '<select class="st-tb st-pipe" data-target="' + target + '" title="Insert an answer from an earlier question">' +
-        '<option value="">{ pipe in… }</option>' +
-        Q.pipeTokens(cur.cfg.questions, ed.id).map(function (tk) { return '<option value="' + esc(tk.token) + '">' + esc(tk.token + "  " + tk.label) + "</option>"; }).join("") +
-      "</select>" +
+      pipeButton(target) +
       "</div>";
   }
+
+  // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
+  function chipify(html) {
+    var tpl = document.createElement("template"); tpl.innerHTML = html;
+    var walker = document.createTreeWalker(tpl.content, 4), nodes = [];
+    while (walker.nextNode()) nodes.push(walker.currentNode);
+    nodes.forEach(function (n) {
+      if (!/\{[A-Za-z0-9_]+(\.[A-Za-z0-9_:]+)?\}/.test(n.nodeValue)) return;
+      if (n.parentNode && n.parentNode.classList && n.parentNode.classList.contains("pipe")) return;
+      var frag = document.createDocumentFragment();
+      n.nodeValue.split(/(\{[A-Za-z0-9_]+(?:\.[A-Za-z0-9_:]+)?\})/).forEach(function (part) {
+        if (/^\{[A-Za-z0-9_]+(\.[A-Za-z0-9_:]+)?\}$/.test(part)) {
+          var sp = document.createElement("span"); sp.className = "pipe"; sp.setAttribute("contenteditable", "false"); sp.textContent = part; frag.appendChild(sp);
+        } else if (part) frag.appendChild(document.createTextNode(part));
+      });
+      n.parentNode.replaceChild(frag, n);
+    });
+    var d = document.createElement("div"); d.appendChild(tpl.content); return d.innerHTML;
+  }
+
+  function unchip(html) { return html.replace(/<span class="pipe">(\{[^}]+\})<\/span>(?:&nbsp;|\u00a0)?/g, "$1 "); }
+
+  // "Pipe in" button - one per text field. Opens the pipe picker for that field.
+  function pipeButton(target, small) {
+    return '<button type="button" class="st-pipe-btn' + (small ? " sm" : "") + '" data-pipe-for="' + target + '" title="Insert an earlier answer into this text">' +
+      '&#10132; Pipe in answer</button>';
+  }
+
+  // ---- pipe picker ------------------------------------------------------------------------
+  // Grouped by earlier question, plain-English choices, live example from the sample answers.
+  var pipeTarget = null, pipeCaret = null;
+
+  function isRichField(el) { return !!el && !/^(INPUT|TEXTAREA)$/.test(el.tagName); }
+  function rememberCaret(target) {
+    if (isRichField(target)) {
+      var sel = window.getSelection();
+      if (sel.rangeCount && target.contains(sel.anchorNode)) pipeCaret = sel.getRangeAt(0).cloneRange();
+      else pipeCaret = null;
+    } else pipeCaret = { start: target.selectionStart, end: target.selectionEnd };
+  }
+
+  function openPipePicker(target) {
+    pipeTarget = target;
+    if (!pipeCaret) rememberCaret(target);
+    var earlier = [];
+    for (var i = 0; i < cur.cfg.questions.length; i++) {
+      var q = cur.cfg.questions[i];
+      if (q.id === ed.id) break;
+      if (q.type !== "choice_task") earlier.push(q);
+    }
+    var sample = { answers: Q.sampleAnswers(cur.cfg.questions, ed.id), questions: cur.cfg.questions };
+    var ex = function (tok) { var v = Q.pipe(tok, sample, ""); return v ? '<span class="st-pipe-ex">e.g. "' + esc(v.slice(0, 60)) + '"</span>' : ""; };
+    var row = function (tok, label) {
+      return '<button type="button" class="st-pipe-item" data-token="' + esc(tok) + '"><b>' + esc(label) + '</b><code>' + esc(tok) + "</code>" + ex(tok) + "</button>";
+    };
+    var html = '<div class="st-pipe-head"><strong>Pipe in an earlier answer</strong>' +
+      '<span class="st-meta">Click an item to insert it where your cursor was. Respondents see their own answer in its place.</span>' +
+      '<button type="button" class="ex-close" data-act="pipe-close">&times;</button></div>' +
+      '<input class="st-pipe-search" placeholder="Search questions…" autofocus>';
+    if (!earlier.length) html += '<div class="st-note">No earlier questions yet - piping pulls answers from questions that come <em>before</em> this one.</div>';
+    earlier.forEach(function (q) {
+      html += '<details class="st-pipe-q" open><summary><span class="qid">' + esc(q.id) + "</span> " + esc(String(q.stem).slice(0, 90)) + "</summary><div class=\"st-pipe-list\">";
+      html += row("{" + q.id + "}", "Their answer (as text)");
+      if (q.options && q.options.length) {
+        if (q.type === "multi_select") { html += row("{" + q.id + ".first}", "First option they ticked") + row("{" + q.id + ".last}", "Last option they ticked"); }
+        html += row("{" + q.id + ".code}", "Answer code (number)");
+        if (q.options.some(function (o) { return o.other; })) html += row("{" + q.id + ".other}", "Text typed in 'Other'");
+        html += '<div class="st-pipe-sub">A fixed option label (does not depend on their answer)</div>';
+        q.options.forEach(function (o) { html += row("{" + q.id + ".opt:" + o.code + "}", "Option " + o.code + ": " + String(o.label).slice(0, 50)); });
+      }
+      if (q.rows && q.rows.length) {
+        html += '<div class="st-pipe-sub">Rows</div>';
+        q.rows.forEach(function (r) {
+          if (q.scale) html += row("{" + q.id + ".r:" + r.code + "}", "Their rating for: " + String(r.label).slice(0, 45));
+          html += row("{" + q.id + ".row:" + r.code + "}", "Row label: " + String(r.label).slice(0, 50));
+        });
+      }
+      html += row("{" + q.id + ".stem}", "The question text itself");
+      html += "</div></details>";
+    });
+    var pop = document.getElementById("st-pipe-pop");
+    pop.innerHTML = html;
+    pop.hidden = false;
+    var srch = pop.querySelector(".st-pipe-search");
+    srch.addEventListener("input", function () {
+      var t = srch.value.toLowerCase();
+      pop.querySelectorAll(".st-pipe-q").forEach(function (d) {
+        var hit = !t || d.textContent.toLowerCase().indexOf(t) >= 0; d.style.display = hit ? "" : "none"; d.open = true;
+      });
+    });
+    setTimeout(function () { srch.focus(); }, 30);
+  }
+
+  function insertPipe(tok) {
+    var t = pipeTarget; if (!t) return;
+    if (isRichField(t)) {
+      t.focus();
+      var sel = window.getSelection();
+      var range = pipeCaret;
+      if (!range || !t.contains(range.startContainer)) { range = document.createRange(); range.selectNodeContents(t); range.collapse(false); }
+      sel.removeAllRanges(); sel.addRange(range);
+      range.deleteContents();
+      var node = document.createElement("span");
+      node.className = "pipe"; node.setAttribute("contenteditable", "false"); node.textContent = tok;
+      range.insertNode(node);
+      var space = document.createTextNode("\u00a0");
+      node.parentNode.insertBefore(space, node.nextSibling);
+      range.setStartAfter(space); range.collapse(true);
+      sel.removeAllRanges(); sel.addRange(range);
+    } else {
+      var v = t.value, a = pipeCaret ? pipeCaret.start : v.length, b = pipeCaret ? pipeCaret.end : v.length;
+      if (a == null) a = b = v.length;
+      t.value = v.slice(0, a) + tok + v.slice(b);
+      t.focus(); t.selectionStart = t.selectionEnd = a + tok.length;
+      t.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+    closePipePicker();
+    syncFromForm(); renderPreview();
+    toast("Inserted " + tok);
+  }
+  function closePipePicker() { var pop = document.getElementById("st-pipe-pop"); if (pop) pop.hidden = true; pipeTarget = null; pipeCaret = null; }
 
   // ---- Answers tab: options / rows table, randomisation, exclusive ---------------------
   function answersTab(t) {
@@ -374,7 +493,7 @@
         '<th title="Selecting this clears every other answer (None / Not applicable)">Exclusive</th><th title="Adds a free-text box">Other</th><th></th></tr></thead><tbody>' +
         (ed.options || []).map(function (o, i) {
           return '<tr data-oi="' + i + '"><td><input data-opt="code" data-oi="' + i + '" value="' + esc(o.code) + '"></td>' +
-            '<td><input data-opt="label" data-oi="' + i + '" value="' + esc(o.label) + '" placeholder="Label (may contain {Q1} piping)">' +
+            '<td><div class="st-with-pipe"><input id="f-opt-' + i + '" data-opt="label" data-oi="' + i + '" value="' + esc(o.label) + '" placeholder="Label">' + pipeButton("f-opt-" + i, true) + "</div>" +
             (o.image ? '<div class="st-meta">image: ' + esc(o.image.split("/").pop()) + ' <button class="st-x" data-act="opt-img-del" data-oi="' + i + '">&times;</button></div>' : "") + "</td>" +
             '<td><input type="checkbox" data-opt="pin" data-oi="' + i + '"' + (o.pin ? " checked" : "") + "></td>" +
             '<td><input type="checkbox" data-opt="exclusive" data-oi="' + i + '"' + (o.exclusive ? " checked" : "") + "></td>" +
@@ -398,7 +517,7 @@
     if (hasRows(t)) {
       html += '<div class="st-field"><label>Rows / items (code | label' + (t === "semantic_diff" ? " | left pole | right pole" : "") + ' per line)</label>' +
         '<textarea id="f-rows" style="min-height:120px">' + lines(ed.rows, t === "semantic_diff") + "</textarea>" +
-        '<div class="st-meta">Prefix a line with <code>*</code> to pin it in place when rows are randomised. Labels may contain piping like <code>{Q2.opt:1}</code>.</div></div>';
+        '<div class="st-inline-row">' + pipeButton("f-rows", true) + '<span class="st-meta">Prefix a line with <code>*</code> to pin it in place when rows are randomised.</span></div></div>';
       html += randomizeBlock("rows");
     }
     if (t === "rating_grid" || t === "semantic_diff" || t === "nps") {
@@ -416,7 +535,7 @@
     }
     if (t === "open_text") {
       html += '<div class="st-grid2"><div class="st-field"><label>Minimum words</label><input id="f-minwords" type="number" value="' + (ed.min_words || 3) + '"></div>' +
-        '<div class="st-field"><label>Placeholder</label><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '"></div></div>';
+        '<div class="st-field"><label>Placeholder</label><div class="st-with-pipe"><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '">' + pipeButton("f-placeholder", true) + "</div></div></div>";
     }
     if (t === "rank") html += '<div class="st-field"><label>Top-N recorded</label><input id="f-rankcount" type="number" value="' + (ed.rank_count || 3) + '"></div>';
     if (t === "heatmap") html += '<div class="st-field"><label>Columns (code|label per line)</label><textarea id="f-cols">' + lines(ed.cols) + "</textarea></div>";
@@ -490,7 +609,7 @@
           return '<option value="' + w[0] + '"' + ((m.align || "") === w[0] ? " selected" : "") + ">" + w[1] + "</option>"; }).join("") + "</select></div>" +
         '<div class="st-field"><label>Video</label><label class="st-inline"><input type="checkbox" id="f-media-autoplay"' + (m.autoplay ? " checked" : "") + "> autoplay (muted)</label></div>" +
       "</div>" +
-      '<div class="st-grid2"><div class="st-field"><label>Caption (optional, supports piping)</label><input id="f-media-cap" value="' + esc(m.caption || "") + '"></div>' +
+      '<div class="st-grid2"><div class="st-field"><label>Caption (optional)</label><div class="st-with-pipe"><input id="f-media-cap" value="' + esc(m.caption || "") + '">' + pipeButton("f-media-cap", true) + "</div></div>" +
       '<div class="st-field"><label>Alt text (accessibility)</label><input id="f-media-alt" value="' + esc(m.alt || "") + '"></div></div>';
   }
 
@@ -532,9 +651,9 @@
       if (val("f-id") !== undefined) ed.id = val("f-id").trim() || ed.id;
       if (val("f-section") !== undefined) ed.section = val("f-section");
       var rich = document.getElementById("f-stem-rich");
-      if (rich) { ed.stem_html = Q.sanitize(rich.innerHTML); ed.stem = Q.stripTags(ed.stem_html) || ed.stem; }
+      if (rich) { ed.stem_html = unchip(Q.sanitize(rich.innerHTML)); ed.stem = Q.stripTags(ed.stem_html) || ed.stem; }
       var hr = document.getElementById("f-help-rich");
-      if (hr) { var hh = Q.sanitize(hr.innerHTML); if (Q.stripTags(hh)) { ed.help_html = hh; ed.help = Q.stripTags(hh); } else { delete ed.help_html; delete ed.help; } }
+      if (hr) { var hh = unchip(Q.sanitize(hr.innerHTML)); if (Q.stripTags(hh)) { ed.help_html = hh; ed.help = Q.stripTags(hh); } else { delete ed.help_html; delete ed.help; } }
       ed.style = ed.style || {};
       setOrDel(ed.style, "font", val("f-font")); setOrDel(ed.style, "size", val("f-size")); setOrDel(ed.style, "align", val("f-align"));
       if (!Object.keys(ed.style).length) delete ed.style;
@@ -610,7 +729,7 @@
   // drawer events: tabs, toolbar, option table, rules, media, preview
   drawer.addEventListener("click", function (e) {
     var tb = e.target.closest("[data-edtab]");
-    if (tb) { syncFromForm(); edTab = tb.getAttribute("data-edtab"); renderDrawer(); return; }
+    if (tb) { syncFromForm(); closePipePicker(); edTab = tb.getAttribute("data-edtab"); renderDrawer(); return; }
     var cmd = e.target.closest("button[data-cmd]");
     if (cmd) {
       e.preventDefault();
@@ -621,11 +740,16 @@
       syncFromForm(); renderPreview();
       return;
     }
+    var pb = e.target.closest("[data-pipe-for]");
+    if (pb) { e.preventDefault(); openPipePicker(document.getElementById(pb.getAttribute("data-pipe-for"))); return; }
+    var pi = e.target.closest(".st-pipe-item");
+    if (pi) { insertPipe(pi.getAttribute("data-token")); return; }
     var b = e.target.closest("[data-act]");
     if (!b) return;
     var act = b.getAttribute("data-act");
     var oi = Number(b.getAttribute("data-oi"));
     var ri = Number(b.getAttribute("data-ri"));
+    if (act === "pipe-close") { closePipePicker(); return; }
     if (act === "qclose") { closeDrawer(); }
     if (act === "qsave") {
       syncFromForm();
@@ -690,13 +814,6 @@
       document.execCommand(cmdIn.getAttribute("data-cmd"), false, cmdIn.value);
       syncFromForm(); renderPreview(); return;
     }
-    if (t.classList.contains("st-pipe")) {
-      if (!t.value) return;
-      var target2 = document.getElementById(t.getAttribute("data-target"));
-      target2.focus();
-      document.execCommand("insertText", false, t.value);
-      t.value = ""; syncFromForm(); renderPreview(); return;
-    }
     var act = t.getAttribute("data-act");
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); renderDrawer(); toast("Attached " + r.file); });
@@ -717,7 +834,12 @@
     syncFromForm(); renderPreview();
   });
   // keep selection-based commands working when the toolbar button steals focus
-  drawer.addEventListener("mousedown", function (e) { if (e.target.closest(".st-tb")) e.preventDefault(); });
+  drawer.addEventListener("mousedown", function (e) {
+    if (e.target.closest("button.st-tb, .st-tb-color")) e.preventDefault();      // keep the text selection
+    var pb = e.target.closest("[data-pipe-for]");
+    if (pb) { e.preventDefault(); pipeCaret = null; rememberCaret(document.getElementById(pb.getAttribute("data-pipe-for"))); }
+  });
+
   drawer.addEventListener("paste", function (e) {
     var rich = e.target.closest("[data-rich]"); if (!rich) return;
     e.preventDefault();

@@ -94,7 +94,8 @@ right that renders the question with the same code respondents run (interactive,
 
 | Tab | What you can do |
 |---|---|
-| **Content** | Rich question text — bold / italic / underline / strike / superscript, text colour and highlight colour pickers, bulleted and numbered lists, bigger/smaller, clear formatting; font family, size and alignment for the whole question; rich help text. **Pipe in…** menu inserts tokens such as `{Q3}` (answer as text), `{Q3.code}`, `{Q3.opt:2}` (an option's label), `{Q3.first}`/`{Q3.last}` (multi-select), `{Q3.other}`, `{Q3.row:a}`, `{Q3.r:a}` (a grid rating), `{Q3.stem}`. |
+| **Content** | Rich question text — bold / italic / underline / strike / superscript, text colour and highlight colour pickers, bulleted and numbered lists, bigger/smaller, clear formatting; font family, size and alignment for the whole question; rich help text. |
+| **Piping** | Every text field (question text, help, each answer option, grid rows, media caption, placeholder) has a **➔ Pipe in answer** button. Click where the answer should appear, press the button and pick from a searchable, plain-English list grouped by earlier question — "Their answer (as text)", "Their answer code", "First / last option they ticked", "What they typed in Other", a fixed option label, a grid row's rating, the question wording. Each row shows an "e.g." using the sample answers, and the live preview resolves the token immediately. Tokens show as chips in the editor but are stored as plain text (`{Q3}`, `{Q3.code}`, `{Q3.opt:2}`, `{Q3.first}`/`{Q3.last}`, `{Q3.other}`, `{Q3.row:a}`, `{Q3.r:a}`, `{Q3.stem}`); an unanswered reference renders as "…". |
 | **Answers** | Option table (code, label, **Pin**, **Exclusive**, **Other**), move / delete, per-option image, one-click "None of these", "Not applicable" (exclusive) and "Other (please specify)", paste a list; layout (list / grid / inline chips), hide codes, max selections. **Randomise**: fixed, shuffle, rotate, or flip 50/50 — pinned items keep their place; the order each respondent saw is exported as `Qx_order_shown`. Rows of grid / rank / sum questions accept `*` to pin. |
 | **Show-if logic** | Rules against any question (`selected`, `not selected`, `any of`, `none of`, `=`, `≠`, `<`, `≤`, `>`, `≥`, `contains`, `answered`, `skipped`, `row rating equals`), matched ALL or ANY, optionally inverted. Hidden questions are skipped and their answers cleared; "Try it" shows the outcome for the sample answers. Rules appear in the export's data dictionary. |
 | **Image / video** | Upload (png / jpg / gif / webp / svg / mp4 / webm / mov, ≤ 10 MB → `uploads/media/<study>/`, served at `/media/…`) or paste a URL; width, alignment, autoplay (muted), caption (supports piping), alt text. |
@@ -127,6 +128,7 @@ python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
 python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset & reuse
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
+node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 ```
 
 ## Study design material

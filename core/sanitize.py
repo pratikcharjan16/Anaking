@@ -91,7 +91,10 @@ def clean_html(html: str | None) -> str:
     p = _Cleaner()
     p.feed(str(html))
     p.close()
-    return p.result().strip()
+    out = p.result().strip()
+    # the Studio wraps piping tokens in <span class="pipe"> chips - respondents get plain tokens
+    out = re.sub(r'<span class="pipe">(\{[^}]+\})</span>(?:&nbsp;|\xa0)?', r"\1 ", out)
+    return out.strip()
 
 
 def strip_tags(html: str | None) -> str:
