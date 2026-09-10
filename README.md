@@ -41,7 +41,8 @@ Anaking/
 │   ├── design/         conjoint design inputs (design.json, respondent_task_map.csv, …)
 │   └── survey.db       SQLite database — created on first run, git-ignored
 ├── uploads/
-│   └── voice/          respondent voice recordings — git-ignored
+│   ├── voice/          respondent voice recordings — git-ignored
+│   └── narration/      per-study narration clips uploaded in the Studio — git-ignored
 ├── tests/              pytest suite (Flask test client, temp DB)
 ├── scripts/            live-server e2e checks + demo data seeder
 ├── study_design/       questionnaire (.md/.docx), design generator, sample export
@@ -71,8 +72,18 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
 
 Configuration (environment variables): `ADMIN_TOKEN`, `PORT`, `HOST`, `DB_PATH`,
-`VOICE_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db` and recordings in
-`uploads/voice/`.
+`VOICE_DIR`, `NARRATION_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`,
+respondent recordings in `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
+
+### Product walkthrough (Studio → "Product profile" tab)
+
+The animated walkthrough respondents see before the survey is an editable list of **scenes**.
+Each scene has a title, caption, an artwork picked from the built-in set (patient, trial,
+mechanism, efficacy, safety, biomarker, dosing, access, attributes, generic) and — optionally —
+an uploaded narration clip (mp3 / m4a / ogg / wav / webm, ≤ 8 MB). Scenes can be added, removed
+and reordered; "Build scenes from text" turns the seven product-profile text fields into a
+starting set of scenes. Per scene, narration is resolved as: uploaded clip → browser
+text-to-speech (if enabled) → silent timer. **Preview walkthrough** plays the unsaved draft.
 
 Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 

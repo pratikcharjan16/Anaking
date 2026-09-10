@@ -25,18 +25,6 @@
     t.hidden = false;
     setTimeout(function () { t.hidden = true; }, 2600);
   }
-  function scenesFromTpp(t) {
-    t = t || {};
-    return [
-      { id: "patient", clip: null, at: 0, title: "The patient in front of you", caption: t.patient || "" },
-      { id: "trial", clip: null, at: 0, title: "The pivotal trial", caption: t.trial || "" },
-      { id: "mechanism", clip: null, at: 0, title: "Mechanism of action", caption: t.mechanism || "" },
-      { id: "efficacy", clip: null, at: 0, title: "Headline efficacy", caption: t.efficacy || "" },
-      { id: "safety", clip: null, at: 0, title: "Safety at a glance", caption: t.safety || "" },
-      { id: "cdx", clip: null, at: 0, title: "Companion diagnostic", caption: t.cdx || "" }
-    ];
-  }
-
   // ------------------------------------------------------------ question templates
   var TYPES = ["single_select", "multi_select", "numeric", "slider", "open_text",
     "rating_grid", "semantic_diff", "sum_to_100", "rank", "nps", "emoji_grid",
@@ -101,7 +89,7 @@
       tpp: { patient: "", mechanism: "", trial: "", efficacy: "", safety: "",
              administration: "", cdx: "" },
       narration: {},
-      explainer_scenes: scenesFromTpp({}),
+      explainer_scenes: [],
       conjoint_scene: null,
       conjoint: null,
       conjoint_min_dwell: 10,
@@ -386,34 +374,61 @@
   }
 
   // ------------------------------------------------------------ tpp / conjoint / settings tabs
+  // ------------------------------------------------------------ TPP + walkthrough tab
+  var TPP_FIELDS = [["patient", "Patient population", "patient"], ["trial", "Pivotal trial", "trial"],
+    ["mechanism", "Mechanism of action", "mechanism"], ["efficacy", "Headline efficacy", "efficacy"],
+    ["safety", "Safety summary", "safety"], ["administration", "Administration", "dosing"],
+    ["cdx", "Companion diagnostic", "cdx"]];
+
+  function artLabels() {
+    return window.BEACON_ART_LABELS || [["generic", "Generic"]];
+  }
+  function artLabel(id) {
+    var hit = artLabels().filter(function (a) { return a[0] === id; })[0];
+    return hit ? hit[1] : id;
+  }
+  function newSceneId() {
+    return "sc_" + Math.random().toString(36).slice(2, 8);
+  }
+  function scenes() {
+    if (!Array.isArray(cur.cfg.explainer_scenes)) cur.cfg.explainer_scenes = [];
+    // older studies stored scenes without an explicit art field
+    cur.cfg.explainer_scenes.forEach(function (sc) {
+      if (!sc.art) sc.art = (window.BEACON_ART || {})[sc.id] ? sc.id : "generic";
+      if (!sc.id) sc.id = newSceneId();
+    });
+    return cur.cfg.explainer_scenes;
+  }
+
   function tppTab() {
     var t = cur.cfg.tpp || {};
-    var fields = [["patient", "Patient population"], ["trial", "Pivotal trial"],
-      ["mechanism", "Mechanism of action"], ["efficacy", "Headline efficacy"],
-      ["safety", "Safety summary"], ["administration", "Administration"],
-      ["cdx", "Companion diagnostic"]];
-    var html = '<div class="st-note">The animated walkthrough is generated from this text. ' +
-      "Edit it and press <strong>Preview walkthrough</strong> to watch exactly what respondents " +
-      "will see - the preview always uses the text currently in these boxes, saved or not. " +
-      "<strong>Save study</strong> publishes it." +
-      (cur.cfg.use_tts ? " This study uses browser-voice narration." : "") + "</div>" +
-      fields.map(function (f) {
+    var html = '<div class="st-note">Two ways to build the walkthrough. <strong>Quick start:</strong> ' +
+      "fill in the product profile text and press <em>Build scenes from text</em> - one scene per " +
+      "field, with matching artwork. <strong>Fine-tune:</strong> then add, remove, reorder and " +
+      "re-illustrate scenes below, and optionally upload a narration clip per scene. " +
+      "<em>Preview walkthrough</em> always plays what is on this page right now; " +
+      "<em>Save study</em> publishes it.</div>" +
+      '<details class="st-details"' + (scenes().length ? "" : " open") + '><summary>Product profile text (quick start)</summary>' +
+      TPP_FIELDS.map(function (f) {
         return '<div class="st-field"><label>' + f[1] + '</label><textarea data-tpp="' + f[0] +
           '">' + esc(t[f[0]] || "") + "</textarea></div>";
       }).join("") +
+      '<div class="st-row"><button class="st-btn on" data-act="regen">Build scenes from text</button>' +
+      '<span class="st-muted-note">Replaces the scene list below with one scene per filled-in field.</span></div>' +
+      "</details>" +
+      '<h3 class="st-h3">Walkthrough scenes <span class="st-count" id="scene-count"></span></h3>' +
       '<div class="st-field"><label><input type="checkbox" id="f-tts" style="width:auto" ' +
-      (cur.cfg.use_tts ? "checked" : "") + '> Narrate the walkthrough with browser ' +
+      (cur.cfg.use_tts ? "checked" : "") + '> Narrate scenes that have no uploaded clip with browser ' +
       "text-to-speech</label></div>" +
       '<div class="st-row">' +
       '<button class="st-btn play" data-act="preview-tpp">&#9654; Preview walkthrough</button>' +
-      '<button class="st-btn on" data-act="regen">Regenerate scenes from text</button>' +
+      '<button class="st-btn" data-act="scene-add">+ Add scene</button>' +
       '<span class="st-muted" id="tpp-dirty" hidden>Unsaved changes &middot; press Save study to publish</span>' +
       "</div>" +
       '<div id="scene-prev" style="margin-top:12px"></div>';
     return html;
   }
 
-  // scenes derived from the text currently in the TPP boxes (not yet saved)
   function draftTpp() {
     var tpp = {};
     root.querySelectorAll("[data-tpp]").forEach(function (n) {
@@ -422,26 +437,95 @@
     return tpp;
   }
 
+  // one scene per non-empty TPP field, in field order
+  function scenesFromTppText(t) {
+    t = t || {};
+    var titles = { patient: "The patient in front of you", trial: "The pivotal trial",
+      mechanism: "Mechanism of action", efficacy: "Headline efficacy", safety: "Safety at a glance",
+      administration: "Dosing and administration", cdx: "Companion diagnostic" };
+    return TPP_FIELDS.filter(function (f) { return (t[f[0]] || "").trim(); }).map(function (f) {
+      return { id: newSceneId(), art: f[2], clip: null, at: 0, title: titles[f[0]], caption: t[f[0]].trim() };
+    });
+  }
+
+  function markDirty() {
+    var d = document.getElementById("tpp-dirty"); if (d) d.hidden = false;
+  }
+
   function renderScenePrev() {
     var el = document.getElementById("scene-prev");
     if (!el) return;
-    var scenes = cur.cfg.explainer_scenes || [];
-    el.innerHTML = '<div class="st-scenes">' + scenes.map(function (s, i) {
-      var empty = !(s.caption || "").trim();
+    var list = scenes();
+    var cnt = document.getElementById("scene-count");
+    if (cnt) cnt.textContent = list.length ? list.length + (list.length === 1 ? " scene" : " scenes") : "";
+    if (!list.length) {
+      el.innerHTML = '<div class="st-note">No scenes yet. Fill in the product profile text above and press ' +
+        "<em>Build scenes from text</em>, or <em>+ Add scene</em> to start from a blank one.</div>";
+      return;
+    }
+    var opts = artLabels().map(function (a) { return a[0]; });
+    el.innerHTML = '<div class="st-scenes">' + list.map(function (sc, i) {
+      var empty = !(sc.caption || "").trim();
+      var clip = sc.src ? '<span class="st-clip">&#127911; ' + esc(sc.file || "clip") +
+        (sc.seconds ? " &middot; " + sc.seconds + "s" : "") +
+        ' <button class="st-x" data-act="scene-clip-del" data-i="' + i + '" title="Remove clip">&times;</button></span>' :
+        '<label class="st-upload">&#8679; Upload narration' +
+        '<input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav,.webm" data-act="scene-clip" data-i="' + i + '" hidden></label>';
       return '<div class="st-scene' + (empty ? " empty" : "") + '" data-scene-i="' + i + '">' +
-        '<span class="st-scene-thumb">' + sceneThumb(s.id) + "</span>" +
-        '<div class="st-scene-txt"><strong>' + (i + 1) + ". " + esc(s.title) + "</strong>" +
-        "<span>" + (empty ? "<em>no text yet - fill in the box above</em>" : esc(s.caption)) +
-        "</span></div>" +
-        '<button class="st-btn sm" data-act="preview-scene" data-i="' + i + '" title="Play from this scene">' +
-        "&#9654;</button></div>";
+        '<div class="st-scene-head">' +
+        '<span class="st-scene-no">' + (i + 1) + "</span>" +
+        '<span class="st-scene-thumb" data-act="scene-thumb" data-i="' + i + '" title="Change artwork">' + sceneThumb(sc.art) + "</span>" +
+        '<div class="st-scene-fields">' +
+        '<input type="text" class="st-scene-title" data-scene-title="' + i + '" placeholder="Scene title" value="' + esc(sc.title || "") + '">' +
+        '<textarea class="st-scene-cap" data-scene-cap="' + i + '" placeholder="What the respondent reads / hears">' + esc(sc.caption || "") + "</textarea>" +
+        "</div>" +
+        '<div class="st-scene-tools">' +
+        '<button class="st-btn sm" data-act="preview-scene" data-i="' + i + '" title="Play from this scene">&#9654;</button>' +
+        '<button class="st-btn sm" data-act="scene-up" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + ">&#8593;</button>" +
+        '<button class="st-btn sm" data-act="scene-down" data-i="' + i + '" title="Move down"' + (i === list.length - 1 ? " disabled" : "") + ">&#8595;</button>" +
+        '<button class="st-btn sm danger" data-act="scene-del" data-i="' + i + '" title="Remove scene">&#128465;</button>' +
+        "</div></div>" +
+        '<div class="st-scene-foot">' +
+        '<label class="st-inline">Artwork <select data-scene-art="' + i + '">' +
+        opts.map(function (a) { return '<option value="' + a + '"' + (a === sc.art ? " selected" : "") + ">" + esc(artLabel(a)) + "</option>"; }).join("") +
+        "</select></label>" +
+        '<span class="st-inline">Narration ' + clip + "</span>" +
+        (empty ? '<span class="st-warn-note">no text yet</span>' : "") +
+        "</div></div>";
     }).join("") + "</div>";
   }
 
-  // tiny static rendering of the scene artwork, reused from the explainer
-  function sceneThumb(id) {
-    var art = (window.BEACON_ART || {})[id];
-    return art ? art : '<svg viewBox="0 0 400 240"></svg>';
+  function sceneThumb(art) {
+    var A = window.BEACON_ART || {};
+    return A[art] || A.generic || '<svg viewBox="0 0 400 240"></svg>';
+  }
+
+  function uploadClip(i, file) {
+    if (!file) return;
+    var sc = scenes()[i];
+    if (!sc) return;
+    var fd = new FormData();
+    fd.append("file", file, file.name);
+    toast("Uploading " + file.name + "…");
+    fetch("/api/studio/narration?study=" + encodeURIComponent(cur.slug) + "&token=" + encodeURIComponent(TOKEN),
+      { method: "POST", body: fd })
+      .then(function (r) { return r.json(); })
+      .then(function (r) {
+        if (r.error) { toast("Upload failed: " + r.error); return; }
+        sc.src = r.src; sc.file = r.file; sc.seconds = r.seconds || 0; sc.clipId = r.clip;
+        renderScenePrev(); markDirty();
+        toast("Clip attached" + (r.seconds ? " (" + r.seconds + "s)" : "") + " - save to publish");
+      })
+      .catch(function () { toast("Upload failed"); });
+  }
+
+  function removeClip(i) {
+    var sc = scenes()[i];
+    if (!sc) return;
+    var id = sc.clipId || (sc.src || "").split("/").pop().split(".")[0];
+    if (id) api("/api/studio/narration/delete", { study: cur.slug, clip: id });
+    delete sc.src; delete sc.file; delete sc.seconds; delete sc.clipId;
+    renderScenePrev(); markDirty();
   }
 
   // ------------------------------------------------------------ walkthrough preview
@@ -450,27 +534,30 @@
     var ov = document.getElementById("explainer");
     if (!ov || ov.hidden) return;
     ov.hidden = true;
-    if (previewer) { try { previewer.finish(); } catch (e) {} previewer = null; }
+    closePreviewer();
     document.getElementById("ex-mount").innerHTML = "";
   }
+  function closePreviewer() { if (previewer) { try { previewer.finish(); } catch (e) {} previewer = null; } }
 
   function previewWalkthrough(startAt) {
     if (!window.BeaconExplainer) { toast("Explainer script not loaded"); return; }
-    // always preview the draft: what is typed right now, plus the TTS toggle as set
-    var tpp = draftTpp();
-    var scenes = scenesFromTpp(tpp);
+    var list = scenes();
     var ttsBox = document.getElementById("f-tts");
     var tts = ttsBox ? ttsBox.checked : !!cur.cfg.use_tts;
-    var filled = scenes.filter(function (s) { return (s.caption || "").trim(); }).length;
-    if (!filled) { toast("Type some TPP text first - all scenes are empty"); return; }
+    var filled = list.filter(function (s) { return (s.caption || "").trim(); }).length;
+    if (!list.length) { toast("Add at least one scene first"); return; }
+    if (!filled) { toast("All scenes are empty - add some text first"); return; }
     var ov = document.getElementById("explainer");
-    document.getElementById("ex-hint").textContent = filled < scenes.length
-      ? (scenes.length - filled) + " scene(s) still empty"
-      : (tts ? "Browser voice narration on" : "Silent, timed walkthrough");
+    var clips = list.filter(function (s) { return s.src; }).length;
+    document.getElementById("ex-hint").textContent = filled < list.length
+      ? (list.length - filled) + " scene(s) still empty"
+      : (clips === list.length ? "Uploaded narration on every scene"
+        : clips ? clips + " uploaded clip(s), rest " + (tts ? "browser voice" : "silent")
+        : (tts ? "Browser voice narration on" : "Silent, timed walkthrough"));
     ov.hidden = false;
     closePreviewer();
     previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
-      scenes: scenes,
+      scenes: JSON.parse(JSON.stringify(list)),
       narration: cur.cfg.narration || {},
       muted: false,
       tts: tts,
@@ -479,7 +566,6 @@
     previewer.start();
     if (startAt) previewer.loadScene(startAt);
   }
-  function closePreviewer() { if (previewer) { try { previewer.finish(); } catch (e) {} previewer = null; } }
 
   window.addEventListener("keydown", function (e) { if (e.key === "Escape") closePreview(); });
   document.addEventListener("click", function (e) {
@@ -487,12 +573,30 @@
   });
   document.addEventListener("input", function (e) {
     var t = e.target;
-    if (t && t.hasAttribute && t.hasAttribute("data-tpp")) {
-      // keep the scene list in step with the text as it is typed
-      cur.cfg.tpp = draftTpp();
-      cur.cfg.explainer_scenes = scenesFromTpp(cur.cfg.tpp);
-      renderScenePrev();
-      var d = document.getElementById("tpp-dirty"); if (d) d.hidden = false;
+    if (!t || !t.hasAttribute) return;
+    if (t.hasAttribute("data-tpp")) { cur.cfg.tpp = draftTpp(); markDirty(); }
+    var i;
+    if (t.hasAttribute("data-scene-title")) {
+      i = Number(t.getAttribute("data-scene-title")); scenes()[i].title = t.value; markDirty();
+    }
+    if (t.hasAttribute("data-scene-cap")) {
+      i = Number(t.getAttribute("data-scene-cap")); scenes()[i].caption = t.value;
+      var card = t.closest(".st-scene"); if (card) card.classList.toggle("empty", !t.value.trim());
+      markDirty();
+    }
+  });
+  document.addEventListener("change", function (e) {
+    var t = e.target;
+    if (!t || !t.hasAttribute) return;
+    if (t.hasAttribute("data-scene-art")) {
+      var i = Number(t.getAttribute("data-scene-art"));
+      scenes()[i].art = t.value;
+      var th = document.querySelector('[data-act="scene-thumb"][data-i="' + i + '"]');
+      if (th) th.innerHTML = sceneThumb(t.value);
+      markDirty();
+    }
+    if (t.getAttribute("data-act") === "scene-clip") {
+      uploadClip(Number(t.getAttribute("data-i")), t.files && t.files[0]);
     }
   });
 
@@ -685,6 +789,9 @@
     }
     if (act === "save") {
       cur.title = document.getElementById("ed-title").value;
+      var ttsBox = document.getElementById("f-tts");
+      if (ttsBox) cur.cfg.use_tts = ttsBox.checked;
+      if (root.querySelector("[data-tpp]")) cur.cfg.tpp = draftTpp();
       var st = document.getElementById("ed-status").value;
       saveStudy(function () {
         if (st !== cur.status) {
@@ -725,13 +832,37 @@
     }
     if (act === "regen") {
       cur.cfg.tpp = draftTpp();
-      cur.cfg.use_tts = document.getElementById("f-tts").checked;
-      cur.cfg.explainer_scenes = scenesFromTpp(cur.cfg.tpp);
-      renderScenePrev();
-      toast("Scenes regenerated - press Save study to publish");
+      var built = scenesFromTppText(cur.cfg.tpp);
+      if (!built.length) { toast("Fill in at least one product-profile field first"); return; }
+      if (scenes().length && !confirm("Replace the current " + scenes().length + " scene(s) with " +
+          built.length + " built from the text?")) return;
+      cur.cfg.explainer_scenes = built;
+      renderScenePrev(); markDirty();
+      toast(built.length + " scene(s) built - press Save study to publish");
     }
     if (act === "preview-tpp") previewWalkthrough(0);
     if (act === "preview-scene") previewWalkthrough(i || 0);
+    if (act === "scene-add") {
+      scenes().push({ id: newSceneId(), art: "generic", clip: null, at: 0, title: "New scene", caption: "" });
+      renderScenePrev(); markDirty();
+      var last = document.querySelector(".st-scene:last-child textarea"); if (last) last.focus();
+    }
+    if (act === "scene-del") {
+      var victim = scenes()[i];
+      if (victim && (victim.caption || "").trim() && !confirm("Remove scene " + (i + 1) + "?")) return;
+      if (victim && victim.src) removeClip(i);
+      scenes().splice(i, 1); renderScenePrev(); markDirty();
+    }
+    if (act === "scene-up" && i > 0) {
+      var L = scenes(); var tmp = L[i - 1]; L[i - 1] = L[i]; L[i] = tmp; renderScenePrev(); markDirty();
+    }
+    if (act === "scene-down" && i < scenes().length - 1) {
+      var L2 = scenes(); var tmp2 = L2[i + 1]; L2[i + 1] = L2[i]; L2[i] = tmp2; renderScenePrev(); markDirty();
+    }
+    if (act === "scene-clip-del") removeClip(i);
+    if (act === "scene-thumb") {
+      var sel = document.querySelector('[data-scene-art="' + i + '"]'); if (sel) sel.focus();
+    }
     if (act === "genconj") {
       var attrs = String(document.getElementById("f-attrs").value).split("\n")
         .filter(function (l) { return l.trim(); }).map(function (l) {

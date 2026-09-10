@@ -93,22 +93,3 @@ def seed_beacon() -> bool:
         return False
     return Study.seed("beacon", "PROJECT BEACON - US Oncologist Brand Demand Study",
                       beacon_config(), status="live")
-
-
-def scenes_from_tpp(tpp: dict) -> list:
-    """Regenerate walkthrough scenes from the editable TPP text."""
-    t = tpp or {}
-    return [
-        {"id": "patient", "clip": None, "at": 0, "title": "The patient in front of you",
-         "caption": t.get("patient", "")},
-        {"id": "trial", "clip": None, "at": 0, "title": "The pivotal trial",
-         "caption": t.get("trial", "")},
-        {"id": "mechanism", "clip": None, "at": 0, "title": "Mechanism of action",
-         "caption": t.get("mechanism", "")},
-        {"id": "efficacy", "clip": None, "at": 0, "title": "Headline efficacy",
-         "caption": t.get("efficacy", "")},
-        {"id": "safety", "clip": None, "at": 0, "title": "Safety at a glance",
-         "caption": t.get("safety", "")},
-        {"id": "cdx", "clip": None, "at": 0, "title": "Companion diagnostic",
-         "caption": t.get("cdx", "")},
-    ]

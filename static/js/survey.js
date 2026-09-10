@@ -1332,16 +1332,23 @@
       facts[1].textContent = String(SPEC.conjoint ? SPEC.conjoint.n_tasks : 0);
     }
     var tpt = $("#tpp-body table");
-    if (tpt && SPEC.tpp && STUDY.slug !== "beacon") {
-      var tp = SPEC.tpp;
-      tpt.innerHTML = [
-        ["Mechanism", tp.mechanism], ["Pivotal trial", tp.trial],
-        ["Headline efficacy", tp.efficacy], ["Safety", tp.safety],
-        ["Administration", tp.administration || "As described in the choice tasks"],
-        ["Companion diagnostic", tp.cdx]
-      ].map(function (r) {
-        return "<tr><th>" + r[0] + "</th><td>" + (r[1] || "") + "</td></tr>";
-      }).join("");
+    if (tpt && STUDY.slug !== "beacon") {
+      // the reference panel mirrors the walkthrough scenes exactly (custom scenes included)
+      var rows = (SCENES || []).filter(function (sc) { return (sc.caption || "").trim(); })
+        .map(function (sc) { return [sc.title || "", sc.caption]; });
+      if (!rows.length && SPEC.tpp) {
+        var tp = SPEC.tpp;
+        rows = [["Mechanism", tp.mechanism], ["Pivotal trial", tp.trial],
+          ["Headline efficacy", tp.efficacy], ["Safety", tp.safety],
+          ["Administration", tp.administration], ["Companion diagnostic", tp.cdx]];
+      }
+      tpt.innerHTML = "";
+      rows.forEach(function (r) {
+        var tr = document.createElement("tr");
+        var th = document.createElement("th"); th.textContent = r[0];
+        var td = document.createElement("td"); td.textContent = r[1] || "";
+        tr.appendChild(th); tr.appendChild(td); tpt.appendChild(tr);
+      });
     }
     if (IS_TEST) document.body.classList.add("testmode");
     $("#hud").hidden = false;

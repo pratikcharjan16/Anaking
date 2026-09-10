@@ -178,8 +178,52 @@
       }).join("") +
       '<g class="a-pop" style="animation-delay:2.9s"><rect x="148" y="200" width="104" height="30" rx="15" fill="#f6f9fb" stroke="#dde5ec" stroke-dasharray="5 4"/>' +
       '<text x="200" y="219" text-anchor="middle" fill="#5f7284" font-size="10" font-weight="700">or continue SOC</text></g>' +
+      '</svg>',
+    dosing:
+      '<svg viewBox="0 0 400 240" class="scene-svg">' +
+      '<g class="a-rise"><rect x="120" y="60" width="160" height="120" rx="14" fill="#e8f2f7" stroke="#12789e" stroke-width="1.5"/>' +
+      '<rect x="120" y="60" width="160" height="26" rx="14" fill="#0b4f6c"/>' +
+      '<text x="200" y="78" text-anchor="middle" fill="#fff" font-size="11" font-weight="700">DOSING SCHEDULE</text></g>' +
+      [0, 1, 2, 3, 4, 5, 6].map(function (d) {
+        var on = d === 0 || d === 3;
+        return '<g class="a-pop" style="animation-delay:' + (0.3 + d * 0.12).toFixed(2) + 's">' +
+          '<rect x="' + (134 + d * 19) + '" y="100" width="15" height="15" rx="4" fill="' + (on ? "#12789e" : "#fff") +
+          '" stroke="#12789e"/>' +
+          (on ? '<circle cx="' + (141.5 + d * 19) + '" cy="107.5" r="3" fill="#fff"/>' : "") + "</g>";
+      }).join("") +
+      '<g class="a-float"><rect x="150" y="128" width="100" height="36" rx="18" fill="#fff" stroke="#dde5ec"/>' +
+      '<circle cx="170" cy="146" r="9" fill="#7fd4f0"/><rect x="186" y="141" width="52" height="10" rx="5" fill="#cfdce6"/></g>' +
+      '<g class="a-pulse"><circle cx="200" cy="120" r="88" fill="none" stroke="#12789e" stroke-width="1.4" opacity=".35"/></g>' +
+      '</svg>',
+    access:
+      '<svg viewBox="0 0 400 240" class="scene-svg">' +
+      '<g class="a-rise"><path d="M110 190 V96 l90-46 90 46v94z" fill="#e8f2f7" stroke="#12789e" stroke-width="1.5"/>' +
+      '<rect x="176" y="130" width="48" height="60" rx="6" fill="#0b4f6c"/></g>' +
+      '<g class="a-pop" style="animation-delay:.5s"><rect x="128" y="110" width="30" height="30" rx="5" fill="#fff" stroke="#12789e"/>' +
+      '<rect x="242" y="110" width="30" height="30" rx="5" fill="#fff" stroke="#12789e"/></g>' +
+      '<g class="a-pop" style="animation-delay:.9s"><circle cx="300" cy="70" r="22" fill="#1a7f4b"/>' +
+      '<path d="M289 70l8 8 14-16" fill="none" stroke="#fff" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"/></g>' +
+      '<g class="a-fade" style="animation-delay:1.1s"><text x="300" y="112" text-anchor="middle" fill="#0b4f6c" font-size="11" font-weight="700">covered</text></g>' +
+      '<g class="a-ants"><path d="M60 200 H340" stroke="#bcd6e4" stroke-width="2" fill="none"/></g>' +
+      '</svg>',
+    generic:
+      '<svg viewBox="0 0 400 240" class="scene-svg">' +
+      '<g class="a-pulse"><circle cx="200" cy="120" r="70" fill="none" stroke="#12789e" stroke-width="1.6" opacity=".4"/></g>' +
+      '<g class="a-pop"><circle cx="200" cy="120" r="44" fill="#e8f2f7" stroke="#12789e" stroke-width="1.5"/>' +
+      '<path d="M200 96v48M176 120h48" stroke="#0b4f6c" stroke-width="5" stroke-linecap="round"/></g>' +
+      '<g class="a-orbit" style="transform-origin:200px 120px"><circle cx="200" cy="50" r="6" fill="#7fd4f0"/></g>' +
+      '<g class="a-float"><rect x="90" y="176" width="220" height="14" rx="7" fill="#cfdce6"/>' +
+      '<rect x="120" y="198" width="160" height="10" rx="5" fill="#dde5ec"/></g>' +
       '</svg>'
   };
+
+  // Human labels for the Studio artwork picker. Order = display order.
+  var ART_LABELS = [
+    ["patient", "Patient"], ["trial", "Pivotal trial"], ["mechanism", "Mechanism of action"],
+    ["efficacy", "Efficacy"], ["safety", "Safety"], ["cdx", "Companion diagnostic"],
+    ["dosing", "Dosing / administration"], ["access", "Access / coverage"],
+    ["attributes", "Choice attributes"], ["generic", "Generic"]
+  ];
 
   // ---------------------------------------------------------------- player
   function Explainer(root, opts) {
@@ -269,7 +313,8 @@
     var self = this;
     if (this.sceneTimer) { clearTimeout(this.sceneTimer); this.sceneTimer = null; }
     var clip = sc.clip ? this.narration[sc.clip] : null;
-    if (sc.clip && !clip) { this.finish(); return; }
+    if (!clip && sc.src) clip = { src: sc.src, seconds: sc.seconds || 0 };
+    if (sc.clip && !clip && !sc.src) { this.finish(); return; }
 
     if (!clip) {
       // No produced narration for this study: speak the scene with the browser's
@@ -297,10 +342,10 @@
     }
 
     this.noClip = false;
-    if (sc.clip === this.playingClip) return;
-    this.playingClip = sc.clip;
+    var key = sc.clip || sc.src;
+    if (key === this.playingClip) return;
+    this.playingClip = key;
     this.audio.pause();
-    var clip = this.narration[sc.clip];
     if (clip && clip.src) {
       this.audio.src = clip.src;
     } else if (clip) {
@@ -330,13 +375,13 @@
 
     // crossfade: draw into the hidden layer, fade it in over the other one
     var show = 1 - this.active;
-    this.layers[show].innerHTML = ART[sc.id] || "";
+    this.layers[show].innerHTML = ART[sc.art] || ART[sc.id] || ART.generic;
     void this.layers[show].offsetWidth; // restart CSS animations
     this.layers[show].classList.add("on");
     this.layers[this.active].classList.remove("on");
     this.active = show;
 
-    this.shell.setAttribute("data-scene", sc.id);
+    this.shell.setAttribute("data-scene", sc.art || sc.id);
     this.title.textContent = sc.title;
     this.sub.textContent = sc.caption;
     // retrigger the caption entrance animation
@@ -375,8 +420,9 @@
     var self = this;
     var sc = this.scenes[this.i];
     var nextScene = this.scenes[this.i + 1];
-    var sameClip = nextScene && nextScene.clip === sc.clip;
-    var clip = this.narration[sc.clip];
+    var sameClip = !!(nextScene && (nextScene.clip || nextScene.src) &&
+                      (nextScene.clip || nextScene.src) === (sc.clip || sc.src));
+    var clip = this.narration[sc.clip] || (sc.src ? { seconds: sc.seconds || 0 } : null);
 
     function frame() {
       if (self.i < 0) return;
@@ -386,7 +432,7 @@
         self.raf = requestAnimationFrame(frame);
         return;
       }
-      var total = clip ? clip.seconds : 1;
+      var total = (clip && clip.seconds) || self.audio.duration || 1;
       var pos = self.audio.currentTime || 0;
       var localStart = sc.at || 0;
       var span = sameClip ? (nextScene.at - localStart) : (total - localStart);
@@ -436,4 +482,5 @@
 
   global.BeaconExplainer = Explainer;
   global.BEACON_ART = ART;
+  global.BEACON_ART_LABELS = ART_LABELS;
 })(window);

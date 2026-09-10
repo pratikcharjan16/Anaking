@@ -17,6 +17,7 @@ def app(tmp_path):
         "ADMIN_TOKEN": TOKEN,
         "DB_PATH": str(tmp_path / "test.db"),
         "VOICE_DIR": str(tmp_path / "voice"),
+        "NARRATION_DIR": str(tmp_path / "narration"),
     })
 
 

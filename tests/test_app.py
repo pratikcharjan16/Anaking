@@ -259,3 +259,63 @@ def test_xlsx_export_and_reset(client, token):
     assert r.status_code == 400
     data = client.get("/api/admin/data", query_string={"token": token}).get_json()
     assert data["counts"]["total"] == 1
+
+
+# ---------------------------------------------------------------- narration clips
+def _mp3_bytes():
+    # minimal MP3: a few valid MPEG-1 Layer III frame headers with silent payload
+    frame = b"\xff\xfb\x90\x00" + b"\x00" * 413
+    return frame * 8
+
+
+def test_narration_upload_serve_delete(client, token, app):
+    q = {"token": token, "study": "beacon"}
+    r = client.post("/api/studio/narration", query_string=q,
+                    data={"file": (io.BytesIO(_mp3_bytes()), "welcome.mp3")},
+                    content_type="multipart/form-data")
+    body = r.get_json()
+    assert r.status_code == 200 and body["ok"], body
+    assert body["clip"].startswith("clip_") and body["src"].startswith("/narration/beacon/")
+    assert body["seconds"] is None or body["seconds"] > 0
+
+    # public playback, with Range support
+    r = client.get(body["src"])
+    assert r.status_code == 200 and r.mimetype == "audio/mpeg"
+    r = client.get(body["src"], headers={"Range": "bytes=0-99"})
+    assert r.status_code == 206 and len(r.data) == 100
+
+    # attach to a scene, save, and the spec exposes it to the survey
+    study = client.get("/api/studio/study", query_string={"token": token, "slug": "beacon"}).get_json()
+    cfg = study["cfg"]
+    cfg["explainer_scenes"] = [{"id": "sc_1", "art": "dosing", "title": "Dose", "caption": "Once daily",
+                                "src": body["src"], "seconds": body["seconds"]},
+                               {"id": "sc_2", "art": "generic", "title": "Custom", "caption": "Anything"}]
+    r = client.post("/api/studio/save", query_string={"token": token},
+                    json={"slug": "beacon", "title": study["title"], "cfg": cfg})
+    assert r.get_json()["ok"]
+    spec = client.get("/api/spec/beacon").get_json()
+    assert [s["art"] for s in spec["explainer_scenes"]] == ["dosing", "generic"]
+    assert spec["explainer_scenes"][0]["src"] == body["src"]
+
+    r = client.post("/api/studio/narration/delete", query_string={"token": token},
+                    json={"study": "beacon", "clip": body["clip"]})
+    assert r.get_json() == {"ok": True, "removed": 1}
+    assert client.get(body["src"]).status_code == 404
+
+
+def test_narration_upload_validation(client, token):
+    q = {"token": token, "study": "beacon"}
+    assert client.post("/api/studio/narration", query_string=q).status_code == 400
+    r = client.post("/api/studio/narration", query_string=q,
+                    data={"file": (io.BytesIO(b"x"), "notes.txt")},
+                    content_type="multipart/form-data")
+    assert r.status_code == 400 and "unsupported" in r.get_json()["error"]
+    r = client.post("/api/studio/narration", query_string={"token": token, "study": "nope"},
+                    data={"file": (io.BytesIO(b"x"), "a.mp3")}, content_type="multipart/form-data")
+    assert r.status_code == 404
+    assert client.post("/api/studio/narration", query_string={"study": "beacon"}).status_code == 403
+    r = client.post("/api/studio/narration/delete", query_string={"token": token},
+                    json={"study": "beacon", "clip": "../../etc"})
+    assert r.status_code == 400
+    assert client.get("/narration/beacon/missing.mp3").status_code == 404
+    assert client.get("/narration/beacon/app.py").status_code == 404

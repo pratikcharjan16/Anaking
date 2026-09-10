@@ -24,12 +24,16 @@ class Config:
     # Respondent voice recordings (never committed to git).
     VOICE_DIR = os.environ.get("VOICE_DIR", os.path.join(UPLOAD_DIR, "voice"))
 
+    # Narration clips uploaded from the Studio for walkthrough scenes (per study).
+    NARRATION_DIR = os.environ.get("NARRATION_DIR", os.path.join(UPLOAD_DIR, "narration"))
+    NARRATION_MAX_BYTES = 8 * 1024 * 1024
+
     # Pre-generated conjoint design + respondent task map for the seeded BEACON study.
     DESIGN_PATH = os.path.join(DATA_DIR, "design", "design.json")
     TASKMAP_PATH = os.path.join(DATA_DIR, "design", "respondent_task_map.csv")
 
     # Largest accepted request body (voice clips are base64, capped at ~2.5 MB raw).
-    MAX_CONTENT_LENGTH = 4 * 1024 * 1024
+    MAX_CONTENT_LENGTH = 12 * 1024 * 1024
 
     SEND_FILE_MAX_AGE_DEFAULT = 3600
     JSON_SORT_KEYS = False

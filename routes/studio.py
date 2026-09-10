@@ -12,16 +12,29 @@ API (used by static/js/studio.js)
     POST /api/studio/status                {slug, status: draft|live|closed}
     POST /api/studio/delete                {slug}
     POST /api/studio/make_conjoint         {attributes, n_tasks, seed} -> design
+    POST /api/studio/narration?study=      multipart upload of a scene clip -> {clip, src, seconds}
+    POST /api/studio/narration/delete      {study, clip}
+    GET  /narration/<study>/<file>         serves an uploaded clip (public - respondents play it)
 """
 
 from __future__ import annotations
 
-from flask import Blueprint, jsonify, render_template, request
+import os
+import re
+import secrets
+import shutil
+
+from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
+from werkzeug.utils import secure_filename
 
 from core.auth import admin_required
 from core.conjoint import make_conjoint
+from core.narration import clip_duration
 from core.reporting import analysis_for
 from models import Study, StudyError
+
+AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
+             "ogg": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm"}
 
 from .helpers import error, json_body, records, study_arg
 
@@ -80,10 +93,15 @@ def status():
 @bp.post("/api/studio/delete")
 @admin_required()
 def delete():
+    slug = json_body().get("slug") or ""
     try:
-        Study.delete(json_body().get("slug") or "")
+        Study.delete(slug)
     except StudyError as e:
         return error(e)
+    # uploaded narration clips belong to the study - remove them with it
+    folder = _narration_dir(secure_filename(slug))
+    if slug and os.path.isdir(folder):
+        shutil.rmtree(folder, ignore_errors=True)
     return jsonify({"ok": True})
 
 
@@ -96,3 +114,65 @@ def conjoint():
                                      int(body.get("seed", 1))))
     except (KeyError, ValueError, TypeError, ZeroDivisionError, IndexError) as e:
         return jsonify({"error": str(e)}), 400
+
+
+# ---------------------------------------------------------------- narration clips
+def _narration_dir(slug: str) -> str:
+    return os.path.join(current_app.config["NARRATION_DIR"], slug)
+
+
+@bp.post("/api/studio/narration")
+@admin_required()
+def upload_narration():
+    slug = request.args.get("study") or ""
+    if not Study.get(slug):
+        return jsonify({"error": "unknown study"}), 404
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    ext = secure_filename(f.filename).rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in AUDIO_EXT:
+        return jsonify({"error": "unsupported audio format (mp3, m4a, ogg, wav, webm)"}), 400
+    data = f.read()
+    if not data:
+        return jsonify({"error": "empty file"}), 400
+    if len(data) > current_app.config["NARRATION_MAX_BYTES"]:
+        return jsonify({"error": "clip too large (max 8 MB)"}), 400
+    clip = "clip_" + secrets.token_hex(4)
+    folder = _narration_dir(slug)
+    os.makedirs(folder, exist_ok=True)
+    path = os.path.join(folder, f"{clip}.{ext}")
+    with open(path, "wb") as out:
+        out.write(data)
+    seconds = clip_duration(path)
+    return jsonify({"ok": True, "clip": clip, "file": f"{clip}.{ext}",
+                    "src": f"/narration/{slug}/{clip}.{ext}", "seconds": seconds,
+                    "bytes": len(data)})
+
+
+@bp.post("/api/studio/narration/delete")
+@admin_required()
+def delete_narration():
+    body = json_body()
+    slug, clip = str(body.get("study") or ""), str(body.get("clip") or "")
+    if not re.fullmatch(r"clip_[0-9a-f]{8}", clip):
+        return jsonify({"error": "bad clip id"}), 400
+    folder = _narration_dir(slug)
+    removed = 0
+    if os.path.isdir(folder):
+        for name in os.listdir(folder):
+            if name.rsplit(".", 1)[0] == clip:
+                os.remove(os.path.join(folder, name))
+                removed += 1
+    return jsonify({"ok": True, "removed": removed})
+
+
+@bp.get('/narration/<regex("[a-zA-Z0-9\\-]+"):slug>/<path:name>')
+def serve_narration(slug, name):
+    """Uploaded clips are public: respondents' browsers stream them during the walkthrough."""
+    name = os.path.basename(name)
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if ext not in AUDIO_EXT:
+        abort(404)
+    return send_from_directory(_narration_dir(slug), name, mimetype=AUDIO_EXT[ext],
+                               conditional=True)
