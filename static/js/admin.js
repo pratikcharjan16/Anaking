@@ -185,7 +185,7 @@
   $("#reset-real").addEventListener("click", function () { reset("real", "real", this); });
   $("#reset-all").addEventListener("click", function () { reset("all", "all", this); });
 
-  $("#take-survey").href = TOKEN ? "/test" : "/";
+  $("#take-survey").href = TOKEN ? "/survey/test" : "/survey/";
 
   if (!TOKEN) {
     document.querySelector("main").innerHTML =

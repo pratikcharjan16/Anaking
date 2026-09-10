@@ -10,9 +10,9 @@ Project layout
     app.py          this file - application factory + CLI entry point
     config.py       settings (env-overridable)
     models.py       SQLite schema + Study / Respondent / Answer models
-    routes.py       every HTTP route (user + admin blueprints)
+    routes/         one module per app: home.py, survey.py, studio.py, admin.py
     core/           domain logic: conjoint, QC rules, reporting, seed, xlsx, auth
-    templates/      user/ (survey pages)  admin/ (dashboard, studio)
+    templates/      home.html + survey/  studio/  admin/
     static/         css/  js/  images/  audio/
     data/           survey.db (runtime) + design/ (conjoint design inputs)
     uploads/        respondent voice recordings (runtime)
@@ -60,6 +60,7 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     elif config is not None:
         app.config.from_object(config)
     app.url_map.converters["regex"] = RegexConverter
+    app.config["VERSION"] = __version__
 
     os.makedirs(os.path.dirname(app.config["DB_PATH"]) or DATA_DIR, exist_ok=True)
     os.makedirs(app.config["VOICE_DIR"] or UPLOAD_DIR, exist_ok=True)
@@ -85,10 +86,6 @@ def create_app(config: str | type | dict | None = None) -> Flask:
             return jsonify({"error": e.description}), e.code
         return e.description, e.code, {"Content-Type": "text/plain; charset=utf-8"}
 
-    @app.get("/healthz")
-    def healthz():
-        return jsonify({"ok": True, "version": __version__})
-
     return app
 
 
@@ -107,10 +104,12 @@ def main() -> None:
     token = app.config["ADMIN_TOKEN"]
 
     shown = "localhost" if args.host in ("0.0.0.0", "::") else args.host
+    base = f"http://{shown}:{args.port}"
     print(f"PROJECT BEACON platform serving on http://{args.host}:{args.port}")
-    print(f"  respondent link : http://{shown}:{args.port}/")
-    print(f"  studio builder  : http://{shown}:{args.port}/studio?token={token}")
-    print(f"  admin dashboard : http://{shown}:{args.port}/admin?token={token}", flush=True)
+    print(f"  home            : {base}/")
+    print(f"  survey          : {base}/survey/      (test mode: {base}/survey/test)")
+    print(f"  studio builder  : {base}/studio/?token={token}")
+    print(f"  admin dashboard : {base}/admin/?token={token}", flush=True)
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 

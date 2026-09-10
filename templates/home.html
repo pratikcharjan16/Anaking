@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>PROJECT BEACON — Research platform</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}">
+</head>
+<body>
+<header class="topbar">
+  <div class="brand">
+    <span class="brand-mark">B</span>
+    <div class="brand-text">
+      <strong>PROJECT BEACON</strong>
+      <span>Pharma market-research platform</span>
+    </div>
+  </div>
+  <form class="token-form" method="get" action="/">
+    <label for="token">Admin token</label>
+    <input id="token" name="token" type="password" placeholder="required for Studio &amp; Admin"
+           value="{{ token }}" autocomplete="off">
+    <button type="submit">Apply</button>
+  </form>
+</header>
+
+<main>
+  <section class="apps">
+    <a class="app app-survey" href="{{ url_for('survey.beacon_survey') }}">
+      <span class="app-kicker">Respondents</span>
+      <h2>Survey</h2>
+      <p>The live questionnaire respondents see: audio narration, animated product walkthrough,
+         choice tasks, gamified questions.</p>
+      <code>/survey/</code>
+      <span class="app-sub">Test mode (stored as T-codes): <code>/survey/test</code></span>
+    </a>
+
+    <a class="app app-studio {{ '' if token else 'needs-token' }}"
+       href="{{ url_for('studio.page') }}{{ '?token=' ~ token if token else '' }}">
+      <span class="app-kicker">Research team</span>
+      <h2>Studio</h2>
+      <p>Build surveys: create, edit and reorder questions, paste a TPP, generate a balanced
+         conjoint design, launch on a public link, see per-study analysis.</p>
+      <code>/studio/?token=…</code>
+      {% if not token %}<span class="app-sub lock">&#128274; enter the admin token above</span>{% endif %}
+    </a>
+
+    <a class="app app-admin {{ '' if token else 'needs-token' }}"
+       href="{{ url_for('admin.page') }}{{ '?token=' ~ token if token else '' }}">
+      <span class="app-kicker">Field management</span>
+      <h2>Admin</h2>
+      <p>Live counts, quota fill, demand headlines, data-quality flags, respondent list,
+         Excel / CSV / JSON exports and test-data reset.</p>
+      <code>/admin/?token=…</code>
+      {% if not token %}<span class="app-sub lock">&#128274; enter the admin token above</span>{% endif %}
+    </a>
+  </section>
+
+  <section class="studies">
+    <h3>Studies on this server</h3>
+    <table>
+      <thead><tr><th>Study</th><th>Status</th><th>Started</th><th>Complete</th><th>Links</th></tr></thead>
+      <tbody>
+      {% for s in studies %}
+        <tr>
+          <td><strong>{{ s.title }}</strong><br><small>{{ s.slug }}</small></td>
+          <td><span class="pill pill-{{ s.status }}">{{ s.status }}</span></td>
+          <td>{{ s.started }}</td>
+          <td>{{ s.complete }}</td>
+          <td>
+            <a href="/survey/{{ s.slug }}">live</a> &middot;
+            <a href="/survey/{{ s.slug }}/test">test</a>
+            {% if token %} &middot; <a href="/survey/{{ s.slug }}?preview={{ token }}">preview</a>{% endif %}
+          </td>
+        </tr>
+      {% endfor %}
+      </tbody>
+    </table>
+  </section>
+</main>
+
+<footer class="foot">
+  <span>PROJECT BEACON &middot; Flask research platform &middot; <a href="/healthz">health</a></span>
+</footer>
+</body>
+</html>

@@ -31,13 +31,29 @@ def test_health(client):
     assert client.get("/healthz").get_json()["ok"] is True
 
 
+def test_home_page_links_to_all_apps(client, token):
+    r = client.get("/")
+    assert r.status_code == 200
+    for link in (b'href="/survey/"', b'href="/studio/"', b'href="/admin/"'):
+        assert link in r.data
+    assert b"PROJECT BEACON - US Oncologist" in r.data       # seeded study listed
+    r = client.get("/", query_string={"token": token})
+    assert f'href="/studio/?token={token}"'.encode() in r.data
+
+
 def test_survey_pages_inject_study_slug(client):
-    for path in ("/", "/test", "/s/beacon", "/s/beacon/test"):
+    for path in ("/survey/", "/survey/test", "/survey/beacon", "/survey/beacon/test"):
         r = client.get(path)
-        assert r.status_code == 200
+        assert r.status_code == 200, path
         assert b'window.STUDY={slug:"beacon"}' in r.data
         assert b"/static/js/survey.js" in r.data
-    assert client.get("/s/does-not-exist").status_code == 404
+    assert client.get("/survey/does-not-exist").status_code == 404
+
+
+def test_legacy_urls_redirect(client):
+    assert client.get("/test").headers["Location"].endswith("/survey/test")
+    r = client.get("/s/beacon/test", query_string={"preview": "x"})
+    assert r.status_code == 301 and r.headers["Location"].endswith("/survey/beacon/test?preview=x")
 
 
 def test_static_assets_served(client):
@@ -59,7 +75,7 @@ def test_api_errors_are_json(client):
 
 # ---------------------------------------------------------------- auth
 def test_admin_and_studio_need_token(client, token):
-    for path in ("/admin", "/studio", "/api/admin/data", "/api/studio/list",
+    for path in ("/admin/", "/studio/", "/api/admin/data", "/api/studio/list",
                  "/admin/export.xlsx", "/admin/export.csv"):
         assert client.get(path).status_code == 403, path
         assert client.get(path, query_string={"token": "wrong"}).status_code == 403, path
@@ -141,8 +157,8 @@ def test_studio_create_launch_respond_delete(client, token):
     assert r.get_json() == {"ok": True, "slug": "pilot-study"}
 
     # drafts are hidden from the public but visible with the preview token
-    assert client.get("/s/pilot-study").status_code == 403
-    assert client.get("/s/pilot-study", query_string={"preview": token}).status_code == 200
+    assert client.get("/survey/pilot-study").status_code == 403
+    assert client.get("/survey/pilot-study", query_string={"preview": token}).status_code == 200
     r = client.post("/api/start", json={"study": "pilot-study"})
     assert r.status_code == 403 and r.get_json()["error"] == "study not live"
 
@@ -175,7 +191,7 @@ def test_studio_create_launch_respond_delete(client, token):
                        json={"slug": "beacon"}).status_code == 400
     assert client.post("/api/studio/delete", query_string=q,
                        json={"slug": "pilot-study"}).get_json()["ok"]
-    assert client.get("/s/pilot-study").status_code == 404
+    assert client.get("/survey/pilot-study").status_code == 404
 
 
 def test_studio_validation(client, token):

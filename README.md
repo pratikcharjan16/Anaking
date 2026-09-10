@@ -14,7 +14,11 @@ Anaking/
 ├── app.py              application factory (create_app) + CLI entry point
 ├── config.py           settings — every value overridable by environment variable
 ├── models.py           SQLite schema/migrations + Study / Respondent / Answer models
-├── routes.py           every HTTP route: `user` blueprint (survey) + `admin` blueprint
+├── routes/             one file per app, each mounted on its own URL
+│   ├── home.py         /            landing page + legacy redirects
+│   ├── survey.py       /survey/…    respondent survey + /api/*
+│   ├── studio.py       /studio/     survey builder      + /api/studio/*
+│   └── admin.py        /admin/      dashboard, exports  + /api/admin/*
 ├── core/               domain logic (no Flask routes in here)
 │   ├── conjoint.py     balanced design generator + per-respondent randomisation
 │   ├── qc.py           speeder / attention / straight-line / gibberish flags
@@ -24,10 +28,12 @@ Anaking/
 │   ├── xlsx_export.py  openpyxl or stdlib .xlsx writer
 │   └── auth.py         @admin_required token guard
 ├── templates/
-│   ├── user/           survey.html, not_live.html
-│   └── admin/          dashboard.html, studio.html
+│   ├── home.html       landing page
+│   ├── survey/         survey.html, not_live.html
+│   ├── studio/         studio.html
+│   └── admin/          dashboard.html
 ├── static/
-│   ├── css/            survey.css, admin.css, studio.css
+│   ├── css/            home.css, survey.css, studio.css, admin.css
 │   ├── js/             survey.js, explainer.js, admin.js, studio.js
 │   ├── images/
 │   └── audio/          narration clips (mp3)
@@ -49,15 +55,20 @@ pip install -r requirements.txt
 python3 app.py --port 8000 --admin-token <token>     # add --debug for auto-reload
 ```
 
-| URL | What it is |
-|---|---|
-| `/` | Respondent link — the live BEACON survey |
-| `/test` | Same survey, stored as **test data** (codes T001, T002 …) |
-| `/s/<slug>` , `/s/<slug>/test` | Any study launched from the Studio (`?preview=<token>` for drafts) |
-| `/studio?token=…` | **Studio builder** — create / edit / launch studies, generate conjoint designs, per-study analysis |
-| `/admin?token=…` | **Dashboard** — live counts, quota fill, QC flags, downloads, reset |
-| `/admin/export.xlsx\|csv\|json?token=…&study=…&scope=all\|real\|test` | Exports |
-| `/healthz` | Liveness check |
+Three separate apps, each on its own URL (the home page at `/` links to all of them):
+
+| App | URL | What it is |
+|---|---|---|
+| **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
+| **Survey** | `/survey/` | Respondent link — the live BEACON survey |
+| | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
+| | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (`?preview=<token>` for drafts) |
+| **Studio** | `/studio/?token=…` | Builder — create / edit / launch studies, generate conjoint designs, per-study analysis |
+| **Admin** | `/admin/?token=…` | Dashboard — live counts, quota fill, QC flags, downloads, reset |
+| | `/admin/export.xlsx\|csv\|json?token=…&study=…&scope=all\|real\|test` | Exports |
+| | `/healthz` | Liveness check |
+
+Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
 
 Configuration (environment variables): `ADMIN_TOKEN`, `PORT`, `HOST`, `DB_PATH`,
 `VOICE_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db` and recordings in

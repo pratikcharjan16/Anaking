@@ -133,7 +133,7 @@
             ? '<button class="st-btn bad" data-act="del" data-slug="' + esc(s.slug) + '">Delete</button>'
             : "") +
           "</div>" +
-          '<div class="st-link">live: /s/' + esc(s.slug) + " &middot; test: /s/" + esc(s.slug) +
+          '<div class="st-link">live: /survey/' + esc(s.slug) + " &middot; test: /survey/" + esc(s.slug) +
           "/test</div></div>";
       });
       html += "</div>";
@@ -439,7 +439,7 @@
 
   function settingsTab() {
     var c = cur.cfg, qc = c.qc || {};
-    return '<div class="st-field"><label>Study slug (link /s/' + esc(cur.slug) +
+    return '<div class="st-field"><label>Study slug (link /survey/' + esc(cur.slug) +
       ')</label><input value="' + esc(cur.slug) + '" disabled></div>' +
       '<div class="st-field"><label>Conjoint minimum dwell (seconds)</label>' +
       '<input id="f-dwell" type="number" value="' + (c.conjoint_min_dwell || 10) + '"></div>' +
@@ -610,7 +610,7 @@
       });
     }
     if (act === "viewlive") {
-      window.open("/s/" + cur.slug + "?preview=" + TOKEN, "_blank");
+      window.open("/survey/" + cur.slug + "?preview=" + TOKEN, "_blank");
     }
     if (act === "addsec") {
       var id = "S" + (cur.cfg.sections.length + 1);
