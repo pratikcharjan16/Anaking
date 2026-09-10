@@ -18,6 +18,7 @@ def app(tmp_path):
         "DB_PATH": str(tmp_path / "test.db"),
         "VOICE_DIR": str(tmp_path / "voice"),
         "NARRATION_DIR": str(tmp_path / "narration"),
+        "MEDIA_DIR": str(tmp_path / "media"),
     })
 
 

@@ -120,6 +120,7 @@
   }
 
   function qSpeechText(q) {
+    q = Object.assign({}, q, { stem: pipeText(q.stem) });
     var t = q.id + ". " + q.stem + (q.help ? " " + q.help : "");
     if (q.options) t += " The options are: " +
       q.options.map(function (o) { return o.label; }).join("; ") + ".";
@@ -175,7 +176,9 @@
   // A small mascot that talks to the respondent: celebrates, nudges and guides.
   // It never blocks the survey - it only comments.
   var coachTimer = null;
+  var PREVIEW = !!window.BEACON_PREVIEW_MODE;   // set by the Studio: render questions, no session/boot
   function coachSay(html, tone) {
+    if (PREVIEW) return;
     var c = $("#coach");
     if (!c) {
       c = el("div", "coach");
@@ -334,6 +337,7 @@
   }
 
   function addPoints(n) {
+    if (PREVIEW) return;
     var before = rankFor(points);
     points += n;
     var after = rankFor(points);
@@ -507,21 +511,38 @@
   }
 
   // ============================================================ renderers
-  function renderOptions(q, multi) {
-    var wrap = el("div", "opts" + (multi ? " opt-multi" : ""));
-    var otherBox = null;
+  // per-respondent, stable option order (randomisation is seeded by the session id)
+  function orderedList(list, q) {
+    if (!window.BeaconQ || !q.randomize) return list;
+    var seed = (SESSION && SESSION.session_id) || "preview";
+    var out = window.BeaconQ.order(list, q, seed);
+    // remember what the respondent actually saw, for analysis
+    var a = answers[q.id] || {};
+    var shown = out.map(function (x) { return x.code; }).join(",");
+    if (a._order !== shown) setAns(q.id, "_order", shown);
+    return out;
+  }
 
-    q.options.forEach(function (o) {
-      var row = el("div", "opt");
+  function renderOptions(q, multi) {
+    var layout = q.layout || (multi ? "grid" : "list");
+    var wrap = el("div", "opts" + (layout === "grid" ? " opt-multi" : layout === "inline" ? " opt-inline" : ""));
+    var otherBox = null;
+    var options = orderedList(q.options, q);
+
+    options.forEach(function (o) {
+      var row = el("div", "opt" + (o.exclusive ? " opt-excl" : ""));
       var input = el("input");
       input.type = multi ? "checkbox" : "radio";
       input.name = q.id;
       input.value = o.code;
       input.id = q.id + "_" + o.code;
       row.appendChild(input);
-      row.appendChild(el("span", "code", o.code + "."));
-      var lab = el("label", null, String(o.label));
+      if (q.hide_codes !== true) row.appendChild(el("span", "code", o.code + "."));
+      var lab = el("label");
       lab.htmlFor = input.id;
+      if (o.label_html && window.BeaconQ) window.BeaconQ.richInto(lab, o.label_html, logicCtx(), "…");
+      else lab.textContent = pipeText(o.label);
+      if (o.image) { var im = el("img", "opt-img"); im.src = o.image; im.alt = ""; lab.appendChild(im); }
       row.appendChild(lab);
 
       row.addEventListener("click", function (ev) {
@@ -530,10 +551,18 @@
         if (multi) {
           var i = codes.map(String).indexOf(String(o.code));
           if (input.checked && i < 0) {
-            if (q.max_select && codes.length >= q.max_select) {
-              input.checked = false;
-              showErr("Please select no more than " + q.max_select + ".");
-              return;
+            if (o.exclusive) {
+              codes = [];                       // "None of these" clears everything else
+            } else {
+              codes = codes.filter(function (c) {
+                var oc = q.options.filter(function (x) { return String(x.code) === String(c); })[0];
+                return !(oc && oc.exclusive);   // picking a normal option drops the exclusive one
+              });
+              if (q.max_select && codes.length >= q.max_select) {
+                input.checked = false;
+                showErr("Please select no more than " + q.max_select + ".");
+                return;
+              }
             }
             codes.push(o.code);
           } else if (!input.checked && i >= 0) codes.splice(i, 1);
@@ -564,10 +593,10 @@
       var sel = multi ? (getAns(q.id, "codes") || []).map(String)
                       : [String(getAns(q.id, "_"))];
       Array.prototype.forEach.call(wrap.querySelectorAll(".opt"), function (row, i) {
-        var on = sel.indexOf(String(q.options[i].code)) >= 0;
+        var on = sel.indexOf(String(options[i].code)) >= 0;
         row.classList.toggle("checked", on);
         row.querySelector("input").checked = on;
-        if (q.options[i].other && otherBox) otherBox.classList.toggle("show", on);
+        if (options[i].other && otherBox) otherBox.classList.toggle("show", on);
       });
     }
     paint();
@@ -656,11 +685,11 @@
 
   function renderGrid(q, semantic) {
     var wrap = el("div", "grid");
-    q.rows.forEach(function (r) {
+    orderedList(q.rows, q).forEach(function (r) {
       var row = el("div", "grid-row");
       var left = el("div", "rlabel");
-      if (semantic) left.innerHTML = "<strong>" + r.label + "</strong>";
-      else left.textContent = r.label;
+      if (semantic) { var b = el("strong"); b.textContent = pipeText(r.label); left.appendChild(b); }
+      else left.textContent = pipeText(r.label);
       var right = el("div");
       if (semantic) {
         right.style.cssText = "display:flex;align-items:center;gap:9px";
@@ -716,9 +745,9 @@
       return s;
     }
 
-    q.rows.forEach(function (r) {
+    orderedList(q.rows, q).forEach(function (r) {
       var row = el("div", "s100-row");
-      row.appendChild(el("div", "rlabel", String(r.label)));
+      row.appendChild(el("div", "rlabel", null)).textContent = pipeText(r.label);
       var inp = el("input");
       inp.type = "number"; inp.min = 0; inp.max = 100; inp.step = 1;
       var v = getAns(q.id, r.code);
@@ -739,7 +768,7 @@
   }
 
   function renderRank(q) {
-    var order = getAns(q.id, "order") || q.rows.map(function (r) { return r.code; });
+    var order = getAns(q.id, "order") || orderedList(q.rows, q).map(function (r) { return r.code; });
     var wrap = el("div", "rank-list");
     var top = q.rank_count || 3;
 
@@ -749,7 +778,7 @@
         var r = q.rows.filter(function (x) { return x.code === code; })[0];
         var item = el("div", "rank-item" + (i < top ? " top" : ""));
         item.appendChild(el("span", "pos", String(i + 1)));
-        item.appendChild(el("span", null, String(r.label)));
+        item.appendChild(el("span", null, null)).textContent = pipeText(r.label);
         var ar = el("div", "arrows");
         var up = el("button", null, "&#9650;"), dn = el("button", null, "&#9660;");
         up.type = dn.type = "button";
@@ -891,6 +920,40 @@
   }
   function unlockNext() { lockNext(false); }
 
+  function pipeText(t) { return window.BeaconQ ? window.BeaconQ.pipe(t, logicCtx(), "…") : String(t == null ? "" : t); }
+
+  function renderStem(q) {
+    var h = el("h2", "stem");
+    if (q.hide_number !== true) h.appendChild(el("span", "qnum", q.id + ". "));
+    var body = el("span", "stem-text");
+    if (q.stem_html && window.BeaconQ) window.BeaconQ.richInto(body, q.stem_html, logicCtx(), "…");
+    else body.textContent = pipeText(q.stem);
+    h.appendChild(body);
+    if (q.style) {
+      var st = q.style;
+      if (st.font) h.style.fontFamily = st.font;
+      if (st.size) h.style.fontSize = st.size;
+      if (st.align) h.style.textAlign = st.align;
+      if (st.color) h.style.color = st.color;
+    }
+    return h;
+  }
+
+  function renderMedia(m) {
+    var box = el("div", "qmedia" + (m.align ? " qmedia-" + m.align : ""));
+    var node;
+    if (m.kind === "video") {
+      node = el("video"); node.controls = true; node.src = m.src; node.preload = "metadata";
+      if (m.autoplay) { node.autoplay = true; node.muted = true; }
+    } else {
+      node = el("img"); node.src = m.src; node.alt = m.alt || "";
+    }
+    if (m.width) node.style.maxWidth = /%|px/.test(String(m.width)) ? String(m.width) : m.width + "px";
+    box.appendChild(node);
+    if (m.caption) box.appendChild(el("div", "qmedia-cap", null)).textContent = pipeText(m.caption);
+    return box;
+  }
+
   function renderQuestion(q) {
     var sec = sectionOf(q);
     var card = el("div", "card");
@@ -901,8 +964,14 @@
         "\uD83D\uDCA1 Quick check \u2014 this confirms the profile was clear. " +
         "It does not affect your participation."));
     }
-    card.appendChild(el("h2", null, q.id + ". " + q.stem));
-    if (q.help) card.appendChild(el("div", "help", String(q.help)));
+    card.appendChild(renderStem(q));
+    if (q.help_html || q.help) {
+      var hp = el("div", "help");
+      if (q.help_html && window.BeaconQ) window.BeaconQ.richInto(hp, q.help_html, logicCtx(), "…");
+      else hp.textContent = pipeText(q.help);
+      card.appendChild(hp);
+    }
+    if (q.media && q.media.src) card.appendChild(renderMedia(q.media));
     card.appendChild(guideBar(function () { return qSpeechText(q); }));
 
     var body;
@@ -1024,8 +1093,8 @@
   }
 
   // ============================================================ validation
-  function showErr(msg) { var e = $("#err"); if (e) { e.textContent = msg; e.classList.add("show"); } }
-  function hideErr() { var e = $("#err"); if (e) e.classList.remove("show"); }
+  function showErr(msg) { var e = $(PREVIEW ? ".prev-err" : "#err"); if (e) { e.textContent = msg; e.classList.add("show"); } }
+  function hideErr() { var e = $(PREVIEW ? ".prev-err" : "#err"); if (e) e.classList.remove("show"); }
 
   function validateStep() {
     var st = steps[cur];
@@ -1101,9 +1170,9 @@
       var nav = el("div", "nav");
       var back = el("button", "btn ghost", "&larr; Back");
       back.type = "button";
-      back.disabled = cur === 0;
-      back.addEventListener("click", function () { go(cur - 1); });
-      var last = cur === steps.length - 1;
+      back.disabled = nextVisible(cur, -1) < 0;
+      back.addEventListener("click", function () { var pv = nextVisible(cur, -1); if (pv >= 0) go(pv); });
+      var last = nextVisible(cur, 1) < 0;
       var fwd = el("button", "btn primary", last ? "Submit survey" : "Next &rarr;");
       fwd.type = "button";
       fwd.addEventListener("click", next);
@@ -1168,8 +1237,21 @@
       "You have finished the " + prevSec.title.toLowerCase() + " section.", pts);
   }
 
+  // show-if logic: a step is visible when its question's rules pass against current answers
+  function logicCtx() { return { answers: answers, questions: SPEC.questions }; }
+  function stepVisible(i) {
+    var st = steps[i];
+    if (!st || !window.BeaconQ) return true;
+    return window.BeaconQ.showIf(st.q, logicCtx());
+  }
+  function nextVisible(i, dir) {
+    for (var j = i + dir; j >= 0 && j < steps.length; j += dir) if (stepVisible(j)) return j;
+    return -1;
+  }
+
   function go(i) {
     if (i < 0 || i >= steps.length) return;
+    if (!stepVisible(i)) { var alt = nextVisible(i, i < cur ? -1 : 1); if (alt < 0) return; i = alt; }
     cur = i;
     render();
   }
@@ -1180,8 +1262,11 @@
     if (reason) return screenOut(reason);
 
     var prevSec = sectionOf(steps[cur].q);
-    if (cur === steps.length - 1) return finish();
-    cur++;
+    var nx = nextVisible(cur, 1);
+    if (nx < 0) return finish();
+    // answers to questions that are now hidden are dropped so logic and exports stay consistent
+    for (var h = cur + 1; h < nx; h++) delete answers[steps[h].q.id];
+    cur = nx;
     var nextSec = sectionOf(steps[cur].q);
     render();
     if (prevSec.id !== nextSec.id) onLeaveSection(prevSec, nextSec);
@@ -1389,6 +1474,39 @@
     }
   }
 
+  // ============================================================ Studio preview hook
+  // Renders one question with the very same code respondents get. `ctx.answers` supplies
+  // earlier answers for piping / show-if; nothing is persisted.
+  window.BeaconSurveyPreview = {
+    render: function (host, q, ctx, seed) {
+      SPEC = { questions: ctx.questions || [q], sections: ctx.sections || [], narration: {}, use_tts: false };
+      SESSION = { session_id: seed || "preview", respondent_code: "PREVIEW" };
+      NARR = {}; SCENES = [];
+      answers = JSON.parse(JSON.stringify(ctx.answers || {}));
+      delete answers[q.id];
+      host.innerHTML = "";
+      var card;
+      try { card = renderQuestion(q); }
+      catch (e) { card = el("div", "card"); card.textContent = "Cannot render: " + e.message; }
+      host.appendChild(card);
+      var err = el("div", "err prev-err"); host.appendChild(err);
+      var check = el("button", "btn primary", "Check answer &rarr;"); check.type = "button";
+      check.addEventListener("click", function () {
+        steps = [{ kind: "q", q: q }]; cur = 0;
+        if (validateStep()) { hideErr(); err.textContent = "\u2713 Valid - respondent could continue. Stored: " + JSON.stringify(answers[q.id] || {}); err.classList.add("show", "ok"); }
+        else err.classList.remove("ok");
+      });
+      host.appendChild(check);
+      // report unresolved piping tokens
+      var un = (host.textContent.match(/\u2026/g) || []).length;
+      var toks = [];
+      JSON.stringify(q).replace(/\{([A-Za-z0-9_]+)(?:\.[A-Za-z0-9_:]+)?\}/g, function (m, qid) {
+        if (window.BeaconQ && window.BeaconQ.pipe(m, { answers: answers, questions: SPEC.questions }, "") === "") toks.push(m); return m; });
+      return { unresolved: toks, ellipses: un };
+    }
+  };
+
+  if (PREVIEW) return;
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();

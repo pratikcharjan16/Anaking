@@ -532,3 +532,20 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
   background:#1a2733;color:#fff;padding:6px 22px;font-size:12.5px}
 .teambar-note{opacity:.9}
 .teambar .appnav{background:rgba(255,255,255,.1)}
+
+/* ---------- rich question text, media, option layouts ---------- */
+h2.stem .qnum{color:var(--muted);font-weight:600}
+h2.stem ul,h2.stem ol,.help ul,.help ol{margin:8px 0 4px;padding-left:22px;font-size:15px;font-weight:500}
+h2.stem li,.help li{margin:2px 0}
+h2.stem p,.help p{margin:0 0 6px}
+h2.stem mark,.help mark,.opt mark{padding:0 3px;border-radius:3px}
+.qmedia{margin:6px 0 16px}
+.qmedia img,.qmedia video{max-width:100%;border-radius:10px;border:1px solid var(--line);display:block}
+.qmedia-center img,.qmedia-center video{margin:0 auto}
+.qmedia-right img,.qmedia-right video{margin-left:auto}
+.qmedia-cap{font-size:12.5px;color:var(--muted);margin-top:6px}
+.opt-inline{flex-direction:row;flex-wrap:wrap}
+.opt-inline .opt{flex:0 1 auto}
+.opt-excl{border-style:dashed}
+.opt-excl.checked{border-style:solid}
+.opt-img{display:block;max-width:220px;max-height:140px;margin-top:6px;border-radius:6px;border:1px solid var(--line)}

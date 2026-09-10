@@ -15,12 +15,31 @@ import hmac
 from functools import wraps
 
 from flask import abort, current_app, jsonify, redirect, request, session, url_for
+from flask.sessions import SecureCookieSessionInterface
 
 SESSION_KEY = "admin"
 
 
+def behind_https() -> bool:
+    return request.is_secure or request.headers.get("X-Forwarded-Proto", "").lower() == "https"
+
+
+class IframeFriendlySessions(SecureCookieSessionInterface):
+    """Session cookie that also works when the app is shown inside an iframe (e.g. a hosted
+    preview): over HTTPS use ``SameSite=None; Secure``; over plain HTTP fall back to Lax."""
+
+    def get_cookie_secure(self, app):
+        return behind_https()
+
+    def get_cookie_samesite(self, app):
+        return "None" if behind_https() else "Lax"
+
+
 def _matches(token: str | None) -> bool:
-    return bool(token) and hmac.compare_digest(str(token), current_app.config["ADMIN_TOKEN"])
+    if not token:
+        return False
+    return hmac.compare_digest(str(token).encode("utf-8"),
+                               str(current_app.config["ADMIN_TOKEN"]).encode("utf-8"))
 
 
 def sign_in(token: str | None) -> bool:
@@ -38,6 +57,12 @@ def sign_out() -> None:
 
 def is_signed_in() -> bool:
     return bool(session.get(SESSION_KEY))
+
+
+def url_token() -> str:
+    """The ``?token=`` to carry on links when the browser cannot hold a cookie (else '')."""
+    t = request.args.get("token") or ""
+    return t if (t and not is_signed_in() and _matches(t)) else ""
 
 
 def token_ok(token: str | None = None, remember: bool = False) -> bool:

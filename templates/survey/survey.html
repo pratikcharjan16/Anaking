@@ -4,9 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROJECT BEACON — US Oncologist Brand Demand Study</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=260910c">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}?v=260910c">
-{% if signed_in %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910c">{% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=260910d">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}?v=260910d">
+{% if signed_in %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910d">{% endif %}
 </head>
 <body>
 {% if signed_in %}
@@ -150,7 +150,8 @@ window.__beaconEscape = function () {
 };
 </script>
 <script>window.STUDY={slug:{{ slug|tojson }}};</script>
-<script src="{{ url_for('static', filename='js/explainer.js') }}?v=260910c"></script>
-<script src="{{ url_for('static', filename='js/survey.js') }}?v=260910c"></script>
+<script src="{{ url_for('static', filename='js/qlogic.js') }}?v=260910d"></script>
+<script src="{{ url_for('static', filename='js/explainer.js') }}?v=260910d"></script>
+<script src="{{ url_for('static', filename='js/survey.js') }}?v=260910d"></script>
 </body>
 </html>

@@ -4,8 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROJECT BEACON — Research platform</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=260910c">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910c">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=260910d">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910d">
 </head>
 <body>
 <header class="topbar">
@@ -22,6 +22,8 @@
 <main>
   {% if bad_token %}
     <div class="notice bad">That <code>?token=</code> is not correct — <a href="/login">sign in</a> with the admin token.</div>
+  {% elif url_token %}
+    <div class="notice ok">Signed in (token carried in links because this browser blocks cookies in embedded previews).</div>
   {% elif not signed_in %}
     <div class="notice">
       <strong>Research team?</strong> <a href="/login">Sign in once</a> with the admin token to unlock
@@ -42,24 +44,24 @@
       <span class="app-sub">Test mode (stored as T-codes): <code>/survey/test</code></span>
     </a>
 
-    <a class="app app-studio {{ '' if signed_in else 'needs-token' }}"
-       href="{{ url_for('studio.page') }}">
+    <a class="app app-studio {{ '' if (signed_in or url_token) else 'needs-token' }}"
+       href="{{ url_for('studio.page') }}{{ '?token=' ~ url_token if url_token }}">
       <span class="app-kicker">Research team</span>
       <h2>Studio</h2>
       <p>Build surveys: create, edit and reorder questions, design the product walkthrough,
          generate a balanced conjoint design, launch on a public link, see per-study analysis.</p>
       <code>/studio/</code>
-      {% if not signed_in %}<span class="app-sub lock">&#128274; sign in required</span>{% endif %}
+      {% if not (signed_in or url_token) %}<span class="app-sub lock">&#128274; sign in required</span>{% endif %}
     </a>
 
-    <a class="app app-admin {{ '' if signed_in else 'needs-token' }}"
-       href="{{ url_for('admin.page') }}">
+    <a class="app app-admin {{ '' if (signed_in or url_token) else 'needs-token' }}"
+       href="{{ url_for('admin.page') }}{{ '?token=' ~ url_token if url_token }}">
       <span class="app-kicker">Field management</span>
       <h2>Admin</h2>
       <p>Live counts, quota fill, demand headlines, data-quality flags, respondent list,
          Excel / CSV / JSON exports and test-data reset.</p>
       <code>/admin/</code>
-      {% if not signed_in %}<span class="app-sub lock">&#128274; sign in required</span>{% endif %}
+      {% if not (signed_in or url_token) %}<span class="app-sub lock">&#128274; sign in required</span>{% endif %}
     </a>
   </section>
 

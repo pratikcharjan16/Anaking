@@ -83,6 +83,8 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             n_tasks = (cfg.get("conjoint") or {}).get("n_tasks", 0)
             for i in range(1, n_tasks + 1):
                 out[f"{qid}_T{i}"] = a.get(f"T{i}", "")
+        if q.get("randomize") and q.get("randomize") != "none":
+            out[qid + "_order_shown"] = a.get("_order", "")
     return out
 
 
@@ -205,10 +207,18 @@ def build_sheets(records: list, scope: str, cfg: dict):
     dd_rows = []
     for q in cfg.get("questions", []):
         stem = q["stem"]
+        if q.get("show_if") and q["show_if"].get("rules"):
+            rules = " %s " % ("OR" if q["show_if"].get("match") == "any" else "AND")
+            dd_rows.append([q["id"], q["section"], q["type"], stem, "(show-if)",
+                            rules.join(f"{r.get('q')} {r.get('op')} {r.get('value', '')}".strip()
+                                       for r in q["show_if"]["rules"]),
+                            "hidden unless true" if not q["show_if"].get("negate") else "hidden when true"])
         if q["type"] in ("single_select", "multi_select"):
             for o in q.get("options", []):
                 dd_rows.append([q["id"], q["section"], q["type"], stem, o["code"], o["label"],
-                                "option" + (" - TERMINATES" if o.get("terminate") else "")])
+                                "option" + (" - TERMINATES" if o.get("terminate") else "")
+                                + (" - EXCLUSIVE" if o.get("exclusive") else "")
+                                + (" - pinned" if o.get("pin") else "")])
         elif q["type"] in ("rating_grid", "semantic_diff", "sum_to_100", "emoji_grid"):
             scale = (f"{q['scale']['min']}-{q['scale']['max']}" if "scale" in q
                      else "0-100, rows sum to 100")

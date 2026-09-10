@@ -28,6 +28,10 @@ class Config:
     NARRATION_DIR = os.environ.get("NARRATION_DIR", os.path.join(UPLOAD_DIR, "narration"))
     NARRATION_MAX_BYTES = 8 * 1024 * 1024
 
+    # Images / video attached to questions from the Studio (per study).
+    MEDIA_DIR = os.environ.get("MEDIA_DIR", os.path.join(UPLOAD_DIR, "media"))
+    MEDIA_MAX_BYTES = 10 * 1024 * 1024
+
     # Pre-generated conjoint design + respondent task map for the seeded BEACON study.
     DESIGN_PATH = os.path.join(DATA_DIR, "design", "design.json")
     TASKMAP_PATH = os.path.join(DATA_DIR, "design", "respondent_task_map.csv")

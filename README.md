@@ -34,7 +34,7 @@ Anaking/
 │   └── admin/          dashboard.html
 ├── static/
 │   ├── css/            home.css, survey.css, studio.css, admin.css
-│   ├── js/             survey.js, explainer.js, admin.js, studio.js
+│   ├── js/             survey.js, qlogic.js (piping/show-if/sanitiser), explainer.js, admin.js, studio.js
 │   ├── images/
 │   └── audio/          narration clips (mp3)
 ├── data/
@@ -42,7 +42,8 @@ Anaking/
 │   └── survey.db       SQLite database — created on first run, git-ignored
 ├── uploads/
 │   ├── voice/          respondent voice recordings — git-ignored
-│   └── narration/      per-study narration clips uploaded in the Studio — git-ignored
+│   ├── narration/      per-study narration clips uploaded in the Studio — git-ignored
+│   └── media/          images / video attached to questions — git-ignored
 ├── tests/              pytest suite (Flask test client, temp DB)
 ├── scripts/            live-server e2e checks + demo data seeder
 ├── study_design/       questionnaire (.md/.docx), design generator, sample export
@@ -84,6 +85,26 @@ API for scripts and bookmarks — opening such a link also signs the browser in.
 Configuration (environment variables): `ADMIN_TOKEN`, `PORT`, `HOST`, `DB_PATH`,
 `VOICE_DIR`, `NARRATION_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`,
 respondent recordings in `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
+
+### Question editor (Studio → Questions → ✎)
+
+Each question opens in a two-pane editor: the form on the left, a live **test view** on the
+right that renders the question with the same code respondents run (interactive, nothing saved;
+▶ on any row in the question list opens the same test view for the saved draft).
+
+| Tab | What you can do |
+|---|---|
+| **Content** | Rich question text — bold / italic / underline / strike / superscript, text colour and highlight colour pickers, bulleted and numbered lists, bigger/smaller, clear formatting; font family, size and alignment for the whole question; rich help text. **Pipe in…** menu inserts tokens such as `{Q3}` (answer as text), `{Q3.code}`, `{Q3.opt:2}` (an option's label), `{Q3.first}`/`{Q3.last}` (multi-select), `{Q3.other}`, `{Q3.row:a}`, `{Q3.r:a}` (a grid rating), `{Q3.stem}`. |
+| **Answers** | Option table (code, label, **Pin**, **Exclusive**, **Other**), move / delete, per-option image, one-click "None of these", "Not applicable" (exclusive) and "Other (please specify)", paste a list; layout (list / grid / inline chips), hide codes, max selections. **Randomise**: fixed, shuffle, rotate, or flip 50/50 — pinned items keep their place; the order each respondent saw is exported as `Qx_order_shown`. Rows of grid / rank / sum questions accept `*` to pin. |
+| **Show-if logic** | Rules against any question (`selected`, `not selected`, `any of`, `none of`, `=`, `≠`, `<`, `≤`, `>`, `≥`, `contains`, `answered`, `skipped`, `row rating equals`), matched ALL or ANY, optionally inverted. Hidden questions are skipped and their answers cleared; "Try it" shows the outcome for the sample answers. Rules appear in the export's data dictionary. |
+| **Image / video** | Upload (png / jpg / gif / webp / svg / mp4 / webm / mov, ≤ 10 MB → `uploads/media/<study>/`, served at `/media/…`) or paste a URL; width, alignment, autoplay (muted), caption (supports piping), alt text. |
+| **Advanced** | The raw question JSON — load edited JSON back into the form. |
+
+Rich text is whitelisted on save (`core/sanitize.py`) and again in the browser
+(`static/js/qlogic.js`), so only formatting survives — no scripts, event handlers or unsafe URLs.
+The plain-text `stem` is kept in step with the rich `stem_html` for exports, narration and QC.
+`static/css/preview-skin.css` is generated from `survey.css` by
+`python3 scripts/build_preview_skin.py` (re-run after changing survey styles).
 
 ### Product walkthrough (Studio → "Product profile" tab)
 

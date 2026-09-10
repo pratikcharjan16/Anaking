@@ -26,6 +26,7 @@ import os
 
 from flask import Flask, jsonify, request
 from werkzeug.exceptions import HTTPException
+from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import BaseConverter
 
 import models
@@ -60,6 +61,11 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     elif config is not None:
         app.config.from_object(config)
     app.url_map.converters["regex"] = RegexConverter
+    # behind a reverse proxy / hosted preview: trust X-Forwarded-Proto so cookies and
+    # redirects know the site is HTTPS
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+    from core.auth import IframeFriendlySessions
+    app.session_interface = IframeFriendlySessions()
     app.config["VERSION"] = __version__
 
     os.makedirs(os.path.dirname(app.config["DB_PATH"]) or DATA_DIR, exist_ok=True)
@@ -75,8 +81,8 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     @app.context_processor
     def _nav_context():
         # every template can render the shared app switcher (templates/_nav.html)
-        from core.auth import is_signed_in
-        return {"signed_in": is_signed_in()}
+        from core.auth import is_signed_in, url_token
+        return {"signed_in": is_signed_in(), "url_token": url_token()}
 
     @app.after_request
     def _headers(resp):

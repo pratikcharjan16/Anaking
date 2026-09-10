@@ -226,6 +226,11 @@
         html += '<div class="st-qrow"><span class="qid">' + esc(q.id) + "</span>" +
           '<span class="qtype">' + esc(q.type) + "</span>" +
           '<span class="qstem">' + esc(q.stem) + "</span>" +
+          (q.show_if && q.show_if.rules && q.show_if.rules.length ? '<span class="st-badge" title="Has show-if logic">logic</span>' : "") +
+          (q.randomize && q.randomize !== "none" ? '<span class="st-badge" title="Randomised">rnd</span>' : "") +
+          (q.media && q.media.src ? '<span class="st-badge" title="Has image/video">media</span>' : "") +
+          ((q.options || []).some(function (o) { return o.exclusive; }) ? '<span class="st-badge" title="Has an exclusive option">excl</span>' : "") +
+          '<button class="st-ibtn" data-act="qtest" data-i="' + qi + '" title="Test view">&#9654;</button>' +
           '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">&#9650;</button>' +
           '<button class="st-ibtn" data-act="qdown" data-i="' + qi + '" title="Move down">&#9660;</button>' +
           '<button class="st-ibtn" data-act="qedit" data-i="' + qi + '" title="Edit">&#9998;</button>' +
@@ -243,145 +248,504 @@
     return html;
   }
 
-  // ------------------------------------------------------------ question drawer
+  // ------------------------------------------------------------ question editor (drawer)
+  // The editor works on a deep copy (`ed`) of the question; the copy is written back to the
+  // study only when "Apply" is pressed. The right-hand pane renders the question exactly as a
+  // respondent would see it, from the same copy, so every change previews live.
+  var ed = null, edQi = -1, edTab = "content";
+  var Q = window.BeaconQ;
+
+  var OPS = [["selected", "has selected"], ["not_selected", "has not selected"],
+    ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
+    ["eq", "equals"], ["ne", "does not equal"], ["gt", ">"], ["gte", "≥"], ["lt", "<"], ["lte", "≤"],
+    ["contains", "answer text contains"], ["answered", "was answered"], ["not_answered", "was skipped"],
+    ["row_eq", "row rating equals (row=value)"]];
+  var FONTS = [["", "Default"], ["Georgia, serif", "Georgia (serif)"], ["'Times New Roman', serif", "Times New Roman"],
+    ["Arial, Helvetica, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["'Trebuchet MS', sans-serif", "Trebuchet"],
+    ["'Courier New', monospace", "Courier (mono)"]];
+  var SIZES = [["", "Default"], ["15px", "Small"], ["19px", "Normal"], ["22px", "Large"], ["26px", "X-Large"], ["32px", "Huge"]];
+
+  function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
+  function hasRows(t) { return ["rating_grid", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap"].indexOf(t) >= 0; }
+
   function openQuestionDrawer(qi) {
     var c = cur.cfg;
-    var q = qi === -1 ? null : c.questions[qi];
-    var type = q ? q.type : "single_select";
-    var html = "<h3>" + (q ? "Edit " + esc(q.id) : "New question") + "</h3>" +
-      '<div class="st-field"><label>Type</label><select id="f-type" ' + (q ? "disabled" : "") + ">" +
-      TYPES.map(function (t) {
-        return "<option" + (t === type ? " selected" : "") + ">" + t + "</option>";
-      }).join("") + "</select></div>" +
-      '<div class="st-field"><label>Question id</label><input id="f-id" value="' +
-      esc(q ? q.id : "") + '" placeholder="e.g. N5"></div>' +
-      '<div class="st-field"><label>Section</label><select id="f-section">' +
-      c.sections.map(function (s) {
-        return '<option value="' + esc(s.id) + '"' +
-          (q && q.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>";
-      }).join("") + "</select></div>" +
-      '<div class="st-field"><label>Question text (stem)</label><textarea id="f-stem">' +
-      esc(q ? q.stem : "") + "</textarea></div>" +
-      '<div class="st-field"><label>Help text (optional)</label><input id="f-help" value="' +
-      esc(q ? q.help : "") + '"></div>' +
-      '<div class="st-field"><label><input type="checkbox" id="f-required" style="width:auto" ' +
-      (!q || q.required ? "checked" : "") + "> Required</label></div>";
-
-    var t = q ? q.type : type;
-    if (t === "single_select" || t === "multi_select") {
-      html += '<div class="st-field"><label>Options (code|label per line)</label>' +
-        '<textarea id="f-options">' + lines(q && q.options) + "</textarea></div>";
-      if (t === "multi_select") html += '<div class="st-field"><label>Max selections</label>' +
-        '<input id="f-maxselect" type="number" value="' + (q && q.max_select ? q.max_select : 3) +
-        '"></div>';
-    }
-    if (t === "numeric" || t === "slider") {
-      html += '<div class="st-field"><label>Min</label><input id="f-min" type="number" value="' +
-        (q ? q.min : 0) + '"></div><div class="st-field"><label>Max</label>' +
-        '<input id="f-max" type="number" value="' + (q ? q.max : 100) + '"></div>';
-      if (t === "slider") html += '<div class="st-field"><label>Step</label>' +
-        '<input id="f-step" type="number" value="' + (q && q.step ? q.step : 5) + '"></div>';
-    }
-    if (t === "open_text") html += '<div class="st-field"><label>Minimum words</label>' +
-      '<input id="f-minwords" type="number" value="' + (q && q.min_words ? q.min_words : 3) +
-      '"></div>';
-    if (t === "rating_grid" || t === "semantic_diff" || t === "sum_to_100" ||
-        t === "rank" || t === "emoji_grid" || t === "heatmap") {
-      html += '<div class="st-field"><label>Rows (code|label' +
-        (t === "semantic_diff" ? "|left|right" : "") + ' per line)</label>' +
-        '<textarea id="f-rows">' + lines(q && q.rows, t === "semantic_diff") + "</textarea></div>";
-    }
-    if (t === "rating_grid" || t === "semantic_diff") {
-      html += '<div class="st-field"><label>Scale min / max</label>' +
-        '<input id="f-smin" type="number" value="' + (q && q.scale ? q.scale.min : 1) +
-        '" style="width:70px;display:inline-block"> <input id="f-smax" type="number" value="' +
-        (q && q.scale ? q.scale.max : 7) + '" style="width:70px;display:inline-block"></div>' +
-        '<div class="st-field"><label>Min label / max label</label><input id="f-sminl" value="' +
-        esc(q && q.scale ? q.scale.min_label || "" : "") +
-        '" style="width:48%;display:inline-block"> <input id="f-smaxl" value="' +
-        esc(q && q.scale ? q.scale.max_label || "" : "") +
-        '" style="width:48%;display:inline-block"></div>';
-    }
-    if (t === "rank") html += '<div class="st-field"><label>Top-N recorded</label>' +
-      '<input id="f-rankcount" type="number" value="' + (q && q.rank_count ? q.rank_count : 3) +
-      '"></div>';
-    if (t === "heatmap") {
-      html += '<div class="st-field"><label>Columns (code|label per line)</label>' +
-        '<textarea id="f-cols">' + lines(q && q.cols) + "</textarea></div>";
-    }
-    if (t === "maxdiff") {
-      html += '<div class="st-field"><label>Rounds (comma-separated item codes per line)</label>' +
-        '<textarea id="f-rounds">' + (q ? q.rounds.map(function (r) {
-          return r.items.join(",");
-        }).join("\n") : "") + "</textarea></div>";
-    }
-    if (t === "choice_task") {
-      html += '<div class="st-field"><label>Patient vignette</label><textarea id="f-vignette">' +
-        esc(q && q.vignette ? q.vignette : "") + "</textarea></div>" +
-        '<div class="st-note">The choice alternatives come from the conjoint design on the ' +
-        "Conjoint tab.</div>";
-    }
-    html += '<div class="st-field"><label>Advanced - raw JSON (overrides the form when ' +
-      'valid)</label><textarea id="f-raw" style="min-height:110px;font-family:monospace">' +
-      esc(q ? JSON.stringify(q, null, 1) : "") + "</textarea></div>" +
-      '<div class="st-draw-actions"><button class="st-btn on" data-act="qsave" data-qi="' + qi +
-      '">Save question</button><button class="st-btn" data-act="qclose">Cancel</button></div>';
-    drawer.innerHTML = html;
+    edQi = qi;
+    ed = JSON.parse(JSON.stringify(qi === -1 ? qTemplate("single_select", "N" + (c.questions.length + 1), c.sections[0].id)
+                                              : c.questions[qi]));
+    if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
+    edTab = "content";
+    drawer.classList.add("wide");
+    renderDrawer();
     drawer.hidden = false;
     requestAnimationFrame(function () { drawer.classList.add("open"); });
   }
 
-  function readQuestionForm(qi) {
-    function v(id) { var n = document.getElementById(id); return n ? n.value : undefined; }
-    function n(id) { var x = v(id); return x === undefined || x === "" ? undefined : Number(x); }
-    var raw = v("f-raw");
-    if (raw && raw.trim()) {
-      try {
-        var parsed = JSON.parse(raw);
-        if (parsed && parsed.id && parsed.type && parsed.stem) return parsed;
-        toast("Raw JSON invalid (needs id/type/stem) - using form fields");
-      } catch (e) {
-        toast("Raw JSON did not parse - using form fields");
-      }
+  function renderDrawer() {
+    var tabs = [["content", "Content"], ["answers", hasOptions(ed.type) ? "Answers" : hasRows(ed.type) ? "Rows" : "Settings"],
+                ["logic", "Show-if logic" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? " ●" : "")],
+                ["media", "Image / video" + (ed.media && ed.media.src ? " ●" : "")], ["advanced", "Advanced"]];
+    drawer.innerHTML =
+      '<div class="st-ed">' +
+        '<div class="st-ed-form">' +
+          '<div class="st-ed-head"><h3>' + (edQi === -1 ? "New question" : "Edit " + esc(ed.id)) + "</h3>" +
+            '<span class="st-pill draft">' + esc(ed.type) + "</span></div>" +
+          '<div class="st-tabs st-tabs-sm">' + tabs.map(function (t) {
+            return '<button class="st-tab' + (edTab === t[0] ? " on" : "") + '" data-edtab="' + t[0] + '">' + t[1] + "</button>";
+          }).join("") + "</div>" +
+          '<div id="st-ed-body">' + drawerBody() + "</div>" +
+          '<div class="st-draw-actions"><button class="st-btn on" data-act="qsave" data-qi="' + edQi + '">Apply to study</button>' +
+            '<button class="st-btn" data-act="qclose">Cancel</button>' +
+            '<span class="st-meta" style="margin-left:auto">Then press <b>Save study</b> to publish</span></div>' +
+        "</div>" +
+        '<div class="st-ed-prev"><div class="st-ed-prev-head"><span>Test view - what respondents see</span>' +
+          '<label class="st-inline"><input type="checkbox" id="prev-sample" checked> sample answers for piping</label>' +
+          '<button class="st-btn sm" data-act="prev-reshuffle" title="New random order">&#8635; reshuffle</button></div>' +
+          '<div id="st-ed-prev-body" class="survey-skin"></div>' +
+          '<div id="st-ed-prev-note" class="st-note"></div></div>' +
+      "</div>";
+    renderPreview();
+  }
+
+  function drawerBody() {
+    var c = cur.cfg, t = ed.type;
+    if (edTab === "content") return contentTab(c, t);
+    if (edTab === "answers") return answersTab(t);
+    if (edTab === "logic") return logicTab(c);
+    if (edTab === "media") return mediaTab();
+    return advancedTab();
+  }
+
+  // ---- Content tab: rich text toolbar + piping ---------------------------------------
+  function contentTab(c, t) {
+    var st = ed.style || {};
+    return '<div class="st-grid2">' +
+      '<div class="st-field"><label>Question id</label><input id="f-id" value="' + esc(ed.id) + '"></div>' +
+      '<div class="st-field"><label>Section</label><select id="f-section">' +
+        c.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>"; }).join("") +
+      "</select></div>" +
+      (edQi === -1 ? '<div class="st-field"><label>Type</label><select id="f-type">' + TYPES.map(function (x) {
+        return "<option" + (x === t ? " selected" : "") + ">" + x + "</option>"; }).join("") + "</select></div>" : "") +
+      "</div>" +
+      '<div class="st-field"><label>Question text</label>' + richToolbar("f-stem-rich") +
+        '<div class="st-rich" id="f-stem-rich" contenteditable="true" data-rich="stem_html">' + Q.sanitize(ed.stem_html || "") + "</div>" +
+        '<div class="st-meta">Select text and use the toolbar. Piped values like <code>{Q3}</code> are filled from the respondent\'s earlier answers.</div></div>' +
+      '<div class="st-grid3">' +
+        '<div class="st-field"><label>Font</label><select id="f-font">' + FONTS.map(function (f) { return '<option value="' + esc(f[0]) + '"' + (st.font === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
+        '<div class="st-field"><label>Size</label><select id="f-size">' + SIZES.map(function (f) { return '<option value="' + f[0] + '"' + (st.size === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
+        '<div class="st-field"><label>Align</label><select id="f-align">' + [["", "Left"], ["center", "Centre"], ["right", "Right"]].map(function (f) { return '<option value="' + f[0] + '"' + ((st.align || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select></div>" +
+      "</div>" +
+      '<div class="st-field"><label>Help text (optional)</label>' + richToolbar("f-help-rich", true) +
+        '<div class="st-rich sm" id="f-help-rich" contenteditable="true" data-rich="help_html">' + Q.sanitize(ed.help_html || esc(ed.help || "")) + "</div></div>" +
+      '<div class="st-inline-row">' +
+        '<label class="st-inline"><input type="checkbox" id="f-required"' + (ed.required !== false ? " checked" : "") + "> Required</label>" +
+        '<label class="st-inline"><input type="checkbox" id="f-hidenum"' + (ed.hide_number ? " checked" : "") + "> Hide question number</label>" +
+      "</div>";
+  }
+
+  function richToolbar(target, small) {
+    var b = function (cmd, label, title, val) {
+      return '<button type="button" class="st-tb" data-cmd="' + cmd + '" data-val="' + (val || "") + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
+    };
+    return '<div class="st-toolbar">' +
+      b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
+      b("strikeThrough", "<s>S</s>", "Strikethrough") + b("superscript", "x<sup>2</sup>", "Superscript") +
+      '<span class="st-tb-sep"></span>' +
+      '<label class="st-tb st-tb-color" title="Text colour">A<input type="color" data-cmd="foreColor" data-target="' + target + '" value="#b3261e"></label>' +
+      '<label class="st-tb st-tb-color hl" title="Highlight colour">&#9639;<input type="color" data-cmd="hiliteColor" data-target="' + target + '" value="#fff3a3"></label>' +
+      b("removeFormat", "T&#818;", "Clear formatting") +
+      '<span class="st-tb-sep"></span>' +
+      b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
+      (small ? "" : b("fontSize", "A&#8593;", "Bigger", "5") + b("fontSize", "A&#8595;", "Smaller", "2")) +
+      '<span class="st-tb-sep"></span>' +
+      '<select class="st-tb st-pipe" data-target="' + target + '" title="Insert an answer from an earlier question">' +
+        '<option value="">{ pipe in… }</option>' +
+        Q.pipeTokens(cur.cfg.questions, ed.id).map(function (tk) { return '<option value="' + esc(tk.token) + '">' + esc(tk.token + "  " + tk.label) + "</option>"; }).join("") +
+      "</select>" +
+      "</div>";
+  }
+
+  // ---- Answers tab: options / rows table, randomisation, exclusive ---------------------
+  function answersTab(t) {
+    var html = "";
+    if (hasOptions(t)) {
+      html += '<div class="st-field"><label>Answer options</label>' +
+        '<table class="st-opts"><thead><tr><th style="width:52px">Code</th><th>Label</th><th title="Never moves when randomised">Pin</th>' +
+        '<th title="Selecting this clears every other answer (None / Not applicable)">Exclusive</th><th title="Adds a free-text box">Other</th><th></th></tr></thead><tbody>' +
+        (ed.options || []).map(function (o, i) {
+          return '<tr data-oi="' + i + '"><td><input data-opt="code" data-oi="' + i + '" value="' + esc(o.code) + '"></td>' +
+            '<td><input data-opt="label" data-oi="' + i + '" value="' + esc(o.label) + '" placeholder="Label (may contain {Q1} piping)">' +
+            (o.image ? '<div class="st-meta">image: ' + esc(o.image.split("/").pop()) + ' <button class="st-x" data-act="opt-img-del" data-oi="' + i + '">&times;</button></div>' : "") + "</td>" +
+            '<td><input type="checkbox" data-opt="pin" data-oi="' + i + '"' + (o.pin ? " checked" : "") + "></td>" +
+            '<td><input type="checkbox" data-opt="exclusive" data-oi="' + i + '"' + (o.exclusive ? " checked" : "") + "></td>" +
+            '<td><input type="checkbox" data-opt="other" data-oi="' + i + '"' + (o.other ? " checked" : "") + "></td>" +
+            '<td class="st-opt-tools"><button class="st-ibtn" data-act="opt-up" data-oi="' + i + '" title="Move up">&#9650;</button>' +
+            '<button class="st-ibtn" data-act="opt-down" data-oi="' + i + '" title="Move down">&#9660;</button>' +
+            '<label class="st-ibtn" title="Attach an image to this option">&#128444;<input type="file" accept="image/*" data-act="opt-img" data-oi="' + i + '" hidden></label>' +
+            '<button class="st-ibtn" data-act="opt-del" data-oi="' + i + '" title="Delete">&#10005;</button></td></tr>';
+        }).join("") + "</tbody></table>" +
+        '<div class="st-inline-row"><button class="st-btn sm" data-act="opt-add">+ Add option</button>' +
+        '<button class="st-btn sm" data-act="opt-add-none">+ Add "None of these" (exclusive)</button>' +
+        '<button class="st-btn sm" data-act="opt-add-na">+ Add "Not applicable" (exclusive)</button>' +
+        '<button class="st-btn sm" data-act="opt-add-other">+ Add "Other (please specify)"</button>' +
+        '<button class="st-btn sm" data-act="opt-bulk">Paste list…</button></div></div>';
+      if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Max selections (blank = unlimited)</label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div>' +
+        '<div class="st-field"><label>Layout</label>' + layoutSelect("grid") + "</div></div>";
+      else html += '<div class="st-field"><label>Layout</label>' + layoutSelect("list") + "</div>";
+      html += '<label class="st-inline"><input type="checkbox" id="f-hidecodes"' + (ed.hide_codes ? " checked" : "") + "> Hide option codes (1., 2., …) from respondents</label>";
+      html += randomizeBlock("options");
     }
-    var t = qi === -1 ? v("f-type") : cur.cfg.questions[qi].type;
-    var q = qi === -1 ? qTemplate(t, v("f-id") || "N" + (cur.cfg.questions.length + 1),
-                                  v("f-section"))
-                      : cur.cfg.questions[qi];
-    q.id = v("f-id") || q.id;
-    q.section = v("f-section");
-    q.stem = v("f-stem");
-    if (v("f-help")) q.help = v("f-help"); else delete q.help;
-    q.required = document.getElementById("f-required").checked;
-    if (t === "single_select" || t === "multi_select") {
-      q.options = parseLines(v("f-options")).map(function (o, i) {
-        o.code = isNaN(Number(o.code)) ? i + 1 : Number(o.code); return o;
-      });
-      if (t === "multi_select" && n("f-maxselect")) q.max_select = n("f-maxselect");
+    if (hasRows(t)) {
+      html += '<div class="st-field"><label>Rows / items (code | label' + (t === "semantic_diff" ? " | left pole | right pole" : "") + ' per line)</label>' +
+        '<textarea id="f-rows" style="min-height:120px">' + lines(ed.rows, t === "semantic_diff") + "</textarea>" +
+        '<div class="st-meta">Prefix a line with <code>*</code> to pin it in place when rows are randomised. Labels may contain piping like <code>{Q2.opt:1}</code>.</div></div>';
+      html += randomizeBlock("rows");
     }
-    if (t === "numeric" || t === "slider") { q.min = n("f-min"); q.max = n("f-max"); }
-    if (t === "slider" && n("f-step")) q.step = n("f-step");
-    if (t === "open_text" && n("f-minwords")) q.min_words = n("f-minwords");
-    if (["rating_grid", "sum_to_100", "rank", "emoji_grid", "heatmap"].indexOf(t) >= 0) {
-      q.rows = parseLines(v("f-rows"));
+    if (t === "rating_grid" || t === "semantic_diff" || t === "nps") {
+      var sc = ed.scale || {};
+      html += '<div class="st-grid2"><div class="st-field"><label>Scale min / max</label><div class="st-inline-row">' +
+        '<input id="f-smin" type="number" value="' + (sc.min != null ? sc.min : 1) + '" style="width:80px"> <input id="f-smax" type="number" value="' + (sc.max != null ? sc.max : 7) + '" style="width:80px"></div></div>' +
+        '<div class="st-field"><label>End labels (min / max)</label><div class="st-inline-row"><input id="f-sminl" value="' + esc(sc.min_label || "") + '"> <input id="f-smaxl" value="' + esc(sc.max_label || "") + '"></div></div></div>';
     }
-    if (t === "semantic_diff") q.rows = parseLines(v("f-rows"), true);
-    if (t === "rating_grid" || t === "semantic_diff") {
-      q.scale = q.scale || {};
-      q.scale.min = n("f-smin") || 1; q.scale.max = n("f-smax") || 7;
-      if (v("f-sminl")) q.scale.min_label = v("f-sminl");
-      if (v("f-smaxl")) q.scale.max_label = v("f-smaxl");
+    if (t === "numeric" || t === "slider") {
+      html += '<div class="st-grid3"><div class="st-field"><label>Min</label><input id="f-min" type="number" value="' + (ed.min != null ? ed.min : 0) + '"></div>' +
+        '<div class="st-field"><label>Max</label><input id="f-max" type="number" value="' + (ed.max != null ? ed.max : 100) + '"></div>' +
+        (t === "slider" ? '<div class="st-field"><label>Step</label><input id="f-step" type="number" value="' + (ed.step || 1) + '"></div>' : "") + "</div>" +
+        '<div class="st-grid2"><div class="st-field"><label>Prefix (e.g. $)</label><input id="f-prefix" value="' + esc(ed.prefix || "") + '"></div>' +
+        '<div class="st-field"><label>Suffix (e.g. %)</label><input id="f-suffix" value="' + esc(ed.suffix || "") + '"></div></div>';
     }
-    if (t === "rank" && n("f-rankcount")) q.rank_count = n("f-rankcount");
-    if (t === "heatmap") q.cols = parseLines(v("f-cols"));
-    if (t === "maxdiff") {
-      q.rounds = String(v("f-rounds") || "").split("\n").filter(function (l) { return l.trim(); })
-        .map(function (l) {
-          return { items: l.split(",").map(function (x) { return x.trim(); }).filter(Boolean) };
+    if (t === "open_text") {
+      html += '<div class="st-grid2"><div class="st-field"><label>Minimum words</label><input id="f-minwords" type="number" value="' + (ed.min_words || 3) + '"></div>' +
+        '<div class="st-field"><label>Placeholder</label><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '"></div></div>';
+    }
+    if (t === "rank") html += '<div class="st-field"><label>Top-N recorded</label><input id="f-rankcount" type="number" value="' + (ed.rank_count || 3) + '"></div>';
+    if (t === "heatmap") html += '<div class="st-field"><label>Columns (code|label per line)</label><textarea id="f-cols">' + lines(ed.cols) + "</textarea></div>";
+    if (t === "maxdiff") html += '<div class="st-field"><label>Rounds (comma-separated item codes per line)</label><textarea id="f-rounds">' +
+      (ed.rounds || []).map(function (r) { return r.items.join(","); }).join("\n") + "</textarea></div>";
+    if (t === "choice_task") html += '<div class="st-field"><label>Patient vignette</label><textarea id="f-vignette">' + esc(ed.vignette || "") + "</textarea></div>" +
+      '<div class="st-note">The choice alternatives come from the conjoint design on the Conjoint tab.</div>';
+    return html || '<div class="st-note">This question type has no answer settings.</div>';
+  }
+  function layoutSelect(def) {
+    var v = ed.layout || def;
+    return '<select id="f-layout">' + [["list", "Vertical list"], ["grid", "Two-column grid"], ["inline", "Inline chips"]].map(function (l) {
+      return '<option value="' + l[0] + '"' + (v === l[0] ? " selected" : "") + ">" + l[1] + "</option>"; }).join("") + "</select>";
+  }
+  function randomizeBlock(what) {
+    var rz = ed.randomize; var mode = rz && typeof rz === "object" ? rz.mode : (rz || "none");
+    return '<div class="st-field st-box"><label>Randomise ' + what + '</label><div class="st-radio-row">' +
+      [["none", "Fixed order", "Everyone sees the list as written"],
+       ["shuffle", "Shuffle", "Fully random order per respondent"],
+       ["rotate", "Rotate", "Random start point, relative order kept"],
+       ["reverse", "Flip 50/50", "Half see the list reversed (scale-order balance)"]].map(function (m) {
+        return '<label class="st-radio' + (mode === m[0] ? " on" : "") + '" title="' + m[2] + '"><input type="radio" name="f-rz" value="' + m[0] + '"' + (mode === m[0] ? " checked" : "") + "> " + m[1] + "<small>" + m[2] + "</small></label>";
+      }).join("") + "</div>" +
+      '<div class="st-meta">Pinned ' + what + ' (Pin column' + (what === "rows" ? " / <code>*</code> prefix" : "") + ') keep their position - use it for "Other", "None" or "Don\'t know". ' +
+      "The order each respondent saw is stored as <code>" + esc(ed.id) + "._order</code>.</div></div>";
+  }
+
+  // ---- Logic tab ------------------------------------------------------------------------
+  function logicTab(c) {
+    var sif = ed.show_if || { match: "all", rules: [] };
+    var earlier = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
+    var idx = c.questions.map(function (q) { return q.id; }).indexOf(ed.id);
+    return '<div class="st-note">Show this question only when the rules below are met. Otherwise it is skipped and any answer it held is cleared. ' +
+      "Rules may reference any question; referencing a later question means the rule is evaluated against its current (usually empty) state.</div>" +
+      '<div class="st-inline-row"><span>Show when</span><select id="f-sif-match">' +
+        '<option value="all"' + (sif.match !== "any" ? " selected" : "") + '>ALL rules match</option>' +
+        '<option value="any"' + (sif.match === "any" ? " selected" : "") + '>ANY rule matches</option></select>' +
+        '<label class="st-inline"><input type="checkbox" id="f-sif-negate"' + (sif.negate ? " checked" : "") + "> invert (hide instead)</label></div>" +
+      '<div id="f-rules">' + (sif.rules || []).map(function (r, i) {
+        var q = earlier.filter(function (x) { return x.id === r.q; })[0];
+        var valField;
+        if (q && q.options && ["selected", "not_selected", "eq", "ne"].indexOf(r.op) >= 0) {
+          valField = '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function (o) {
+            return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + ">" + esc(o.code + " - " + o.label) + "</option>"; }).join("") + "</select>";
+        } else if (r.op === "answered" || r.op === "not_answered") valField = "";
+        else valField = '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+        return '<div class="st-rule"><select data-rule="q" data-ri="' + i + '">' + earlier.map(function (x, xi) {
+            return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " · " + String(x.stem).slice(0, 48)) + (c.questions.indexOf(x) > idx && idx >= 0 ? " (later)" : "") + "</option>"; }).join("") + "</select>" +
+          '<select data-rule="op" data-ri="' + i + '">' + OPS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+          valField + '<button class="st-ibtn" data-act="rule-del" data-ri="' + i + '" title="Remove rule">&#10005;</button></div>';
+      }).join("") + "</div>" +
+      '<button class="st-btn sm" data-act="rule-add"' + (earlier.length ? "" : " disabled") + ">+ Add rule</button>" +
+      (earlier.length ? "" : '<div class="st-meta">Add other questions first.</div>') +
+      '<div class="st-box" style="margin-top:14px"><label>Try it</label><div class="st-meta">With the sample answers used in the test view this question is currently ' +
+      '<b id="sif-result"></b>. Tick "sample answers" off in the test view to evaluate against an empty questionnaire.</div></div>';
+  }
+
+  // ---- Media tab --------------------------------------------------------------------------
+  function mediaTab() {
+    var m = ed.media || {};
+    return '<div class="st-field"><label>Image or video shown under the question text</label>' +
+      (m.src ? '<div class="st-media-cur">' + (m.kind === "video" ? '<video src="' + esc(m.src) + '" controls></video>' : '<img src="' + esc(m.src) + '" alt="">') +
+        '<div><code>' + esc(m.src.split("/").pop()) + '</code> <button class="st-btn sm danger" data-act="media-del">Remove</button></div></div>' : "") +
+      '<label class="st-upload">' + (m.src ? "Replace" : "Upload") + ' image / video <input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" data-act="media-upload" hidden></label>' +
+      '<div class="st-meta">png, jpg, gif, webp, svg, mp4, webm, mov · max 10 MB. Or paste a URL:</div>' +
+      '<input id="f-media-url" placeholder="https://…/diagram.png or …/clip.mp4" value="' + (m.external ? esc(m.src) : "") + '"></div>' +
+      '<div class="st-grid3">' +
+        '<div class="st-field"><label>Width</label><select id="f-media-width">' + [["", "Natural"], ["240px", "Small (240px)"], ["420px", "Medium (420px)"], ["100%", "Full width"]].map(function (w) {
+          return '<option value="' + w[0] + '"' + ((m.width || "") === w[0] ? " selected" : "") + ">" + w[1] + "</option>"; }).join("") + "</select></div>" +
+        '<div class="st-field"><label>Alignment</label><select id="f-media-align">' + [["", "Left"], ["center", "Centre"], ["right", "Right"]].map(function (w) {
+          return '<option value="' + w[0] + '"' + ((m.align || "") === w[0] ? " selected" : "") + ">" + w[1] + "</option>"; }).join("") + "</select></div>" +
+        '<div class="st-field"><label>Video</label><label class="st-inline"><input type="checkbox" id="f-media-autoplay"' + (m.autoplay ? " checked" : "") + "> autoplay (muted)</label></div>" +
+      "</div>" +
+      '<div class="st-grid2"><div class="st-field"><label>Caption (optional, supports piping)</label><input id="f-media-cap" value="' + esc(m.caption || "") + '"></div>' +
+      '<div class="st-field"><label>Alt text (accessibility)</label><input id="f-media-alt" value="' + esc(m.alt || "") + '"></div></div>';
+  }
+
+  function advancedTab() {
+    return '<div class="st-field"><label>Raw question JSON</label>' +
+      '<textarea id="f-raw" style="min-height:300px;font-family:monospace;font-size:12px">' + esc(JSON.stringify(ed, null, 2)) + "</textarea>" +
+      '<div class="st-inline-row"><button class="st-btn sm" data-act="raw-apply">Load JSON into editor</button>' +
+      '<span class="st-meta">For power users - everything the form does is stored here. Fields: stem_html, help_html, style, options[].exclusive/pin/other/image, randomize, show_if, media, layout, hide_codes, hide_number.</span></div></div>';
+  }
+
+  // ---- live respondent preview ---------------------------------------------------------
+  var prevSeed = "preview-1";
+  function renderPreview() {
+    var host = document.getElementById("st-ed-prev-body");
+    if (!host || !window.BeaconSurveyPreview) return;
+    var useSample = document.getElementById("prev-sample");
+    var answers = (!useSample || useSample.checked) ? Q.sampleAnswers(cur.cfg.questions, ed.id) : {};
+    var res = window.BeaconSurveyPreview.render(host, ed, { answers: answers, questions: cur.cfg.questions }, prevSeed);
+    var note = document.getElementById("st-ed-prev-note");
+    var visible = Q.showIf(ed, { answers: answers, questions: cur.cfg.questions });
+    var bits = [];
+    if (!visible) bits.push("<b>Hidden</b> by its show-if rules for these sample answers (respondents would skip it).");
+    if (ed.randomize && ed.randomize !== "none") bits.push("Order shown is one random draw - press reshuffle for another.");
+    if (res && res.unresolved && res.unresolved.length) bits.push("Unresolved piping: <code>" + res.unresolved.map(esc).join("</code> <code>") + "</code>.");
+    if (note) note.innerHTML = bits.join(" ") || "Interactive - try answering it. Nothing here is saved.";
+    var sr = document.getElementById("sif-result"); if (sr) sr.textContent = visible ? "SHOWN" : "HIDDEN";
+  }
+
+  // ---- read form -> ed ----------------------------------------------------------------
+  function val(id) { var n = document.getElementById(id); return n ? n.value : undefined; }
+  function num(id) { var x = val(id); return x === undefined || x === "" ? undefined : Number(x); }
+  function chk(id) { var n = document.getElementById(id); return n ? n.checked : undefined; }
+  function setOrDel(obj, key, v) { if (v === undefined || v === "" || v === false || v === null) delete obj[key]; else obj[key] = v; }
+
+  function syncFromForm() {
+    if (!ed) return;
+    var t = ed.type;
+    if (edTab === "content") {
+      if (val("f-id") !== undefined) ed.id = val("f-id").trim() || ed.id;
+      if (val("f-section") !== undefined) ed.section = val("f-section");
+      var rich = document.getElementById("f-stem-rich");
+      if (rich) { ed.stem_html = Q.sanitize(rich.innerHTML); ed.stem = Q.stripTags(ed.stem_html) || ed.stem; }
+      var hr = document.getElementById("f-help-rich");
+      if (hr) { var hh = Q.sanitize(hr.innerHTML); if (Q.stripTags(hh)) { ed.help_html = hh; ed.help = Q.stripTags(hh); } else { delete ed.help_html; delete ed.help; } }
+      ed.style = ed.style || {};
+      setOrDel(ed.style, "font", val("f-font")); setOrDel(ed.style, "size", val("f-size")); setOrDel(ed.style, "align", val("f-align"));
+      if (!Object.keys(ed.style).length) delete ed.style;
+      ed.required = chk("f-required") !== false;
+      setOrDel(ed, "hide_number", chk("f-hidenum"));
+    }
+    if (edTab === "answers") {
+      if (hasOptions(t)) {
+        document.querySelectorAll("[data-opt]").forEach(function (n) {
+          var o = ed.options[Number(n.getAttribute("data-oi"))]; if (!o) return;
+          var k = n.getAttribute("data-opt");
+          if (n.type === "checkbox") setOrDel(o, k, n.checked);
+          else if (k === "code") o.code = isNaN(Number(n.value)) || n.value.trim() === "" ? n.value.trim() : Number(n.value);
+          else o[k] = n.value;
         });
+        if (t === "multi_select") setOrDel(ed, "max_select", num("f-maxselect"));
+        setOrDel(ed, "layout", val("f-layout") === (t === "multi_select" ? "grid" : "list") ? "" : val("f-layout"));
+        setOrDel(ed, "hide_codes", chk("f-hidecodes"));
+      }
+      if (hasRows(t)) {
+        var rows = String(val("f-rows") || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean).map(function (l, i) {
+          var pin = l.charAt(0) === "*"; if (pin) l = l.slice(1).trim();
+          var p = l.split("|"); var o = { code: (p[0] || "").trim() || String(i + 1), label: (p[1] || p[0] || "").trim() };
+          if (t === "semantic_diff") { o.left = (p[2] || "").trim(); o.right = (p[3] || "").trim(); }
+          if (pin) o.pin = true; return o;
+        });
+        if (rows.length) ed.rows = rows;
+      }
+      var rz = document.querySelector("input[name=f-rz]:checked");
+      if (rz) setOrDel(ed, "randomize", rz.value === "none" ? "" : rz.value);
+      if (t === "rating_grid" || t === "semantic_diff" || t === "nps") {
+        ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
+        setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
+      }
+      if (t === "numeric" || t === "slider") { ed.min = num("f-min"); ed.max = num("f-max"); setOrDel(ed, "step", num("f-step")); setOrDel(ed, "prefix", val("f-prefix")); setOrDel(ed, "suffix", val("f-suffix")); }
+      if (t === "open_text") { setOrDel(ed, "min_words", num("f-minwords")); setOrDel(ed, "placeholder", val("f-placeholder")); }
+      if (t === "rank") setOrDel(ed, "rank_count", num("f-rankcount"));
+      if (t === "heatmap" && val("f-cols") !== undefined) ed.cols = parseLines(val("f-cols"));
+      if (t === "maxdiff" && val("f-rounds") !== undefined) ed.rounds = String(val("f-rounds")).split("\n").filter(function (l) { return l.trim(); }).map(function (l) { return { items: l.split(",").map(function (x) { return x.trim(); }).filter(Boolean) }; });
+      if (t === "choice_task" && val("f-vignette") !== undefined) ed.vignette = val("f-vignette");
     }
-    if (t === "choice_task") q.vignette = v("f-vignette");
-    return q;
+    if (edTab === "logic") {
+      var rules = [];
+      document.querySelectorAll("#f-rules .st-rule").forEach(function (row) {
+        var r = {};
+        row.querySelectorAll("[data-rule]").forEach(function (n) { r[n.getAttribute("data-rule")] = n.value; });
+        if (r.q && r.op) rules.push(r);
+      });
+      if (rules.length) ed.show_if = { match: val("f-sif-match") || "all", rules: rules, negate: !!chk("f-sif-negate") };
+      else delete ed.show_if;
+      if (ed.show_if && !ed.show_if.negate) delete ed.show_if.negate;
+    }
+    if (edTab === "media") {
+      var m = ed.media || {};
+      var url = (val("f-media-url") || "").trim();
+      if (url && /^https?:\/\//i.test(url)) { m.src = url; m.external = true; m.kind = /\.(mp4|webm|mov)(\?|$)/i.test(url) ? "video" : "image"; }
+      else if (m.external && !url) { m = {}; }
+      setOrDel(m, "width", val("f-media-width")); setOrDel(m, "align", val("f-media-align"));
+      setOrDel(m, "autoplay", chk("f-media-autoplay")); setOrDel(m, "caption", val("f-media-cap")); setOrDel(m, "alt", val("f-media-alt"));
+      if (m.src) ed.media = m; else delete ed.media;
+    }
+  }
+
+  function uploadMedia(file, cb) {
+    var fd = new FormData(); fd.append("file", file, file.name);
+    toast("Uploading " + file.name + "…");
+    fetch("/api/studio/media?study=" + encodeURIComponent(cur.slug) + TQ, { method: "POST", body: fd, credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { if (r.error) { toast("Upload failed: " + r.error); return; } cb(r); })
+      .catch(function () { toast("Upload failed"); });
+  }
+
+  // drawer events: tabs, toolbar, option table, rules, media, preview
+  drawer.addEventListener("click", function (e) {
+    var tb = e.target.closest("[data-edtab]");
+    if (tb) { syncFromForm(); edTab = tb.getAttribute("data-edtab"); renderDrawer(); return; }
+    var cmd = e.target.closest("button[data-cmd]");
+    if (cmd) {
+      e.preventDefault();
+      var target = document.getElementById(cmd.getAttribute("data-target"));
+      target.focus();
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand(cmd.getAttribute("data-cmd"), false, cmd.getAttribute("data-val") || null);
+      syncFromForm(); renderPreview();
+      return;
+    }
+    var b = e.target.closest("[data-act]");
+    if (!b) return;
+    var act = b.getAttribute("data-act");
+    var oi = Number(b.getAttribute("data-oi"));
+    var ri = Number(b.getAttribute("data-ri"));
+    if (act === "qclose") { closeDrawer(); }
+    if (act === "qsave") {
+      syncFromForm();
+      if (!ed.id || !(ed.stem || "").trim()) { toast("Question needs an id and text"); return; }
+      var clash = cur.cfg.questions.some(function (q, i) { return q.id === ed.id && i !== edQi; });
+      if (clash) { toast("Another question already uses id " + ed.id); return; }
+      if (edQi === -1) cur.cfg.questions.push(ed); else cur.cfg.questions[edQi] = ed;
+      closeDrawer(); renderTab();
+      toast("Question updated - press Save study to publish");
+    }
+    if (act === "prev-reshuffle") { prevSeed = "preview-" + Math.random().toString(36).slice(2, 8); renderPreview(); }
+    if (act === "opt-add" || act === "opt-add-none" || act === "opt-add-na" || act === "opt-add-other") {
+      syncFromForm();
+      var codes = (ed.options || []).map(function (o) { return Number(o.code); }).filter(function (n) { return !isNaN(n); });
+      var next = (codes.length ? Math.max.apply(null, codes) : 0) + 1;
+      var o = { code: next, label: "New option" };
+      if (act === "opt-add-none") { o.label = "None of these"; o.exclusive = true; o.pin = true; o.code = 99; }
+      if (act === "opt-add-na") { o.label = "Not applicable"; o.exclusive = true; o.pin = true; o.code = 98; }
+      if (act === "opt-add-other") { o.label = "Other (please specify)"; o.other = true; o.pin = true; o.code = 97; }
+      ed.options = (ed.options || []).concat([o]); renderDrawer();
+      var last = document.querySelector('.st-opts tbody tr:last-child input[data-opt=label]'); if (last) { last.focus(); last.select(); }
+    }
+    if (act === "opt-del") { syncFromForm(); ed.options.splice(oi, 1); renderDrawer(); }
+    if (act === "opt-up" && oi > 0) { syncFromForm(); var a = ed.options; var tmp = a[oi - 1]; a[oi - 1] = a[oi]; a[oi] = tmp; renderDrawer(); }
+    if (act === "opt-down" && oi < ed.options.length - 1) { syncFromForm(); var a2 = ed.options; var tmp2 = a2[oi + 1]; a2[oi + 1] = a2[oi]; a2[oi] = tmp2; renderDrawer(); }
+    if (act === "opt-img-del") { syncFromForm(); delete ed.options[oi].image; renderDrawer(); }
+    if (act === "opt-bulk") {
+      syncFromForm();
+      var txt = prompt("Paste one option per line (optionally code|label):", "");
+      if (txt && txt.trim()) { ed.options = parseLines(txt).map(function (o, i) { o.code = isNaN(Number(o.code)) ? i + 1 : Number(o.code); return o; }); renderDrawer(); }
+    }
+    if (act === "rule-add") {
+      syncFromForm();
+      var earlier = cur.cfg.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
+      var q0 = earlier[0]; if (!q0) return;
+      ed.show_if = ed.show_if || { match: "all", rules: [] };
+      ed.show_if.rules.push({ q: q0.id, op: q0.options ? "selected" : "answered", value: q0.options ? q0.options[0].code : "" });
+      renderDrawer();
+    }
+    if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length) delete ed.show_if; renderDrawer(); }
+    if (act === "media-del") {
+      syncFromForm();
+      var m = ed.media;
+      if (m && !m.external && m.src) api("/api/studio/media/delete", { study: cur.slug, file: m.src.split("/").pop() });
+      delete ed.media; renderDrawer();
+    }
+    if (act === "raw-apply") {
+      try {
+        var parsed = JSON.parse(val("f-raw"));
+        if (!parsed || !parsed.id || !parsed.type) { toast("JSON needs at least id and type"); return; }
+        ed = parsed; renderDrawer(); toast("Loaded - press Apply to keep it");
+      } catch (err) { toast("JSON did not parse: " + err.message); }
+    }
+  });
+  drawer.addEventListener("change", function (e) {
+    var t = e.target;
+    var cmdIn = t.closest("input[type=color][data-cmd]");
+    if (cmdIn) {
+      var target = document.getElementById(cmdIn.getAttribute("data-target"));
+      target.focus();
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand(cmdIn.getAttribute("data-cmd"), false, cmdIn.value);
+      syncFromForm(); renderPreview(); return;
+    }
+    if (t.classList.contains("st-pipe")) {
+      if (!t.value) return;
+      var target2 = document.getElementById(t.getAttribute("data-target"));
+      target2.focus();
+      document.execCommand("insertText", false, t.value);
+      t.value = ""; syncFromForm(); renderPreview(); return;
+    }
+    var act = t.getAttribute("data-act");
+    if (act === "media-upload" && t.files && t.files[0]) {
+      uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); renderDrawer(); toast("Attached " + r.file); });
+      return;
+    }
+    if (act === "opt-img" && t.files && t.files[0]) {
+      var oi = Number(t.getAttribute("data-oi"));
+      uploadMedia(t.files[0], function (r) { syncFromForm(); ed.options[oi].image = r.src; renderDrawer(); });
+      return;
+    }
+    if (t.id === "prev-sample") { renderPreview(); return; }
+    if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op") { syncFromForm(); renderDrawer(); return; }
+    if (t.name === "f-rz") { document.querySelectorAll(".st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
+    syncFromForm(); renderPreview();
+  });
+  drawer.addEventListener("input", function (e) {
+    if (e.target.id === "f-raw") return;
+    syncFromForm(); renderPreview();
+  });
+  // keep selection-based commands working when the toolbar button steals focus
+  drawer.addEventListener("mousedown", function (e) { if (e.target.closest(".st-tb")) e.preventDefault(); });
+  drawer.addEventListener("paste", function (e) {
+    var rich = e.target.closest("[data-rich]"); if (!rich) return;
+    e.preventDefault();
+    var html = e.clipboardData.getData("text/html"), text = e.clipboardData.getData("text/plain");
+    document.execCommand("insertHTML", false, html ? Q.sanitize(html) : esc(text).replace(/\n/g, "<br>"));
+  });
+
+  // quick "test view" of a saved-in-draft question straight from the list
+  function openTestView(qi) {
+    var q = cur.cfg.questions[qi];
+    var ov = document.getElementById("qtest");
+    if (!ov) return;
+    ov.hidden = false;
+    var host = document.getElementById("qtest-body");
+    document.getElementById("qtest-title").textContent = q.id + " · " + q.type;
+    var answers = Q.sampleAnswers(cur.cfg.questions, q.id);
+    window.BeaconSurveyPreview.render(host, q, { answers: answers, questions: cur.cfg.questions }, "test-" + Date.now());
+    var vis = Q.showIf(q, { answers: answers, questions: cur.cfg.questions });
+    document.getElementById("qtest-note").textContent = vis ? "Interactive test - answers are not saved." : "Note: with sample answers this question would be hidden by its show-if rules.";
+  }
+  document.addEventListener("click", function (e) {
+    if (e.target.closest("#qtest-close") || (e.target.id === "qtest")) { var ov = document.getElementById("qtest"); if (ov) ov.hidden = true; }
+  });
+
+  function closeDrawer() {
+    drawer.classList.remove("open");
+    setTimeout(function () { drawer.hidden = true; drawer.classList.remove("wide"); drawer.innerHTML = ""; }, 350);
+    ed = null;
   }
 
   // ------------------------------------------------------------ tpp / conjoint / settings tabs
@@ -833,6 +1197,7 @@
       openQuestionDrawer(cur.cfg.questions.length - 1);
     }
     if (act === "qedit") openQuestionDrawer(i);
+    if (act === "qtest") openTestView(i);
     if (act === "qdel") { cur.cfg.questions.splice(i, 1); renderTab(); }
     if (act === "qup" && i > 0) {
       var a1 = cur.cfg.questions; var t1 = a1[i - 1]; a1[i - 1] = a1[i]; a1[i] = t1; renderTab();
@@ -922,25 +1287,6 @@
     if (t.id === "ed-title") cur.title = t.value;
     var si = t.getAttribute && t.getAttribute("data-sec-title");
     if (si != null) cur.cfg.sections[Number(si)].title = t.value;
-  });
-
-  drawer.addEventListener("click", function (e) {
-    var b = e.target.closest("[data-act]");
-    if (!b) return;
-    var act = b.getAttribute("data-act");
-    if (act === "qclose") { drawer.classList.remove("open"); setTimeout(function () {
-      drawer.hidden = true; }, 350); }
-    if (act === "qsave") {
-      var qi = Number(b.getAttribute("data-qi"));
-      var q = readQuestionForm(qi);
-      if (!q.id || !q.stem) { toast("Question needs an id and text"); return; }
-      if (qi === -1) cur.cfg.questions.push(q);
-      else cur.cfg.questions[qi] = q;
-      drawer.classList.remove("open");
-      setTimeout(function () { drawer.hidden = true; }, 350);
-      renderTab();
-      toast("Question updated - save the study to publish");
-    }
   });
 
   // deep link: /studio/#<slug> opens that study's builder directly (used by Home and Admin)

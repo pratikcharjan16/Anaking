@@ -14,6 +14,8 @@ API (used by static/js/studio.js)
     POST /api/studio/make_conjoint         {attributes, n_tasks, seed} -> design
     POST /api/studio/narration?study=      multipart upload of a scene clip -> {clip, src, seconds}
     POST /api/studio/narration/delete      {study, clip}
+    POST /api/studio/media?study=<slug>    multipart image/video attached to a question
+    GET  /media/<slug>/<file>              public: respondents load attachments here
     GET  /narration/<study>/<file>         serves an uploaded clip (public - respondents play it)
 """
 
@@ -99,9 +101,9 @@ def delete():
     except StudyError as e:
         return error(e)
     # uploaded narration clips belong to the study - remove them with it
-    folder = _narration_dir(secure_filename(slug))
-    if slug and os.path.isdir(folder):
-        shutil.rmtree(folder, ignore_errors=True)
+    for folder in (_narration_dir(secure_filename(slug)), _media_dir(secure_filename(slug))):
+        if slug and os.path.isdir(folder):
+            shutil.rmtree(folder, ignore_errors=True)
     return jsonify({"ok": True})
 
 
@@ -165,6 +167,71 @@ def delete_narration():
                 os.remove(os.path.join(folder, name))
                 removed += 1
     return jsonify({"ok": True, "removed": removed})
+
+
+# ---------------------------------------------------------------- question media
+IMAGE_EXT = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
+             "webp": "image/webp", "svg": "image/svg+xml"}
+VIDEO_EXT = {"mp4": "video/mp4", "webm": "video/webm", "mov": "video/quicktime"}
+MEDIA_EXT = dict(IMAGE_EXT, **VIDEO_EXT)
+
+
+def _media_dir(slug: str) -> str:
+    return os.path.join(current_app.config["MEDIA_DIR"], slug)
+
+
+@bp.post("/api/studio/media")
+@admin_required()
+def upload_media():
+    slug = request.args.get("study") or ""
+    if not Study.get(slug):
+        return jsonify({"error": "unknown study"}), 404
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    ext = secure_filename(f.filename).rsplit(".", 1)[-1].lower() if "." in f.filename else ""
+    if ext not in MEDIA_EXT:
+        return jsonify({"error": "unsupported file (png, jpg, gif, webp, svg, mp4, webm, mov)"}), 400
+    data = f.read()
+    if not data:
+        return jsonify({"error": "empty file"}), 400
+    if len(data) > current_app.config["MEDIA_MAX_BYTES"]:
+        return jsonify({"error": "file too large (max 10 MB)"}), 400
+    if ext == "svg" and re.search(rb"<script|on[a-z]+\s*=|javascript:", data, re.I):
+        return jsonify({"error": "svg contains scripting"}), 400
+    name = "m_" + secrets.token_hex(4) + "." + ext
+    folder = _media_dir(slug)
+    os.makedirs(folder, exist_ok=True)
+    with open(os.path.join(folder, name), "wb") as out:
+        out.write(data)
+    return jsonify({"ok": True, "file": name, "src": f"/media/{slug}/{name}",
+                    "kind": "video" if ext in VIDEO_EXT else "image", "bytes": len(data)})
+
+
+@bp.post("/api/studio/media/delete")
+@admin_required()
+def delete_media():
+    body = json_body()
+    slug, name = str(body.get("study") or ""), os.path.basename(str(body.get("file") or ""))
+    if not re.fullmatch(r"m_[0-9a-f]{8}\.[a-z0-9]+", name):
+        return jsonify({"error": "bad file"}), 400
+    path = os.path.join(_media_dir(slug), name)
+    if os.path.isfile(path):
+        os.remove(path)
+        return jsonify({"ok": True, "removed": 1})
+    return jsonify({"ok": True, "removed": 0})
+
+
+@bp.get('/media/<regex("[a-zA-Z0-9\\-]+"):slug>/<path:name>')
+def serve_media(slug, name):
+    name = os.path.basename(name)
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    if ext not in MEDIA_EXT:
+        abort(404)
+    resp = send_from_directory(_media_dir(slug), name, mimetype=MEDIA_EXT[ext], conditional=True)
+    if ext == "svg":
+        resp.headers["Content-Security-Policy"] = "script-src 'none'"
+    return resp
 
 
 @bp.get('/narration/<regex("[a-zA-Z0-9\\-]+"):slug>/<path:name>')

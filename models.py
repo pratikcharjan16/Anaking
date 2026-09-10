@@ -17,6 +17,8 @@ import time
 
 from flask import current_app, g
 
+from core.sanitize import sanitize_question
+
 write_lock = threading.Lock()
 
 SLUG_RE = re.compile(r"[a-z0-9\-]{2,40}")
@@ -202,6 +204,8 @@ class Study:
         if not SLUG_RE.fullmatch(slug):
             slug = re.sub(r"[^a-z0-9\-]+", "-", title.lower()).strip("-")[:40] or "study"
         cfg["title"] = title
+        for q in cfg.get("questions", []):
+            sanitize_question(q)
         ids = [q.get("id") for q in cfg.get("questions", [])]
         if len(ids) != len(set(ids)):
             raise StudyError("duplicate question ids")

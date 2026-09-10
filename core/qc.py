@@ -61,7 +61,7 @@ def qc_flags(answers: dict, elapsed: float, cfg: dict, status: str = "complete")
             flags.append("attention_check_failed")
     sq = qc.get("straightline_q")
     if sq:
-        vals = [v for k, v in answers.get(sq, {}).items() if k != "_"]
+        vals = [v for k, v in answers.get(sq, {}).items() if not k.startswith("_")]
         if len(vals) >= 10 and len(set(vals)) == 1:
             flags.append(f"straightliner_{sq}")
     uq = qc.get("uniform_q")

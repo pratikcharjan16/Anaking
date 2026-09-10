@@ -119,6 +119,14 @@ def test_login_session_unlocks_everything(client, token):
     assert client.get("/survey/draft-x").status_code == 403
 
 
+def test_login_without_cookies_falls_back_to_url_token(client, token):
+    # no prior GET /login -> no probe cookie -> token is carried in the redirect URL
+    r = client.post("/login", data={"token": token, "next": "/studio/?x=1#beacon"})
+    assert r.status_code == 302 and r.headers["Location"] == f"/studio/?x=1&token={token}#beacon"
+    r = client.get("/", query_string={"token": token})
+    assert b"Signed in" in r.data
+
+
 def test_respondents_never_see_team_chrome(client):
     r = client.get("/survey/")
     assert b"Research-team view" not in r.data and b"appnav" not in r.data
@@ -359,3 +367,68 @@ def test_narration_upload_validation(client, token):
     assert r.status_code == 400
     assert client.get("/narration/beacon/missing.mp3").status_code == 404
     assert client.get("/narration/beacon/app.py").status_code == 404
+
+
+# ---------------------------------------------------------------- question editor features
+def test_rich_text_is_sanitised_on_save(client, token):
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [{"id": "Q1", "section": "S1", "type": "single_select",
+                          "stem": "old", "stem_html": '<b onclick="x()">Hi</b><script>evil()</script>'
+                          '<span style="color:#f00;position:absolute">red</span> {Q0}',
+                          "help_html": '<img src=x onerror=alert(1)>',
+                          "options": [{"code": 1, "label": "A"}, {"code": 99, "label": "None", "exclusive": True}]}]}
+    r = client.post("/api/studio/save", query_string={"token": token}, json={"title": "Rich", "cfg": cfg})
+    assert r.get_json()["ok"]
+    saved = client.get("/api/studio/study", query_string={"token": token, "slug": "rich"}).get_json()["cfg"]
+    q = saved["questions"][0]
+    assert q["stem_html"] == '<b>Hi</b>evil()<span style="color: #f00">red</span> {Q0}'
+    assert "help_html" not in q                      # only an unsafe img -> nothing left
+    assert q["stem"] == "Hievil()red {Q0}"           # plain stem kept in step for exports/TTS
+    spec = client.get("/api/spec/rich").get_json()
+    assert spec["questions"][0]["options"][1]["exclusive"] is True
+
+
+def test_media_upload_serve_delete(client, token):
+    q = {"token": token, "study": "beacon"}
+    png = b"\x89PNG\r\n\x1a\n" + b"0" * 64
+    r = client.post("/api/studio/media", query_string=q,
+                    data={"file": (io.BytesIO(png), "diagram.png")}, content_type="multipart/form-data")
+    j = r.get_json()
+    assert r.status_code == 200 and j["kind"] == "image" and j["src"].startswith("/media/beacon/m_")
+    assert client.get(j["src"]).status_code == 200
+    assert client.get(j["src"]).mimetype == "image/png"
+    # bad types / svg with script are refused
+    r = client.post("/api/studio/media", query_string=q,
+                    data={"file": (io.BytesIO(b"x"), "evil.exe")}, content_type="multipart/form-data")
+    assert r.status_code == 400
+    r = client.post("/api/studio/media", query_string=q,
+                    data={"file": (io.BytesIO(b"<svg onload=alert(1)></svg>"), "e.svg")},
+                    content_type="multipart/form-data")
+    assert r.status_code == 400
+    assert client.post("/api/studio/media", data={"file": (io.BytesIO(png), "a.png")},
+                       content_type="multipart/form-data").status_code == 403
+    r = client.post("/api/studio/media/delete", query_string={"token": token},
+                    json={"study": "beacon", "file": j["file"]})
+    assert r.get_json()["removed"] == 1
+    assert client.get(j["src"]).status_code == 404
+
+
+def test_export_includes_order_and_logic(client, token):
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [{"id": "Q1", "section": "S1", "type": "multi_select", "randomize": "shuffle",
+                          "options": [{"code": 1, "label": "A"}, {"code": 2, "label": "B"}], "stem": "pick"},
+                         {"id": "Q2", "section": "S1", "type": "open_text", "stem": "why",
+                          "show_if": {"match": "all", "rules": [{"q": "Q1", "op": "selected", "value": "2"}]}}]}
+    client.post("/api/studio/save", query_string={"token": token}, json={"title": "Logic", "cfg": cfg})
+    client.post("/api/studio/status", query_string={"token": token}, json={"slug": "logic", "status": "live"})
+    s = _start(client, "logic")
+    client.post("/api/submit", json={"session_id": s["session_id"], "elapsed_seconds": 30,
+                                     "answers": {"Q1": {"codes": [2, 1], "_order": "2,1"}, "Q2": {"_": "because"}}})
+    import csv as _csv
+    csv_txt = client.get("/admin/export.csv", query_string={"token": token, "study": "logic"}).data.decode()
+    rec = next(_csv.DictReader(io.StringIO(csv_txt)))
+    assert rec["Q1_order_shown"] == "2,1" and rec["Q1"] == "1;2"
+    import openpyxl
+    wb = openpyxl.load_workbook(io.BytesIO(client.get("/admin/export.xlsx", query_string={"token": token, "study": "logic"}).data))
+    dd = [tuple(r) for r in wb["Data dictionary"].iter_rows(values_only=True)]
+    assert any(r[4] == "(show-if)" and "Q1 selected 2" in str(r[5]) for r in dd)
