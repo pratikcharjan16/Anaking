@@ -19,3 +19,6 @@ data/*.db
 data/*.db-shm
 data/*.db-wal
 uploads/voice/
+
+# legacy location, never commit
+oncology_launch_study/
