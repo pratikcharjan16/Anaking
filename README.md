@@ -1,4 +1,4 @@
-# Anaking — PROJECT BEACON research platform
+# Anaking — PROJECT BEACON research platform and tool
 
 Pharma market-research stack built in this workspace. Two parts:
 
