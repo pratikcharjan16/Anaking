@@ -42,7 +42,7 @@ bp = Blueprint("studio", __name__)
 
 
 @bp.get("/studio/")
-@admin_required("text")
+@admin_required("page")
 def page():
     return render_template("studio/studio.html")
 

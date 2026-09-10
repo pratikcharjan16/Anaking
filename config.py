@@ -35,6 +35,11 @@ class Config:
     # Largest accepted request body (voice clips are base64, capped at ~2.5 MB raw).
     MAX_CONTENT_LENGTH = 12 * 1024 * 1024
 
+    # Admin sign-in cookie (set on /login) - 30 days, HTTP-only, same-site.
+    PERMANENT_SESSION_LIFETIME = 30 * 24 * 3600
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+
     SEND_FILE_MAX_AGE_DEFAULT = 3600
     JSON_SORT_KEYS = False
 

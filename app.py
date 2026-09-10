@@ -72,6 +72,12 @@ def create_app(config: str | type | dict | None = None) -> Flask:
 
     register_routes(app)
 
+    @app.context_processor
+    def _nav_context():
+        # every template can render the shared app switcher (templates/_nav.html)
+        from core.auth import is_signed_in
+        return {"signed_in": is_signed_in()}
+
     @app.after_request
     def _headers(resp):
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
@@ -108,8 +114,11 @@ def main() -> None:
     print(f"PROJECT BEACON platform serving on http://{args.host}:{args.port}")
     print(f"  home            : {base}/")
     print(f"  survey          : {base}/survey/      (test mode: {base}/survey/test)")
-    print(f"  studio builder  : {base}/studio/?token={token}")
-    print(f"  admin dashboard : {base}/admin/?token={token}", flush=True)
+    print(f"  studio builder  : {base}/studio/")
+    print(f"  admin dashboard : {base}/admin/")
+    print(f"  team sign-in    : {base}/login      admin token: {token}"
+          + ("   (default - set ADMIN_TOKEN before going live)" if token == "beacon-admin" else ""),
+          flush=True)
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 

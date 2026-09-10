@@ -2,9 +2,21 @@
 (function () {
   "use strict";
 
-  var TOKEN = new URLSearchParams(location.search).get("token") || "";
+  // Auth: the browser is signed in via /login (cookie). A ?token= in the URL still works
+  // for bookmarks/scripts and is forwarded on every request when present.
+  var PARAMS = new URLSearchParams(location.search);
+  var TOKEN = PARAMS.get("token") || "";
+  var STUDY = PARAMS.get("study") || "beacon";
   var scope = "all";
   var $ = function (s) { return document.querySelector(s); };
+
+  function qs(path, extra) {
+    var parts = [];
+    if (path.indexOf("study=") < 0) parts.push("study=" + encodeURIComponent(STUDY));
+    if (extra) parts.push(extra);
+    if (TOKEN) parts.push("token=" + encodeURIComponent(TOKEN));
+    return path + (path.indexOf("?") >= 0 ? "&" : "?") + parts.join("&");
+  }
 
   function toast(msg, isErr) {
     var t = $("#toast");
@@ -16,21 +28,25 @@
   }
 
   function api(path) {
-    var sep = path.indexOf("?") >= 0 ? "&" : "?";
-    return fetch(path + sep + "token=" + encodeURIComponent(TOKEN)).then(function (r) {
+    return fetch(qs(path), { credentials: "same-origin" }).then(function (r) {
+      if (r.status === 403) { needSignIn(); throw new Error("not signed in"); }
       if (!r.ok) throw new Error("HTTP " + r.status);
       return r.json();
     });
   }
 
+  function needSignIn() {
+    location.href = "/login?next=" + encodeURIComponent(location.pathname + location.search);
+  }
+
   function download(path, label, btn) {
-    var sep = path.indexOf("?") >= 0 ? "&" : "?";
-    var url = path + sep + "token=" + encodeURIComponent(TOKEN);
+    var url = qs(path);
     btn.disabled = true;
     var old = btn.textContent;
     btn.textContent = "Preparing…";
     // fetch so we can report the real outcome instead of a silent download failure
-    fetch(url).then(function (r) {
+    fetch(url, { credentials: "same-origin" }).then(function (r) {
+      if (r.status === 403) { needSignIn(); }
       if (!r.ok) throw new Error("HTTP " + r.status);
       var backend = r.headers.get("X-Export-Backend");
       return r.blob().then(function (b) { return { blob: b, backend: backend }; });
@@ -60,7 +76,7 @@
     }[kind];
     if (!confirm(confirmMsg)) return;
     btn.disabled = true;
-    fetch("/admin/reset?token=" + encodeURIComponent(TOKEN) + "&scope=" + kind, { method: "POST" })
+    fetch(qs("/admin/reset", "scope=" + kind), { method: "POST", credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (res) {
         if (res.error) throw new Error(res.error);
@@ -185,14 +201,34 @@
   $("#reset-real").addEventListener("click", function () { reset("real", "real", this); });
   $("#reset-all").addEventListener("click", function () { reset("all", "all", this); });
 
-  $("#take-survey").href = TOKEN ? "/survey/test" : "/survey/";
-
-  if (!TOKEN) {
-    document.querySelector("main").innerHTML =
-      '<div class="panel"><h2>Admin token required</h2><p style="font-size:13.5px;color:#5f7284">' +
-      "Open this page as <code>/admin?token=YOUR_TOKEN</code>.</p></div>";
-    return;
+  // ---- study switcher (all studies on the server; selection lives in ?study=)
+  var sel = $("#study-select");
+  function fillStudies() {
+    api("/api/studio/list").then(function (list) {
+      sel.innerHTML = list.map(function (s) {
+        return '<option value="' + s.slug + '"' + (s.slug === STUDY ? " selected" : "") + ">" +
+          s.title.replace(/</g, "&lt;") + " (" + s.status + ")</option>";
+      }).join("");
+      var known = list.some(function (s) { return s.slug === STUDY; });
+      if (!known && list.length) { sel.value = list[0].slug; switchStudy(list[0].slug); }
+    }).catch(function () {});
   }
+  function switchStudy(slug) {
+    STUDY = slug;
+    var p = new URLSearchParams(location.search);
+    p.set("study", slug);
+    history.replaceState(null, "", location.pathname + "?" + p.toString());
+    $("#take-survey").href = "/survey/" + slug + "/test";
+    document.querySelectorAll(".appnav-link").forEach(function (a) {
+      if (a.textContent === "Studio") a.href = "/studio/#" + slug;
+      if (a.textContent === "Survey") a.href = "/survey/" + slug;
+    });
+    load();
+  }
+  sel.addEventListener("change", function () { switchStudy(sel.value); });
+  $("#take-survey").href = "/survey/" + STUDY + "/test";
+
+  fillStudies();
   load();
   setInterval(load, 15000);
 })();

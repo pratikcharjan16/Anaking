@@ -21,16 +21,6 @@ a{color:var(--accent-2)}
   display:grid;place-items:center;font-weight:800}
 .brand-text{display:flex;flex-direction:column;line-height:1.15}
 .brand-text span{font-size:12px;opacity:.85}
-.token-form{display:flex;align-items:center;gap:8px;font-size:13px}
-.token-form input{
-  font:inherit;padding:6px 10px;border-radius:6px;border:1px solid rgba(255,255,255,.35);
-  background:rgba(255,255,255,.12);color:#fff;min-width:220px;
-}
-.token-form input::placeholder{color:rgba(255,255,255,.65)}
-.token-form button{
-  font:inherit;font-weight:600;padding:6px 12px;border-radius:6px;border:0;
-  background:#fff;color:var(--accent);cursor:pointer;
-}
 main{max-width:1100px;margin:0 auto;padding:28px 22px 40px}
 .apps{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
 .app{
@@ -70,3 +60,27 @@ small{color:var(--muted)}
 .pill-draft{background:var(--warn-soft);color:var(--warn)}
 .pill-closed{background:var(--bad-soft);color:var(--bad)}
 .foot{text-align:center;color:var(--muted);font-size:12px;padding:0 0 28px}
+
+/* notices + sign-in page */
+.notice{background:var(--accent-soft);color:var(--accent);border:1px solid #cfe2ea;border-radius:10px;
+  padding:10px 14px;font-size:13.5px;margin-bottom:20px}
+.notice.ok{background:var(--good-soft);color:var(--good);border-color:#cde9d8}
+.notice.bad{background:var(--bad-soft);color:var(--bad);border-color:#f2cfcc}
+.notice a{color:inherit;font-weight:700}
+.login-main{max-width:520px;padding-top:48px}
+.login-card{display:flex;flex-direction:column;gap:10px;background:#fff;border:1px solid var(--line);
+  border-radius:14px;padding:26px 26px 22px;border-top:5px solid var(--studio);
+  box-shadow:0 1px 2px rgba(16,32,48,.05)}
+.login-card h1{margin:0;font-size:22px}
+.login-card p{margin:0;color:var(--muted);font-size:14px}
+.login-card label{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  color:var(--muted);margin-top:8px}
+.login-card input{font:inherit;padding:10px 12px;border-radius:8px;border:1px solid var(--line)}
+.login-card input:focus{outline:2px solid var(--accent-2);border-color:transparent}
+.login-card button{font:inherit;font-weight:700;padding:10px;border-radius:8px;border:0;cursor:pointer;
+  background:var(--accent);color:#fff}
+.login-card code{background:var(--accent-soft);color:var(--accent);padding:1px 6px;border-radius:5px;font-size:12.5px}
+.login-err{color:var(--bad);font-size:13px;font-weight:600}
+.login-ok{background:var(--good-soft);color:var(--good);border-radius:8px;padding:8px 10px;font-size:13px}
+.login-ok a{color:inherit;font-weight:700}
+.login-hint{font-size:12.5px;color:var(--muted);line-height:1.5;border-top:1px solid var(--line);padding-top:12px;margin-top:6px}

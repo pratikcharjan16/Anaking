@@ -4,8 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>BEACON Studio - survey platform</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=260910b">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/studio.css') }}?v=260910b">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=260910c">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/studio.css') }}?v=260910c">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910c">
 </head>
 <body>
 <header class="st-top">
@@ -15,7 +16,7 @@
   <div class="st-top-actions">
     <button class="st-btn primary" id="new-study">+ New study</button>
     <button class="st-btn" id="dup-beacon">Duplicate PROJECT BEACON</button>
-    <a class="st-btn" href="/">Home</a>
+    {% with active='studio' %}{% include '_nav.html' %}{% endwith %}
   </div>
 </header>
 <main id="st-root"></main>
@@ -34,7 +35,7 @@
     <div id="ex-mount"></div>
   </div>
 </div>
-<script src="{{ url_for('static', filename='js/explainer.js') }}?v=260910b"></script>
-<script src="{{ url_for('static', filename='js/studio.js') }}?v=260910b"></script>
+<script src="{{ url_for('static', filename='js/explainer.js') }}?v=260910c"></script>
+<script src="{{ url_for('static', filename='js/studio.js') }}?v=260910c"></script>
 </body>
 </html>

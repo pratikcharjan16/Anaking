@@ -34,7 +34,7 @@ bp = Blueprint("admin", __name__)
 
 
 @bp.get("/admin/")
-@admin_required("text")
+@admin_required("page")
 def page():
     return render_template("admin/dashboard.html")
 

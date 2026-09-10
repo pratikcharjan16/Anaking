@@ -34,11 +34,17 @@ def test_health(client):
 def test_home_page_links_to_all_apps(client, token):
     r = client.get("/")
     assert r.status_code == 200
-    for link in (b'href="/survey/"', b'href="/studio/"', b'href="/admin/"'):
+    for link in (b'href="/survey/"', b'href="/studio/"', b'href="/admin/"', b'href="/login'):
         assert link in r.data
     assert b"PROJECT BEACON - US Oncologist" in r.data       # seeded study listed
+    assert b"sign in required" in r.data
+    r = client.get("/", query_string={"token": "nope"})     # wrong token: no session
+    assert b"not correct" in r.data
+    # a ?token= on the home page signs the browser in (old bookmarks keep working)
     r = client.get("/", query_string={"token": token})
-    assert f'href="/studio/?token={token}"'.encode() in r.data
+    assert b"Signed in as research team" in r.data
+    assert b'href="/studio/#beacon"' in r.data and b'href="/admin/?study=beacon"' in r.data
+    assert b"sign in required" not in r.data
 
 
 def test_survey_pages_inject_study_slug(client):
@@ -75,13 +81,47 @@ def test_api_errors_are_json(client):
 
 # ---------------------------------------------------------------- auth
 def test_admin_and_studio_need_token(client, token):
-    for path in ("/admin/", "/studio/", "/api/admin/data", "/api/studio/list",
-                 "/admin/export.xlsx", "/admin/export.csv"):
+    # pages redirect an anonymous browser to the sign-in form; APIs answer 403 JSON
+    for path in ("/admin/", "/studio/"):
+        r = client.get(path)
+        assert r.status_code == 302 and r.headers["Location"].startswith("/login?next="), path
+        assert client.get(path, query_string={"token": "wrong"}).status_code == 302, path
+    for path in ("/api/admin/data", "/api/studio/list", "/admin/export.xlsx", "/admin/export.csv"):
         assert client.get(path).status_code == 403, path
         assert client.get(path, query_string={"token": "wrong"}).status_code == 403, path
-        assert client.get(path, query_string={"token": token}).status_code == 200, path
     assert client.post("/admin/reset").status_code == 403
     assert client.post("/api/studio/save", json={}).status_code == 403
+    # explicit ?token= still works everywhere (scripts, printed start-up links)
+    for path in ("/admin/", "/studio/", "/api/admin/data", "/api/studio/list",
+                 "/admin/export.xlsx", "/admin/export.csv"):
+        assert client.get(path, query_string={"token": token}).status_code == 200, path
+
+
+def test_login_session_unlocks_everything(client, token):
+    assert client.get("/login").status_code == 200
+    r = client.post("/login", data={"token": "wrong", "next": "/studio/"})
+    assert r.status_code == 401 and b"not correct" in r.data
+    r = client.post("/login", data={"token": token, "next": "/studio/#beacon"})
+    assert r.status_code == 302 and r.headers["Location"] == "/studio/#beacon"
+    # no token anywhere from here on
+    for path in ("/studio/", "/admin/", "/api/studio/list", "/api/admin/data", "/admin/export.csv"):
+        assert client.get(path).status_code == 200, path
+    assert client.post("/api/studio/save", json={"title": "Draft X", "cfg": {
+        "sections": [{"id": "S1", "title": "A"}],
+        "questions": [{"id": "Q1", "section": "S1", "type": "open_text", "stem": "x"}]}}).status_code == 200
+    assert client.get("/survey/draft-x").status_code == 200            # drafts previewable when signed in
+    assert b"Research-team view" in client.get("/survey/draft-x/test").data
+    # open redirects are refused
+    r = client.post("/login", data={"token": token, "next": "https://evil.example/"})
+    assert r.headers["Location"] == "/"
+    client.get("/logout")
+    assert client.get("/studio/").status_code == 302
+    assert client.get("/survey/draft-x").status_code == 403
+
+
+def test_respondents_never_see_team_chrome(client):
+    r = client.get("/survey/")
+    assert b"Research-team view" not in r.data and b"appnav" not in r.data
 
 
 # ---------------------------------------------------------------- respondent flow

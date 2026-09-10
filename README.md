@@ -64,12 +64,22 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 | **Survey** | `/survey/` | Respondent link — the live BEACON survey |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (`?preview=<token>` for drafts) |
-| **Studio** | `/studio/?token=…` | Builder — create / edit / launch studies, generate conjoint designs, per-study analysis |
-| **Admin** | `/admin/?token=…` | Dashboard — live counts, quota fill, QC flags, downloads, reset |
+| **Sign in** | `/login` | Research team enters the admin token **once**; a cookie then unlocks Studio, Admin and draft previews on that browser (`/logout` ends it) |
+| **Studio** | `/studio/` (`/studio/#<slug>` opens a study) | Builder — create / edit / launch studies, design the walkthrough, generate conjoint designs, per-study analysis |
+| **Admin** | `/admin/` (`?study=<slug>` picks a study) | Dashboard — live counts, quota fill, QC flags, downloads, reset |
 | | `/admin/export.xlsx\|csv\|json?token=…&study=…&scope=all\|real\|test` | Exports |
 | | `/healthz` | Liveness check |
 
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
+
+Every page header carries the same **Home · Survey · Studio · Admin** switcher, so the team can hop
+between apps without retyping anything. Respondents see none of this — the team strip on the survey
+only renders for a signed-in browser.
+
+**Admin token.** The default is `beacon-admin`; change it with `ADMIN_TOKEN=…` or
+`--admin-token …` before going live (the server prints it at start-up). Explicit
+`?token=<ADMIN_TOKEN>` (or an `X-Admin-Token` header) still works on every Studio/Admin URL and
+API for scripts and bookmarks — opening such a link also signs the browser in.
 
 Configuration (environment variables): `ADMIN_TOKEN`, `PORT`, `HOST`, `DB_PATH`,
 `VOICE_DIR`, `NARRATION_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`,

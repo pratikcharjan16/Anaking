@@ -41,9 +41,11 @@ def _survey_page(slug: str, preview_token: str | None):
     study = Study.get(slug)
     if not study:
         abort(404, "unknown study")
-    if not study.is_live and not token_ok(preview_token or ""):
-        return render_template("survey/not_live.html"), 403
-    return render_template("survey/survey.html", slug=slug)
+    if not study.is_live and not token_ok(preview_token or "", remember=True):
+        return render_template("survey/not_live.html", slug=slug), 403
+    return render_template("survey/survey.html", slug=slug, study_title=study.title,
+                           is_test=request.path.rstrip("/").endswith("/test"),
+                           is_draft=not study.is_live)
 
 
 @bp.get("/survey/")

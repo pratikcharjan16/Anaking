@@ -4,7 +4,8 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>PROJECT BEACON — Admin</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=260910c">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260910c">
 </head>
 <body>
 <header class="topbar">
@@ -17,8 +18,11 @@
   </div>
   <div class="meta">
     <span id="generated"></span>
-    <a class="linkbtn" href="/">Home</a>
-    <a class="linkbtn" id="take-survey" href="/survey/" target="_blank">Open survey &rarr;</a>
+    <label class="study-pick">Study
+      <select id="study-select" title="Which study to show"></select>
+    </label>
+    <a class="linkbtn" id="take-survey" href="/survey/test" target="_blank">Open test survey &rarr;</a>
+    {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
   </div>
 </header>
 
@@ -92,6 +96,6 @@
 </main>
 
 <div class="toast" id="toast" hidden></div>
-<script src="{{ url_for('static', filename='js/admin.js') }}"></script>
+<script src="{{ url_for('static', filename='js/admin.js') }}?v=260910c"></script>
 </body>
 </html>
