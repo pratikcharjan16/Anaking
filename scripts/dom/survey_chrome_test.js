@@ -131,6 +131,8 @@ async function openSurvey(slug){
       !body2.classList.contains("answering"));
   }
 
+  await req("POST","/api/studio/delete",JSON.stringify({slug:slug}));    // leave the DB as we found it
+
   check("no JS errors", S.errs.length===0, S.errs.join(" | "));
   console.log(fails? "\n"+fails+" CHECK(S) FAILED" : "\nall checks passed");
   process.exit(fails?1:0);

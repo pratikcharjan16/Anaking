@@ -71,7 +71,10 @@ def create_app(config: str | type | dict | None = None) -> Flask:
 
     models.init_app(app)
     with app.app_context():
-        models.init_db()
+        renamed = models.init_db()
+        if renamed:
+            print(f"  renamed default sections on {len(renamed)} study(ies): "
+                  f"{', '.join(renamed)}", flush=True)
         seed_beacon()
 
     register_routes(app)

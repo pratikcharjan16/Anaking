@@ -137,6 +137,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   check("item tools are not hidden behind hover",
     !/\.st-item-tools\{[^}]*opacity:\.55/.test(css.replace(/\n/g,"")));
 
+  await req("POST","/api/studio/delete",JSON.stringify({slug:slug}));    // leave the DB as we found it
+
   check("no JS errors", errs.length===0, errs.join(" | "));
   console.log(fails? "\n"+fails+" CHECK(S) FAILED" : "\nall checks passed");
   process.exit(fails?1:0);

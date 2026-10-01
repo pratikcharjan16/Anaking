@@ -67,7 +67,17 @@ CREATE TABLE IF NOT EXISTS answers (
     seconds REAL DEFAULT 0,
     PRIMARY KEY (respondent_id, question_id, item)
 );
+CREATE TABLE IF NOT EXISTS meta (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
 """
+
+# Studies created before the section-naming change shipped with "Introduction" / "Main questions"
+# as their default sections.  They are renamed once - tracked in `meta` - so that a section someone
+# deliberately calls "Introduction" later on is never touched again.
+LEGACY_SECTION_TITLES = {"Introduction": "Screeners", "Main questions": "Main"}
+_SECTIONS_MIGRATION_KEY = "sections.renamed.v1"
 
 # Databases created by the very first server had a global UNIQUE on respondent_code.
 _MIGRATE_OLD_UNIQUE = """
@@ -134,11 +144,46 @@ def close_db(_exc=None) -> None:
         conn.close()
 
 
-def init_db(path: str | None = None) -> None:
+def rename_legacy_section_titles(conn: sqlite3.Connection) -> dict[str, list[str]]:
+    """Rename the old default sections ("Introduction" / "Main questions") on every study.
+
+    Runs at most once: the fact that it has run is recorded in the ``meta`` table, so a study
+    created later - or a section renamed back by hand - is left alone.  Returns
+    ``{slug: [changed study titles]}`` for the caller to report.  The caller owns the
+    transaction (``init_db`` commits).
+    """
+    if conn.execute("SELECT 1 FROM meta WHERE key=?", (_SECTIONS_MIGRATION_KEY,)).fetchone():
+        return {}
+    renamed: dict[str, list[str]] = {}
+    for row in conn.execute("SELECT slug, title, cfg FROM studies").fetchall():
+        try:
+            cfg = json.loads(row["cfg"] or "{}")
+        except ValueError:
+            continue
+        changed = False
+        for sec in cfg.get("sections") or []:
+            if not isinstance(sec, dict):
+                continue
+            new = LEGACY_SECTION_TITLES.get(str(sec.get("title", "")).strip())
+            if new:
+                sec["title"], changed = new, True
+        if changed:
+            conn.execute("UPDATE studies SET cfg=? WHERE slug=?",
+                         (json.dumps(cfg), row["slug"]))
+            renamed[row["slug"]] = [row["title"] or row["slug"]]
+    conn.execute("INSERT OR REPLACE INTO meta(key,value) VALUES(?,?)",
+                 (_SECTIONS_MIGRATION_KEY, now()))
+    return renamed
+
+
+def init_db(path: str | None = None) -> dict[str, list[str]]:
+    """Create/upgrade the schema.  Returns any studies renamed by the section migration."""
+    renamed: dict[str, list[str]] = {}
     conn = connect(path)
     try:
         with conn:
             conn.executescript(SCHEMA)
+            renamed = rename_legacy_section_titles(conn)
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(respondents)")}
             if "study_id" not in cols:
                 conn.execute("ALTER TABLE respondents ADD COLUMN study_id INTEGER DEFAULT 1")
@@ -155,6 +200,7 @@ def init_db(path: str | None = None) -> None:
                 conn.executescript(_MIGRATE_OLD_UNIQUE)
     finally:
         conn.close()
+    return renamed
 
 
 def init_app(app) -> None:

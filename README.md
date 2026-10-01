@@ -96,8 +96,8 @@ the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not sav
 
 | Pane | What it does |
 |---|---|
-| **Outline** (left) | Sections with their questions. Click a row to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Section titles are edited in place. |
-| **Editor** (middle) | One scrolling form for the selected question, with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (one row per entry: position number, drag grip, code, label, ➔ Pipe in answer, image, an always-visible tool strip — move up, move down, delete — and a one-click *None of these* / *Not applicable* / *Other*, *Enter multiple…*; Pin / Exclusive / Other behaviour chips sit on their own line under the label. Sequence changes three ways: **drag the grip**, the **▲ / ▼** buttons, or focus a grip and press **↑ / ↓**), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Show only when…** (conditions in sentence form - *when Q1 has selected Oncology*, and/or, invert), **Image or video**, **Advanced (JSON)**. Id, type (convertible - compatible answers are kept), section and Required sit in the header. |
+| **Outline** (left) | Sections with their questions, as either a compact **List** or a grid of **Thumbnails** (the switch sits in the outline header, and the choice is remembered). Thumbnails show a miniature of the question — title, wording and a schematic of the answer area (option rows, rating scale, text box…). Click a row or card to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Sections are added from **+ Section** — in the header, so it is always reachable — or the button under the last section, and their titles are renamed in place. New studies start with **Screeners** and **Main**. |
+| **Editor** (middle) | One scrolling form for the selected question, with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (one row per entry: position number, drag grip, code, label, ➔ Pipe in answer, image, an always-visible tool strip — move up, move down, delete — and a one-click *None of these* / *Not applicable* / *Other*, *Enter multiple…*; Pin / Exclusive / Other behaviour chips sit on their own line under the label. Sequence changes three ways: **drag the grip**, the **▲ / ▼** buttons, or focus a grip and press **↑ / ↓**), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Show only when…** (conditions in sentence form - *when Q1 has selected Oncology*, and/or, invert), **Image or video**, **Advanced (JSON)**. **ID** with the question **Title** stacked underneath it, type (convertible - compatible answers are kept), section and Required sit in the header. The Title is a short internal label for the sidebar and exports; respondents never see it. |
 | **Live preview** (right) | The question rendered by the same code respondents run; updates as you type. Sample answers for piping / logic, reshuffle, desktop / phone width, ▶ **Test** opens it full size. |
 
 Rich text: bold / italic / underline / strike / superscript, text & highlight colour, lists,
@@ -235,6 +235,7 @@ Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 python3 -m pytest                               # in-process suite, no server needed
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
+python3 -m pytest tests/test_sections.py        # default sections + the one-time rename migration
 
 python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
@@ -243,6 +244,7 @@ python3 scripts/seed_demo.py                    # 7 demo respondents + sample wo
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, bar hidden while answering
+node scripts/dom/studio_sections_test.js        # outline: default sections, + Section, Title field, thumbnails view
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue

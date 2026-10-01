@@ -149,8 +149,8 @@
   function blankCfg() {
     return {
       title: "New study",
-      sections: [{ id: "S1", title: "Introduction", blurb: null },
-                 { id: "S2", title: "Main questions", blurb: null }],
+      sections: [{ id: "S1", title: "Screeners", blurb: null },
+                 { id: "S2", title: "Main", blurb: null }],
       questions: [
         qTemplate("single_select", "Q1", "S1"),
         qTemplate("rating_grid", "Q2", "S2"),
@@ -400,28 +400,136 @@
     if ((q.options || []).some(function (o) { return o.exclusive; })) b += '<span class="st-badge" title="Has an exclusive option">excl</span>';
     return b;
   }
-  function outlineRow(q, qi) {
-    var t = tinfo(q.type);
-    return '<div class="st-qi' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
-      '<span class="st-qi-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
-      '<span class="st-qi-main"><span class="st-qi-id">' + esc(q.id) + '</span><span class="st-qi-stem">' + esc(q.stem || "(no text yet)") + "</span>" +
-      '<span class="st-qi-badges">' + qBadges(q) + "</span></span>" +
-      '<span class="st-qi-tools">' +
-      '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">\u25B2</button>' +
+  // The outline lists the questions either as compact rows or as thumbnails.  The choice lives in
+  // localStorage so it survives a reload, the same way the autosave switch does.
+  var OUTLINE_VIEW_KEY = "beacon.studio.outline_view";
+  var outlineView = "list";
+  try { if (localStorage.getItem(OUTLINE_VIEW_KEY) === "thumbs") outlineView = "thumbs"; } catch (e) { /* private mode */ }
+
+  function qTitle(q) { return String(q.title || "").trim(); }
+  function qMoveTools(qi) {
+    return '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">\u25B2</button>' +
       '<button class="st-ibtn" data-act="qdown" data-i="' + qi + '" title="Move down">\u25BC</button>' +
       '<button class="st-ibtn" data-act="qdup" data-i="' + qi + '" title="Duplicate">\u2398</button>' +
-      '<button class="st-ibtn danger" data-act="qdel" data-i="' + qi + '" title="Delete">\u2715</button></span></div>';
+      '<button class="st-ibtn danger" data-act="qdel" data-i="' + qi + '" title="Delete">\u2715</button>';
   }
+
+  function outlineRow(q, qi) {
+    var t = tinfo(q.type), title = qTitle(q);
+    return '<div class="st-qi' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
+      '<span class="st-qi-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
+      '<span class="st-qi-main' + (title ? " has-title" : "") + '">' +
+      '<span class="st-qi-id">' + esc(q.id) + "</span>" +
+      (title ? '<span class="st-qi-title">' + esc(title) + "</span>" : "") +
+      '<span class="st-qi-stem">' + esc(q.stem || "(no text yet)") + "</span>" +
+      '<span class="st-qi-badges">' + qBadges(q) + "</span></span>" +
+      '<span class="st-qi-tools">' + qMoveTools(qi) + "</span></div>";
+  }
+
+  // ---- thumbnail view ---------------------------------------------------------------------
+  // A miniature of the question as the respondent sees it: the wording, then a schematic of the
+  // answer area drawn from the question itself.  Cheap enough to redraw on every keystroke.
+  function thumbOptions(q, max) {
+    var opts = (q.options || []).slice(0, max || 4);
+    if (!opts.length) return "";
+    var multi = q.type === "multi_select";
+    var html = '<div class="st-tb-opts">' + opts.map(function (o) {
+      return '<span class="st-tb-opt"><i class="' + (multi ? "st-tb-box" : "st-tb-radio") + '"></i>' +
+        esc(String(o.label || "").slice(0, 26)) + "</span>";
+    }).join("");
+    var extra = (q.options || []).length - opts.length;
+    if (extra > 0) html += '<span class="st-tb-more">+' + extra + " more</span>";
+    return html + "</div>";
+  }
+  function thumbScale(q) {
+    var sc = q.scale || {}, lo = Number(sc.min != null ? sc.min : 1), hi = Number(sc.max != null ? sc.max : 7);
+    var n = Math.max(2, Math.min(7, hi - lo + 1)), cells = "";
+    for (var i = 0; i < n; i++) cells += '<i class="st-tb-cell"></i>';
+    return '<div class="st-tb-scale">' + (sc.min_label ? '<span class="st-tb-lab">' + esc(String(sc.min_label).slice(0, 14)) + "</span>" : "") +
+      '<span class="st-tb-cells">' + cells + "</span>" +
+      (sc.max_label ? '<span class="st-tb-lab">' + esc(String(sc.max_label).slice(0, 14)) + "</span>" : "") + "</div>";
+  }
+  function thumbRows(q, max) {
+    var rows = (q.rows || []).slice(0, max || 3);
+    if (!rows.length) return "";
+    return '<div class="st-tb-rows">' + rows.map(function (r) {
+      return '<span class="st-tb-row"><b>' + esc(String(r.label || "").slice(0, 20)) + "</b><i></i></span>";
+    }).join("") + ((q.rows || []).length > rows.length ? '<span class="st-tb-more">+' + ((q.rows || []).length - rows.length) + " more</span>" : "") + "</div>";
+  }
+  function thumbBody(q) {
+    switch (q.type) {
+      case "single_select":
+      case "multi_select":
+        return thumbOptions(q);
+      case "rating_grid":
+      case "semantic_diff":
+      case "nps":
+      case "concept_test":
+        return (q.type === "concept_test" ? thumbRows(q, 2) : "") + thumbScale(q);
+      case "heatmap":
+        return thumbRows(q, 2) + thumbScale(q);
+      case "rank":
+        return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r, i) {
+          return '<span class="st-tb-row"><b>' + (i + 1) + ".</b>" + esc(String(r.label || "").slice(0, 20)) + "</span>";
+        }).join("") + "</div>";
+      case "open_text":
+        return '<div class="st-tb-text">' + '<i></i><i></i><i class="short"></i>' + "</div>";
+      case "numeric":
+      case "slider": {
+        var unit = q.suffix || q.prefix || "";
+        return '<div class="st-tb-num"><span class="st-tb-input"></span>' +
+          (unit ? '<span class="st-tb-lab">' + esc(String(unit).slice(0, 8)) + "</span>" : "") + "</div>";
+      }
+      case "date":
+        return '<div class="st-tb-num"><span class="st-tb-input wide"></span></div>';
+      case "loop":
+        return '<div class="st-tb-rows">' + '<span class="st-tb-row"><b>' + esc(String((q.items || [])[0] && (q.items[0].label || "")).slice(0, 20)) + "</b><i></i></span>" +
+          '<span class="st-tb-text"><i></i><i class="short"></i></span>' + "</div>";
+      case "sum_to_100":
+        return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r) {
+          return '<span class="st-tb-row"><b>' + esc(String(r.label || "").slice(0, 20)) + '</b><span class="st-tb-pct">%</span></span>';
+        }).join("") + "</div>";
+      case "text_block":
+        return '<div class="st-tb-text"><i></i><i></i><i class="short"></i></div>';
+      case "conjoint":
+      case "choice_task":
+      case "maxdiff":
+        return '<div class="st-tb-cards"><i></i><i></i><i></i></div>';
+      default:
+        return '<div class="st-tb-text"><i></i><i class="short"></i></div>';
+    }
+  }
+  function thumbCard(q, qi) {
+    var t = tinfo(q.type), title = qTitle(q);
+    return '<div class="st-tcard' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
+      '<div class="st-tcard-top"><span class="st-tcard-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
+      '<span class="st-tcard-id">' + esc(q.id) + "</span>" +
+      '<span class="st-tcard-tools">' + qMoveTools(qi) + "</span></div>" +
+      (title ? '<div class="st-tcard-title">' + esc(title) + "</div>" : "") +
+      '<div class="st-tcard-stem">' + esc(q.stem || "(no text yet)") + "</div>" +
+      '<div class="st-tcard-body">' + thumbBody(q) + "</div>" +
+      '<div class="st-tcard-foot">' + qBadges(q) + '<span class="st-meta">' + esc(t.name) + "</span></div></div>";
+  }
+
   function renderOutline() {
     var host = document.getElementById("st-outline"); if (!host) return;
-    var c = cur.cfg, html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' + c.questions.length + " total</span></div>";
+    var c = cur.cfg, thumbs = outlineView === "thumbs";
+    var html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' + c.questions.length + " total</span>" +
+      '<div class="st-seg sm st-viewseg"><button class="st-seg-btn' + (thumbs ? "" : " on") + '" data-act="outline-view" data-v="list" title="Compact list">\u2261 List</button>' +
+      '<button class="st-seg-btn' + (thumbs ? " on" : "") + '" data-act="outline-view" data-v="thumbs" title="Preview thumbnails">\u25A6 Thumbnails</button></div>' +
+      '<button class="st-ibtn" data-act="addsec" title="Add a section">+ Section</button></div>';
     c.sections.forEach(function (sec, si) {
       var n = c.questions.filter(function (q) { return q.section === sec.id; }).length;
-      html += '<div class="st-sec"><div class="st-sec-head">' +
-        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Section title - used in the Studio outline and in exports; respondents never see it" placeholder="Section title">' +
+      html += '<div class="st-sec' + (thumbs ? " thumbs" : "") + '"><div class="st-sec-head">' +
+        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Click to rename this section - used in the Studio outline and in exports; respondents never see it" placeholder="Section title">' +
         '<span class="st-meta">' + n + "</span>" +
         '<button class="st-ibtn danger" title="Delete section" data-act="delsec" data-i="' + si + '">\u2715</button></div>';
-      c.questions.forEach(function (q, qi) { if (q.section === sec.id) html += outlineRow(q, qi); });
+      if (thumbs) html += '<div class="st-tgrid">';
+      c.questions.forEach(function (q, qi) {
+        if (q.section !== sec.id) return;
+        html += thumbs ? thumbCard(q, qi) : outlineRow(q, qi);
+      });
+      if (thumbs) html += "</div>";
       if (!n) html += '<div class="st-sec-empty">No questions in this section yet.</div>';
       html += '<button class="st-addq" data-act="qadd" data-sec="' + esc(sec.id) + '">+ Add question</button></div>';
     });
@@ -429,12 +537,31 @@
     host.innerHTML = html;
   }
   function refreshOutlineRow() {
-    var row = $('.st-qi[data-qi="' + sel + '"]'); var q = cur.cfg.questions[sel];
-    if (!row || !q) return;
-    $(".st-qi-id", row).textContent = q.id;
-    $(".st-qi-stem", row).textContent = q.stem || "(no text yet)";
-    $(".st-qi-badges", row).innerHTML = qBadges(q);
-    $(".st-qi-ic", row).textContent = tinfo(q.type).icon;
+    var q = cur.cfg.questions[sel];
+    if (!q) return;
+    var row = $('.st-qi[data-qi="' + sel + '"]');
+    if (row) {
+      $(".st-qi-id", row).textContent = q.id;
+      $(".st-qi-stem", row).textContent = q.stem || "(no text yet)";
+      $(".st-qi-badges", row).innerHTML = qBadges(q);
+      $(".st-qi-ic", row).textContent = tinfo(q.type).icon;
+      var main = $(".st-qi-main", row), title = qTitle(q);
+      var tn = $(".st-qi-title", row);
+      if (title && !tn) { tn = document.createElement("span"); tn.className = "st-qi-title"; main.insertBefore(tn, $(".st-qi-stem", row)); }
+      if (tn) { tn.textContent = title; if (!title) tn.remove(); }
+      main.classList.toggle("has-title", !!title);
+    }
+    var tc = $('.st-tcard[data-qi="' + sel + '"]');
+    if (tc) {
+      var tt = $(".st-tcard-title", tc), t2 = qTitle(q), tn2 = $(".st-tcard-title", tc);
+      if (t2 && !tn2) { tn2 = document.createElement("div"); tn2.className = "st-tcard-title"; tc.insertBefore(tn2, $(".st-tcard-stem", tc)); }
+      if (tn2) { tn2.textContent = t2; if (!t2) tn2.remove(); }
+      $(".st-tcard-stem", tc).textContent = q.stem || "(no text yet)";
+      $(".st-tcard-body", tc).innerHTML = thumbBody(q);
+      $(".st-tcard-foot", tc).innerHTML = qBadges(q) + '<span class="st-meta">' + esc(tinfo(q.type).name) + "</span>";
+      $(".st-tcard-id", tc).textContent = q.id;
+      $(".st-tcard-ic", tc).textContent = tinfo(q.type).icon;
+    }
   }
   function refreshSectionSelect() {
     var sl = document.getElementById("f-section"); if (!sl || !ed) return;
@@ -442,7 +569,8 @@
   }
   function selectQuestion(qi) {
     sel = qi;
-    $$(".st-qi").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
+    // the outline may be showing rows or thumbnails - mark the selection in whichever is up
+    $$(".st-qi, .st-tcard").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
     renderEditorPane();
     var row = $('.st-qi[data-qi="' + qi + '"]'); if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
   }
@@ -832,7 +960,11 @@
       '<div class="st-ehead">' +
         '<span class="st-ehead-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
         '<div class="st-ehead-main"><div class="st-ehead-row">' +
-          '<label class="st-mini">ID <input id="f-id" value="' + esc(ed.id) + '" title="Short reference used in exports and piping, e.g. Q3"></label>' +
+          // ID with the question Title stacked directly underneath it
+          '<div class="st-ehead-idcol">' +
+            '<label class="st-mini">ID <input id="f-id" value="' + esc(ed.id) + '" title="Short reference used in exports and piping, e.g. Q3"></label>' +
+            '<label class="st-mini">Title <input id="f-title" value="' + esc(ed.title || "") + '" placeholder="Short label, e.g. Specialty screener" title="A short name for this question - shown in the outline and thumbnails, and used in exports. Respondents never see it."></label>' +
+          "</div>" +
           '<label class="st-mini">Type <select id="f-type" title="Change the question type - compatible answers are kept">' + GROUPS.map(function (g) {
             return '<optgroup label="' + g + '">' + TYPES.filter(function (x) { return TYPE_INFO[x].group === g; }).map(function (x) {
               return '<option value="' + x + '"' + (x === ed.type ? " selected" : "") + ">" + esc(TYPE_INFO[x].name) + "</option>"; }).join("") + "</optgroup>"; }).join("") + "</select></label>" +
@@ -1279,6 +1411,7 @@
     if (!ed) return;
     var t = ed.type;
     if (val("f-section") !== undefined) ed.section = val("f-section");
+    if (val("f-title") !== undefined) setOrDel(ed, "title", String(val("f-title")).trim());
     var rich = document.getElementById("f-stem-rich");
     if (rich) { ed.stem_html = unchip(Q.sanitize(rich.innerHTML)); ed.stem = Q.stripTags(ed.stem_html) || ""; }
     var hr = document.getElementById("f-help-rich");
@@ -2194,6 +2327,12 @@
       // windows, which made this button appear to do nothing.
       var url = "/survey/" + cur.slug + "/test";
       flushSave(function () { window.location.assign(url); });
+    }
+    if (act === "outline-view") {
+      outlineView = b.getAttribute("data-v") === "thumbs" ? "thumbs" : "list";
+      try { localStorage.setItem(OUTLINE_VIEW_KEY, outlineView); } catch (err) { /* private mode */ }
+      renderOutline();
+      return;
     }
     if (act === "addsec") {
       var n = cur.cfg.sections.length + 1, id = "S" + n;
