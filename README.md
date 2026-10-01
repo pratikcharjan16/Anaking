@@ -17,10 +17,12 @@ Anaking/
 ├── routes/             one file per app, each mounted on its own URL
 │   ├── home.py         /            landing page + legacy redirects
 │   ├── survey.py       /survey/…    respondent survey + /api/* (incl. /api/check_text)
-│   ├── studio.py       /studio/     survey builder      + /api/studio/* (translate, move, outline)
+│   ├── studio.py       /studio/     survey builder      + /api/studio/* (translate, move, outline,
+│   │                                                    duplicate, invites, launch, remind, pause)
 │   └── admin.py        /admin/      dashboard, exports  + /api/admin/*
 ├── core/               domain logic (no Flask routes in here)
 │   ├── conjoint.py     balanced design generator + per-respondent randomisation
+│   ├── mailer.py       SMTP settings + invite/reminder mail bodies for the launch flow
 │   ├── qc.py           speeder / attention / straight-line / verbatim-quality flags
 │   ├── ai_detect.py    AI-generated & pasted answer detection + proofreading notes
 │   ├── i18n.py         language catalogue + extraction/merge of respondent-visible strings
@@ -65,7 +67,7 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 | App | URL | What it is |
 |---|---|---|
 | **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
-| **Survey** | `/survey/` | Respondent link — the live BEACON survey |
+| **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project bar, HUD and progress strip are hidden — they belong to the welcome and closing screens |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (test mode also previews drafts) |
 | **Studio** | `/studio/` (`/studio/#<slug>` opens a study) | Builder — create / edit / launch studies, design the walkthrough, generate conjoint designs, per-study analysis |
@@ -96,12 +98,14 @@ the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not sav
 
 | Pane | What it does |
 |---|---|
-| **Outline** (left) | Sections with their questions. Click a row to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Section titles are edited in place. |
-| **Editor** (middle) | One scrolling form for the selected question, with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (inline list with code, label, ➔ Pipe in answer, Pin / Exclusive / Other chips, image, reorder, one-click *None of these* / *Not applicable* / *Other*, paste a list), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Show only when…** (conditions in sentence form - *when Q1 has selected Oncology*, and/or, invert), **Image or video**, **Advanced (JSON)**. Id, type (convertible - compatible answers are kept), section and Required sit in the header. |
+| **Outline** (left) | Sections with their questions, as either a compact **List** or a grid of **Thumbnails** (the switch sits in the outline header, and the choice is remembered). Thumbnails show a miniature of the question — title, wording and a schematic of the answer area (option rows, rating scale, text box…). Click a row or card to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Sections are added from **+ Section** — in the header, so it is always reachable — or the button under the last section, and their titles are renamed in place. A new study starts with **one empty section**: section names are never predefined, they come from the author (leave one blank and it reads "Untitled section"). |
+| **Editor** (middle) | Two tabs as in the reference builder — **Content & Settings** and **Conditional Display** (who gets the question, in sentence form) — with a **PREVIEW** button for the full-size question, over one scrolling form with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (one row per entry: position number, drag grip, code, label, ➔ Pipe in answer, image, an always-visible tool strip — move up, move down, delete — and a one-click *None of these* / *Not applicable* / *Other*, *Enter multiple…*; Pin / Exclusive / Other behaviour chips sit on their own line under the label. Sequence changes three ways: **drag the grip**, the **▲ / ▼** buttons, or focus a grip and press **↑ / ↓**), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Image or video**, **Advanced (JSON)** — while **Conditional Display** holds the *Show only when…* conditions in sentence form (*when Q1 has selected Oncology*, and/or, invert) and marks the tab when rules are on. **ID** with the question **Title** stacked underneath it, type (convertible - compatible answers are kept), section and Required sit in the header. The Title is a short internal label for the sidebar and exports; respondents never see it. |
 | **Live preview** (right) | The question rendered by the same code respondents run; updates as you type. Sample answers for piping / logic, reshuffle, desktop / phone width, ▶ **Test** opens it full size. |
 
-Rich text: bold / italic / underline / strike / superscript, text & highlight colour, lists,
-bigger / smaller, clear formatting. **Piping:** every text field has a **➔ Pipe in answer**
+Rich text: text size and font, bold / italic / underline / strike / superscript / subscript,
+text & highlight colour, alignment, bullet & numbered lists, links, tables, "…" for the rarer
+controls, a `</>` source view, full screen, and **+ Add Image & Video Attachments** straight
+under the question text. **Piping:** every text field has a **➔ Pipe in answer**
 button - click where the answer should appear, press it, pick from a searchable list grouped by
 earlier question ("Their answer (as text)", "Answer code", "First / last option they ticked",
 "Text typed in Other", a fixed option label, a row's rating, the question wording), each with an
@@ -109,9 +113,39 @@ earlier question ("Their answer (as text)", "Answer code", "First / last option 
 (`{Q3}`, `{Q3.code}`, `{Q3.opt:2}`, `{Q3.first}`/`{Q3.last}`, `{Q3.other}`, `{Q3.row:a}`,
 `{Q3.r:a}`, `{Q3.stem}`); an unanswered reference renders as "…".
 
+**Conjoint experiments** are authored on the question that asks them: add a *Conjoint* question
+and its editor shows the experiment name, a rich-text description (the `{amount}` / `{product}`
+placeholder sentence), the attributes — each with **Add Range Levels** (from / to / step / suffix
+→ *Build levels*), **Add Images** (a picture per level), **Group Inclusion** (ask the attribute in
+a rotating subset of the sets) and *Lower is better* — each with its own levels and `+ Add Level`
+(never below two), then **Allow "none"** with its own wording and **Configure Sampling**
+(*Number of Cards*, *Number of Sets*). **Generate design** stores a balanced, dominance-free
+design on the study; the respondent survey renders the authored labels, levels and level images,
+skips a group-inclusion attribute in the sets it is not asked in, and the Excel export, conjoint
+analysis and QC (uniform choice) all read the same design. The study-level **Conjoint** tab appears
+only once the study has a conjoint question (or an existing generated design) and shows what that
+study will field.
+
 The dashboard (Studio home) lists studies as cards with completion stats, search and a
-draft / live / closed filter; status is switched from the segment in the builder bar
-(launching asks for confirmation and flushes any pending save first).
+draft / live / paused / closed filter; status is switched from the segment in the builder bar
+(launching asks for confirmation and flushes any pending save first). Every card also carries the
+study's **Actions**: Preview Survey (opens the testing link in a new window), Duplicate Survey
+(a full copy as a fresh draft), Launch Survey, Pause Survey / Relaunch Survey and Send Reminder.
+
+### Launching, invites & reminders (Studio home → the study card)
+
+**Launch Survey** asks for the recipient list (paste one person per line as `email` or
+`email, name`, or upload a CSV with an `email` column and an optional `name` column), a subject and
+an optional message. Launching takes the study live and gives every recipient a personal
+`/survey/<slug>?rid=…` link, so responses can be attributed back to the person who was invited.
+Mail goes out over SMTP when it is configured (`BEACON_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`,
+`_FROM`, `_TLS`, or a `data/mail.json` with the same keys); without it every send is still recorded
+in the built-in outbox — open **View invite log** on the card to see each recipient, its status
+(sent / queued / failed), its copyable link and a CSV download (`/api/studio/invites.csv`).
+**Send Reminder** nudges only the people who have not taken part yet, reuses their personal link and
+is capped at two per launch. **Pause Survey** stops *new* starts only: `/api/start` is refused with
+`paused: true` and respondents see a paused notice, while anyone already answering can save and
+submit normally; **Relaunch Survey** opens the study to new respondents again.
 
 Rich text is whitelisted on save (`core/sanitize.py`) and again in the browser
 (`static/js/qlogic.js`), so only formatting survives — no scripts, event handlers or unsafe URLs.
@@ -235,12 +269,19 @@ Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 python3 -m pytest                               # in-process suite, no server needed
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
+python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
 
 python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
 python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset & reuse
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
+node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
+node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, bar hidden while answering
+node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
+node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the tab only showing for conjoint studies
+node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored labels/levels/images, group inclusion, none
+node scripts/dom/studio_actions_test.js         # dashboard actions: preview / duplicate / launch / pause / relaunch / reminder
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue

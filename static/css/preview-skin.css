@@ -16,7 +16,6 @@
 .survey-skin .progress-wrap{padding:14px 20px 0;max-width:860px;margin:0 auto}
 .survey-skin .progress-track{height:5px;background:#e2e9ee;border-radius:99px;overflow:hidden}
 .survey-skin .progress-fill{height:100%;width:0;background:var(--accent-2);border-radius:99px;transition:width .25s ease}
-.survey-skin .progress-label{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between}
 .survey-skin .card{background:#fff;border:1px solid var(--line);border-radius:var(--radius);
   padding:26px 28px;box-shadow:0 1px 3px rgba(16,32,46,.05);}
 .survey-skin h1{font-size:23px;margin:0 0 12px;letter-spacing:-.01em}
@@ -188,15 +187,6 @@
 .survey-skin .play-wave i:nth-child(6){animation-delay:.6s}
 .survey-skin .play-wave i:nth-child(7){animation-delay:.72s}
 @keyframes wave{0%,100%{height:18%}50%{height:100%}}
-.survey-skin .celebrate-inner{position:relative;background:#fff;border-radius:14px;padding:30px 34px;max-width:420px;width:100%;
-  text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:riseIn .4s cubic-bezier(.16,1,.3,1)}
-.survey-skin .celebrate-ico{width:58px;height:58px;border-radius:50%;background:var(--good);color:#fff;
-  display:grid;place-items:center;font-size:27px;margin:0 auto 14px;
-  animation:aPop .5s cubic-bezier(.34,1.56,.64,1) both}
-.survey-skin .celebrate-inner h2{font-size:20px;margin:0 0 6px}
-.survey-skin .celebrate-inner p{font-size:13.5px;color:var(--muted);margin:0 0 14px}
-.survey-skin .celebrate-pts{font-size:15px;font-weight:700;color:var(--accent);background:var(--accent-soft);
-  border-radius:9px;padding:10px;margin-bottom:18px}
 @keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.2}}
 .survey-skin .cc-banner{background:var(--accent-soft);border:1px solid #cfe2ec;border-radius:8px;
   padding:11px 14px;font-size:13px;margin-bottom:16px;color:var(--accent)}
@@ -383,6 +373,9 @@
 .survey-skin h2.stem li,.survey-skin .help li{margin:2px 0}
 .survey-skin h2.stem p,.survey-skin .help p{margin:0 0 6px}
 .survey-skin h2.stem mark,.survey-skin .help mark,.survey-skin .opt mark{padding:0 3px;border-radius:3px}
+.survey-skin h2.stem table,.survey-skin .help table{border-collapse:collapse;margin:8px 0;font-size:13.5px;font-weight:500}
+.survey-skin h2.stem table td,.survey-skin h2.stem table th,.survey-skin .help table td,.survey-skin .help table th{border:1px solid var(--line);
+  padding:5px 10px;text-align:left}
 .survey-skin .qmedia{margin:6px 0 16px}
 .survey-skin .qmedia img,.survey-skin .qmedia video{max-width:100%;border-radius:10px;border:1px solid var(--line);display:block}
 .survey-skin .qmedia-center img,.survey-skin .qmedia-center video{margin:0 auto}

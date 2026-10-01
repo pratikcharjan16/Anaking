@@ -36,6 +36,7 @@
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function kpi(v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; }
   var toastTimer = null;
   function toast(msg, action, fn) {
     var t = document.getElementById("st-toast");
@@ -115,6 +116,7 @@
                 { code: "c", label: "Third item" }];
     }
     if (type === "nps") { q.scale = { min: 0, max: 10 }; }
+    if (type === "choice_task") q.conjoint = conjointTemplate();
     if (type === "emoji_grid") {
       q.scale = { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE41", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"],
                   face_labels: ["Very negative", "Negative", "Neutral", "Positive", "Delighted"] };
@@ -149,13 +151,13 @@
   function blankCfg() {
     return {
       title: "New study",
-      sections: [{ id: "S1", title: "Introduction", blurb: null },
-                 { id: "S2", title: "Main questions", blurb: null }],
+      // no predefined sections: a new study starts with one section for you to name
+      sections: [{ id: "S1", title: "", blurb: null }],
       questions: [
         qTemplate("single_select", "Q1", "S1"),
-        qTemplate("rating_grid", "Q2", "S2"),
-        qTemplate("nps", "Q3", "S2"),
-        qTemplate("open_text", "Q4", "S2")
+        qTemplate("rating_grid", "Q2", "S1"),
+        qTemplate("nps", "Q3", "S1"),
+        qTemplate("open_text", "Q4", "S1")
       ],
       tpp: { patient: "", mechanism: "", trial: "", efficacy: "", safety: "",
              administration: "", cdx: "" },
@@ -168,6 +170,83 @@
       metrics: {},
       qc: { min_seconds: 300, verbatim_qs: [] }
     };
+  }
+
+  // ---- conjoint experiment (authored on the choice_task question) -------------------------
+  // Everything the author defines lives here: the experiment reference, the description the
+  // respondent reads, the attributes with their levels, the toggles and the sampling plan.
+  // cfg.conjoint (the generated design) is derived from it by "Generate design".
+  function conjointTemplate() {
+    return {
+      title: "",
+      description_html: "We will show you {amount} combinations of {product}. " +
+        "Please indicate which one you would be most likely to purchase.",
+      attributes: [
+        { id: "A1", label: "Attribute 1", levels: ["Level 1", "Level 2"], images: [],
+          higher_is_bad: false, group_inclusion: false, range: null },
+        { id: "A2", label: "Attribute 2", levels: ["Level 1", "Level 2"], images: [],
+          higher_is_bad: false, group_inclusion: false, range: null }
+      ],
+      allow_none: true, none_label: "None of these",
+      n_cards: 2, n_sets: 6
+    };
+  }
+  // An older question may carry no experiment of its own: derive one from the study design, so
+  // the editor never shows an empty card on a study that already has a conjoint.
+  function conjointOf(q) {
+    if (q.conjoint) {
+      var cj = q.conjoint;
+      cj.attributes = cj.attributes || [];
+      if (cj.n_cards == null) cj.n_cards = 2;
+      if (cj.n_sets == null) cj.n_sets = 6;
+      return cj;
+    }
+    var design = cur && cur.cfg && cur.cfg.conjoint, attrs = [];
+    if (design && design.attributes) {
+      attrs = design.attributes.map(function (a, i) {
+        return { id: String(a.id || ("A" + (i + 1))), label: a.label || a.id || ("Attribute " + (i + 1)),
+                 levels: (a.levels || []).slice(), images: a.images || [],
+                 higher_is_bad: !!a.higher_is_bad, group_inclusion: !!a.group_inclusion, range: null };
+      });
+    }
+    q.conjoint = {
+      title: cj_title(design),
+      description_html: conjointTemplate().description_html,
+      attributes: attrs.length ? attrs : conjointTemplate().attributes,
+      allow_none: design ? design.has_opt_out !== false : true,
+      none_label: "None of these",
+      n_cards: (design && design.n_alts) || 2,
+      n_sets: (design && design.n_tasks) || 6
+    };
+    return q.conjoint;
+  }
+  function cj_title(design) { return (design && design.title) || ""; }
+
+  // read the conjoint card back into the question.  Level inputs are read by (attribute, level)
+  // index so a delete elsewhere in the form cannot shift values onto the wrong row.
+  function syncConjointForm() {
+    var cj = conjointOf(ed);
+    var rich = document.getElementById("f-cj-desc");
+    if (rich) { cj.description_html = unchip(Q.sanitize(rich.innerHTML)); cj.description = Q.stripTags(cj.description_html); }
+    if (val("f-cj-title") !== undefined) cj.title = String(val("f-cj-title")).trim();
+    if (val("f-vignette") !== undefined) setOrDel(ed, "vignette", val("f-vignette"));
+    if (chk("f-cj-none") !== undefined) cj.allow_none = chk("f-cj-none") !== false;
+    if (val("f-cj-nonelabel") !== undefined) cj.none_label = String(val("f-cj-nonelabel")).trim() || "None of these";
+    if (val("f-cj-cards") !== undefined) cj.n_cards = Math.max(2, Math.min(5, num("f-cj-cards") || 2));
+    if (val("f-cj-sets") !== undefined) cj.n_sets = Math.max(1, Math.min(30, num("f-cj-sets") || 6));
+    $$('#st-editor [data-cj-field="label"]').forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (a) a.label = n.value;
+    });
+    $$('#st-editor [data-cj-field="level"]').forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (!a) return;
+      var li = Number(n.getAttribute("data-l")); if (li >= 0 && li < a.levels.length) a.levels[li] = n.value;
+    });
+    $$("#st-editor [data-cj-range]").forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (!a) return;
+      a.range = a.range || {};
+      var k = n.getAttribute("data-cj-range");
+      a.range[k] = k === "suffix" ? n.value : (n.value === "" ? null : Number(n.value));
+    });
   }
 
   function nextQid() {
@@ -233,6 +312,41 @@
     if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { if (cur) { e.preventDefault(); flushSave(function () { toast("Saved"); }); } }
     if (e.key === "Escape") { closeModal(); closePipePicker(); var ov = document.getElementById("qtest"); if (ov) ov.hidden = true; }
   });
+  // A CSV of recipients is read in the browser and merged into the launch list: no upload,
+  // no server-side file handling, and the addresses are visible before anything is sent.
+  document.addEventListener("change", function (e) {
+    var input = e.target;
+    if (!input.getAttribute || input.getAttribute("data-act") !== "inv-csv" ||
+        !input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var lines = String(reader.result || "").split(/\r?\n/);
+      if ((lines[0] || "").toLowerCase().indexOf("email") >= 0) lines = lines.slice(1);
+      var parsed = lines.map(function (ln) {
+        var bits = ln.split(/[,;\t]/).map(function (x) { return x.trim().replace(/^"|"$/g, ""); });
+        var email = bits.filter(function (b) { return b.indexOf("@") > 0; })[0] || "";
+        var name = bits.filter(function (b) { return b && b !== email; }).join(" ");
+        return email ? email + (name ? ", " + name : "") : "";
+      }).filter(Boolean);
+      var ta = document.getElementById("lf-recipients");
+      if (!ta || !parsed.length) { toast("No email addresses found in that file"); input.value = ""; return; }
+      var have = ta.value.split(/\r?\n/).map(function (x) { return x.split(",")[0].trim().toLowerCase(); });
+      var added = 0;
+      parsed.forEach(function (row) {
+        var email = row.split(",")[0].trim().toLowerCase();
+        if (have.indexOf(email) < 0) {
+          ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + row;
+          have.push(email); added++;
+        }
+      });
+      var note = document.getElementById("lf-csv-note");
+      if (note) note.textContent = added + " address" + (added === 1 ? "" : "es") + " read from the file";
+      toast("Added " + added + " address" + (added === 1 ? "" : "es") + " from the CSV");
+      input.value = "";                     // so the same file can be picked again
+    };
+    reader.readAsText(input.files[0]);
+  });
+
   window.BeaconStudio = { flush: flushSave, state: auto, current: function () { return cur; } };
 
   // ------------------------------------------------------------ dashboard
@@ -254,7 +368,7 @@
       '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
       '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with an AI guide</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
-      '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["closed", "Closed"]].map(function (f) {
+      '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
       '<div class="st-grid" id="home-grid">' + homeCards() + "</div></div></div>";
     root.innerHTML = html;
@@ -293,15 +407,160 @@
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
         '<div class="st-card-actions">' +
         '<button class="st-btn on" data-act="open" data-slug="' + esc(s.slug) + '">Open builder</button>' +
-        '<a class="st-btn" href="/survey/' + esc(s.slug) + '/test" title="Open question navigation, tester notes, AI test answers and review sharing">Test workspace</a>' +
-        (s.status === "live"
-          ? '<button class="st-btn bad" data-act="status" data-status="closed" data-slug="' + esc(s.slug) + '">Close</button>'
-          : '<button class="st-btn good" data-act="status" data-status="live" data-slug="' + esc(s.slug) + '">Launch</button>') +
-        '<span class="st-more"><button class="st-ibtn" title="Duplicate" data-act="dup" data-slug="' + esc(s.slug) + '">\u2398</button>' +
+        '<a class="st-btn st-act-preview" href="/survey/' + esc(s.slug) + '/test" target="_blank" rel="noopener"' +
+        ' data-act="preview" title="Opens the testing link in a new window - question jump, tester notes and AI test answers">\uD83D\uDC41 Preview Survey</a>' +
+        '<button class="st-btn st-act-dup" data-act="dup" data-slug="' + esc(s.slug) + '">\u2398 Duplicate Survey</button>' +
+        "</div>" +
+        '<div class="st-card-actions">' + homeRunButtons(s) + "</div>" +
+        homeInviteLine(s) +
+        '<div class="st-card-tools">' +
+        '<span class="st-more">' +
         '<button class="st-ibtn" title="Copy respondent link" data-act="copylink" data-slug="' + esc(s.slug) + '">\uD83D\uDD17</button>' +
+        (s.status !== "closed" ? '<button class="st-ibtn" title="Close the study - no new respondents and no new submissions" data-act="status" data-status="closed" data-slug="' + esc(s.slug) + '">\u23F9</button>' : "") +
         (s.slug !== "beacon" ? '<button class="st-ibtn danger" title="Delete study" data-act="del" data-slug="' + esc(s.slug) + '">\u2715</button>' : "") +
         "</span></div></div>";
     }).join("");
+  }
+
+  // Launch / Pause / Relaunch / Reminder, and the invite summary under them.  The buttons
+  // follow the study status: a draft gets Launch, a live study gets Pause + Reminder, and a
+  // paused one gets Relaunch.
+  function homeRunButtons(s) {
+    var left = Math.max(0, 2 - (s.reminders_sent || 0));
+    var out = "";
+    if (s.status === "live") {
+      out += '<button class="st-btn st-act-pause" data-act="pause" data-slug="' + esc(s.slug) +
+        '" title="Stop new respondents starting; anyone already answering can finish">\u23F8 Pause Survey</button>';
+    } else if (s.status === "paused") {
+      out += '<button class="st-btn st-act-launch" data-act="relaunch" data-slug="' + esc(s.slug) +
+        '" title="Open the study to new respondents again">\u25B6 Relaunch Survey</button>';
+    } else {
+      out += '<button class="st-btn st-act-launch" data-act="launch" data-slug="' + esc(s.slug) +
+        '" title="Go live, create the public link and send the invites">\u{1F680} Launch Survey</button>';
+    }
+    var remindTip = !s.recipients
+      ? "Add recipients when you launch, then send them a reminder"
+      : (left ? "Email everyone on the list who has not taken part yet" : "Both reminders have already been sent");
+    out += '<button class="st-btn st-act-remind" data-act="remind" data-slug="' + esc(s.slug) + '"' +
+      (s.recipients && left && s.status !== "draft" ? "" : " disabled") + ' title="' + esc(remindTip) + '">' +
+      "\u{1F514} Send Reminder (" + left + " left)</button>";
+    return out;
+  }
+  function homeInviteLine(s) {
+    if (!s.recipients && !s.invites_sent && !s.invites_failed) {
+      return '<div class="st-meta st-invites">No invite list yet - launch to create the public link and email your panel.</div>';
+    }
+    var bits = [s.recipients + " recipient" + (s.recipients === 1 ? "" : "s")];
+    if (s.invites_sent) bits.push(s.invites_sent + " sent");
+    if (s.invites_queued) bits.push(s.invites_queued + " recorded in the log");
+    if (s.invites_failed) bits.push('<span class="bad">' + s.invites_failed + " failed</span>");
+    if (s.launched_at) bits.push("launched " + esc(ago(s.launched_at)));
+    return '<div class="st-meta st-invites">' + bits.join(" \u00B7 ") +
+      ' <button class="st-link" data-act="outbox" data-slug="' + esc(s.slug) +
+      '">View invite log</button></div>';
+  }
+
+  // ------------------------------------------------------------ launch / reminder / outbox
+  function openLaunchModal(slug) {
+    api("/api/studio/invites?study=" + encodeURIComponent(slug)).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      var who = (d.recipients || []).map(function (r) { return r.email + (r.name ? ", " + r.name : ""); }).join("\n");
+      var link = d.link || location.origin + "/survey/" + slug;   // already absolute
+      var smtp = d.smtp.configured
+        ? 'Invites are emailed through <b>' + esc(d.smtp.host) + "</b> as <b>" + esc(d.smtp.from) +
+          "</b>, and every send is kept in the log below."
+        : "No SMTP server is configured, so invites are <b>recorded in the log</b> with their personal " +
+          "links (copy them from the log, or set <code>BEACON_SMTP_HOST</code> to send for real).";
+      openModal(
+        '<div class="st-modal-head"><strong>Launch ' + esc(d.title) + "</strong>" +
+          '<span class="st-meta">' + (d.recipients.length ? d.recipients.length + " on the list" : "no recipients yet") + "</span>" +
+          '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+        '<label class="st-field"><span>Public link <em class="st-opt">goes live when you launch</em></span>' +
+          '<span class="st-copyrow"><input id="lf-link" readonly value="' + esc(link) + '">' +
+          '<button class="st-btn sm" type="button" data-act="copy-public" data-slug="' + esc(slug) + '">Copy</button></span></label>' +
+        '<label class="st-field"><span>Invite these people <em class="st-opt">one per line: email, or email, name</em></span>' +
+          '<textarea id="lf-recipients" rows="6" placeholder="dr.smith@clinic.org, Dr A Smith\npanel@example.com">' + esc(who) + "</textarea></label>" +
+        '<div class="st-row"><label class="st-btn sm ghost" title="A CSV with an email column (and an optional name column)">' +
+          "\u2B06 Upload CSV<input type=\"file\" accept=\".csv,text/csv\" data-act=\"inv-csv\" hidden></label>" +
+          '<span class="st-meta" id="lf-csv-note">or paste the list above</span></div>' +
+        '<div class="st-grid2"><label class="st-field"><span>Subject</span><input id="lf-subject" value="' +
+          esc(d.subject) + '"></label>' +
+          '<label class="st-field"><span>How many reminders allowed</span><input value="' + d.max_reminders +
+          ' per launch" readonly></label></div>' +
+        '<label class="st-field"><span>Message <em class="st-opt">optional - the link is added automatically</em></span>' +
+          '<textarea id="lf-message" rows="3" placeholder="Why their view matters, how long it takes...">' + esc(d.message) + "</textarea></label>" +
+        '<div class="st-note">' + smtp + "</div>" +
+        '<div class="st-modal-actions">' +
+          '<button class="st-btn" data-act="modal-close" type="button">Cancel</button>' +
+          '<button class="st-btn" data-act="launch-save" data-slug="' + esc(slug) + '" type="button" title="Store the list without going live">Save list only</button>' +
+          '<button class="st-btn on" data-act="launch-go" data-slug="' + esc(slug) + '" type="button">Launch &amp; send invites</button>' +
+        "</div></div>", "st-launch-modal");
+    });
+  }
+
+  function openOutboxModal(slug) {
+    api("/api/studio/invites?study=" + encodeURIComponent(slug)).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      var rows = d.outbox || [];
+      var label = { sent: "sent", queued: "queued (not emailed)", failed: "failed" };
+      openModal(
+        '<div class="st-modal-head"><strong>Invite log</strong><span class="st-meta">' + esc(d.title) +
+          '</span><button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+        '<div class="st-kpis">' + kpi(d.summary.recipients, "recipients") + kpi(d.summary.sent, "emailed") +
+          kpi(d.summary.queued, "recorded only") + kpi(d.summary.completed, "took part") + "</div>" +
+        '<div class="st-note">' + (d.smtp.configured
+            ? "Sending through <b>" + esc(d.smtp.host) + "</b>."
+            : "No SMTP configured - each row below is a ready-to-send invite with its own personal link.") +
+          " Reminders sent: " + d.reminders_sent + " of " + d.max_reminders + ".</div>" +
+        '<div class="st-outbox">' + (rows.length ? '<table class="st-tbl-out"><thead><tr>' +
+            "<th>Email</th><th>Type</th><th>Status</th><th>When</th><th>Personal link</th></tr></thead><tbody>" +
+            rows.map(function (r) {
+              return "<tr><td>" + esc(r.email) + (r.name ? '<small> ' + esc(r.name) + "</small>" : "") +
+                "</td><td>" + esc(r.kind) + '</td><td class="' + esc(r.status) + '">' + esc(label[r.status] || r.status) +
+                (r.error ? '<small title="' + esc(r.error) + '"> ' + esc(r.error.slice(0, 40)) + "</small>" : "") +
+                "</td><td>" + esc(ago(r.created_at)) + "</td>" +
+                '<td><input readonly value="' + esc(r.link) + '" class="st-link-in"></td></tr>'; }).join("") +
+            "</tbody></table>"
+          : '<div class="st-empty">Nothing has been sent yet.</div>') + "</div>" +
+        '<div class="st-modal-actions">' +
+          '<a class="st-btn" href="/api/studio/invites.csv?study=' + encodeURIComponent(slug) + '">Download CSV</a>' +
+          '<button class="st-btn" data-act="modal-close" type="button">Close</button>' +
+          (d.summary.pending && d.reminders_left ? '<button class="st-btn on" data-act="remind" data-slug="' +
+            esc(slug) + '" type="button">Send reminder to ' + d.summary.pending + "</button>" : "") +
+        "</div></div>", "st-outbox-modal");
+    });
+  }
+
+  function launchStudy(slug, draftOnly) {
+    var ta = document.getElementById("lf-recipients");
+    api("/api/studio/launch", {
+      slug: slug,
+      recipients: ta ? ta.value : "",
+      subject: (document.getElementById("lf-subject") || {}).value || "",
+      message: (document.getElementById("lf-message") || {}).value || "",
+      draft_only: !!draftOnly,
+    }).then(function (r) {
+      if (r.error) { toast(r.error); return; }
+      closeModal();
+      var bits = r.total ? r.total + " invite" + (r.total === 1 ? "" : "s") +
+        (r.smtp ? " emailed (" + r.sent + " sent, " + r.failed + " failed)" : " recorded in the invite log") : "link created";
+      if (r.rejected && r.rejected.length) bits += " \u00B7 " + r.rejected.length + " address(es) skipped";
+      toast((draftOnly ? "List saved \u00B7 " : "Live at /survey/" + slug + " \u00B7 ") + bits);
+      loadList();
+    });
+  }
+
+  function remindStudy(slug) {
+    api("/api/studio/remind", { slug: slug }).then(function (r) {
+      if (r.error) { toast(r.error); return; }
+      closeModal();
+      toast("Reminder " + (r.reminders_sent) + " of " + r.max_reminders + " sent to " + r.reminded +
+        " " + (r.reminded === 1 ? "person" : "people") +
+        (r.smtp ? " (" + r.sent + " emailed, " + r.failed + " failed)" : " - recorded in the invite log"));
+      loadList();
+    });
   }
 
   // ------------------------------------------------------------ builder shell
@@ -323,8 +582,8 @@
     var html = '<div class="st-bar">' +
       '<button class="st-btn ghost" data-act="back" title="Back to all studies">\u2190 Studies</button>' +
       '<input type="text" id="ed-title" class="st-title" value="' + esc(cur.title) + '" title="Study title">' +
-      '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Closed: no new starts.">' +
-        ["draft", "live", "closed"].map(function (s) {
+      '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Paused: nobody new can start. Closed: no new starts or submissions.">' +
+        ["draft", "live", "paused", "closed"].map(function (s) {
           return '<button class="st-status-btn ' + s + (s === cur.status ? " on" : "") + '" data-act="setstatus" data-status="' + s + '">' + s + "</button>"; }).join("") + "</div>" +
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
@@ -345,8 +604,7 @@
         "</div></div>" +
       "</div>" +
       '<nav class="st-tabs">' +
-      [["questions", "Questions", c.questions.length], ["translations", "Translations", ""], ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""],
-       ["conjoint", "Conjoint", ""], ["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]].map(function (t) {
+      tabList(c).map(function (t) {
         return '<button class="st-tab' + (tab === t[0] ? " on" : "") + '" data-tab="' + t[0] + '">' + t[1] +
           (t[2] !== "" ? '<span class="st-count">' + t[2] + "</span>" : "") + "</button>";
       }).join("") + "</nav>" +
@@ -355,6 +613,35 @@
     root.innerHTML = html;
     renderSaveState();
     renderTab();
+  }
+
+  // The Conjoint tab is only relevant once a conjoint question exists - until then it is not in
+  // the bar at all, so a plain questionnaire is not cluttered with an empty tab.
+  function hasConjointQuestion(cfg) {
+    var c = cfg || (cur && cur.cfg) || {};
+    return (c.questions || []).some(function (q) { return q.type === "choice_task"; }) ||
+      !!(c.conjoint && c.conjoint.tasks);
+  }
+  function tabList(c) {
+    var t = [["questions", "Questions", c.questions.length], ["translations", "Translations", ""],
+             ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""]];
+    if (hasConjointQuestion(c)) t.push(["conjoint", "Conjoint", ""]);
+    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]]);
+  }
+  // keep the bar in step with the questions (adding/removing a conjoint question changes it).
+  // Rebuilding the shell re-enters this, so guard against recursing.
+  var syncingTabs = false;
+  function syncTabs() {
+    if (!cur || syncingTabs) return;
+    var nav = $(".st-tabs"); if (!nav) return;
+    var wanted = tabList(cur.cfg).map(function (t) { return t[0]; });
+    var have = $$(".st-tab", nav).map(function (b) { return b.getAttribute("data-tab"); });
+    if (wanted.join(",") !== have.join(",")) {
+      syncingTabs = true;
+      try { renderEditor(); } finally { syncingTabs = false; }
+      return;
+    }
+    if (tab === "conjoint" && wanted.indexOf("conjoint") < 0) { tab = "questions"; renderTab(); }
   }
 
   function renderTab() {
@@ -400,49 +687,181 @@
     if ((q.options || []).some(function (o) { return o.exclusive; })) b += '<span class="st-badge" title="Has an exclusive option">excl</span>';
     return b;
   }
-  function outlineRow(q, qi) {
-    var t = tinfo(q.type);
-    return '<div class="st-qi' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
-      '<span class="st-qi-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
-      '<span class="st-qi-main"><span class="st-qi-id">' + esc(q.id) + '</span><span class="st-qi-stem">' + esc(q.stem || "(no text yet)") + "</span>" +
-      '<span class="st-qi-badges">' + qBadges(q) + "</span></span>" +
-      '<span class="st-qi-tools">' +
-      '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">\u25B2</button>' +
+  // The outline lists the questions either as compact rows or as thumbnails.  The choice lives in
+  // localStorage so it survives a reload, the same way the autosave switch does.
+  var OUTLINE_VIEW_KEY = "beacon.studio.outline_view";
+  var outlineView = "list";
+  try { if (localStorage.getItem(OUTLINE_VIEW_KEY) === "thumbs") outlineView = "thumbs"; } catch (e) { /* private mode */ }
+
+  function qTitle(q) { return String(q.title || "").trim(); }
+  // An unnamed section is named by the author, not by us - show it as a prompt, never as
+  // "Section 2".  Empty titles are stored empty so nothing predefined is ever written.
+  function secLabel(sec) { return String((sec && sec.title) || "").trim() || "Untitled section"; }
+  function qMoveTools(qi) {
+    return '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">\u25B2</button>' +
       '<button class="st-ibtn" data-act="qdown" data-i="' + qi + '" title="Move down">\u25BC</button>' +
       '<button class="st-ibtn" data-act="qdup" data-i="' + qi + '" title="Duplicate">\u2398</button>' +
-      '<button class="st-ibtn danger" data-act="qdel" data-i="' + qi + '" title="Delete">\u2715</button></span></div>';
+      '<button class="st-ibtn danger" data-act="qdel" data-i="' + qi + '" title="Delete">\u2715</button>';
   }
+
+  function outlineRow(q, qi) {
+    var t = tinfo(q.type), title = qTitle(q);
+    return '<div class="st-qi' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
+      '<span class="st-qi-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
+      '<span class="st-qi-main' + (title ? " has-title" : "") + '">' +
+      '<span class="st-qi-id">' + esc(q.id) + "</span>" +
+      (title ? '<span class="st-qi-title">' + esc(title) + "</span>" : "") +
+      '<span class="st-qi-stem">' + esc(q.stem || "(no text yet)") + "</span>" +
+      '<span class="st-qi-badges">' + qBadges(q) + "</span></span>" +
+      '<span class="st-qi-tools">' + qMoveTools(qi) + "</span></div>";
+  }
+
+  // ---- thumbnail view ---------------------------------------------------------------------
+  // A miniature of the question as the respondent sees it: the wording, then a schematic of the
+  // answer area drawn from the question itself.  Cheap enough to redraw on every keystroke.
+  function thumbOptions(q, max) {
+    var opts = (q.options || []).slice(0, max || 4);
+    if (!opts.length) return "";
+    var multi = q.type === "multi_select";
+    var html = '<div class="st-tb-opts">' + opts.map(function (o) {
+      return '<span class="st-tb-opt"><i class="' + (multi ? "st-tb-box" : "st-tb-radio") + '"></i>' +
+        esc(String(o.label || "").slice(0, 26)) + "</span>";
+    }).join("");
+    var extra = (q.options || []).length - opts.length;
+    if (extra > 0) html += '<span class="st-tb-more">+' + extra + " more</span>";
+    return html + "</div>";
+  }
+  function thumbScale(q) {
+    var sc = q.scale || {}, lo = Number(sc.min != null ? sc.min : 1), hi = Number(sc.max != null ? sc.max : 7);
+    var n = Math.max(2, Math.min(7, hi - lo + 1)), cells = "";
+    for (var i = 0; i < n; i++) cells += '<i class="st-tb-cell"></i>';
+    return '<div class="st-tb-scale">' + (sc.min_label ? '<span class="st-tb-lab">' + esc(String(sc.min_label).slice(0, 14)) + "</span>" : "") +
+      '<span class="st-tb-cells">' + cells + "</span>" +
+      (sc.max_label ? '<span class="st-tb-lab">' + esc(String(sc.max_label).slice(0, 14)) + "</span>" : "") + "</div>";
+  }
+  function thumbRows(q, max) {
+    var rows = (q.rows || []).slice(0, max || 3);
+    if (!rows.length) return "";
+    return '<div class="st-tb-rows">' + rows.map(function (r) {
+      return '<span class="st-tb-row"><b>' + esc(String(r.label || "").slice(0, 20)) + "</b><i></i></span>";
+    }).join("") + ((q.rows || []).length > rows.length ? '<span class="st-tb-more">+' + ((q.rows || []).length - rows.length) + " more</span>" : "") + "</div>";
+  }
+  function thumbBody(q) {
+    switch (q.type) {
+      case "single_select":
+      case "multi_select":
+        return thumbOptions(q);
+      case "rating_grid":
+      case "semantic_diff":
+      case "nps":
+      case "concept_test":
+        return (q.type === "concept_test" ? thumbRows(q, 2) : "") + thumbScale(q);
+      case "heatmap":
+        return thumbRows(q, 2) + thumbScale(q);
+      case "rank":
+        return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r, i) {
+          return '<span class="st-tb-row"><b>' + (i + 1) + ".</b>" + esc(String(r.label || "").slice(0, 20)) + "</span>";
+        }).join("") + "</div>";
+      case "open_text":
+        return '<div class="st-tb-text">' + '<i></i><i></i><i class="short"></i>' + "</div>";
+      case "numeric":
+      case "slider": {
+        var unit = q.suffix || q.prefix || "";
+        return '<div class="st-tb-num"><span class="st-tb-input"></span>' +
+          (unit ? '<span class="st-tb-lab">' + esc(String(unit).slice(0, 8)) + "</span>" : "") + "</div>";
+      }
+      case "date":
+        return '<div class="st-tb-num"><span class="st-tb-input wide"></span></div>';
+      case "loop":
+        return '<div class="st-tb-rows">' + '<span class="st-tb-row"><b>' + esc(String((q.items || [])[0] && (q.items[0].label || "")).slice(0, 20)) + "</b><i></i></span>" +
+          '<span class="st-tb-text"><i></i><i class="short"></i></span>' + "</div>";
+      case "sum_to_100":
+        return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r) {
+          return '<span class="st-tb-row"><b>' + esc(String(r.label || "").slice(0, 20)) + '</b><span class="st-tb-pct">%</span></span>';
+        }).join("") + "</div>";
+      case "text_block":
+        return '<div class="st-tb-text"><i></i><i></i><i class="short"></i></div>';
+      case "conjoint":
+      case "choice_task":
+      case "maxdiff":
+        return '<div class="st-tb-cards"><i></i><i></i><i></i></div>';
+      default:
+        return '<div class="st-tb-text"><i></i><i class="short"></i></div>';
+    }
+  }
+  function thumbCard(q, qi) {
+    var t = tinfo(q.type), title = qTitle(q);
+    return '<div class="st-tcard' + (qi === sel ? " on" : "") + '" data-qi="' + qi + '" data-act="qsel" tabindex="0">' +
+      '<div class="st-tcard-top"><span class="st-tcard-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
+      '<span class="st-tcard-id">' + esc(q.id) + "</span>" +
+      '<span class="st-tcard-tools">' + qMoveTools(qi) + "</span></div>" +
+      (title ? '<div class="st-tcard-title">' + esc(title) + "</div>" : "") +
+      '<div class="st-tcard-stem">' + esc(q.stem || "(no text yet)") + "</div>" +
+      '<div class="st-tcard-body">' + thumbBody(q) + "</div>" +
+      '<div class="st-tcard-foot">' + qBadges(q) + '<span class="st-meta">' + esc(t.name) + "</span></div></div>";
+  }
+
   function renderOutline() {
     var host = document.getElementById("st-outline"); if (!host) return;
-    var c = cur.cfg, html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' + c.questions.length + " total</span></div>";
+    var c = cur.cfg, thumbs = outlineView === "thumbs";
+    var html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' + c.questions.length + " total</span>" +
+      '<div class="st-seg sm st-viewseg"><button class="st-seg-btn' + (thumbs ? "" : " on") + '" data-act="outline-view" data-v="list" title="Compact list">\u2261 List</button>' +
+      '<button class="st-seg-btn' + (thumbs ? " on" : "") + '" data-act="outline-view" data-v="thumbs" title="Preview thumbnails">\u25A6 Thumbnails</button></div>' +
+      '<button class="st-ibtn" data-act="addsec" title="Add a section">+ Section</button></div>';
     c.sections.forEach(function (sec, si) {
       var n = c.questions.filter(function (q) { return q.section === sec.id; }).length;
-      html += '<div class="st-sec"><div class="st-sec-head">' +
-        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Section title (respondents see it)" placeholder="Section title">' +
+      html += '<div class="st-sec' + (thumbs ? " thumbs" : "") + '"><div class="st-sec-head">' +
+        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Click to rename this section - used in the Studio outline and in exports; respondents never see it" placeholder="Name this section">' +
         '<span class="st-meta">' + n + "</span>" +
         '<button class="st-ibtn danger" title="Delete section" data-act="delsec" data-i="' + si + '">\u2715</button></div>';
-      c.questions.forEach(function (q, qi) { if (q.section === sec.id) html += outlineRow(q, qi); });
+      if (thumbs) html += '<div class="st-tgrid">';
+      c.questions.forEach(function (q, qi) {
+        if (q.section !== sec.id) return;
+        html += thumbs ? thumbCard(q, qi) : outlineRow(q, qi);
+      });
+      if (thumbs) html += "</div>";
       if (!n) html += '<div class="st-sec-empty">No questions in this section yet.</div>';
       html += '<button class="st-addq" data-act="qadd" data-sec="' + esc(sec.id) + '">+ Add question</button></div>';
     });
     html += '<button class="st-btn ghost wide" data-act="addsec">+ Add section</button>';
     host.innerHTML = html;
+    syncTabs();
   }
   function refreshOutlineRow() {
-    var row = $('.st-qi[data-qi="' + sel + '"]'); var q = cur.cfg.questions[sel];
-    if (!row || !q) return;
-    $(".st-qi-id", row).textContent = q.id;
-    $(".st-qi-stem", row).textContent = q.stem || "(no text yet)";
-    $(".st-qi-badges", row).innerHTML = qBadges(q);
-    $(".st-qi-ic", row).textContent = tinfo(q.type).icon;
+    var q = cur.cfg.questions[sel];
+    if (!q) return;
+    var row = $('.st-qi[data-qi="' + sel + '"]');
+    if (row) {
+      $(".st-qi-id", row).textContent = q.id;
+      $(".st-qi-stem", row).textContent = q.stem || "(no text yet)";
+      $(".st-qi-badges", row).innerHTML = qBadges(q);
+      $(".st-qi-ic", row).textContent = tinfo(q.type).icon;
+      var main = $(".st-qi-main", row), title = qTitle(q);
+      var tn = $(".st-qi-title", row);
+      if (title && !tn) { tn = document.createElement("span"); tn.className = "st-qi-title"; main.insertBefore(tn, $(".st-qi-stem", row)); }
+      if (tn) { tn.textContent = title; if (!title) tn.remove(); }
+      main.classList.toggle("has-title", !!title);
+    }
+    var tc = $('.st-tcard[data-qi="' + sel + '"]');
+    if (tc) {
+      var tt = $(".st-tcard-title", tc), t2 = qTitle(q), tn2 = $(".st-tcard-title", tc);
+      if (t2 && !tn2) { tn2 = document.createElement("div"); tn2.className = "st-tcard-title"; tc.insertBefore(tn2, $(".st-tcard-stem", tc)); }
+      if (tn2) { tn2.textContent = t2; if (!t2) tn2.remove(); }
+      $(".st-tcard-stem", tc).textContent = q.stem || "(no text yet)";
+      $(".st-tcard-body", tc).innerHTML = thumbBody(q);
+      $(".st-tcard-foot", tc).innerHTML = qBadges(q) + '<span class="st-meta">' + esc(tinfo(q.type).name) + "</span>";
+      $(".st-tcard-id", tc).textContent = q.id;
+      $(".st-tcard-ic", tc).textContent = tinfo(q.type).icon;
+    }
   }
   function refreshSectionSelect() {
     var sl = document.getElementById("f-section"); if (!sl || !ed) return;
-    sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>"; }).join("");
+    sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("");
   }
   function selectQuestion(qi) {
     sel = qi;
-    $$(".st-qi").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
+    // the outline may be showing rows or thumbnails - mark the selection in whichever is up
+    $$(".st-qi, .st-tcard").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
     renderEditorPane();
     var row = $('.st-qi[data-qi="' + qi + '"]'); if (row && row.scrollIntoView) row.scrollIntoView({ block: "nearest" });
   }
@@ -814,6 +1233,24 @@
       t === "numeric" || t === "slider" ? "Number range" : t === "nps" ? "Scale" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
   }
 
+  // The question editor follows the reference design: a strip with Content & Settings and
+  // Conditional Display, and a PREVIEW button for the full-size question.
+  var edTab = "content";
+  function edStrip() {
+    var rules = (ed.show_if && ed.show_if.rules) || [];
+    return '<nav class="st-etabs">' +
+      [["content", "Content &amp; Settings"], ["cond", "Conditional Display"]].map(function (t) {
+        return '<button type="button" class="st-etab' + (edTab === t[0] ? " on" : "") +
+          '" data-act="edtab" data-t="' + t[0] + '">' + t[1] +
+          (t[0] === "cond" && rules.length ? '<span class="st-count">' + rules.length + "</span>" : "") +
+          "</button>";
+      }).join("") +
+      '<span class="st-etab-sp"></span>' +
+      '<button type="button" class="st-etab prev" data-act="qtest-cur"' +
+        (sel >= 0 ? ' data-i="' + sel + '"' : "") +
+        ' title="Open this question full size, exactly as a respondent sees it">PREVIEW</button></nav>';
+  }
+
   function renderEditorPane() {
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
@@ -832,26 +1269,35 @@
       '<div class="st-ehead">' +
         '<span class="st-ehead-ic" title="' + esc(t.name) + '">' + t.icon + "</span>" +
         '<div class="st-ehead-main"><div class="st-ehead-row">' +
-          '<label class="st-mini">ID <input id="f-id" value="' + esc(ed.id) + '" title="Short reference used in exports and piping, e.g. Q3"></label>' +
+          // ID with the question Title stacked directly underneath it
+          '<div class="st-ehead-idcol">' +
+            '<label class="st-mini">ID <input id="f-id" value="' + esc(ed.id) + '" title="Short reference used in exports and piping, e.g. Q3"></label>' +
+            '<label class="st-mini">Title <input id="f-title" value="' + esc(ed.title || "") + '" placeholder="Short label, e.g. Specialty screener" title="A short name for this question - shown in the outline and thumbnails, and used in exports. Respondents never see it."></label>' +
+          "</div>" +
           '<label class="st-mini">Type <select id="f-type" title="Change the question type - compatible answers are kept">' + GROUPS.map(function (g) {
             return '<optgroup label="' + g + '">' + TYPES.filter(function (x) { return TYPE_INFO[x].group === g; }).map(function (x) {
               return '<option value="' + x + '"' + (x === ed.type ? " selected" : "") + ">" + esc(TYPE_INFO[x].name) + "</option>"; }).join("") + "</optgroup>"; }).join("") + "</select></label>" +
           '<label class="st-mini">Section <select id="f-section">' + cur.cfg.sections.map(function (s) {
-            return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>"; }).join("") + "</select></label>" +
+            return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("") + "</select></label>" +
           '<label class="st-switch" title="Respondents must answer before continuing"><input type="checkbox" id="f-required"' + (ed.required !== false ? " checked" : "") + "><i></i>Required</label>" +
         "</div></div>" +
         '<div class="st-ehead-tools"><button class="st-ibtn" data-act="qdup" data-i="' + sel + '" title="Duplicate question">\u2398</button>' +
         '<button class="st-ibtn danger" data-act="qdel" data-i="' + sel + '" title="Delete question">\u2715</button></div>' +
       "</div>" +
       '<div id="st-qcheck">' + questionCheckHtml() + '</div>' +
-      '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["logic", "Show only when\u2026"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
-        return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
-      card("q", "Question", "What respondents read", qCard()) +
-      card("answers", answersTitle(), "", answersCard()) +
-      card("display", "Display & order", "Layout, randomisation, text style", displayCard()) +
-      card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""), "Conditions that decide who sees this question", logicCard()) +
-      card("media", "Image or video" + (ed.media && ed.media.src ? ' <em class="st-dot">on</em>' : ""), "Shown under the question text", mediaCard()) +
-      card("advanced", "Advanced (JSON)", "Everything the form does is stored here", advancedCard(), true);
+      edStrip() +
+      (edTab === "cond"
+        ? '<nav class="st-jump">' + [["logic", "Conditional display"]].map(function (j) {
+            return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
+          card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""),
+               "Conditional display - exactly who gets this question and who skips it", logicCard())
+        : '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
+            return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
+          card("q", "Question", "What respondents read", qCard()) +
+          card("answers", answersTitle(), "", answersCard()) +
+          card("display", "Display & order", "Layout, randomisation, text style", displayCard()) +
+          card("media", "Image or video" + (ed.media && ed.media.src ? ' <em class="st-dot">on</em>' : ""), "Shown under the question text", mediaCard()) +
+          card("advanced", "Advanced (JSON)", "Everything the form does is stored here", advancedCard(), true));
     renderPreview();
   }
 
@@ -891,28 +1337,51 @@
   function qCard() {
     return '<div class="st-field"><label>Question text</label>' + richToolbar("f-stem-rich") +
       '<div class="st-rich" id="f-stem-rich" contenteditable="true" data-rich="stem_html" data-placeholder="Type the question\u2026">' + chipify(Q.sanitize(ed.stem_html || "")) + "</div>" +
+      '<button type="button" class="st-addmedia' + (ed.media && ed.media.src ? " on" : "") + '" data-act="media-add-quick"' +
+        ' title="Attach an image or a video to this question - it is shown under the question text">' +
+        (ed.media && ed.media.src ? "\u2713 Image or video attached" : "+ Add Image &amp; Video Attachments") + "</button>" +
       '<div class="st-hint">Select text to format it. <b>\u27A4 Pipe in answer</b> inserts something the respondent said earlier - e.g. <code>{Q1}</code> becomes their Q1 answer.</div></div>' +
       '<div class="st-field"><label>Help text <span class="st-opt">optional - smaller text under the question</span></label>' + richToolbar("f-help-rich", true) +
       '<div class="st-rich sm" id="f-help-rich" contenteditable="true" data-rich="help_html" data-placeholder="e.g. Think about the last 3 months">' + chipify(Q.sanitize(ed.help_html || esc(ed.help || ""))) + "</div></div>";
   }
 
+  // The rich-text toolbar mirrors the reference editor: size and font, B/I/U, a "more"
+  // row, colours, alignment, lists, link, table, superscript, image, pipe, fullscreen and a
+  // source view.  Everything it can produce survives core/sanitize.py + BeaconQ.sanitize.
   function richToolbar(target, small) {
     var b = function (cmd, label, title, val) {
       return '<button type="button" class="st-tb" data-cmd="' + cmd + '" data-val="' + (val || "") + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
     };
+    var act = function (a, label, title) {
+      return '<button type="button" class="st-tb" data-tb-act="' + a + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
+    };
+    var pick = function (cmd, title, opts) {
+      return '<select class="st-tb-sel" data-cmd="' + cmd + '" data-target="' + target + '" title="' + title + '" aria-label="' + title + '">' + opts + "</select>";
+    };
+    var sizes = [["", "12px"], ["1", "10px"], ["2", "12px"], ["3", "14px"], ["4", "16px"], ["5", "20px"], ["6", "24px"], ["7", "32px"]]
+      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+    var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
+      .map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
     return '<div class="st-toolbar">' +
+      pick("fontSize", "Text size", sizes) + (small ? "" : pick("fontName", "Font", fonts)) +
       b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
-      b("strikeThrough", "<s>S</s>", "Strikethrough") + b("superscript", "x<sup>2</sup>", "Superscript") +
-      '<span class="st-tb-sep"></span>' +
+      act("more", "\u2026", "More formatting") +
       '<label class="st-tb st-tb-color" title="Text colour">A<input type="color" data-cmd="foreColor" data-target="' + target + '" value="#b3261e"></label>' +
       '<label class="st-tb st-tb-color hl" title="Highlight colour">&#9639;<input type="color" data-cmd="hiliteColor" data-target="' + target + '" value="#fff3a3"></label>' +
-      b("removeFormat", "T&#818;", "Clear formatting") +
-      '<span class="st-tb-sep"></span>' +
+      b("justifyLeft", "\u2261", "Align left") + b("justifyCenter", "\u2261", "Align centre") + b("justifyRight", "\u2261", "Align right") +
       b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
+      act("link", "\u{1F517}", "Insert link") + act("table", "\u25A6", "Insert table") +
+      b("superscript", "x<sup>2</sup>", "Superscript") +
+      act("image", "\u{1F5BC}", "Attach an image or video to this question") +
       (small ? "" : b("fontSize", "A&#8593;", "Bigger", "5") + b("fontSize", "A&#8595;", "Smaller", "2")) +
       '<span class="st-tb-sep"></span>' +
       pipeButton(target) +
-      "</div>";
+      '<span class="st-tb-extra">' +
+        b("strikeThrough", "<s>S</s>", "Strikethrough") + b("subscript", "x<sub>2</sub>", "Subscript") +
+        b("removeFormat", "T&#818;", "Clear formatting") +
+        act("source", "&lt;/&gt;", "Edit the HTML source") +
+        act("fullscreen", "\u26F6", "Full screen") +
+      "</span></div>";
   }
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
@@ -935,9 +1404,12 @@
   }
   function unchip(html) { return html.replace(/<span class="pipe">(\{[^}]+\})<\/span>(?:&nbsp;|\u00a0)?/g, "$1 "); }
 
-  function pipeButton(target, small) {
-    return '<button type="button" class="st-pipe-btn' + (small ? " sm" : "") + '" data-pipe-for="' + target + '" title="Insert an earlier answer into this text">' +
-      '&#10132; Pipe in answer</button>';
+  // `compact` drops the words and keeps only the arrow - used inside the option / row list, where
+  // the labelled pill would eat the whole label column.
+  function pipeButton(target, small, compact) {
+    return '<button type="button" class="st-pipe-btn' + (small ? " sm" : "") + (compact ? " icon" : "") + '" data-pipe-for="' + target + '" title="Insert an earlier answer into this text"' +
+      (compact ? ' aria-label="Pipe in answer"' : "") + ">" +
+      (compact ? "&#10132;" : "&#10132; Pipe in answer") + "</button>";
   }
 
   // ---- pipe picker -----------------------------------------------------------------------
@@ -1026,30 +1498,54 @@
   function closePipePicker() { var pop = document.getElementById("st-pipe-pop"); if (pop) pop.hidden = true; pipeTarget = null; pipeCaret = null; }
 
   // ---- card: answers --------------------------------------------------------------------
+  // One row per option / row / column: a drag grip, its position, the stored code, the label and
+  // an always-visible tool strip (image, move up, move down, delete).  Behaviour chips (Pin /
+  // Exclusive / Other) sit on a second line so they can never push the buttons out of the pane.
   function itemTable(kind, items, spec) {
-    var html = '<div class="st-items" data-kind="' + kind + '">' +
-      '<div class="st-item st-item-head"><span></span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
-      (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + (spec.flags.length ? "<span>Behaviour</span>" : "") + "<span></span></div>" +
+    var noun = spec.noun || "item";
+    var last = items.length - 1;
+    var html = '<div class="st-items' + (spec.left ? " has-poles" : "") + '" data-kind="' + kind + '">' +
+      '<div class="st-item st-item-head"><span></span><span>#</span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
+      (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + "<span>Actions</span></div>" +
       items.map(function (it, i) {
         var idl = "f-" + kind + "-" + i;
-        return '<div class="st-item" data-i="' + i + '"><span class="st-grip" title="Use the arrows to reorder">\u22EE\u22EE</span>' +
+        return '<div class="st-item" data-i="' + i + '">' +
+          '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder ' + esc(noun) + " " + (i + 1) + '" title="Drag to reorder \u00B7 focus and press \u2191 / \u2193 to swap">\u283F</span>' +
+          '<span class="st-seq" title="Position ' + (i + 1) + ' of ' + items.length + '">' + (i + 1) + ".</span>" +
           '<input class="st-it-code" data-it="' + kind + '" data-k="code" data-i="' + i + '" value="' + esc(it.code) + '" title="Code stored in the data">' +
-          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true) + "</div>" +
+          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true, true) + "</div>" +
           (spec.left ? '<input data-it="' + kind + '" data-k="left" data-i="' + i + '" value="' + esc(it.left || "") + '" placeholder="e.g. Poor">' +
                        '<input data-it="' + kind + '" data-k="right" data-i="' + i + '" value="' + esc(it.right || "") + '" placeholder="e.g. Excellent">' : "") +
-          (spec.flags.length ? '<span class="st-flags">' + spec.flags.map(function (f) {
-            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") + "</span>" : "") +
           '<span class="st-item-tools">' +
           (spec.image ? (it.image ? '<span class="st-thumb" title="' + esc(it.image.split("/").pop()) + '"><img src="' + esc(it.image) + '" alt=""><button class="st-x" data-act="it-img-del" data-i="' + i + '" title="Remove image">&times;</button></span>'
             : '<label class="st-ibtn" title="Attach an image">\uD83D\uDDBC<input type="file" accept="image/*" data-act="opt-img" data-oi="' + i + '" hidden></label>') : "") +
-          '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up">\u25B2</button>' +
-          '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down">\u25BC</button>' +
-          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Remove">\u2715</button></span></div>';
+          '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>\u25B2</button>' +
+          '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down"' + (i === last ? " disabled" : "") + '>\u25BC</button>' +
+          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span>' +
+          (spec.flags.length ? '<span class="st-flags"><span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
+            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") + "</span>" : "") +
+          "</div>";
       }).join("") + "</div>" +
       '<div class="st-item-actions"><button class="st-btn sm on" data-act="it-add" data-kind="' + kind + '">+ Add ' + spec.noun + "</button>" +
       (spec.quick || "") +
-      '<button class="st-btn sm ghost" data-act="it-paste" data-kind="' + kind + '">Paste a list\u2026</button></div>';
+      '<button class="st-btn sm ghost" data-act="it-paste" data-kind="' + kind + '">Enter multiple\u2026</button></div>';
     return html;
+  }
+
+  // Move one list entry to another position.  Used by the \u25B2 / \u25BC buttons, the drag grip and
+  // the keyboard, so all three routes share exactly the same reordering + persistence.
+  function moveItem(kind, from, to, keepFocus) {
+    var L = ed && ed[LIST_KEY[kind]];
+    if (!L || !L.length) return;
+    to = Math.max(0, Math.min(L.length - 1, to));
+    if (to === from) return;
+    var it = L.splice(from, 1)[0];
+    L.splice(to, 0, it);
+    rerenderCard("answers"); changed();
+    if (keepFocus) {
+      var g = $('#st-editor .st-items[data-kind="' + kind + '"] .st-item[data-i="' + to + '"] .st-grip');
+      if (g) g.focus();
+    }
   }
   function answersCard() {
     var t = ed.type, html = "";
@@ -1130,9 +1626,114 @@
     if (t === "rank") html += '<div class="st-grid2"><div class="st-field"><label>How many ranks to record <span class="st-opt">top-N</span></label><input id="f-rankcount" type="number" value="' + (ed.rank_count || 3) + '"></div></div>';
     if (t === "maxdiff") html += '<div class="st-field"><label>Rounds <span class="st-opt">comma-separated item codes, one round per line</span></label><textarea id="f-rounds">' +
       (ed.rounds || []).map(function (r) { return r.items.join(","); }).join("\n") + "</textarea></div>";
-    if (t === "choice_task") html += '<div class="st-field"><label>Patient vignette</label><textarea id="f-vignette">' + esc(ed.vignette || "") + "</textarea></div>" +
-      '<div class="st-note">The alternatives shown come from the design on the <b>Conjoint</b> tab.</div>';
+    if (t === "choice_task") html += conjointCard();
     return html || '<div class="st-note">This question type has no answer settings.</div>';
+  }
+
+  // ---- card: conjoint experiment (the choice_task question's own design) ------------------
+  function conjointCard() {
+    var cj = conjointOf(ed);
+    var info = function (txt) { return '<span class="st-info" title="' + esc(txt) + '">\u24D8</span>'; };
+    var body = '<div class="st-cj">' +
+      '<div class="st-field"><label>Title or reference to this Conjoint Experiment ' +
+        info("Internal name for the experiment - shown to the research team, never to respondents.") + "</label>" +
+        '<input id="f-cj-title" value="' + esc(cj.title || "") + '" placeholder="Title or reference to this Conjoint Experiment"></div>' +
+      '<div class="st-field"><label>Description ' + info("What the respondent reads above the choice tasks. {amount} and {product} are filled in automatically.") + "</label>" +
+        richToolbar("f-cj-desc") +
+        '<div class="st-rich sm" id="f-cj-desc" contenteditable="true" data-cj-rich="description_html" data-placeholder="We will show you {amount} combinations of {product}...">' +
+        chipify(Q.sanitize(cj.description_html || "")) + "</div></div>" +
+      '<div class="st-field"><label>Patient vignette <span class="st-opt">optional - shown with every choice task</span></label>' +
+        '<textarea id="f-vignette">' + esc(ed.vignette || "") + "</textarea></div>" +
+
+      '<h4 class="st-h4">Attributes ' + info("One row per attribute. Each attribute needs at least two levels; the design balances them across the choice sets.") + "</h4>" +
+      '<div class="st-cj-attrs">' + cj.attributes.map(function (a, ai) { return conjointAttrRow(a, ai); }).join("") + "</div>" +
+      '<div class="st-item-actions"><button class="st-btn sm on" data-act="cj-attr-add">+ Add Attribute</button>' +
+        '<button class="st-btn sm ghost" data-act="cj-attr-json">Edit as list\u2026</button></div>' +
+
+      '<div class="st-toggles">' +
+        '<label class="st-switch" title="Adds a \u201cNone of these\u201d alternative to every choice task">' +
+          '<input type="checkbox" id="f-cj-none"' + (cj.allow_none !== false ? " checked" : "") + "><i></i>Allow \u201Cnone\u201D</label>" +
+      "</div>" +
+      '<div class="st-field"><label>Text on the \u201Cnone\u201D alternative</label>' +
+        '<input id="f-cj-nonelabel" value="' + esc(cj.none_label || "None of these") + '"></div>' +
+
+      '<h4 class="st-h4">Configure Sampling</h4><div class="st-grid2">' +
+        '<div class="st-field"><label>Number of Cards ' + info("Alternatives shown side by side on each choice task.") + "</label>" +
+          '<input id="f-cj-cards" type="number" min="2" max="5" value="' + (cj.n_cards || 2) + '"></div>' +
+        '<div class="st-field"><label>Number of Sets ' + info("Choice tasks each respondent completes.") + "</label>" +
+          '<input id="f-cj-sets" type="number" min="1" max="30" value="' + (cj.n_sets || 6) + '"></div>' +
+      "</div>" +
+      '<div class="st-field"><label>Minimum seconds on each task ' + info("Speeder guard - Next stays locked until the respondent has looked at the profiles.") + "</label>" +
+        '<input id="f-dwell" type="number" data-set="conjoint_min_dwell" value="' + (cur.cfg.conjoint_min_dwell || 10) + '"></div>' +
+      '<button class="st-btn on" data-act="genconj">Generate design</button>' + conjointStatus() +
+      "</div>";
+    return body;
+  }
+
+  function conjointStatus() {
+    var d = cur.cfg.conjoint;
+    if (!d || !d.tasks) return '<div class="st-note">No design generated yet - the choice tasks stay empty until you generate one.</div>';
+    var t = Object.keys(d.tasks).length || d.tasks.length || 0;
+    var alts = d.n_alts || (d.attributes && d.tasks[String(Object.keys(d.tasks)[0])] ? d.tasks[String(Object.keys(d.tasks)[0])].length : 3);
+    return '<div class="st-note">Current design: <b>' + t + " sets \u00D7 " + alts + " cards</b> \u00D7 " +
+      ((d.attributes || []).length) + " attributes" + (d.generated_at ? " \u00B7 generated " + esc(d.generated_at) : "") + ".</div>";
+  }
+
+  function conjointAttrRow(a, ai) {
+    var tool = function (tip, cls) { return '<span class="st-info" title="' + esc(tip) + '">\u24D8</span>'; };
+    return '<div class="st-cj-attr" data-cj="' + ai + '">' +
+      '<div class="st-cj-attr-head">' +
+        '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder attribute ' + (ai + 1) +
+          '" title="Drag to reorder">\u283F</span>' +
+        '<span class="st-seq">' + (ai + 1) + ".</span>" +
+        '<input class="st-cj-name" data-cj-field="label" data-i="' + ai + '" value="' + esc(a.label || "") +
+          '" placeholder="Attribute name, e.g. Color">' +
+        '<span class="st-item-tools">' +
+          '<button class="st-ibtn" data-act="cj-attr-up" data-i="' + ai + '" title="Move up"' + (ai === 0 ? " disabled" : "") + ">\u25B2</button>" +
+          '<button class="st-ibtn" data-act="cj-attr-down" data-i="' + ai + '" title="Move down"' +
+            (ai === ed.conjoint.attributes.length - 1 ? " disabled" : "") + ">\u25BC</button>" +
+          '<button class="st-ibtn danger" data-act="cj-attr-del" data-i="' + ai + '" title="Delete this attribute">\uD83D\uDDD1</button>' +
+        "</span></div>" +
+      '<div class="st-cj-attr-toggles">' +
+        '<label class="st-switch" title="Generate the levels from a numeric range instead of typing each one">' +
+          '<input type="checkbox" data-act="cj-attr-range" data-i="' + ai + '"' + (a.range ? " checked" : "") + "><i></i>Add Range Levels</label>" +
+        '<label class="st-switch" title="Attach a picture to each level - it is shown on the choice cards">' +
+          '<input type="checkbox" data-act="cj-attr-images" data-i="' + ai + '"' + (a.images && a.images.length ? " checked" : "") + "><i></i>Add Images</label>" +
+        '<label class="st-switch" title="Shown in a rotating subset of the choice sets rather than in every one">' +
+          '<input type="checkbox" data-act="cj-attr-group" data-i="' + ai + '"' + (a.group_inclusion ? " checked" : "") + "><i></i>Group Inclusion</label>" +
+        '<label class="st-switch" title="Lower is better (price, toxicity) - the design avoids putting the best level on one card every time">' +
+          '<input type="checkbox" data-act="cj-attr-bad" data-i="' + ai + '"' + (a.higher_is_bad ? " checked" : "") + "><i></i>Lower is better</label>" +
+      "</div>" +
+      (a.range ? conjointRangeRow(a, ai) : "") +
+      '<div class="st-cj-levels"><span class="st-cj-levels-lbl">Levels ' +
+        tool("The values this attribute can take. At least two are needed.") + "</span>" +
+        (a.levels || []).map(function (lv, li) { return conjointLevelRow(a, ai, lv, li); }).join("") +
+        '<button class="st-cj-addlevel" data-act="cj-level-add" data-i="' + ai + '">+ Add Level</button>' +
+      "</div></div>";
+  }
+
+  function conjointLevelRow(a, ai, lv, li) {
+    var img = (a.images && a.images[li]) || "";
+    return '<div class="st-cj-level" data-cj-level="' + li + '">' +
+      (a.images && a.images.length
+        ? (img ? '<span class="st-thumb" title="' + esc(String(img).split("/").pop()) + '"><img src="' + esc(img) + '" alt="">' +
+                 '<button class="st-x" data-act="cj-level-img-del" data-i="' + ai + '" data-l="' + li + '" title="Remove image">&times;</button></span>'
+               : '<label class="st-ibtn" title="Attach an image to this level">\uD83D\uDDBC' +
+                 '<input type="file" accept="image/*" data-act="cj-level-img" data-i="' + ai + '" data-l="' + li + '" hidden></label>')
+        : "") +
+      '<input data-cj-field="level" data-i="' + ai + '" data-l="' + li + '" value="' + esc(lv) + '" placeholder="Level ' + (li + 1) + '">' +
+      '<button class="st-ibtn danger" data-act="cj-level-del" data-i="' + ai + '" data-l="' + li + '" title="Delete this level">\uD83D\uDDD1</button>' +
+      "</div>";
+  }
+
+  function conjointRangeRow(a, ai) {
+    var r = a.range || {};
+    return '<div class="st-cj-range">' +
+      '<label>From <input type="number" data-cj-range="from" data-i="' + ai + '" value="' + (r.from != null ? r.from : 1) + '"></label>' +
+      '<label>To <input type="number" data-cj-range="to" data-i="' + ai + '" value="' + (r.to != null ? r.to : 5) + '"></label>' +
+      '<label>Step <input type="number" min="1" data-cj-range="step" data-i="' + ai + '" value="' + (r.step != null ? r.step : 1) + '"></label>' +
+      '<label>Suffix <input data-cj-range="suffix" data-i="' + ai + '" value="' + esc(r.suffix || "") + '" placeholder="% or mg"></label>' +
+      '<button class="st-btn sm" data-act="cj-range-apply" data-i="' + ai + '">Build levels</button></div>';
   }
 
   // ---- card: display & order -------------------------------------------------------------
@@ -1251,7 +1852,14 @@
   function syncFromForm() {
     if (!ed) return;
     var t = ed.type;
+    // an open "</>" source view is authoritative for its editor
+    $$("#st-editor .st-src").forEach(function (ta) {
+      var host = document.getElementById(ta.getAttribute("data-for"));
+      if (host) host.innerHTML = Q.sanitize(ta.value);
+    });
     if (val("f-section") !== undefined) ed.section = val("f-section");
+    if (ed.type === "choice_task") syncConjointForm();
+    if (val("f-title") !== undefined) setOrDel(ed, "title", String(val("f-title")).trim());
     var rich = document.getElementById("f-stem-rich");
     if (rich) { ed.stem_html = unchip(Q.sanitize(rich.innerHTML)); ed.stem = Q.stripTags(ed.stem_html) || ""; }
     var hr = document.getElementById("f-help-rich");
@@ -1383,6 +1991,59 @@
     openModal('<div class="st-modal-head"><strong>Show-if logic guide</strong><span class="st-meta">Who should see ' + esc(ed.id) + '?</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form"><div class="st-agent-note">Choose an earlier question and condition. I’ll create the rule after you approve it.</div><label class="st-field"><span>Based on</span><select id="lg-q">' + prior.map(function(q){return '<option value="' + esc(q.id) + '">' + esc(q.id + ' · ' + q.stem.slice(0,70)) + '</option>';}).join('') + '</select></label><label class="st-field"><span>Respondent condition</span><select id="lg-op"><option value="selected">selected an answer</option><option value="not_selected">did not select an answer</option><option value="answered">answered the question</option><option value="not_answered">did not answer</option></select></label><label class="st-field"><span>Answer code (for selected/not selected)</span><input id="lg-value" placeholder="e.g. 1"></label><div class="st-modal-actions"><button class="st-btn" data-act="modal-close">Cancel</button><button class="st-btn on" data-act="logic-apply"' + (prior.length ? '' : ' disabled') + '>Review and apply rule</button></div></div>', 'st-agent-modal');
   }
 
+  // ------------------------------------------------------------ rich-text toolbar actions
+  function tbAction(a, target) {
+    var host = document.getElementById(target);
+    var focus = function () { if (host) host.focus(); };
+    var run = function (cmd, val) {
+      focus();
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand(cmd, false, val === undefined ? null : val);
+      changed();
+    };
+    if (a === "more") { var tb = $(".st-toolbar[data-for='" + target + "']") || $(".st-toolbar");
+      if (tb) tb.classList.toggle("more-open"); return; }
+    if (a === "link") {
+      focus();
+      var url = window.prompt("Link address", "https://");
+      if (url) run("createLink", url);
+      return;
+    }
+    if (a === "table") {
+      run("insertHTML", '<table class="st-tbl"><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+        "<tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>");
+      return;
+    }
+    if (a === "image") { var fi = $("[data-act=media-upload]"); if (fi) fi.click(); return; }
+    if (a === "fullscreen") {
+      if (!host) return;
+      host.classList.toggle("fs");
+      if (host.classList.contains("fs")) focus();
+      return;
+    }
+    if (a === "source") {
+      if (!host) return;
+      var wrap = host.parentElement || document.getElementById("st-editor");
+      var ta = wrap.querySelector(".st-src");
+      if (!ta) {
+        ta = document.createElement("textarea");
+        ta.className = "st-src";
+        ta.value = host.innerHTML;
+        ta.setAttribute("data-for", target);
+        host.hidden = true;
+        wrap.insertBefore(ta, host.nextSibling);
+        ta.focus();
+      } else {
+        host.innerHTML = Q.sanitize(ta.value);
+        ta.parentNode.removeChild(ta);
+        host.hidden = false;
+        focus();
+        changed();
+      }
+      return;
+    }
+  }
+
   // ------------------------------------------------------------ editor events (delegated on root)
   function inEditor(e) { return !!e.target.closest("#st-editor"); }
   root.addEventListener("click", function (e) {
@@ -1395,6 +2056,12 @@
       document.execCommand("styleWithCSS", false, true);
       document.execCommand(cmd.getAttribute("data-cmd"), false, cmd.getAttribute("data-val") || null);
       changed(); return;
+    }
+    var tba = e.target.closest("button[data-tb-act]");
+    if (tba) {
+      e.preventDefault();
+      tbAction(tba.getAttribute("data-tb-act"), tba.getAttribute("data-target"));
+      return;
     }
     var pb = e.target.closest("[data-pipe-for]");
     if (pb) { e.preventDefault(); openPipePicker(document.getElementById(pb.getAttribute("data-pipe-for"))); return; }
@@ -1431,9 +2098,7 @@
     }
     if (act === "it-del") { syncFromForm(); ed[LIST_KEY[kind]].splice(i, 1); rerenderCard("answers"); changed(); return; }
     if (act === "it-up" || act === "it-down") {
-      syncFromForm(); var L = ed[LIST_KEY[kind]], j = act === "it-up" ? i - 1 : i + 1;
-      if (j < 0 || j >= L.length) return;
-      var tmp = L[j]; L[j] = L[i]; L[i] = tmp; rerenderCard("answers"); changed(); return;
+      syncFromForm(); moveItem(kind, i, act === "it-up" ? i - 1 : i + 1); return;
     }
     if (act === "it-img-del") { syncFromForm(); delete ed.options[i].image; rerenderCard("answers"); changed(); return; }
     if (act === "it-paste") {
@@ -1477,6 +2142,69 @@
       } catch (err) { toast("JSON did not parse: " + err.message); }
     }
   });
+  // ---- reorder by dragging the grip ------------------------------------------------------
+  // The grip is the only draggable part of a row, so text selection inside the inputs still works.
+  var dragKind = null, dragFrom = -1;
+  function itemRows(wrap) { return Array.prototype.slice.call(wrap.querySelectorAll(".st-item:not(.st-item-head)")); }
+  function clearDropMarks() {
+    $$("#st-editor .st-item.drop-before").forEach(function (n) { n.classList.remove("drop-before"); });
+    $$("#st-editor .st-items.drop-end").forEach(function (n) { n.classList.remove("drop-end"); });
+  }
+  function insertIndexAt(wrap, y) {                       // 0..n = where the row would land
+    var rows = itemRows(wrap);
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (y < r.top + r.height / 2) return i;
+    }
+    return rows.length;
+  }
+  function markDrop(wrap, at) {
+    clearDropMarks();
+    var rows = itemRows(wrap);
+    if (at >= rows.length) wrap.classList.add("drop-end");
+    else if (rows[at]) rows[at].classList.add("drop-before");
+  }
+  root.addEventListener("dragstart", function (e) {
+    if (!ed || !e.target.closest) return;
+    var grip = e.target.closest(".st-grip");
+    if (!grip) return;
+    var row = grip.closest(".st-item"), wrap = grip.closest(".st-items");
+    if (!row || !wrap) return;
+    syncFromForm();                                       // flush any half-typed label first
+    dragKind = wrap.getAttribute("data-kind");
+    dragFrom = Number(row.getAttribute("data-i"));
+    row.classList.add("dragging");
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(dragFrom));
+      e.dataTransfer.setDragImage(row, 16, 16);
+    } catch (err) { /* browser without a real DataTransfer - the drop still works */ }
+    e.stopPropagation();
+  });
+  root.addEventListener("dragover", function (e) {
+    if (dragKind === null || !e.target.closest) return;
+    var wrap = e.target.closest(".st-items");
+    if (!wrap || wrap.getAttribute("data-kind") !== dragKind) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = "move"; } catch (err) { }
+    markDrop(wrap, insertIndexAt(wrap, e.clientY));
+  });
+  root.addEventListener("drop", function (e) {
+    if (dragKind === null || !e.target.closest) return;
+    var wrap = e.target.closest(".st-items");
+    if (!wrap || wrap.getAttribute("data-kind") !== dragKind) { clearDropMarks(); return; }
+    e.preventDefault();
+    var at = insertIndexAt(wrap, e.clientY), kind = dragKind, from = dragFrom;
+    dragKind = null; dragFrom = -1; clearDropMarks();
+    syncFromForm();
+    moveItem(kind, from, at > from ? at - 1 : at);
+  });
+  root.addEventListener("dragend", function () {
+    dragKind = null; dragFrom = -1;
+    clearDropMarks();
+    $$("#st-editor .st-item.dragging").forEach(function (n) { n.classList.remove("dragging"); });
+  });
+
   root.addEventListener("change", function (e) {
     if (!inEditor(e) || !ed) return;
     var t = e.target;
@@ -1491,6 +2219,43 @@
     var act = t.getAttribute("data-act");
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); rerenderCard("media"); changed(); toast("Attached " + r.file); });
+      return;
+    }
+    if (t.tagName === "SELECT" && t.getAttribute("data-cmd") && t.getAttribute("data-target")) {
+      var th = document.getElementById(t.getAttribute("data-target"));
+      if (th) {
+        th.focus();
+        document.execCommand("styleWithCSS", false, true);
+        document.execCommand(t.getAttribute("data-cmd"), false, t.value || null);
+        changed();
+      }
+      return;
+    }
+    if (act === "cj-level-img" && t.files && t.files[0]) {
+      var cji = Number(t.getAttribute("data-i")), cjl = Number(t.getAttribute("data-l"));
+      uploadMedia(t.files[0], function (r) {
+        syncFromForm();
+        var a = conjointOf(ed).attributes[cji];
+        a.images = a.images || []; a.images[cjl] = r.src;
+        rerenderCard("answers"); changed();
+      });
+      return;
+    }
+    if (act === "cj-attr-range" || act === "cj-attr-images" || act === "cj-attr-group" || act === "cj-attr-bad") {
+      syncFromForm();
+      var ai2 = Number(t.getAttribute("data-i")), at = conjointOf(ed).attributes[ai2];
+      if (act === "cj-attr-range") {
+        at.range = t.checked ? (at.range || { from: 1, to: 5, step: 1, suffix: "" }) : null;
+      } else if (act === "cj-attr-images") {
+        at.images = t.checked ? (at.images || []).slice(0, at.levels.length)
+                    .concat(new Array(Math.max(0, at.levels.length - (at.images || []).length)).fill(""))
+                    : [];
+      } else if (act === "cj-attr-group") {
+        at.group_inclusion = t.checked;
+      } else {
+        at.higher_is_bad = t.checked;
+      }
+      rerenderCard("answers"); changed();
       return;
     }
     if (act === "opt-img" && t.files && t.files[0]) {
@@ -1513,7 +2278,17 @@
     changed();
   });
   root.addEventListener("keydown", function (e) {
-    if (e.target.id === "f-id" && e.key === "Enter") { e.preventDefault(); applyId(e.target); }
+    var t = e.target;
+    if (t && t.id === "f-id" && e.key === "Enter") { e.preventDefault(); applyId(t); }
+    // \u2191 / \u2193 on a focused grip swaps that entry with its neighbour
+    if (!ed || !t || !t.closest || !t.closest(".st-grip")) return;
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    var row = t.closest(".st-item"), wrap = row && row.closest(".st-items");
+    if (!row || !wrap) return;
+    e.preventDefault();
+    var kind = wrap.getAttribute("data-kind"), from = Number(row.getAttribute("data-i"));
+    syncFromForm();
+    moveItem(kind, from, from + (e.key === "ArrowUp" ? -1 : 1), true);
   });
   // keep selection-based commands working when the toolbar button steals focus
   root.addEventListener("mousedown", function (e) {
@@ -1534,6 +2309,11 @@
     if (!b) return;
     var act = b.getAttribute("data-act");
     if (act === "modal-close") closeModal();
+    // Launch / Reminder / copy live in the modal, which sits outside #st-root
+    if (act === "launch-go") launchStudy(b.getAttribute("data-slug"), false);
+    if (act === "launch-save") launchStudy(b.getAttribute("data-slug"), true);
+    if (act === "remind") remindStudy(b.getAttribute("data-slug"));
+    if (act === "copy-public") copyLink(b.getAttribute("data-slug"));
     if (act === "new-mode") showNewStudyForm(b.getAttribute("data-mode"));
     if (act === "new-back") openNewStudy();
     if (act === "new-create") createFromWizard();
@@ -1788,19 +2568,58 @@
 
   // ------------------------------------------------------------ conjoint / settings
   function conjointTab() {
-    var cj = cur.cfg.conjoint;
-    var attrs = cj ? cj.attributes : [];
-    return '<div class="st-page-head"><h2>Conjoint design</h2><p>Define attributes with three levels each, then generate a balanced best-worst-safe design. ' +
-      "A <b>choice task</b> question is added to the last section if the study has none.</p></div>" +
-      '<div class="st-field"><label>Attributes <span class="st-opt">one per line: id | label | level 1 | level 2 | level 3 | higher_is_bad 0/1</span></label>' +
-      '<textarea id="f-attrs" style="min-height:140px;font-family:ui-monospace,monospace;font-size:12.5px">' +
-      (attrs.map(function (a) { return a.id + "|" + (a.label || a.id) + "|" + a.levels.join("|") + "|" + (a.higher_is_bad ? 1 : 0); }).join("\n") ||
-        "OS|Overall survival|no proven benefit|+3 months|+6 months|0") + "</textarea></div>" +
-      '<div class="st-grid2"><div class="st-field"><label>Choice tasks per respondent</label><input id="f-ntasks" type="number" value="' + (cj ? cj.n_tasks : 9) + '"></div>' +
-      '<div class="st-field"><label>Minimum seconds on each task <span class="st-opt">speeder guard</span></label><input id="f-dwell" type="number" data-set="conjoint_min_dwell" value="' + (cur.cfg.conjoint_min_dwell || 10) + '"></div></div>' +
-      '<div class="st-field"><label>Patient vignette shown with the choice tasks</label><textarea id="f-cvignette" data-set="vignette">' + esc((cur.cfg.conjoint_scene && cur.cfg.vignette) || cur.cfg.vignette || "") + "</textarea></div>" +
-      '<button class="st-btn on" data-act="genconj">Generate design</button>' +
-      (cj ? '<div class="st-note">Current design: <b>' + cj.n_tasks + " tasks</b> \u00D7 " + (cj.tasks && cj.tasks[0] ? cj.tasks[0].length : 3) + " alternatives over " + attrs.length + " attributes.</div>" : "");
+    var c = cur.cfg, cj = c.conjoint;
+    var qs = (c.questions || []).filter(function (x) { return x.type === "choice_task"; });
+    var head = '<div class="st-page-head"><h2>Conjoint design</h2><p>The experiment is authored on its ' +
+      '<b>Conjoint question</b> in Questions - this tab shows what that study will actually field.</p>' +
+      '<button class="st-btn" data-act="cj-open-q" type="button">Open the conjoint question \u2192</button></div>';
+    var dwell = '<div class="st-field" style="max-width:320px"><label>Minimum seconds on each task ' +
+      '<span class="st-opt">speeder guard</span></label><input id="f-dwell" type="number" data-set="1" value="' +
+      (c.conjoint_min_dwell == null ? 10 : c.conjoint_min_dwell) + '"></div>';
+    if (!qs.length) {
+      return head + '<div class="st-note">This study has no conjoint question yet. Add one from ' +
+        '<b>+ Add question</b> \u2192 Methodologies \u2192 Conjoint, then fill in its attributes and press ' +
+        '<b>Generate design</b>.</div>' + dwell;
+    }
+    if (!cj || !cj.tasks) {
+      return head + '<div class="st-note">No design has been generated yet. Open the conjoint question ' +
+        '(' + esc(qs[0].id) + '), fill in its attributes and levels, and press <b>Generate design</b>.</div>' + dwell;
+    }
+    var kpi = function (v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; };
+    var tasks = Array.isArray(cj.tasks) ? cj.tasks : Object.keys(cj.tasks).map(function (k) { return cj.tasks[k]; });
+    var nCards = tasks.length && tasks[0] ? tasks[0].length : (cj.n_alts || 0);
+    var html = head +
+      '<div class="st-kpis">' + kpi(tasks.length, "sets") + kpi(nCards, "cards per set") +
+      kpi((cj.attributes || []).length, "attributes") +
+      kpi(cj.has_opt_out === false ? "off" : "on", "allow \u201Cnone\u201D") + "</div>" + dwell +
+      '<div class="st-cj-sum"><div class="st-cj-attrs-head"><b>Attributes</b><span class="st-meta">' +
+      (cj.generated_at ? "generated " + esc(cj.generated_at) : "") + '</span></div>';
+    (cj.attributes || []).forEach(function (a, i) {
+      var looked = (cj.groups && cj.groups[a.id]) ? cj.groups[a.id].length : 0;
+      html += '<div class="st-cj-attr"><div class="st-cj-attr-top"><span class="st-seq">' + (i + 1) + '.</span>' +
+        '<b>' + esc(a.label || a.id) + '</b>' +
+        (a.higher_is_bad ? ' <span class="st-chip warn">higher is worse</span>' : "") +
+        ' <span class="st-meta">' + (a.levels || []).length + " levels" +
+        (a.group_inclusion ? " \u00B7 asked in " + looked + " of " + tasks.length + " sets" : " \u00B7 every set") +
+        "</span></div><div class=\"st-cj-levels\">" +
+        (a.levels || []).map(function (lv, li) {
+          return '<span class="st-cj-chip">' + esc(lv) +
+            ((a.images || [])[li] ? ' <span class="st-opt">img</span>' : "") + "</span>";
+        }).join("") + "</div></div>";
+    });
+    // the first design row, so it is obvious the design is real and not just a description
+    html += '</div><div class="st-field" style="margin-top:12px"><label>First set <span class="st-opt">as the ' +
+      'respondent sees it (order is reshuffled per respondent)</span></label>' +
+      (tasks[0] || []).map(function (alt, ai) {
+        var profile = alt && alt.levels !== undefined ? alt.levels : alt;
+        var rows = (cj.attributes || []).map(function (a, i2) {
+          var lv = Array.isArray(profile) ? profile[i2] : profile[a.id];
+          if (lv === null || lv === undefined) return "";
+          return "<div>" + esc(a.label || a.id) + ": <b>" + esc((a.levels || [])[lv]) + "</b></div>";
+        }).join("");
+        return '<div class="st-cj-setcard"><b>Card ' + (ai + 1) + "</b>" + rows + "</div>";
+      }).join("") + "</div>";
+    return html;
   }
   function settingsTab() {
     var c = cur.cfg, qc = c.qc || {}, m = c.metrics || {}, ai = qc.ai || {};
@@ -2053,6 +2872,28 @@
     if (act === "back") { flushSave(function () { history.replaceState(null, "", location.pathname + location.search); loadList(); }); }
     if (act === "status") setStatus(slug, b.getAttribute("data-status"), loadList);
     if (act === "setstatus") { if (b.classList.contains("on")) return; setStatus(cur.slug, b.getAttribute("data-status")); }
+    if (act === "media-add-quick") {
+      syncFromForm();
+      if (edTab !== "content") { edTab = "content"; renderEditorPane(); }
+      var mcard = document.getElementById("card-media");
+      if (mcard && mcard.scrollIntoView) mcard.scrollIntoView({ block: "nearest" });
+      var fi2 = $("[data-act=media-upload]");
+      if (fi2) fi2.click();
+      return;
+    }
+    if (act === "edtab") {
+      syncFromForm();
+      edTab = t.getAttribute("data-t") === "cond" ? "cond" : "content";
+      renderEditorPane();
+      return;
+    }
+    if (act === "cj-open-q") {
+      readSettings();
+      var qi = (cur.cfg.questions || []).findIndex(function (x) { return x.type === "choice_task"; });
+      tab = "questions"; renderEditor();
+      if (qi >= 0) selectQuestion(qi);
+      return;
+    }
     if (act === "tab-back") { if (tab === "settings" || tab === "conjoint") readSettings(); tab = "questions"; renderEditor(); return; }
     if (act === "sopts") { var mn = document.getElementById("st-sopts"); if (mn) mn.hidden = !mn.hidden; return; }
     if (act === "so-settings") { closeSopts(); tab = "settings"; renderEditor(); }
@@ -2081,11 +2922,30 @@
     if (act === "so-title") { closeSopts(); openTitleLang(); }
     if (act === "so-del") { closeSopts(); if (confirm("Delete study /" + cur.slug + " and all of its responses? This cannot be undone.")) api("/api/studio/delete", { slug: cur.slug }).then(function () { cur = null; loadList(); }); }
     if (act === "dup") {
-      api("/api/studio/study?slug=" + slug).then(function (s) {
-        var cfg = JSON.parse(JSON.stringify(s.cfg)); cfg.title = s.title + " (copy)";
-        api("/api/studio/save", { slug: "", title: cfg.title, cfg: cfg }).then(function (r) { toast("Duplicated as /" + r.slug); loadList(); });
+      api("/api/studio/duplicate", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Duplicated as /" + r.slug, "Open", function () { openEditor(r.slug); });
+        loadList();
       });
     }
+    if (act === "launch") openLaunchModal(slug);
+    if (act === "pause") {
+      api("/api/studio/pause", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Paused - nobody new can start; anyone mid-survey can still finish");
+        loadList();
+      });
+    }
+    if (act === "relaunch") {
+      api("/api/studio/relaunch", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Live again at " + r.link);
+        loadList();
+      });
+    }
+    if (act === "remind") remindStudy(slug);
+    if (act === "outbox") openOutboxModal(slug);
+    if (act === "copy-public") copyLink(slug);
     if (act === "copylink") copyLink(slug || cur.slug);
     if (act === "del") {
       if (confirm("Delete study /" + slug + " and all of its responses? This cannot be undone.")) api("/api/studio/delete", { slug: slug }).then(function () { loadList(); });
@@ -2097,10 +2957,17 @@
       var url = "/survey/" + cur.slug + "/test";
       flushSave(function () { window.location.assign(url); });
     }
+    if (act === "outline-view") {
+      outlineView = b.getAttribute("data-v") === "thumbs" ? "thumbs" : "list";
+      try { localStorage.setItem(OUTLINE_VIEW_KEY, outlineView); } catch (err) { /* private mode */ }
+      renderOutline();
+      return;
+    }
     if (act === "addsec") {
       var n = cur.cfg.sections.length + 1, id = "S" + n;
       while (cur.cfg.sections.some(function (s) { return s.id === id; })) id += "b";
-      cur.cfg.sections.push({ id: id, title: "Section " + n, blurb: null });
+      // blank, not "Section 3" - section names are whatever the author types, never predefined
+      cur.cfg.sections.push({ id: id, title: "", blurb: null });
       markChanged(); renderOutline(); refreshSectionSelect();
       var inp = $('[data-sec-title="' + (cur.cfg.sections.length - 1) + '"]'); if (inp) { inp.focus(); inp.select(); }
     }
@@ -2157,25 +3024,119 @@
     if (act === "scene-down" && i < scenes().length - 1) { var L2 = scenes(), tmp2 = L2[i + 1]; L2[i + 1] = L2[i]; L2[i] = tmp2; renderScenePrev(); markChanged(); }
     if (act === "scene-clip-del") removeClip(i);
     if (act === "scene-thumb") { var s2 = document.querySelector('[data-scene-art="' + i + '"]'); if (s2) s2.focus(); }
+    // ---- conjoint experiment controls ----
+    if (act === "cj-attr-add") {
+      syncFromForm();
+      var cj = conjointOf(ed), n2 = cj.attributes.length + 1;
+      var nid = "A" + n2;
+      while (cj.attributes.some(function (a) { return a.id === nid; })) nid += "b";
+      cj.attributes.push({ id: nid, label: "", levels: ["", ""], images: [],
+                           higher_is_bad: false, group_inclusion: false, range: null });
+      rerenderCard("answers"); changed();
+      var nm = $('#st-editor .st-cj-attr:last-child [data-cj-field=label]'); if (nm) nm.focus();
+      return;
+    }
+    if (act === "cj-attr-del") {
+      syncFromForm();
+      var cja = conjointOf(ed).attributes;
+      if (cja.length <= 1) { toast("A conjoint experiment needs at least one attribute"); return; }
+      cja.splice(i, 1); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-attr-up" || act === "cj-attr-down") {
+      syncFromForm();
+      var cjL = conjointOf(ed).attributes, j2 = act === "cj-attr-up" ? i - 1 : i + 1;
+      if (j2 < 0 || j2 >= cjL.length) return;
+      var tmpA = cjL[j2]; cjL[j2] = cjL[i]; cjL[i] = tmpA;
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-level-add") {
+      syncFromForm();
+      var a3 = conjointOf(ed).attributes[i];
+      a3.levels.push(""); if (a3.images && a3.images.length) a3.images.push("");
+      rerenderCard("answers"); changed();
+      var li3 = $('#st-editor [data-cj-field=level][data-i="' + i + '"][data-l="' + (a3.levels.length - 1) + '"]');
+      if (li3) li3.focus();
+      return;
+    }
+    if (act === "cj-level-del") {
+      syncFromForm();
+      var a4 = conjointOf(ed).attributes[i];
+      if (a4.levels.length <= 2) { toast("An attribute needs at least two levels"); return; }
+      a4.levels.splice(Number(b.getAttribute("data-l")), 1);
+      if (a4.images && a4.images.length) a4.images.splice(Number(b.getAttribute("data-l")), 1);
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-level-img-del") {
+      syncFromForm();
+      var a5 = conjointOf(ed).attributes[i];
+      if (a5.images) a5.images[Number(b.getAttribute("data-l"))] = "";
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-range-apply") {
+      syncFromForm();
+      var a6 = conjointOf(ed).attributes[i], r = a6.range || {};
+      var from = r.from == null ? 1 : Number(r.from), to = r.to == null ? 5 : Number(r.to);
+      var step = Math.max(1, Number(r.step) || 1);
+      if (to < from) { toast("\u201CTo\u201D must be at least \u201CFrom\u201D"); return; }
+      var lv2 = [];
+      for (var v = from; v <= to && lv2.length < 12; v += step) lv2.push(String(v) + (r.suffix || ""));
+      if (lv2.length < 2) { toast("That range gives fewer than two levels"); return; }
+      a6.levels = lv2;
+      rerenderCard("answers"); changed(); toast("Built " + lv2.length + " levels");
+      return;
+    }
+    if (act === "cj-attr-json") {
+      syncFromForm();
+      var cj6 = conjointOf(ed);
+      askText("Attributes as a list", "One attribute per line: name | level | level | \u2026",
+        cj6.attributes.map(function (a) { return a.label + " | " + a.levels.join(" | "); }).join("\n"),
+        function (txt) {
+          var lines = String(txt || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+          var out = [];
+          lines.forEach(function (l) {
+            var p2 = l.split("|").map(function (x) { return x.trim(); });
+            if (p2.length < 3) return;                       // name + at least two levels
+            out.push({ id: "A" + (out.length + 1), label: p2[0], levels: p2.slice(1),
+                       images: [], higher_is_bad: false, group_inclusion: false, range: null });
+          });
+          if (!out.length) { toast("Each line needs a name and at least two levels"); return; }
+          cj6.attributes = out; rerenderCard("answers"); changed();
+        });
+      return;
+    }
     if (act === "genconj") {
-      var attrs = String(document.getElementById("f-attrs").value).split("\n").filter(function (l) { return l.trim(); }).map(function (l) {
-        var p = l.split("|");
-        return { id: p[0].trim(), label: (p[1] || p[0]).trim(), levels: [p[2] || "low", p[3] || "mid", p[4] || "high"], higher_is_bad: p[5] === "1" };
+      syncFromForm();
+      var spec = conjointOf(ed);
+      var bad = spec.attributes.filter(function (a) { return a.levels.length < 2 || a.levels.some(function (l) { return !String(l).trim(); }); });
+      if (bad.length) { toast("Every attribute needs at least two filled-in levels"); return; }
+      var attrs = spec.attributes.map(function (a, i) {
+        return { id: a.id || ("A" + (i + 1)), label: a.label || ("Attribute " + (i + 1)),
+                 levels: a.levels.slice(), images: a.images || [],
+                 higher_is_bad: !!a.higher_is_bad, group_inclusion: !!a.group_inclusion };
       });
-      api("/api/studio/make_conjoint", { attributes: attrs, n_tasks: Number(document.getElementById("f-ntasks").value) || 9, seed: 7 }).then(function (d) {
+      api("/api/studio/make_conjoint", { attributes: attrs, n_tasks: spec.n_sets || 6,
+                                         n_alts: spec.n_cards || 2, seed: 7 }).then(function (d) {
         if (d.error) { toast("Design failed: " + d.error); return; }
+        var ids = (d.attributes || []).map(function (a) { return a.id; });
         cur.cfg.conjoint = {
-          attributes: d.attributes.map(function (id) { return { id: id, levels: d.levels[id] }; }),
-          tasks: d.tasks.map(function (task) { return task.map(function (p, k) { return { alt_id: k + 1, levels: p }; }); }),
-          n_tasks: d.n_tasks, has_opt_out: true
+          // levels are stored positionally (same order as attributes), null where a
+          // group-inclusion attribute is hidden in that task - the shape the survey
+          // renderer, the CSV export and the seeded design all read.
+          attributes: d.attributes, tasks: d.tasks.map(function (task) {
+            return task.map(function (p, k) {
+              return { alt_id: k + 1, levels: ids.map(function (id) {
+                return p[id] === undefined || p[id] === null ? null : p[id]; }) };
+            });
+          }),
+          n_tasks: d.n_tasks, n_alts: d.n_alts, has_opt_out: spec.allow_none !== false,
+          title: spec.title || "", description_html: spec.description_html || "",
+          none_label: spec.none_label || "None of these",
+          groups: d.groups || {}, generated_at: d.generated_at || ""
         };
-        readSettings();
-        if (!cur.cfg.questions.some(function (q) { return q.type === "choice_task"; })) {
-          var q = qTemplate("choice_task", "CT1", cur.cfg.sections[cur.cfg.sections.length - 1].id);
-          q.vignette = cur.cfg.vignette; cur.cfg.questions.push(q);
-        }
-        markChanged(); renderTab();
-        toast("Design generated: " + d.n_tasks + " balanced tasks");
+        if (cur.cfg.vignette) ed.vignette = ed.vignette || cur.cfg.vignette;
+        markChanged();
+        rerenderCard("answers"); renderPreview();
+        toast("Design generated: " + d.n_tasks + " sets \u00D7 " + d.n_alts + " cards");
       });
     }
     if (act === "reset") {

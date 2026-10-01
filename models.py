@@ -67,6 +67,20 @@ CREATE TABLE IF NOT EXISTS answers (
     seconds REAL DEFAULT 0,
     PRIMARY KEY (respondent_id, question_id, item)
 );
+CREATE TABLE IF NOT EXISTS invites (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_slug TEXT NOT NULL,
+    email TEXT NOT NULL,
+    name TEXT DEFAULT '',
+    kind TEXT NOT NULL,
+    status TEXT NOT NULL,
+    error TEXT DEFAULT '',
+    link TEXT DEFAULT '',
+    token TEXT DEFAULT '',
+    created_at TEXT,
+    sent_at TEXT DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS ix_invites_study ON invites(study_slug, id);
 """
 
 # Databases created by the very first server had a global UNIQUE on respondent_code.
@@ -135,6 +149,7 @@ def close_db(_exc=None) -> None:
 
 
 def init_db(path: str | None = None) -> None:
+    """Create/upgrade the schema."""
     conn = connect(path)
     try:
         with conn:
@@ -202,16 +217,26 @@ class Study:
             "SELECT s.id, s.slug, s.title, s.status, s.updated_at, s.cfg, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id) AS n, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id AND "
-            "r.status='complete') AS c FROM studies s ORDER BY s.id").fetchall()
+            "r.status='complete') AS c, "
+            "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='sent') AS is_, "
+            "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='failed') AS if_, "
+            "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='queued') AS iq_ "
+            "FROM studies s ORDER BY s.id").fetchall()
         out = []
         for r in rows:
             cfg = json.loads(r["cfg"]) if r["cfg"] else {}
+            inv = cfg.get("invites") or {}
             out.append({"slug": r["slug"], "title": r["title"], "status": r["status"],
                         "updated_at": r["updated_at"], "started": r["n"], "complete": r["c"],
                         "study_id": f"STU-{r['id']:06d}",
                         "parent": cfg.get("parent") or "", "language": cfg.get("language") or "",
                         "group_name": cfg.get("group_name") or "",
-                        "parent_study": cfg.get("parent_study") or ""})
+                        "parent_study": cfg.get("parent_study") or "",
+                        "recipients": len(inv.get("recipients") or []),
+                        "reminders_sent": int(inv.get("reminders") or 0),
+                        "invites_sent": r["is_"] or 0, "invites_failed": r["if_"] or 0,
+                        "invites_queued": r["iq_"] or 0,
+                        "launched_at": inv.get("launched_at") or ""})
         return out
 
     @staticmethod
@@ -302,7 +327,7 @@ class Study:
 
     @staticmethod
     def set_status(slug: str, status: str) -> None:
-        if status not in ("draft", "live", "closed"):
+        if status not in ("draft", "live", "paused", "closed"):
             raise StudyError("bad status")
         conn = get_db()
         with write_lock, conn:
@@ -310,10 +335,83 @@ class Study:
                          (status, now(), slug))
 
     @staticmethod
+    def duplicate(slug: str) -> str:
+        """Copy a study (config and all) under a new slug. Returns the new slug.
+
+        The copy is a draft with its own recipient list and no respondents; uploaded media
+        and narration keep working because their URLs are rewritten onto the copy's slug.
+        """
+        src = Study.get(slug)
+        if not src:
+            raise StudyError("unknown study", 404)
+        taken = {r["slug"] for r in get_db().execute("SELECT slug FROM studies").fetchall()}
+        title = f"{src.title} (copy)"[:120]
+        base = re.sub(r"[^a-z0-9\-]+", "-", f"{slug}-copy").strip("-")[:36] or "copy"
+        new_slug, n = base, 2
+        while new_slug in taken:
+            new_slug = f"{base}-{n}"[:40]
+            n += 1
+        cfg = json.loads(json.dumps(src.cfg))          # deep copy
+        cfg.pop("parent", None)
+        cfg.pop("parent_study", None)
+        cfg.pop("invites", None)                       # a copy starts with a clean recipient list
+        text = json.dumps(cfg).replace(f"/media/{slug}/", f"/media/{new_slug}/") \
+                               .replace(f"/narration/{slug}/", f"/narration/{new_slug}/")
+        cfg = json.loads(text)
+        cfg["title"] = title
+        conn, ts = get_db(), now()
+        with write_lock, conn:
+            conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, updated_at) "
+                         "VALUES (?,?,?,?,?,?)", (new_slug, title, "draft", json.dumps(cfg), ts, ts))
+        return new_slug
+
+    @staticmethod
+    def add_invites(slug: str, rows: list[dict]) -> None:
+        """Append outbox rows (``{email, name, kind, status, error, link, token}``)."""
+        ts = now()
+        conn = get_db()
+        with write_lock, conn:
+            conn.executemany(
+                "INSERT INTO invites (study_slug, email, name, kind, status, error, link, token, "
+                "created_at, sent_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
+                [(slug, r.get("email", ""), r.get("name", ""), r.get("kind", "invite"),
+                  r.get("status", "queued"), r.get("error", ""), r.get("link", ""),
+                  r.get("token", ""), ts, ts if r.get("status") == "sent" else "")
+                 for r in rows])
+
+    @staticmethod
+    def invites_of(slug: str, limit: int = 500) -> list[dict]:
+        """The outbox, newest first."""
+        return [dict(r) for r in get_db().execute(
+            "SELECT * FROM invites WHERE study_slug=? ORDER BY id DESC LIMIT ?",
+            (slug, limit)).fetchall()]
+
+    @staticmethod
+    def completed_tokens(slug: str) -> set:
+        """Invite tokens whose respondent finished (or was screened out) the study."""
+        study = Study.get(slug)
+        if not study:
+            return set()
+        done = set()
+        for r in Respondent.for_study(study.id, "real"):
+            if r["status"] not in ("complete", "screened_out"):
+                continue
+            try:
+                emb = json.loads(r["embedded"] or "{}")
+            except ValueError:
+                emb = {}
+            if emb.get("rid"):
+                done.add(str(emb["rid"]))
+        return done
+
+    @staticmethod
     def delete_with_children(slug: str) -> None:
         for child in Study.children_of(slug):
             Study.delete(child.slug)
         Study.delete(slug)
+        conn = get_db()
+        with write_lock, conn:
+            conn.execute("DELETE FROM invites WHERE study_slug=?", (slug,))
 
     @staticmethod
     def delete(slug: str) -> None:

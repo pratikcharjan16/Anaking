@@ -210,14 +210,16 @@
 
   function taskSpeechText(step) {
     var q = step.q;
-    var alts = CONJOINT.tasks[String(step.taskId)];
+    var alts = taskAt(step.taskId);
     var t = "Choice task " + step.slot + " of " + step.total + ". Patient: " + q.vignette + ". ";
     alts.forEach(function (alt, i) {
-      t += "Treatment " + (i + 1) + ": " + CONJOINT.attributes.map(function (a, ai) {
-        return a.levels[alt.levels[ai]];
-      }).join("; ") + ". ";
+      var said = (CONJOINT.attributes || []).map(function (a, ai) {
+        var lv = altLevel(alt, a, ai);
+        return lv == null ? "" : (a.levels || [])[lv];
+      }).filter(function (v) { return v != null; });
+      t += "Treatment " + (i + 1) + ": " + said.join("; ") + ". ";
     });
-    t += "Or choose: " + q.opt_out_label + ".";
+    if (CONJOINT.has_opt_out !== false) t += "Or choose: " + q.opt_out_label + ".";
     return t;
   }
 
@@ -641,17 +643,6 @@
     if (bar) bar.style.width = pct + "%";
   }
 
-  function celebrate(title, sub, pts) {
-    var c = $("#celebrate");
-    $("#celebrate-title").textContent = title;
-    $("#celebrate-sub").textContent = sub;
-    $("#celebrate-pts").innerHTML = "&#9733; +" + pts + " insight points";
-    c.hidden = false;
-    addPoints(pts);
-    confetti();
-    $("#celebrate-next").onclick = function () { c.hidden = true; };
-  }
-
   function confetti(n) {
     var colors = ["#0b4f6c", "#12789e", "#7fd4f0", "#ffd166", "#1a7f4b"];
     n = n || 40;
@@ -705,8 +696,6 @@
   }
 
   function runExplainer(scenes, onDone) {
-    // never trap the respondent behind a celebration modal
-    $("#celebrate").hidden = true;
     var ov = $("#explainer");
     $("#ex-badge").textContent = scenes.length > 1 ? "Product profile" : "How the choices work";
     ov.hidden = false;
@@ -769,7 +758,7 @@
       if (q.type === "choice_task") {
         var order = (SESSION.task_order && SESSION.task_order.length)
           ? SESSION.task_order
-          : Object.keys(CONJOINT.tasks).map(Number);
+          : taskIds();
         order.forEach(function (tid, i) {
           steps.push({ kind: "task", taskId: tid, slot: i + 1, q: q, total: order.length });
         });
@@ -1244,17 +1233,43 @@
   // ---- conjoint as cards, with a minimum dwell gate ----
   var ATTR_ICON = { OS: "\u23F3", PFS12: "\uD83D\uDCC8", AE: "\u26A0\uFE0F", ROUTE: "\uD83D\uDC89",
                     CDX: "\uD83E\uDDEC", COST: "\uD83D\uDCB2", ACCESS: "\uD83C\uDFE5" };
-  function attrLabel(id) {
-    return { OS: "Median OS vs standard of care", PFS12: "12-month PFS",
-             AE: "Grade 3+ adverse events", ROUTE: "Administration",
-             CDX: "Companion diagnostic", COST: "Net 12-month cost",
-             ACCESS: "Payer access at month 1" }[id] || id;
+  // The design may carry its own labels (an author-defined attribute); fall back to the
+  // wording the seeded BEACON instrument uses, then to the raw id.
+  var ATTR_LABEL = { OS: "Median OS vs standard of care", PFS12: "12-month PFS",
+                     AE: "Grade 3+ adverse events", ROUTE: "Administration",
+                     CDX: "Companion diagnostic", COST: "Net 12-month cost",
+                     ACCESS: "Payer access at month 1" };
+  function attrLabel(attr) {
+    var id = typeof attr === "string" ? attr : (attr && attr.id);
+    var own = typeof attr === "object" && attr && String(attr.label || "").trim();
+    if (own && own !== id) return own;
+    return ATTR_LABEL[id] || id;
   }
+  // A generated design stores tasks as a list; the seeded one keys them by task number.
+  function taskAt(tid) {
+    if (!CONJOINT || !CONJOINT.tasks) return [];
+    var t = CONJOINT.tasks;
+    if (Array.isArray(t)) return t[Number(tid)] || [];
+    return t[String(tid)] || [];
+  }
+  function taskIds() {
+    var t = (CONJOINT && CONJOINT.tasks) || [];
+    return Array.isArray(t) ? t.map(function (_, i) { return i; }) : Object.keys(t).map(Number);
+  }
+  // The level an alternative shows for one attribute. Designs store levels positionally
+  // (aligned to CONJOINT.attributes, null when a group-inclusion attribute is hidden in this
+  // task) or keyed by attribute id; both are read here so a design always renders.
+  function altLevel(alt, attr, ai) {
+    var lv = (alt && alt.levels) || alt || [];
+    if (!Array.isArray(lv) && typeof lv === "object") return lv[attr.id];
+    return lv[ai];
+  }
+  // kept in step with profile_levels() in core/conjoint.py
 
   function renderConjoint(step) {
     var q = step.q;
     var tid = step.taskId;
-    var alts = CONJOINT.tasks[String(tid)];
+    var alts = taskAt(tid);
     var positions = (SESSION.alt_positions && SESSION.alt_positions[String(tid)]) ||
                     [1, 2, 3];
     var chosen = getAns(q.id, "T" + tid);
@@ -1275,11 +1290,21 @@
 
       var rows = el("div", "alt-rows");
       CONJOINT.attributes.forEach(function (attr, ai) {
+        // a group-inclusion attribute is absent from some tasks - the design stores null for it
+        var lv = altLevel(alt, attr, ai);
+        if (lv === null || lv === undefined) return;
         var r = el("div", "alt-row");
         r.appendChild(el("span", "ico", ATTR_ICON[attr.id] || "\u2022"));
         var t = el("span", "txt");
-        t.appendChild(el("span", "lbl", attrLabel(attr.id)));
-        t.appendChild(document.createTextNode(attr.levels[alt.levels[ai]]));
+        t.appendChild(el("span", "lbl", attrLabel(attr)));
+        var val = (attr.levels || [])[lv];
+        var pic = (attr.images || [])[lv];
+        if (pic) {
+          var im = el("img", "alt-level-img");
+          im.src = pic; im.alt = "";
+          r.appendChild(im);
+        }
+        t.appendChild(document.createTextNode(val == null ? "" : String(val)));
         r.appendChild(t);
         rows.appendChild(r);
       });
@@ -1289,23 +1314,26 @@
         setAns(q.id, "T" + tid, altId);
         cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
         card.classList.add("sel");
-        optout.classList.remove("sel");
+        if (optout) optout.classList.remove("sel");   // there is no opt-out card when Allow "none" is off
         hideErr();
       });
       cards.appendChild(card);
     });
     wrap.appendChild(cards);
 
-    var optout = el("div", "optout-card" + (String(chosen) === "0" ? " sel" : ""));
-    optout.appendChild(el("span", "alt-tick", "&#10003;"));
-    optout.appendChild(el("span", null, String(q.opt_out_label)));
-    optout.addEventListener("click", function () {
-      setAns(q.id, "T" + tid, 0);
-      optout.classList.add("sel");
-      cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
-      hideErr();
-    });
-    wrap.appendChild(optout);
+    // "None of these" is only offered when the experiment allows it (Allow "none" in Studio)
+    if (CONJOINT.has_opt_out !== false) {
+      var optout = el("div", "optout-card" + (String(chosen) === "0" ? " sel" : ""));
+      optout.appendChild(el("span", "alt-tick", "&#10003;"));
+      optout.appendChild(el("span", null, String(q.opt_out_label || CONJOINT.none_label || "None of these")));
+      optout.addEventListener("click", function () {
+        setAns(q.id, "T" + tid, 0);
+        optout.classList.add("sel");
+        cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
+        hideErr();
+      });
+      wrap.appendChild(optout);
+    }
 
     // dwell gate: the respondent must actually look at the profiles. Started by render()
     // after the nav exists, otherwise there is a brief window where Next is still clickable.
@@ -1334,7 +1362,7 @@
       var pct = Math.min(1, spent / MIN_DWELL);
       fg.style.strokeDashoffset = String(56.5 * (1 - pct));
       if (left > 0) {
-        txt.textContent = "Take a moment to weigh all seven characteristics \u2014 " +
+        txt.textContent = "Take a moment to weigh the options \u2014 " +
           Math.ceil(left) + "s before you can continue";
         node.classList.remove("done");
         lockNext(true);
@@ -1394,9 +1422,10 @@
   }
 
   function renderQuestion(q) {
-    var sec = sectionOf(q);
+    // Which section a question sits in (screeners, main, ...) is research-team information and
+    // is never shown to the respondent - not on the card, not in the progress strip. Section
+    // titles stay visible in the Studio outline, where the team needs them.
     var card = el("div", "card");
-    card.appendChild(el("span", "section-tag", String(sec.title)));
 
     if (q.comprehension) {
       card.appendChild(el("div", "cc-banner",
@@ -1529,7 +1558,7 @@
         return false;
       }
       if (dwellTimer) {
-        showErr("Please take a moment to review all seven characteristics before continuing.");
+        showErr("Please take a moment to review the options before continuing.");
         return false;
       }
       return true;
@@ -1605,6 +1634,7 @@
     card.appendChild(el("div", "summary", "Screened out at <code>" + steps[cur].q.id +
       "</code> &middot; reference <code>" + SESSION.respondent_code + "</code>"));
     show(card, true);
+    setAnswering(false);                           // project bar returns on the closing screen
     $("#progress-wrap").style.display = "none";
     $("#hud").hidden = true;
     $("#tpp-panel").hidden = true;
@@ -1622,6 +1652,12 @@
   }
 
   // ============================================================ navigation
+  // ============================================================ respondent chrome
+  // The project information (brand, study name, respondent code, timer), the gamification HUD and
+  // the progress strip are shown on the welcome and closing screens only.  They are hidden for as
+  // long as a question is on screen, so nothing competes with it.  See `.answering` in survey.css.
+  function setAnswering(on) { document.body.classList.toggle("answering", !!on); }
+
   function show(node, replace) {
     var app = $("#app");
     app.innerHTML = "";
@@ -1722,6 +1758,7 @@
 
   function render() {
     var st = steps[cur];
+    setAnswering(true);
     stopNarration();
     pendingDwell = null;
     if (dwellTimer) { clearInterval(dwellTimer); dwellTimer = null; }
@@ -1737,11 +1774,8 @@
     if (audioPref === "all" && soundOn) setTimeout(function(){ speak(st.kind === "task" ? taskSpeechText(st) : qSpeechText(st.q)); }, 250);
     if (pendingDwell) { startDwell(pendingDwell); pendingDwell = null; }
 
-    var pct = Math.round((cur / steps.length) * 100);
-    setProgress(pct);
-    $("#progress-label").innerHTML =
-      "<span>" + sectionOf(st.q).title + "</span><span>Step " + (cur + 1) + " of " +
-      steps.length + "</span>";
+    // the bar fills silently: no section name, no step counter next to it
+    setProgress(Math.round((cur / steps.length) * 100));
 
     var inTPP = st.q.section === "C" || st.q.section === "D";
     $("#tpp-panel").hidden = !inTPP;
@@ -1772,12 +1806,9 @@
 
   function onLeaveSection(prevSec, nextSec) {
     if (!prevSec || prevSec.id === nextSec.id) return;
-    var pts = SECTION_POINTS[prevSec.id] || 50;
-    // sections that open with a narrated walkthrough get the points without a second overlay,
-    // so the respondent is never shown two stacked modals
-    if (nextSec.id === "C" || nextSec.id === "D") { addPoints(pts); return; }
-    celebrate(prevSec.title || "Section complete",
-      "You have finished the " + prevSec.title.toLowerCase() + " section.", pts);
+    // The section bonus is still earned and the HUD still ticks up, but there is no between-section
+    // popup any more: once a section ends the respondent goes straight on to the next question.
+    addPoints(SECTION_POINTS[prevSec.id] || 50);
   }
 
   // show-if logic: a step is visible when its question's rules pass against current answers
@@ -1850,6 +1881,7 @@
             "your record marked for review - the rest of your answers are unaffected."));
         }
         show(card, true);
+        setAnswering(false);                     // project bar returns on the closing screen
         $("#progress-wrap").style.display = "none";
         $("#hud").hidden = true;
         $("#tpp-panel").hidden = true;
@@ -2060,7 +2092,9 @@
       CONJOINT = spec.conjoint;
       NARR = spec.narration;
       SCENES = spec.explainer_scenes;
-      MIN_DWELL = spec.conjoint_min_dwell || 12;
+      // 0 is a valid setting (no gate) - only an absent value falls back to the default
+      MIN_DWELL = spec.conjoint_min_dwell === undefined || spec.conjoint_min_dwell === null
+                  ? 12 : Number(spec.conjoint_min_dwell);
       window.BEACON_CONJOINT_SCENE = spec.conjoint_scene;
 
       // Default is silent; a previous explicit preference may be restored.
@@ -2090,6 +2124,8 @@
           answers = prog.answers || {};
           if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
           afterSession(false);
+        } else if (STUDY.paused) {
+          showPaused();                      // nobody new starts while the study is paused
         } else {
           startFresh();
         }
@@ -2123,11 +2159,32 @@
                              language: SPEC.render_language || LANG || "",
                              embedded: readEmbedded() })
     }).then(function (r) { return r.json(); }).then(function (s) {
+      if (s && s.paused) { showPaused(); return; }
+      if (!s || !s.session_id) {
+        $("#app").innerHTML = '<div class="card"><h1>Unable to start</h1><p>' +
+          (s && s.error ? s.error : "The survey could not be started. Please reload.") + "</p></div>";
+        return;
+      }
       SESSION = s;
       answers = {};
       store("session_id", s.session_id);
       afterSession(true);
     });
+  }
+
+  // A paused study keeps its door closed to new respondents, but someone already answering
+  // can reload this page and resume from their saved progress.
+  function showPaused() {
+    document.body.classList.remove("answering");
+    $("#app").innerHTML =
+      '<div class="card paused-card"><h1>This study is paused</h1>' +
+      "<p>The research team has temporarily stopped new responses. Thank you for your interest - " +
+      "please try again later.</p>" +
+      '<p class="paused-resume">Already taking part? <a href="' + location.pathname +
+      '">Continue where you left off</a>.</p>' +
+      '<p class="paused-team">Part of the team? <a href="/survey/' + STUDY.slug +
+      '/test">Open it in test mode</a> or find it in the <a href="/studio/#' + STUDY.slug +
+      '">Studio</a>.</p></div>';
   }
 
   function afterSession(waitForClick) {

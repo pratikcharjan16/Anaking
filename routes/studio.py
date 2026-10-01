@@ -9,8 +9,15 @@ API (used by static/js/studio.js)
     GET  /api/studio/study?slug=           one study incl. config
     GET  /api/studio/analysis?study=       quick analysis aggregates
     POST /api/studio/save                  create or update {slug?, title, cfg}
-    POST /api/studio/status                {slug, status: draft|live|closed}
+    POST /api/studio/status                {slug, status: draft|live|paused|closed}
     POST /api/studio/delete                {slug}
+    POST /api/studio/duplicate             {slug} -> {slug, title}   (a full copy, as a draft)
+    POST /api/studio/launch                {slug, recipients, subject?, message?} -> invite summary
+    POST /api/studio/pause                 {slug}   (new starts stop, in-progress carry on)
+    POST /api/studio/relaunch              {slug}
+    POST /api/studio/remind                {slug, subject?, message?} -> reminder summary
+    GET  /api/studio/invites?study=        recipients, outbox and what is still pending
+    GET  /api/studio/invites.csv?study=    the outbox as a download
     POST /api/studio/make_conjoint         {attributes, n_tasks, seed} -> design
     POST /api/studio/narration?study=      multipart upload of a scene clip -> {clip, src, seconds}
     POST /api/studio/narration/delete      {study, clip}
@@ -29,10 +36,13 @@ import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
 
+from datetime import datetime
+
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
 
 from core.conjoint import make_conjoint
+from core import mailer
 from core.i18n import (LANGUAGES, coverage, default_language, extract_strings,
                        valid_language)
 LANGUAGES_MAP = {c: {"name": n, "native": nv, "dir": d} for c, n, nv, d in LANGUAGES}
@@ -133,6 +143,239 @@ def delete():
         if slug and os.path.isdir(folder):
             shutil.rmtree(folder, ignore_errors=True)
     return jsonify({"ok": True})
+
+
+MAX_RECIPIENTS = 500          # one launch should not be able to mail a whole country by accident
+MAX_REMINDERS = 2             # "Increase Reminders (2 left)" in the reference builder
+EMAIL_RE = re.compile(r"^[^@\s,;<>]{1,64}@[^@\s,;<>]{1,190}\.[A-Za-z]{2,}$")
+
+
+def _recipients(raw) -> tuple[list[dict], list[str]]:
+    """Normalise ``["a@x.com, Dr A", {email,name}, …]`` into unique recipients + rejects."""
+    out, seen, bad = [], set(), []
+    for item in (raw if isinstance(raw, list) else str(raw or "").splitlines()):
+        if isinstance(item, dict):
+            email, name = str(item.get("email") or ""), str(item.get("name") or "")
+        else:
+            text = str(item or "").strip()
+            email, _, name = text.partition(",")
+            email, name = email.strip(), name.strip()
+        if not email:
+            continue
+        if not EMAIL_RE.match(email) or len(email) > 254:
+            bad.append(email[:80])
+            continue
+        key = email.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append({"email": email, "name": name[:80]})
+    return out[:MAX_RECIPIENTS], bad
+
+
+def _public_link(slug: str, token: str = "", origin: str = "") -> str:
+    base = (origin or "").rstrip("/")
+    link = f"{base}/survey/{slug}"
+    return f"{link}?rid={token}" if token else link
+
+
+def _send(kind: str, slug: str, study, recipients: list[dict], subject: str, message: str,
+          origin: str, tokens: dict | None = None) -> dict:
+    """Send (or queue) one mail per recipient and write the outbox. Returns the summary."""
+    tokens = tokens or {}
+    settings = mailer.smtp_settings()
+    subject = subject.strip() or mailer.invite_subject(study.title, kind)
+    rows, sent, failed = [], 0, 0
+    for r in recipients:
+        token = tokens.get(r["email"].lower()) or secrets.token_urlsafe(8)
+        link = _public_link(slug, token, origin)
+        body = mailer.invite_body(study.title, link, message, kind)
+        status, err = "queued", ""
+        if settings:
+            try:
+                mailer.send_mail(r["email"], subject, body, settings)
+                status, sent = "sent", sent + 1
+            except mailer.MailError as e:
+                status, err, failed = "failed", str(e)[:300], failed + 1
+        rows.append({"email": r["email"], "name": r.get("name", ""), "kind": kind,
+                     "status": status, "error": err, "link": link, "token": token})
+    Study.add_invites(slug, rows)
+    return {"sent": sent, "failed": failed, "queued": len(rows) - sent - failed,
+            "total": len(rows), "smtp": bool(settings)}
+
+
+def _invite_state(study, rows_only: bool = False) -> dict:
+    """Everything the Actions buttons and the Launch/Reminder/Outbox modals need."""
+    slug = study.slug
+    inv = study.cfg.get("invites") or {}
+    done = Study.completed_tokens(slug)
+    outbox = Study.invites_of(slug)
+    first_invite = {}
+    for row in reversed(outbox):                       # oldest invite wins for the token
+        if row["kind"] == "invite":
+            first_invite.setdefault(row["email"].lower(), row)
+    recipients = []
+    for r in inv.get("recipients") or []:
+        row = first_invite.get(str(r.get("email", "")).lower()) or {}
+        token = row.get("token") or ""
+        recipients.append({"email": r.get("email", ""), "name": r.get("name", ""),
+                           "invited": bool(row), "link": row.get("link") or "",
+                           "token": token,          # so a reminder reuses the same personal link
+                           "completed": bool(token) and token in done})
+    sent = sum(1 for r in outbox if r["status"] == "sent")
+    failed = sum(1 for r in outbox if r["status"] == "failed")
+    queued = sum(1 for r in outbox if r["status"] == "queued")
+    reminders = int(inv.get("reminders") or 0)
+    state = {
+        "slug": slug, "status": study.status, "title": study.title,
+        "link": _public_link(slug, "", request.host_url if request else ""),
+        "launched_at": inv.get("launched_at") or "",
+        "subject": inv.get("subject") or mailer.invite_subject(study.title),
+        "message": inv.get("message") or "",
+        "recipients": recipients,
+        "outbox": [] if rows_only else outbox,
+        "summary": {"recipients": len(recipients), "sent": sent, "failed": failed,
+                    "queued": queued, "completed": sum(1 for r in recipients if r["completed"]),
+                    "pending": sum(1 for r in recipients if not r["completed"])},
+        "reminders_sent": reminders,
+        "reminders_left": max(0, MAX_REMINDERS - reminders),
+        "max_reminders": MAX_REMINDERS,
+        "smtp": mailer.smtp_status(),
+    }
+    return state
+
+
+@bp.post("/api/studio/duplicate")
+def duplicate():
+    slug = json_body().get("slug") or ""
+    try:
+        new_slug = Study.duplicate(slug)
+    except StudyError as e:
+        return error(e)
+    return jsonify({"ok": True, "slug": new_slug, "title": Study.get(new_slug).title})
+
+
+@bp.get("/api/studio/invites")
+def invites():
+    study = Study.get(study_arg())
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    return jsonify(_invite_state(study))
+
+
+@bp.get("/api/studio/invites.csv")
+def invites_csv():
+    """The outbox as a spreadsheet: email, kind, status, link, when."""
+    import csv
+    from io import StringIO
+    slug = study_arg()
+    if not Study.get(slug):
+        return jsonify({"error": "unknown study"}), 404
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["email", "name", "kind", "status", "error", "link", "created_at", "sent_at"])
+    for r in Study.invites_of(slug):
+        w.writerow([r["email"], r["name"], r["kind"], r["status"], r["error"], r["link"],
+                    r["created_at"], r["sent_at"]])
+    return attachment(buf.getvalue().encode("utf-8"), "text/csv", f"{slug}-invites.csv")
+
+
+@bp.post("/api/studio/launch")
+def launch():
+    """Set the study live, keep the recipient list and send the invites (outbox always)."""
+    body = json_body()
+    slug = body.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    recipients, bad = _recipients(body.get("recipients"))
+    if not recipients and body.get("require_recipients"):
+        return jsonify({"error": "Add at least one email address to send invites to."}), 400
+    subject = str(body.get("subject") or "")
+    message = str(body.get("message") or "")
+    cfg = study.cfg
+    inv = cfg.get("invites") or {}
+    if recipients:
+        inv["recipients"] = recipients
+    inv["subject"] = subject[:200]
+    inv["message"] = message[:4000]
+    inv["launched_at"] = datetime.now().strftime("%Y-%m-%dT%H:%M:%S")   # ISO, so the card can say "just now"
+    cfg["invites"] = inv
+    # a tracked invite link only counts as completed when the study stores the token
+    embedded = cfg.get("embedded") or []
+    if recipients and not any(e.get("name") == "rid" for e in embedded):
+        embedded.append({"name": "rid"})
+        cfg["embedded"] = embedded
+    if not body.get("draft_only"):
+        study.set_status(slug, "live")
+    Study.save({"slug": slug, "title": study.title, "cfg": cfg})
+    result = _send("invite", slug, study, inv.get("recipients") or [], subject, message,
+                   request.host_url)
+    # the full invite state first, then the send summary on top: `smtp` must stay the boolean
+    # ("did we really email them?") the buttons read, not the connection details
+    out = _invite_state(Study.get(slug))
+    out.update({"ok": True, "rejected": bad, "status": out["status"], "link": out["link"],
+                "sent": result["sent"], "failed": result["failed"], "queued": result["queued"],
+                "total": result["total"], "smtp": result["smtp"]})
+    return jsonify(out)
+
+
+@bp.post("/api/studio/remind")
+def remind():
+    """Nudge the recipients who have not finished yet (capped, like the reference builder)."""
+    body = json_body()
+    slug = body.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    state = _invite_state(study)
+    if state["reminders_left"] <= 0:
+        return jsonify({"error": f"All {MAX_REMINDERS} reminders have already been sent."}), 400
+    pending = [r for r in state["recipients"] if not r["completed"]]
+    if not pending:
+        return jsonify({"error": "Everyone on the list has already taken part."}), 400
+    subject = str(body.get("subject") or (study.cfg.get("invites") or {}).get("subject") or "")
+    message = str(body.get("message") or (study.cfg.get("invites") or {}).get("message") or "")
+    tokens = {r["email"].lower(): r["token"] for r in pending if r.get("token")}
+    result = _send("reminder", slug, study, [{"email": r["email"], "name": r["name"]} for r in pending],
+                   subject, message, request.host_url, tokens)
+    cfg = dict(study.cfg)
+    inv = cfg.get("invites") or {}
+    inv["reminders"] = int(inv.get("reminders") or 0) + 1
+    inv["subject"] = subject[:200]
+    inv["message"] = message[:4000]
+    cfg["invites"] = inv
+    Study.save({"slug": slug, "title": study.title, "cfg": cfg})
+    state = _invite_state(Study.get(slug))
+    state.update({"ok": True, "reminded": len(pending), "sent": result["sent"],
+                  "failed": result["failed"], "queued": result["queued"],
+                  "total": result["total"], "smtp": result["smtp"]})
+    return jsonify(state)
+
+
+@bp.post("/api/studio/pause")
+def pause():
+    """Pause a live study: no new respondents, anyone already answering can still finish."""
+    slug = json_body().get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    if study.status != "live":
+        return jsonify({"error": "Only a live study can be paused."}), 400
+    study.set_status(slug, "paused")
+    return jsonify({"ok": True, "status": "paused"})
+
+
+@bp.post("/api/studio/relaunch")
+def relaunch():
+    slug = json_body().get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    if study.status not in ("paused", "closed", "draft"):
+        return jsonify({"error": "This study is already live."}), 400
+    study.set_status(slug, "live")
+    return jsonify({"ok": True, "status": "live", "link": _public_link(slug, "", request.host_url)})
 
 
 @bp.get("/api/studio/languages")
@@ -321,12 +564,20 @@ def autotranslate():
 
 @bp.post("/api/studio/make_conjoint")
 def conjoint():
+    """Build a design from the attributes authored on the conjoint question.
+
+    ``n_tasks`` is the number of choice sets and ``n_alts`` the number of cards per set.
+    """
     body = json_body()
+    n_tasks = max(1, min(60, int(body.get("n_tasks", 9) or 9)))
+    n_alts = max(2, min(6, int(body.get("n_alts", 3) or 3)))
     try:
-        return jsonify(make_conjoint(body.get("attributes", []), int(body.get("n_tasks", 9)),
-                                     int(body.get("seed", 1))))
+        design = make_conjoint(body.get("attributes", []), n_tasks,
+                               int(body.get("seed", 1)), n_alts)
     except (KeyError, ValueError, TypeError, ZeroDivisionError, IndexError) as e:
         return jsonify({"error": str(e)}), 400
+    design["generated_at"] = stamp()
+    return jsonify(design)
 
 
 # ---------------------------------------------------------------- narration clips

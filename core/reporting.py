@@ -8,7 +8,7 @@ import json
 import time
 
 from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
-from .conjoint import task_list
+from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
 
 
@@ -161,10 +161,13 @@ def conjoint_long(records: list, cfg: dict) -> tuple:
                 continue
             picked = int(picked)
             for a_i, alt in enumerate(tl[t_i - 1], start=1):
-                profile = alt["levels"] if isinstance(alt, dict) else alt
+                profile = profile_levels(alt, attrs)
+                shown = [profile[k] for k in attrs]
                 rows.append([rec["respondent_code"], rec["is_test_label"], t_i, a_i, 0,
-                             int(picked == a_i)] + [int(p) + 1 for p in profile] +
-                            [levels[attrs[k]][int(profile[k])] for k in range(len(attrs))])
+                             int(picked == a_i)] +
+                            [(int(p) + 1 if p is not None else "") for p in shown] +
+                            [(levels[k][int(profile[k])] if profile[k] is not None else "")
+                             for k in attrs])
             rows.append([rec["respondent_code"], rec["is_test_label"], t_i, 0, 1,
                          int(picked == 0)] + [""] * (2 * len(attrs)))
     return headers, rows
@@ -442,10 +445,13 @@ def analysis_for(records: list, cfg: dict) -> dict:
                     if picked in (None, ""):
                         continue
                     for a_i, alt in enumerate(task, 1):
-                        profile = alt["levels"] if isinstance(alt, dict) else alt
+                        profile = profile_levels(alt, [a["id"] for a in design["attributes"]])
                         chosen = int(picked) == a_i
-                        for ai, attr in enumerate(design["attributes"]):
-                            key = (attr["id"], int(profile[ai]))
+                        for attr in design["attributes"]:
+                            lv = profile[attr["id"]]
+                            if lv is None:            # group-inclusion attribute hidden here
+                                continue
+                            key = (attr["id"], int(lv))
                             lvl_seen[key] = lvl_seen.get(key, 0) + 1
                             if chosen:
                                 lvl_chosen[key] = lvl_chosen.get(key, 0) + 1
