@@ -32,7 +32,10 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   check("three-pane workspace renders", $("#st-outline") && $("#st-editor") && $("#st-previewpane"));
   check("outline lists both sections and all questions", $$(".st-sec").length===2 && $$(".st-qi").length===3);
   check("first question auto-selected and its editor shown", $(".st-qi.on .st-qi-id").textContent==="Q1" && $("#f-stem-rich").textContent==="Your specialty?");
-  check("editor is one scrolling form with cards (no tabs)", $$(".st-ecard").length===6 && !$("[data-edtab]"));
+  check("editor is one scrolling form of cards on the Content tab",
+    $$(".st-ecard").length===5 && !!$("#card-answers") && !!$("#card-display"));
+  check("the reference tabs are on the editor, not the top bar",
+    $$(".st-etab").length===3 && !$(".st-tab[data-tab=content]"));
   check("status segment + save state + autosave switch in bar", $(".st-status-btn.on.draft") && $("#st-savestate .st-ss.ok") && $("#st-autosave").checked);
   check("preview shows Q1", /Your specialty/.test($("#st-prev-body").textContent));
 
@@ -77,15 +80,36 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   $$("[data-act=set-layout]").find(b=>b.getAttribute("data-v")==="inline").click(); await sleep(20);
   check("layout segment applies", $("#st-prev-body .opts.opt-inline"));
 
+  // --- question editor tabs: Content & Settings / Conditional Display + PREVIEW
+  check("the editor offers the reference tab strip",
+    $$(".st-etab").length===3 && /Content & Settings/.test($$(".st-etab")[0].textContent) &&
+    /Conditional Display/.test($$(".st-etab")[1].textContent) && /PREVIEW/.test($$(".st-etab")[2].textContent),
+    $$(".st-etab").map(b=>b.textContent).join(" | "));
+  check("Content & Settings is the tab we land on", $$(".st-etab")[0].classList.contains("on") && !!$("#card-answers"));
+  check("the conditions live on the Conditional Display tab", !$("#card-logic"));
+  $$(".st-etab")[1].click(); await sleep(60);
+  check("switching tabs swaps the cards", $$(".st-etab")[1].classList.contains("on") && !!$("#card-logic") && !$("#card-answers"));
+  $$(".st-etab")[0].click(); await sleep(60);
+  check("and switching back restores the content cards", !!$("#card-answers") && !$("#card-logic"));
+
   // --- logic card: add a rule on Q2 referencing Q1
+  $$(".st-etab")[1].click(); await sleep(60);
   $("[data-act=rule-add]").click(); await sleep(30);
   check("condition row added with plain-English connector", $$("#f-rules .st-rule").length===1 && /when/.test($(".st-rule-no").textContent) && /Show this question/.test($(".st-logic-intro").textContent));
   check("logic badge in outline + card marker", /logic/.test($$(".st-qi")[1].textContent) && $("#card-logic .st-dot"));
+  $$(".st-etab")[1].click(); await sleep(60);            // re-render so the tab count is fresh
+  check("the Conditional Display tab shows how many rules are on",
+    ($$(".st-etab")[1].querySelector(".st-count")||{}).textContent==="1");
   check("preview evaluates rule against sample answers", /SHOWN|HIDDEN/.test(($("#sif-result")||{}).textContent||""));
 
   // --- change type via header select (Q2 multi -> single keeps options)
+  $$(".st-etab")[0].click(); await sleep(60);
+  check("the answer card is back after leaving Conditional Display", !!$("#card-answers"));
   const ty=$("#f-type"); ty.value="single_select"; fire(ty,"change"); await sleep(30);
-  check("type change keeps options & logic", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && $$("#f-rules .st-rule").length===1 && $(".st-qi.on .st-qi-ic").textContent==="\u25C9");
+  check("type change keeps options", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && $(".st-qi.on .st-qi-ic").textContent==="\u25C9");
+  $$(".st-etab")[1].click(); await sleep(60);
+  check("type change keeps the logic rule", $$("#f-rules .st-rule").length===1, $$("#f-rules .st-rule").length);
+  $$(".st-etab")[0].click(); await sleep(60);
 
   // --- add question via type picker
   $$("[data-act=qadd]")[1].click(); await sleep(20);

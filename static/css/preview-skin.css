@@ -373,6 +373,9 @@
 .survey-skin h2.stem li,.survey-skin .help li{margin:2px 0}
 .survey-skin h2.stem p,.survey-skin .help p{margin:0 0 6px}
 .survey-skin h2.stem mark,.survey-skin .help mark,.survey-skin .opt mark{padding:0 3px;border-radius:3px}
+.survey-skin h2.stem table,.survey-skin .help table{border-collapse:collapse;margin:8px 0;font-size:13.5px;font-weight:500}
+.survey-skin h2.stem table td,.survey-skin h2.stem table th,.survey-skin .help table td,.survey-skin .help table th{border:1px solid var(--line);
+  padding:5px 10px;text-align:left}
 .survey-skin .qmedia{margin:6px 0 16px}
 .survey-skin .qmedia img,.survey-skin .qmedia video{max-width:100%;border-radius:10px;border:1px solid var(--line);display:block}
 .survey-skin .qmedia-center img,.survey-skin .qmedia-center video{margin:0 auto}

@@ -1,5 +1,6 @@
-/* jsdom check of the Studio outline: default sections (Screeners / Main), adding and renaming
-   sections, the per-question Title under the ID, and the list <-> thumbnails view switch.
+/* jsdom check of the Studio outline: a new study starts with one section the author names
+   (there are no predefined section names), adding and naming sections, the per-question
+   Title under the ID, and the list <-> thumbnails view switch.
    Needs the server on :8000 and jsdom.
    node scripts/dom/studio_sections_test.js */
 let JSDOM; try { ({ JSDOM } = require("jsdom")); } catch (e) { ({ JSDOM } = require("/tmp/node_modules/jsdom")); }
@@ -26,15 +27,17 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
   const fire=(el,type)=>el.dispatchEvent(new w.Event(type,{bubbles:true}));
   const click=el=>el.dispatchEvent(new w.MouseEvent("click",{bubbles:true,cancelable:true}));
 
-  // ---------- a brand new study starts with Screeners + Main ----------
+  // ---------- a brand new study starts with one section the author names ----------
   click($('[data-act="new"]')); await sleep(60);
   click($('[data-act="new-mode"][data-mode="scratch"]')); await sleep(60);
   check("new-study form offers a Study title", !!$("#ns-title"));
   click($('[data-act="new-create"]')); await sleep(1100);          // creates + opens the editor
   const secTitles=$$(".st-sec-head input").map(i=>i.value);
-  check("a new study starts with the Screeners and Main sections",
-    secTitles.join(" | ")==="Screeners | Main", secTitles.join(" | "));
-  check("the new study has questions in both sections", $$(".st-qi").length===4, $$(".st-qi").length);
+  check("a new study starts with one, empty section", secTitles.length===1 && secTitles[0]==="",
+    JSON.stringify(secTitles));
+  check("no predefined name is filled in", $$(".st-sec-head input").every(i=>!!i.placeholder) &&
+    !["Screeners","Main"].some(n=>secTitles.includes(n)), JSON.stringify(secTitles));
+  check("the starter questions live in that section", $$(".st-qi").length===4, $$(".st-qi").length);
 
   // ---------- Question Title sits under the Question ID ----------
   const idcol=$(".st-ehead-idcol");
@@ -66,7 +69,7 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
   check("thumbnails render one card per question", cards.length===4, cards.length);
   check("the switch marks thumbnails as active",
     $('[data-act="outline-view"][data-v="thumbs"]').classList.contains("on"));
-  check("rows are replaced by the thumbnail grid", $$(".st-qi").length===0 && $$(".st-tgrid").length===2);
+  check("rows are replaced by the thumbnail grid", $$(".st-qi").length===0 && $$(".st-tgrid").length===1);
   check("a thumbnail carries id, title and wording",
     !!cards[0].querySelector(".st-tcard-id") && cards[0].querySelector(".st-tcard-title").textContent==="Specialty screener" &&
     !!cards[0].querySelector(".st-tcard-stem"));
@@ -94,14 +97,16 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
   click($(".st-outline-head [data-act=addsec]")); await sleep(80);
   check("the outline header always offers + Section", $$(".st-sec").length===before+1);
   const lastIn=$$(".st-sec-head input").pop();
-  check("a new section is created as an editable name", !!lastIn && lastIn.value==="Section 3", lastIn&&lastIn.value);
+  check("a new section is created as an editable, empty name",
+    !!lastIn && lastIn.value==="" && !!lastIn.placeholder, lastIn&&lastIn.value);
   lastIn.value="Closing"; fire(lastIn,"input"); await sleep(80);
   check("the new section can be named", $$(".st-sec-head input").pop().value==="Closing");
   await sleep(1500);
   const saved2=JSON.parse(await get("/api/studio/study?slug="+slug)).cfg;
   check("the new section is saved with its name",
-    saved2.sections.map(s=>s.title).join(" | ")==="Screeners | Main | Closing",
-    saved2.sections.map(s=>s.title).join(" | "));
+    saved2.sections.length===2 && saved2.sections[1].title==="Closing" &&
+    saved2.sections[0].title==="",
+    JSON.stringify(saved2.sections.map(x=>x.title)));
   check("questions can be moved into the new section via the Section menu",
     $$("#f-section option").map(o=>o.textContent).includes("Closing"),
     $$("#f-section option").map(o=>o.textContent).join(","));

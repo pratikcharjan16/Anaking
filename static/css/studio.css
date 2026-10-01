@@ -168,9 +168,69 @@ a{color:var(--accent2)}
 .st-outline-head>.st-ibtn{width:26px;height:26px;flex:0 0 auto;font-weight:800;color:var(--accent2);background:var(--soft2);border-color:var(--line)}
 .st-outline-head>.st-ibtn:hover{background:var(--soft)}
 
+/* rich-text toolbar controls added to match the reference editor */
+.st-tb-sel{border:1px solid var(--line);border-radius:7px;background:#fff;font:inherit;font-size:11.5px;
+  font-weight:600;color:var(--ink);padding:3px 4px;cursor:pointer;max-width:110px}
+.st-tb-extra{display:none;align-items:center;gap:2px}
+.st-toolbar.more-open .st-tb-extra{display:inline-flex}
+.st-rich.fs{position:fixed;top:16px;right:16px;bottom:16px;left:16px;z-index:60;background:#fff;
+  border:1px solid var(--line2);border-radius:12px;padding:18px 20px;overflow:auto;
+  box-shadow:0 18px 50px rgba(11,79,108,.28);font-size:16px;max-height:none}
+.st-src{width:100%;min-height:120px;border:1px solid var(--line);border-radius:9px;padding:9px 10px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:12.5px;line-height:1.55;color:var(--ink)}
+.st-rich table,.st-tbl{border-collapse:collapse;margin:6px 0}
+.st-rich table td,.st-rich table th,.st-tbl td,.st-tbl th{border:1px solid var(--line2);padding:4px 8px;min-width:44px}
+.st-addmedia{display:block;margin:8px 0 2px;border:1px dashed var(--line2);background:#fff;color:var(--muted);
+  font:inherit;font-size:12px;font-weight:700;border-radius:9px;padding:7px 12px;cursor:pointer}
+.st-addmedia:hover{border-color:var(--accent2);color:var(--accent)}
+.st-addmedia.on{border-style:solid;border-color:var(--accent2);color:var(--accent);background:#f2f9fc}
+
+/* question editor tabs (Content & Settings / Conditional Display) and the PREVIEW button */
+.st-etabs{display:flex;align-items:center;gap:2px;border-bottom:1px solid var(--line);margin:2px 0 12px}
+.st-etab{border:0;background:transparent;font:inherit;font-size:12.5px;font-weight:700;color:var(--muted);
+  padding:8px 10px;border-bottom:2px solid transparent;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.st-etab:hover{color:var(--ink)}
+.st-etab.on{color:var(--accent);border-bottom-color:var(--accent)}
+.st-etab.prev{margin-left:auto;border:1px solid var(--line);border-radius:8px;color:var(--ink);
+  padding:5px 12px;letter-spacing:.04em;font-size:11.5px;font-weight:800}
+.st-etab.prev:hover{border-color:var(--accent);color:var(--accent)}
+.st-etab-sp{flex:0}
+
 /* question title shown on the row, with the wording demoted to a second line */
 .st-qi-main.has-title .st-qi-stem{font-size:11.5px;color:var(--muted)}
 .st-qi-title{font-size:12.5px;font-weight:700;color:var(--ink);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ---- conjoint experiment (on the choice task question) ---- */
+.st-cj-attrs{display:flex;flex-direction:column;gap:10px}
+.st-cj-attr{border:1px solid var(--line);border-radius:10px;padding:9px 10px;background:#fff}
+.st-cj-attr:hover{border-color:var(--line2)}
+.st-cj-attr-head{display:grid;grid-template-columns:20px 26px minmax(0,1fr) auto;gap:8px;align-items:center}
+.st-cj-name{width:100%;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px;font-weight:600;min-width:0}
+.st-cj-attr-toggles{display:flex;flex-wrap:wrap;gap:6px 14px;margin:8px 0 2px;padding-left:46px}
+.st-cj-attr-toggles .st-switch{font-size:12px;font-weight:600}
+.st-cj-levels{display:flex;flex-direction:column;gap:5px;margin-top:6px;padding-left:46px}
+.st-cj-levels-lbl{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.st-cj-level{display:flex;gap:6px;align-items:center}
+.st-cj-level input{flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;padding:5px 8px;font-size:12.5px}
+.st-cj-level .st-ibtn{width:24px;height:24px;font-size:11px}
+.st-cj-addlevel{border:0;background:transparent;color:var(--accent2);font-weight:700;font-size:12px;
+  text-align:left;padding:3px 0;cursor:pointer;width:max-content}
+.st-cj-addlevel:hover{text-decoration:underline}
+.st-cj-range{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap;margin-top:8px;padding-left:46px}
+.st-cj-range label{display:flex;flex-direction:column;gap:3px;font-size:11px;font-weight:700;
+  text-transform:uppercase;letter-spacing:.04em;color:var(--muted)}
+.st-cj-range input{width:78px;border:1px solid var(--line);border-radius:7px;padding:5px 7px;font-size:12.5px}
+/* conjoint tab: a read-only view of the design the study will field */
+.st-cj-attrs-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;margin-bottom:2px}
+.st-cj-sum{display:flex;flex-direction:column;gap:8px;margin-top:10px}
+.st-cj-sum .st-cj-levels{padding-left:0}
+.st-cj-attr-top{display:flex;align-items:center;gap:6px;flex-wrap:wrap;font-size:13px}
+.st-cj-chip{display:inline-block;border:1px solid var(--line);border-radius:999px;padding:2px 8px;
+  font-size:12px;background:#f8fafc;margin:2px 6px 0 0}
+.st-cj-setcard{display:inline-block;vertical-align:top;margin:0 10px 6px 0;border:1px solid var(--line);
+  border-radius:9px;padding:8px 10px;background:#fff;font-size:12.5px;min-width:190px}
+.st-info{color:var(--faint);font-size:12px;cursor:help;margin-left:3px}
+.st-cj .st-info{font-style:normal}
 
 /* ---- thumbnail view ---- */
 .st-tgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(148px,1fr));gap:8px;padding:8px}

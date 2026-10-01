@@ -210,14 +210,16 @@
 
   function taskSpeechText(step) {
     var q = step.q;
-    var alts = CONJOINT.tasks[String(step.taskId)];
+    var alts = taskAt(step.taskId);
     var t = "Choice task " + step.slot + " of " + step.total + ". Patient: " + q.vignette + ". ";
     alts.forEach(function (alt, i) {
-      t += "Treatment " + (i + 1) + ": " + CONJOINT.attributes.map(function (a, ai) {
-        return a.levels[alt.levels[ai]];
-      }).join("; ") + ". ";
+      var said = (CONJOINT.attributes || []).map(function (a, ai) {
+        var lv = altLevel(alt, a, ai);
+        return lv == null ? "" : (a.levels || [])[lv];
+      }).filter(function (v) { return v != null; });
+      t += "Treatment " + (i + 1) + ": " + said.join("; ") + ". ";
     });
-    t += "Or choose: " + q.opt_out_label + ".";
+    if (CONJOINT.has_opt_out !== false) t += "Or choose: " + q.opt_out_label + ".";
     return t;
   }
 
@@ -756,7 +758,7 @@
       if (q.type === "choice_task") {
         var order = (SESSION.task_order && SESSION.task_order.length)
           ? SESSION.task_order
-          : Object.keys(CONJOINT.tasks).map(Number);
+          : taskIds();
         order.forEach(function (tid, i) {
           steps.push({ kind: "task", taskId: tid, slot: i + 1, q: q, total: order.length });
         });
@@ -1231,17 +1233,43 @@
   // ---- conjoint as cards, with a minimum dwell gate ----
   var ATTR_ICON = { OS: "\u23F3", PFS12: "\uD83D\uDCC8", AE: "\u26A0\uFE0F", ROUTE: "\uD83D\uDC89",
                     CDX: "\uD83E\uDDEC", COST: "\uD83D\uDCB2", ACCESS: "\uD83C\uDFE5" };
-  function attrLabel(id) {
-    return { OS: "Median OS vs standard of care", PFS12: "12-month PFS",
-             AE: "Grade 3+ adverse events", ROUTE: "Administration",
-             CDX: "Companion diagnostic", COST: "Net 12-month cost",
-             ACCESS: "Payer access at month 1" }[id] || id;
+  // The design may carry its own labels (an author-defined attribute); fall back to the
+  // wording the seeded BEACON instrument uses, then to the raw id.
+  var ATTR_LABEL = { OS: "Median OS vs standard of care", PFS12: "12-month PFS",
+                     AE: "Grade 3+ adverse events", ROUTE: "Administration",
+                     CDX: "Companion diagnostic", COST: "Net 12-month cost",
+                     ACCESS: "Payer access at month 1" };
+  function attrLabel(attr) {
+    var id = typeof attr === "string" ? attr : (attr && attr.id);
+    var own = typeof attr === "object" && attr && String(attr.label || "").trim();
+    if (own && own !== id) return own;
+    return ATTR_LABEL[id] || id;
   }
+  // A generated design stores tasks as a list; the seeded one keys them by task number.
+  function taskAt(tid) {
+    if (!CONJOINT || !CONJOINT.tasks) return [];
+    var t = CONJOINT.tasks;
+    if (Array.isArray(t)) return t[Number(tid)] || [];
+    return t[String(tid)] || [];
+  }
+  function taskIds() {
+    var t = (CONJOINT && CONJOINT.tasks) || [];
+    return Array.isArray(t) ? t.map(function (_, i) { return i; }) : Object.keys(t).map(Number);
+  }
+  // The level an alternative shows for one attribute. Designs store levels positionally
+  // (aligned to CONJOINT.attributes, null when a group-inclusion attribute is hidden in this
+  // task) or keyed by attribute id; both are read here so a design always renders.
+  function altLevel(alt, attr, ai) {
+    var lv = (alt && alt.levels) || alt || [];
+    if (!Array.isArray(lv) && typeof lv === "object") return lv[attr.id];
+    return lv[ai];
+  }
+  // kept in step with profile_levels() in core/conjoint.py
 
   function renderConjoint(step) {
     var q = step.q;
     var tid = step.taskId;
-    var alts = CONJOINT.tasks[String(tid)];
+    var alts = taskAt(tid);
     var positions = (SESSION.alt_positions && SESSION.alt_positions[String(tid)]) ||
                     [1, 2, 3];
     var chosen = getAns(q.id, "T" + tid);
@@ -1262,11 +1290,21 @@
 
       var rows = el("div", "alt-rows");
       CONJOINT.attributes.forEach(function (attr, ai) {
+        // a group-inclusion attribute is absent from some tasks - the design stores null for it
+        var lv = altLevel(alt, attr, ai);
+        if (lv === null || lv === undefined) return;
         var r = el("div", "alt-row");
         r.appendChild(el("span", "ico", ATTR_ICON[attr.id] || "\u2022"));
         var t = el("span", "txt");
-        t.appendChild(el("span", "lbl", attrLabel(attr.id)));
-        t.appendChild(document.createTextNode(attr.levels[alt.levels[ai]]));
+        t.appendChild(el("span", "lbl", attrLabel(attr)));
+        var val = (attr.levels || [])[lv];
+        var pic = (attr.images || [])[lv];
+        if (pic) {
+          var im = el("img", "alt-level-img");
+          im.src = pic; im.alt = "";
+          r.appendChild(im);
+        }
+        t.appendChild(document.createTextNode(val == null ? "" : String(val)));
         r.appendChild(t);
         rows.appendChild(r);
       });
@@ -1276,23 +1314,26 @@
         setAns(q.id, "T" + tid, altId);
         cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
         card.classList.add("sel");
-        optout.classList.remove("sel");
+        if (optout) optout.classList.remove("sel");   // there is no opt-out card when Allow "none" is off
         hideErr();
       });
       cards.appendChild(card);
     });
     wrap.appendChild(cards);
 
-    var optout = el("div", "optout-card" + (String(chosen) === "0" ? " sel" : ""));
-    optout.appendChild(el("span", "alt-tick", "&#10003;"));
-    optout.appendChild(el("span", null, String(q.opt_out_label)));
-    optout.addEventListener("click", function () {
-      setAns(q.id, "T" + tid, 0);
-      optout.classList.add("sel");
-      cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
-      hideErr();
-    });
-    wrap.appendChild(optout);
+    // "None of these" is only offered when the experiment allows it (Allow "none" in Studio)
+    if (CONJOINT.has_opt_out !== false) {
+      var optout = el("div", "optout-card" + (String(chosen) === "0" ? " sel" : ""));
+      optout.appendChild(el("span", "alt-tick", "&#10003;"));
+      optout.appendChild(el("span", null, String(q.opt_out_label || CONJOINT.none_label || "None of these")));
+      optout.addEventListener("click", function () {
+        setAns(q.id, "T" + tid, 0);
+        optout.classList.add("sel");
+        cards.querySelectorAll(".alt-card").forEach(function (c) { c.classList.remove("sel"); });
+        hideErr();
+      });
+      wrap.appendChild(optout);
+    }
 
     // dwell gate: the respondent must actually look at the profiles. Started by render()
     // after the nav exists, otherwise there is a brief window where Next is still clickable.
@@ -1321,7 +1362,7 @@
       var pct = Math.min(1, spent / MIN_DWELL);
       fg.style.strokeDashoffset = String(56.5 * (1 - pct));
       if (left > 0) {
-        txt.textContent = "Take a moment to weigh all seven characteristics \u2014 " +
+        txt.textContent = "Take a moment to weigh the options \u2014 " +
           Math.ceil(left) + "s before you can continue";
         node.classList.remove("done");
         lockNext(true);
@@ -1517,7 +1558,7 @@
         return false;
       }
       if (dwellTimer) {
-        showErr("Please take a moment to review all seven characteristics before continuing.");
+        showErr("Please take a moment to review the options before continuing.");
         return false;
       }
       return true;
@@ -2051,7 +2092,9 @@
       CONJOINT = spec.conjoint;
       NARR = spec.narration;
       SCENES = spec.explainer_scenes;
-      MIN_DWELL = spec.conjoint_min_dwell || 12;
+      // 0 is a valid setting (no gate) - only an absent value falls back to the default
+      MIN_DWELL = spec.conjoint_min_dwell === undefined || spec.conjoint_min_dwell === null
+                  ? 12 : Number(spec.conjoint_min_dwell);
       window.BEACON_CONJOINT_SCENE = spec.conjoint_scene;
 
       // Default is silent; a previous explicit preference may be restored.

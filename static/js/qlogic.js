@@ -13,7 +13,8 @@
   "use strict";
 
   var TAGS = { b: 1, strong: 1, i: 1, em: 1, u: 1, s: 1, span: 1, mark: 1, sup: 1, sub: 1, br: 1,
-               p: 1, div: 1, ul: 1, ol: 1, li: 1, a: 1, font: 1 };
+               p: 1, div: 1, ul: 1, ol: 1, li: 1, a: 1, font: 1,
+               table: 1, thead: 1, tbody: 1, tr: 1, td: 1, th: 1 };
   var STYLE = { "color": 1, "background-color": 1, "font-family": 1, "font-size": 1, "font-weight": 1,
                 "font-style": 1, "text-decoration": 1, "text-align": 1 };
   var STYLE_VAL = /^[#a-zA-Z0-9 ,.%()'"-]+$/;

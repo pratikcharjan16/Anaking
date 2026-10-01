@@ -115,6 +115,7 @@
                 { code: "c", label: "Third item" }];
     }
     if (type === "nps") { q.scale = { min: 0, max: 10 }; }
+    if (type === "choice_task") q.conjoint = conjointTemplate();
     if (type === "emoji_grid") {
       q.scale = { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE41", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"],
                   face_labels: ["Very negative", "Negative", "Neutral", "Positive", "Delighted"] };
@@ -149,13 +150,13 @@
   function blankCfg() {
     return {
       title: "New study",
-      sections: [{ id: "S1", title: "Screeners", blurb: null },
-                 { id: "S2", title: "Main", blurb: null }],
+      // no predefined sections: a new study starts with one section for you to name
+      sections: [{ id: "S1", title: "", blurb: null }],
       questions: [
         qTemplate("single_select", "Q1", "S1"),
-        qTemplate("rating_grid", "Q2", "S2"),
-        qTemplate("nps", "Q3", "S2"),
-        qTemplate("open_text", "Q4", "S2")
+        qTemplate("rating_grid", "Q2", "S1"),
+        qTemplate("nps", "Q3", "S1"),
+        qTemplate("open_text", "Q4", "S1")
       ],
       tpp: { patient: "", mechanism: "", trial: "", efficacy: "", safety: "",
              administration: "", cdx: "" },
@@ -168,6 +169,83 @@
       metrics: {},
       qc: { min_seconds: 300, verbatim_qs: [] }
     };
+  }
+
+  // ---- conjoint experiment (authored on the choice_task question) -------------------------
+  // Everything the author defines lives here: the experiment reference, the description the
+  // respondent reads, the attributes with their levels, the toggles and the sampling plan.
+  // cfg.conjoint (the generated design) is derived from it by "Generate design".
+  function conjointTemplate() {
+    return {
+      title: "",
+      description_html: "We will show you {amount} combinations of {product}. " +
+        "Please indicate which one you would be most likely to purchase.",
+      attributes: [
+        { id: "A1", label: "Attribute 1", levels: ["Level 1", "Level 2"], images: [],
+          higher_is_bad: false, group_inclusion: false, range: null },
+        { id: "A2", label: "Attribute 2", levels: ["Level 1", "Level 2"], images: [],
+          higher_is_bad: false, group_inclusion: false, range: null }
+      ],
+      allow_none: true, none_label: "None of these",
+      n_cards: 2, n_sets: 6
+    };
+  }
+  // An older question may carry no experiment of its own: derive one from the study design, so
+  // the editor never shows an empty card on a study that already has a conjoint.
+  function conjointOf(q) {
+    if (q.conjoint) {
+      var cj = q.conjoint;
+      cj.attributes = cj.attributes || [];
+      if (cj.n_cards == null) cj.n_cards = 2;
+      if (cj.n_sets == null) cj.n_sets = 6;
+      return cj;
+    }
+    var design = cur && cur.cfg && cur.cfg.conjoint, attrs = [];
+    if (design && design.attributes) {
+      attrs = design.attributes.map(function (a, i) {
+        return { id: String(a.id || ("A" + (i + 1))), label: a.label || a.id || ("Attribute " + (i + 1)),
+                 levels: (a.levels || []).slice(), images: a.images || [],
+                 higher_is_bad: !!a.higher_is_bad, group_inclusion: !!a.group_inclusion, range: null };
+      });
+    }
+    q.conjoint = {
+      title: cj_title(design),
+      description_html: conjointTemplate().description_html,
+      attributes: attrs.length ? attrs : conjointTemplate().attributes,
+      allow_none: design ? design.has_opt_out !== false : true,
+      none_label: "None of these",
+      n_cards: (design && design.n_alts) || 2,
+      n_sets: (design && design.n_tasks) || 6
+    };
+    return q.conjoint;
+  }
+  function cj_title(design) { return (design && design.title) || ""; }
+
+  // read the conjoint card back into the question.  Level inputs are read by (attribute, level)
+  // index so a delete elsewhere in the form cannot shift values onto the wrong row.
+  function syncConjointForm() {
+    var cj = conjointOf(ed);
+    var rich = document.getElementById("f-cj-desc");
+    if (rich) { cj.description_html = unchip(Q.sanitize(rich.innerHTML)); cj.description = Q.stripTags(cj.description_html); }
+    if (val("f-cj-title") !== undefined) cj.title = String(val("f-cj-title")).trim();
+    if (val("f-vignette") !== undefined) setOrDel(ed, "vignette", val("f-vignette"));
+    if (chk("f-cj-none") !== undefined) cj.allow_none = chk("f-cj-none") !== false;
+    if (val("f-cj-nonelabel") !== undefined) cj.none_label = String(val("f-cj-nonelabel")).trim() || "None of these";
+    if (val("f-cj-cards") !== undefined) cj.n_cards = Math.max(2, Math.min(5, num("f-cj-cards") || 2));
+    if (val("f-cj-sets") !== undefined) cj.n_sets = Math.max(1, Math.min(30, num("f-cj-sets") || 6));
+    $$('#st-editor [data-cj-field="label"]').forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (a) a.label = n.value;
+    });
+    $$('#st-editor [data-cj-field="level"]').forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (!a) return;
+      var li = Number(n.getAttribute("data-l")); if (li >= 0 && li < a.levels.length) a.levels[li] = n.value;
+    });
+    $$("#st-editor [data-cj-range]").forEach(function (n) {
+      var a = cj.attributes[Number(n.getAttribute("data-i"))]; if (!a) return;
+      a.range = a.range || {};
+      var k = n.getAttribute("data-cj-range");
+      a.range[k] = k === "suffix" ? n.value : (n.value === "" ? null : Number(n.value));
+    });
   }
 
   function nextQid() {
@@ -345,8 +423,7 @@
         "</div></div>" +
       "</div>" +
       '<nav class="st-tabs">' +
-      [["questions", "Questions", c.questions.length], ["translations", "Translations", ""], ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""],
-       ["conjoint", "Conjoint", ""], ["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]].map(function (t) {
+      tabList(c).map(function (t) {
         return '<button class="st-tab' + (tab === t[0] ? " on" : "") + '" data-tab="' + t[0] + '">' + t[1] +
           (t[2] !== "" ? '<span class="st-count">' + t[2] + "</span>" : "") + "</button>";
       }).join("") + "</nav>" +
@@ -355,6 +432,35 @@
     root.innerHTML = html;
     renderSaveState();
     renderTab();
+  }
+
+  // The Conjoint tab is only relevant once a conjoint question exists - until then it is not in
+  // the bar at all, so a plain questionnaire is not cluttered with an empty tab.
+  function hasConjointQuestion(cfg) {
+    var c = cfg || (cur && cur.cfg) || {};
+    return (c.questions || []).some(function (q) { return q.type === "choice_task"; }) ||
+      !!(c.conjoint && c.conjoint.tasks);
+  }
+  function tabList(c) {
+    var t = [["questions", "Questions", c.questions.length], ["translations", "Translations", ""],
+             ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""]];
+    if (hasConjointQuestion(c)) t.push(["conjoint", "Conjoint", ""]);
+    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]]);
+  }
+  // keep the bar in step with the questions (adding/removing a conjoint question changes it).
+  // Rebuilding the shell re-enters this, so guard against recursing.
+  var syncingTabs = false;
+  function syncTabs() {
+    if (!cur || syncingTabs) return;
+    var nav = $(".st-tabs"); if (!nav) return;
+    var wanted = tabList(cur.cfg).map(function (t) { return t[0]; });
+    var have = $$(".st-tab", nav).map(function (b) { return b.getAttribute("data-tab"); });
+    if (wanted.join(",") !== have.join(",")) {
+      syncingTabs = true;
+      try { renderEditor(); } finally { syncingTabs = false; }
+      return;
+    }
+    if (tab === "conjoint" && wanted.indexOf("conjoint") < 0) { tab = "questions"; renderTab(); }
   }
 
   function renderTab() {
@@ -407,6 +513,9 @@
   try { if (localStorage.getItem(OUTLINE_VIEW_KEY) === "thumbs") outlineView = "thumbs"; } catch (e) { /* private mode */ }
 
   function qTitle(q) { return String(q.title || "").trim(); }
+  // An unnamed section is named by the author, not by us - show it as a prompt, never as
+  // "Section 2".  Empty titles are stored empty so nothing predefined is ever written.
+  function secLabel(sec) { return String((sec && sec.title) || "").trim() || "Untitled section"; }
   function qMoveTools(qi) {
     return '<button class="st-ibtn" data-act="qup" data-i="' + qi + '" title="Move up">\u25B2</button>' +
       '<button class="st-ibtn" data-act="qdown" data-i="' + qi + '" title="Move down">\u25BC</button>' +
@@ -521,7 +630,7 @@
     c.sections.forEach(function (sec, si) {
       var n = c.questions.filter(function (q) { return q.section === sec.id; }).length;
       html += '<div class="st-sec' + (thumbs ? " thumbs" : "") + '"><div class="st-sec-head">' +
-        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Click to rename this section - used in the Studio outline and in exports; respondents never see it" placeholder="Section title">' +
+        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Click to rename this section - used in the Studio outline and in exports; respondents never see it" placeholder="Name this section">' +
         '<span class="st-meta">' + n + "</span>" +
         '<button class="st-ibtn danger" title="Delete section" data-act="delsec" data-i="' + si + '">\u2715</button></div>';
       if (thumbs) html += '<div class="st-tgrid">';
@@ -535,6 +644,7 @@
     });
     html += '<button class="st-btn ghost wide" data-act="addsec">+ Add section</button>';
     host.innerHTML = html;
+    syncTabs();
   }
   function refreshOutlineRow() {
     var q = cur.cfg.questions[sel];
@@ -565,7 +675,7 @@
   }
   function refreshSectionSelect() {
     var sl = document.getElementById("f-section"); if (!sl || !ed) return;
-    sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>"; }).join("");
+    sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("");
   }
   function selectQuestion(qi) {
     sel = qi;
@@ -942,6 +1052,24 @@
       t === "numeric" || t === "slider" ? "Number range" : t === "nps" ? "Scale" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
   }
 
+  // The question editor follows the reference design: a strip with Content & Settings and
+  // Conditional Display, and a PREVIEW button for the full-size question.
+  var edTab = "content";
+  function edStrip() {
+    var rules = (ed.show_if && ed.show_if.rules) || [];
+    return '<nav class="st-etabs">' +
+      [["content", "Content &amp; Settings"], ["cond", "Conditional Display"]].map(function (t) {
+        return '<button type="button" class="st-etab' + (edTab === t[0] ? " on" : "") +
+          '" data-act="edtab" data-t="' + t[0] + '">' + t[1] +
+          (t[0] === "cond" && rules.length ? '<span class="st-count">' + rules.length + "</span>" : "") +
+          "</button>";
+      }).join("") +
+      '<span class="st-etab-sp"></span>' +
+      '<button type="button" class="st-etab prev" data-act="qtest-cur"' +
+        (sel >= 0 ? ' data-i="' + sel + '"' : "") +
+        ' title="Open this question full size, exactly as a respondent sees it">PREVIEW</button></nav>';
+  }
+
   function renderEditorPane() {
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
@@ -969,21 +1097,26 @@
             return '<optgroup label="' + g + '">' + TYPES.filter(function (x) { return TYPE_INFO[x].group === g; }).map(function (x) {
               return '<option value="' + x + '"' + (x === ed.type ? " selected" : "") + ">" + esc(TYPE_INFO[x].name) + "</option>"; }).join("") + "</optgroup>"; }).join("") + "</select></label>" +
           '<label class="st-mini">Section <select id="f-section">' + cur.cfg.sections.map(function (s) {
-            return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(s.title) + "</option>"; }).join("") + "</select></label>" +
+            return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("") + "</select></label>" +
           '<label class="st-switch" title="Respondents must answer before continuing"><input type="checkbox" id="f-required"' + (ed.required !== false ? " checked" : "") + "><i></i>Required</label>" +
         "</div></div>" +
         '<div class="st-ehead-tools"><button class="st-ibtn" data-act="qdup" data-i="' + sel + '" title="Duplicate question">\u2398</button>' +
         '<button class="st-ibtn danger" data-act="qdel" data-i="' + sel + '" title="Delete question">\u2715</button></div>' +
       "</div>" +
       '<div id="st-qcheck">' + questionCheckHtml() + '</div>' +
-      '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["logic", "Show only when\u2026"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
-        return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
-      card("q", "Question", "What respondents read", qCard()) +
-      card("answers", answersTitle(), "", answersCard()) +
-      card("display", "Display & order", "Layout, randomisation, text style", displayCard()) +
-      card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""), "Conditions that decide who sees this question", logicCard()) +
-      card("media", "Image or video" + (ed.media && ed.media.src ? ' <em class="st-dot">on</em>' : ""), "Shown under the question text", mediaCard()) +
-      card("advanced", "Advanced (JSON)", "Everything the form does is stored here", advancedCard(), true);
+      edStrip() +
+      (edTab === "cond"
+        ? '<nav class="st-jump">' + [["logic", "Conditional display"]].map(function (j) {
+            return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
+          card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""),
+               "Conditional display - exactly who gets this question and who skips it", logicCard())
+        : '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
+            return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
+          card("q", "Question", "What respondents read", qCard()) +
+          card("answers", answersTitle(), "", answersCard()) +
+          card("display", "Display & order", "Layout, randomisation, text style", displayCard()) +
+          card("media", "Image or video" + (ed.media && ed.media.src ? ' <em class="st-dot">on</em>' : ""), "Shown under the question text", mediaCard()) +
+          card("advanced", "Advanced (JSON)", "Everything the form does is stored here", advancedCard(), true));
     renderPreview();
   }
 
@@ -1023,28 +1156,51 @@
   function qCard() {
     return '<div class="st-field"><label>Question text</label>' + richToolbar("f-stem-rich") +
       '<div class="st-rich" id="f-stem-rich" contenteditable="true" data-rich="stem_html" data-placeholder="Type the question\u2026">' + chipify(Q.sanitize(ed.stem_html || "")) + "</div>" +
+      '<button type="button" class="st-addmedia' + (ed.media && ed.media.src ? " on" : "") + '" data-act="media-add-quick"' +
+        ' title="Attach an image or a video to this question - it is shown under the question text">' +
+        (ed.media && ed.media.src ? "\u2713 Image or video attached" : "+ Add Image &amp; Video Attachments") + "</button>" +
       '<div class="st-hint">Select text to format it. <b>\u27A4 Pipe in answer</b> inserts something the respondent said earlier - e.g. <code>{Q1}</code> becomes their Q1 answer.</div></div>' +
       '<div class="st-field"><label>Help text <span class="st-opt">optional - smaller text under the question</span></label>' + richToolbar("f-help-rich", true) +
       '<div class="st-rich sm" id="f-help-rich" contenteditable="true" data-rich="help_html" data-placeholder="e.g. Think about the last 3 months">' + chipify(Q.sanitize(ed.help_html || esc(ed.help || ""))) + "</div></div>";
   }
 
+  // The rich-text toolbar mirrors the reference editor: size and font, B/I/U, a "more"
+  // row, colours, alignment, lists, link, table, superscript, image, pipe, fullscreen and a
+  // source view.  Everything it can produce survives core/sanitize.py + BeaconQ.sanitize.
   function richToolbar(target, small) {
     var b = function (cmd, label, title, val) {
       return '<button type="button" class="st-tb" data-cmd="' + cmd + '" data-val="' + (val || "") + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
     };
+    var act = function (a, label, title) {
+      return '<button type="button" class="st-tb" data-tb-act="' + a + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
+    };
+    var pick = function (cmd, title, opts) {
+      return '<select class="st-tb-sel" data-cmd="' + cmd + '" data-target="' + target + '" title="' + title + '" aria-label="' + title + '">' + opts + "</select>";
+    };
+    var sizes = [["", "12px"], ["1", "10px"], ["2", "12px"], ["3", "14px"], ["4", "16px"], ["5", "20px"], ["6", "24px"], ["7", "32px"]]
+      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+    var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
+      .map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
     return '<div class="st-toolbar">' +
+      pick("fontSize", "Text size", sizes) + (small ? "" : pick("fontName", "Font", fonts)) +
       b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
-      b("strikeThrough", "<s>S</s>", "Strikethrough") + b("superscript", "x<sup>2</sup>", "Superscript") +
-      '<span class="st-tb-sep"></span>' +
+      act("more", "\u2026", "More formatting") +
       '<label class="st-tb st-tb-color" title="Text colour">A<input type="color" data-cmd="foreColor" data-target="' + target + '" value="#b3261e"></label>' +
       '<label class="st-tb st-tb-color hl" title="Highlight colour">&#9639;<input type="color" data-cmd="hiliteColor" data-target="' + target + '" value="#fff3a3"></label>' +
-      b("removeFormat", "T&#818;", "Clear formatting") +
-      '<span class="st-tb-sep"></span>' +
+      b("justifyLeft", "\u2261", "Align left") + b("justifyCenter", "\u2261", "Align centre") + b("justifyRight", "\u2261", "Align right") +
       b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
+      act("link", "\u{1F517}", "Insert link") + act("table", "\u25A6", "Insert table") +
+      b("superscript", "x<sup>2</sup>", "Superscript") +
+      act("image", "\u{1F5BC}", "Attach an image or video to this question") +
       (small ? "" : b("fontSize", "A&#8593;", "Bigger", "5") + b("fontSize", "A&#8595;", "Smaller", "2")) +
       '<span class="st-tb-sep"></span>' +
       pipeButton(target) +
-      "</div>";
+      '<span class="st-tb-extra">' +
+        b("strikeThrough", "<s>S</s>", "Strikethrough") + b("subscript", "x<sub>2</sub>", "Subscript") +
+        b("removeFormat", "T&#818;", "Clear formatting") +
+        act("source", "&lt;/&gt;", "Edit the HTML source") +
+        act("fullscreen", "\u26F6", "Full screen") +
+      "</span></div>";
   }
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
@@ -1289,9 +1445,114 @@
     if (t === "rank") html += '<div class="st-grid2"><div class="st-field"><label>How many ranks to record <span class="st-opt">top-N</span></label><input id="f-rankcount" type="number" value="' + (ed.rank_count || 3) + '"></div></div>';
     if (t === "maxdiff") html += '<div class="st-field"><label>Rounds <span class="st-opt">comma-separated item codes, one round per line</span></label><textarea id="f-rounds">' +
       (ed.rounds || []).map(function (r) { return r.items.join(","); }).join("\n") + "</textarea></div>";
-    if (t === "choice_task") html += '<div class="st-field"><label>Patient vignette</label><textarea id="f-vignette">' + esc(ed.vignette || "") + "</textarea></div>" +
-      '<div class="st-note">The alternatives shown come from the design on the <b>Conjoint</b> tab.</div>';
+    if (t === "choice_task") html += conjointCard();
     return html || '<div class="st-note">This question type has no answer settings.</div>';
+  }
+
+  // ---- card: conjoint experiment (the choice_task question's own design) ------------------
+  function conjointCard() {
+    var cj = conjointOf(ed);
+    var info = function (txt) { return '<span class="st-info" title="' + esc(txt) + '">\u24D8</span>'; };
+    var body = '<div class="st-cj">' +
+      '<div class="st-field"><label>Title or reference to this Conjoint Experiment ' +
+        info("Internal name for the experiment - shown to the research team, never to respondents.") + "</label>" +
+        '<input id="f-cj-title" value="' + esc(cj.title || "") + '" placeholder="Title or reference to this Conjoint Experiment"></div>' +
+      '<div class="st-field"><label>Description ' + info("What the respondent reads above the choice tasks. {amount} and {product} are filled in automatically.") + "</label>" +
+        richToolbar("f-cj-desc") +
+        '<div class="st-rich sm" id="f-cj-desc" contenteditable="true" data-cj-rich="description_html" data-placeholder="We will show you {amount} combinations of {product}...">' +
+        chipify(Q.sanitize(cj.description_html || "")) + "</div></div>" +
+      '<div class="st-field"><label>Patient vignette <span class="st-opt">optional - shown with every choice task</span></label>' +
+        '<textarea id="f-vignette">' + esc(ed.vignette || "") + "</textarea></div>" +
+
+      '<h4 class="st-h4">Attributes ' + info("One row per attribute. Each attribute needs at least two levels; the design balances them across the choice sets.") + "</h4>" +
+      '<div class="st-cj-attrs">' + cj.attributes.map(function (a, ai) { return conjointAttrRow(a, ai); }).join("") + "</div>" +
+      '<div class="st-item-actions"><button class="st-btn sm on" data-act="cj-attr-add">+ Add Attribute</button>' +
+        '<button class="st-btn sm ghost" data-act="cj-attr-json">Edit as list\u2026</button></div>' +
+
+      '<div class="st-toggles">' +
+        '<label class="st-switch" title="Adds a \u201cNone of these\u201d alternative to every choice task">' +
+          '<input type="checkbox" id="f-cj-none"' + (cj.allow_none !== false ? " checked" : "") + "><i></i>Allow \u201Cnone\u201D</label>" +
+      "</div>" +
+      '<div class="st-field"><label>Text on the \u201Cnone\u201D alternative</label>' +
+        '<input id="f-cj-nonelabel" value="' + esc(cj.none_label || "None of these") + '"></div>' +
+
+      '<h4 class="st-h4">Configure Sampling</h4><div class="st-grid2">' +
+        '<div class="st-field"><label>Number of Cards ' + info("Alternatives shown side by side on each choice task.") + "</label>" +
+          '<input id="f-cj-cards" type="number" min="2" max="5" value="' + (cj.n_cards || 2) + '"></div>' +
+        '<div class="st-field"><label>Number of Sets ' + info("Choice tasks each respondent completes.") + "</label>" +
+          '<input id="f-cj-sets" type="number" min="1" max="30" value="' + (cj.n_sets || 6) + '"></div>' +
+      "</div>" +
+      '<div class="st-field"><label>Minimum seconds on each task ' + info("Speeder guard - Next stays locked until the respondent has looked at the profiles.") + "</label>" +
+        '<input id="f-dwell" type="number" data-set="conjoint_min_dwell" value="' + (cur.cfg.conjoint_min_dwell || 10) + '"></div>' +
+      '<button class="st-btn on" data-act="genconj">Generate design</button>' + conjointStatus() +
+      "</div>";
+    return body;
+  }
+
+  function conjointStatus() {
+    var d = cur.cfg.conjoint;
+    if (!d || !d.tasks) return '<div class="st-note">No design generated yet - the choice tasks stay empty until you generate one.</div>';
+    var t = Object.keys(d.tasks).length || d.tasks.length || 0;
+    var alts = d.n_alts || (d.attributes && d.tasks[String(Object.keys(d.tasks)[0])] ? d.tasks[String(Object.keys(d.tasks)[0])].length : 3);
+    return '<div class="st-note">Current design: <b>' + t + " sets \u00D7 " + alts + " cards</b> \u00D7 " +
+      ((d.attributes || []).length) + " attributes" + (d.generated_at ? " \u00B7 generated " + esc(d.generated_at) : "") + ".</div>";
+  }
+
+  function conjointAttrRow(a, ai) {
+    var tool = function (tip, cls) { return '<span class="st-info" title="' + esc(tip) + '">\u24D8</span>'; };
+    return '<div class="st-cj-attr" data-cj="' + ai + '">' +
+      '<div class="st-cj-attr-head">' +
+        '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder attribute ' + (ai + 1) +
+          '" title="Drag to reorder">\u283F</span>' +
+        '<span class="st-seq">' + (ai + 1) + ".</span>" +
+        '<input class="st-cj-name" data-cj-field="label" data-i="' + ai + '" value="' + esc(a.label || "") +
+          '" placeholder="Attribute name, e.g. Color">' +
+        '<span class="st-item-tools">' +
+          '<button class="st-ibtn" data-act="cj-attr-up" data-i="' + ai + '" title="Move up"' + (ai === 0 ? " disabled" : "") + ">\u25B2</button>" +
+          '<button class="st-ibtn" data-act="cj-attr-down" data-i="' + ai + '" title="Move down"' +
+            (ai === ed.conjoint.attributes.length - 1 ? " disabled" : "") + ">\u25BC</button>" +
+          '<button class="st-ibtn danger" data-act="cj-attr-del" data-i="' + ai + '" title="Delete this attribute">\uD83D\uDDD1</button>' +
+        "</span></div>" +
+      '<div class="st-cj-attr-toggles">' +
+        '<label class="st-switch" title="Generate the levels from a numeric range instead of typing each one">' +
+          '<input type="checkbox" data-act="cj-attr-range" data-i="' + ai + '"' + (a.range ? " checked" : "") + "><i></i>Add Range Levels</label>" +
+        '<label class="st-switch" title="Attach a picture to each level - it is shown on the choice cards">' +
+          '<input type="checkbox" data-act="cj-attr-images" data-i="' + ai + '"' + (a.images && a.images.length ? " checked" : "") + "><i></i>Add Images</label>" +
+        '<label class="st-switch" title="Shown in a rotating subset of the choice sets rather than in every one">' +
+          '<input type="checkbox" data-act="cj-attr-group" data-i="' + ai + '"' + (a.group_inclusion ? " checked" : "") + "><i></i>Group Inclusion</label>" +
+        '<label class="st-switch" title="Lower is better (price, toxicity) - the design avoids putting the best level on one card every time">' +
+          '<input type="checkbox" data-act="cj-attr-bad" data-i="' + ai + '"' + (a.higher_is_bad ? " checked" : "") + "><i></i>Lower is better</label>" +
+      "</div>" +
+      (a.range ? conjointRangeRow(a, ai) : "") +
+      '<div class="st-cj-levels"><span class="st-cj-levels-lbl">Levels ' +
+        tool("The values this attribute can take. At least two are needed.") + "</span>" +
+        (a.levels || []).map(function (lv, li) { return conjointLevelRow(a, ai, lv, li); }).join("") +
+        '<button class="st-cj-addlevel" data-act="cj-level-add" data-i="' + ai + '">+ Add Level</button>' +
+      "</div></div>";
+  }
+
+  function conjointLevelRow(a, ai, lv, li) {
+    var img = (a.images && a.images[li]) || "";
+    return '<div class="st-cj-level" data-cj-level="' + li + '">' +
+      (a.images && a.images.length
+        ? (img ? '<span class="st-thumb" title="' + esc(String(img).split("/").pop()) + '"><img src="' + esc(img) + '" alt="">' +
+                 '<button class="st-x" data-act="cj-level-img-del" data-i="' + ai + '" data-l="' + li + '" title="Remove image">&times;</button></span>'
+               : '<label class="st-ibtn" title="Attach an image to this level">\uD83D\uDDBC' +
+                 '<input type="file" accept="image/*" data-act="cj-level-img" data-i="' + ai + '" data-l="' + li + '" hidden></label>')
+        : "") +
+      '<input data-cj-field="level" data-i="' + ai + '" data-l="' + li + '" value="' + esc(lv) + '" placeholder="Level ' + (li + 1) + '">' +
+      '<button class="st-ibtn danger" data-act="cj-level-del" data-i="' + ai + '" data-l="' + li + '" title="Delete this level">\uD83D\uDDD1</button>' +
+      "</div>";
+  }
+
+  function conjointRangeRow(a, ai) {
+    var r = a.range || {};
+    return '<div class="st-cj-range">' +
+      '<label>From <input type="number" data-cj-range="from" data-i="' + ai + '" value="' + (r.from != null ? r.from : 1) + '"></label>' +
+      '<label>To <input type="number" data-cj-range="to" data-i="' + ai + '" value="' + (r.to != null ? r.to : 5) + '"></label>' +
+      '<label>Step <input type="number" min="1" data-cj-range="step" data-i="' + ai + '" value="' + (r.step != null ? r.step : 1) + '"></label>' +
+      '<label>Suffix <input data-cj-range="suffix" data-i="' + ai + '" value="' + esc(r.suffix || "") + '" placeholder="% or mg"></label>' +
+      '<button class="st-btn sm" data-act="cj-range-apply" data-i="' + ai + '">Build levels</button></div>';
   }
 
   // ---- card: display & order -------------------------------------------------------------
@@ -1410,7 +1671,13 @@
   function syncFromForm() {
     if (!ed) return;
     var t = ed.type;
+    // an open "</>" source view is authoritative for its editor
+    $$("#st-editor .st-src").forEach(function (ta) {
+      var host = document.getElementById(ta.getAttribute("data-for"));
+      if (host) host.innerHTML = Q.sanitize(ta.value);
+    });
     if (val("f-section") !== undefined) ed.section = val("f-section");
+    if (ed.type === "choice_task") syncConjointForm();
     if (val("f-title") !== undefined) setOrDel(ed, "title", String(val("f-title")).trim());
     var rich = document.getElementById("f-stem-rich");
     if (rich) { ed.stem_html = unchip(Q.sanitize(rich.innerHTML)); ed.stem = Q.stripTags(ed.stem_html) || ""; }
@@ -1543,6 +1810,59 @@
     openModal('<div class="st-modal-head"><strong>Show-if logic guide</strong><span class="st-meta">Who should see ' + esc(ed.id) + '?</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form"><div class="st-agent-note">Choose an earlier question and condition. I’ll create the rule after you approve it.</div><label class="st-field"><span>Based on</span><select id="lg-q">' + prior.map(function(q){return '<option value="' + esc(q.id) + '">' + esc(q.id + ' · ' + q.stem.slice(0,70)) + '</option>';}).join('') + '</select></label><label class="st-field"><span>Respondent condition</span><select id="lg-op"><option value="selected">selected an answer</option><option value="not_selected">did not select an answer</option><option value="answered">answered the question</option><option value="not_answered">did not answer</option></select></label><label class="st-field"><span>Answer code (for selected/not selected)</span><input id="lg-value" placeholder="e.g. 1"></label><div class="st-modal-actions"><button class="st-btn" data-act="modal-close">Cancel</button><button class="st-btn on" data-act="logic-apply"' + (prior.length ? '' : ' disabled') + '>Review and apply rule</button></div></div>', 'st-agent-modal');
   }
 
+  // ------------------------------------------------------------ rich-text toolbar actions
+  function tbAction(a, target) {
+    var host = document.getElementById(target);
+    var focus = function () { if (host) host.focus(); };
+    var run = function (cmd, val) {
+      focus();
+      document.execCommand("styleWithCSS", false, true);
+      document.execCommand(cmd, false, val === undefined ? null : val);
+      changed();
+    };
+    if (a === "more") { var tb = $(".st-toolbar[data-for='" + target + "']") || $(".st-toolbar");
+      if (tb) tb.classList.toggle("more-open"); return; }
+    if (a === "link") {
+      focus();
+      var url = window.prompt("Link address", "https://");
+      if (url) run("createLink", url);
+      return;
+    }
+    if (a === "table") {
+      run("insertHTML", '<table class="st-tbl"><tbody><tr><td>&nbsp;</td><td>&nbsp;</td></tr>' +
+        "<tr><td>&nbsp;</td><td>&nbsp;</td></tr></tbody></table><p><br></p>");
+      return;
+    }
+    if (a === "image") { var fi = $("[data-act=media-upload]"); if (fi) fi.click(); return; }
+    if (a === "fullscreen") {
+      if (!host) return;
+      host.classList.toggle("fs");
+      if (host.classList.contains("fs")) focus();
+      return;
+    }
+    if (a === "source") {
+      if (!host) return;
+      var wrap = host.parentElement || document.getElementById("st-editor");
+      var ta = wrap.querySelector(".st-src");
+      if (!ta) {
+        ta = document.createElement("textarea");
+        ta.className = "st-src";
+        ta.value = host.innerHTML;
+        ta.setAttribute("data-for", target);
+        host.hidden = true;
+        wrap.insertBefore(ta, host.nextSibling);
+        ta.focus();
+      } else {
+        host.innerHTML = Q.sanitize(ta.value);
+        ta.parentNode.removeChild(ta);
+        host.hidden = false;
+        focus();
+        changed();
+      }
+      return;
+    }
+  }
+
   // ------------------------------------------------------------ editor events (delegated on root)
   function inEditor(e) { return !!e.target.closest("#st-editor"); }
   root.addEventListener("click", function (e) {
@@ -1555,6 +1875,12 @@
       document.execCommand("styleWithCSS", false, true);
       document.execCommand(cmd.getAttribute("data-cmd"), false, cmd.getAttribute("data-val") || null);
       changed(); return;
+    }
+    var tba = e.target.closest("button[data-tb-act]");
+    if (tba) {
+      e.preventDefault();
+      tbAction(tba.getAttribute("data-tb-act"), tba.getAttribute("data-target"));
+      return;
     }
     var pb = e.target.closest("[data-pipe-for]");
     if (pb) { e.preventDefault(); openPipePicker(document.getElementById(pb.getAttribute("data-pipe-for"))); return; }
@@ -1712,6 +2038,43 @@
     var act = t.getAttribute("data-act");
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); rerenderCard("media"); changed(); toast("Attached " + r.file); });
+      return;
+    }
+    if (t.tagName === "SELECT" && t.getAttribute("data-cmd") && t.getAttribute("data-target")) {
+      var th = document.getElementById(t.getAttribute("data-target"));
+      if (th) {
+        th.focus();
+        document.execCommand("styleWithCSS", false, true);
+        document.execCommand(t.getAttribute("data-cmd"), false, t.value || null);
+        changed();
+      }
+      return;
+    }
+    if (act === "cj-level-img" && t.files && t.files[0]) {
+      var cji = Number(t.getAttribute("data-i")), cjl = Number(t.getAttribute("data-l"));
+      uploadMedia(t.files[0], function (r) {
+        syncFromForm();
+        var a = conjointOf(ed).attributes[cji];
+        a.images = a.images || []; a.images[cjl] = r.src;
+        rerenderCard("answers"); changed();
+      });
+      return;
+    }
+    if (act === "cj-attr-range" || act === "cj-attr-images" || act === "cj-attr-group" || act === "cj-attr-bad") {
+      syncFromForm();
+      var ai2 = Number(t.getAttribute("data-i")), at = conjointOf(ed).attributes[ai2];
+      if (act === "cj-attr-range") {
+        at.range = t.checked ? (at.range || { from: 1, to: 5, step: 1, suffix: "" }) : null;
+      } else if (act === "cj-attr-images") {
+        at.images = t.checked ? (at.images || []).slice(0, at.levels.length)
+                    .concat(new Array(Math.max(0, at.levels.length - (at.images || []).length)).fill(""))
+                    : [];
+      } else if (act === "cj-attr-group") {
+        at.group_inclusion = t.checked;
+      } else {
+        at.higher_is_bad = t.checked;
+      }
+      rerenderCard("answers"); changed();
       return;
     }
     if (act === "opt-img" && t.files && t.files[0]) {
@@ -2019,19 +2382,58 @@
 
   // ------------------------------------------------------------ conjoint / settings
   function conjointTab() {
-    var cj = cur.cfg.conjoint;
-    var attrs = cj ? cj.attributes : [];
-    return '<div class="st-page-head"><h2>Conjoint design</h2><p>Define attributes with three levels each, then generate a balanced best-worst-safe design. ' +
-      "A <b>choice task</b> question is added to the last section if the study has none.</p></div>" +
-      '<div class="st-field"><label>Attributes <span class="st-opt">one per line: id | label | level 1 | level 2 | level 3 | higher_is_bad 0/1</span></label>' +
-      '<textarea id="f-attrs" style="min-height:140px;font-family:ui-monospace,monospace;font-size:12.5px">' +
-      (attrs.map(function (a) { return a.id + "|" + (a.label || a.id) + "|" + a.levels.join("|") + "|" + (a.higher_is_bad ? 1 : 0); }).join("\n") ||
-        "OS|Overall survival|no proven benefit|+3 months|+6 months|0") + "</textarea></div>" +
-      '<div class="st-grid2"><div class="st-field"><label>Choice tasks per respondent</label><input id="f-ntasks" type="number" value="' + (cj ? cj.n_tasks : 9) + '"></div>' +
-      '<div class="st-field"><label>Minimum seconds on each task <span class="st-opt">speeder guard</span></label><input id="f-dwell" type="number" data-set="conjoint_min_dwell" value="' + (cur.cfg.conjoint_min_dwell || 10) + '"></div></div>' +
-      '<div class="st-field"><label>Patient vignette shown with the choice tasks</label><textarea id="f-cvignette" data-set="vignette">' + esc((cur.cfg.conjoint_scene && cur.cfg.vignette) || cur.cfg.vignette || "") + "</textarea></div>" +
-      '<button class="st-btn on" data-act="genconj">Generate design</button>' +
-      (cj ? '<div class="st-note">Current design: <b>' + cj.n_tasks + " tasks</b> \u00D7 " + (cj.tasks && cj.tasks[0] ? cj.tasks[0].length : 3) + " alternatives over " + attrs.length + " attributes.</div>" : "");
+    var c = cur.cfg, cj = c.conjoint;
+    var qs = (c.questions || []).filter(function (x) { return x.type === "choice_task"; });
+    var head = '<div class="st-page-head"><h2>Conjoint design</h2><p>The experiment is authored on its ' +
+      '<b>Conjoint question</b> in Questions - this tab shows what that study will actually field.</p>' +
+      '<button class="st-btn" data-act="cj-open-q" type="button">Open the conjoint question \u2192</button></div>';
+    var dwell = '<div class="st-field" style="max-width:320px"><label>Minimum seconds on each task ' +
+      '<span class="st-opt">speeder guard</span></label><input id="f-dwell" type="number" data-set="1" value="' +
+      (c.conjoint_min_dwell == null ? 10 : c.conjoint_min_dwell) + '"></div>';
+    if (!qs.length) {
+      return head + '<div class="st-note">This study has no conjoint question yet. Add one from ' +
+        '<b>+ Add question</b> \u2192 Methodologies \u2192 Conjoint, then fill in its attributes and press ' +
+        '<b>Generate design</b>.</div>' + dwell;
+    }
+    if (!cj || !cj.tasks) {
+      return head + '<div class="st-note">No design has been generated yet. Open the conjoint question ' +
+        '(' + esc(qs[0].id) + '), fill in its attributes and levels, and press <b>Generate design</b>.</div>' + dwell;
+    }
+    var kpi = function (v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; };
+    var tasks = Array.isArray(cj.tasks) ? cj.tasks : Object.keys(cj.tasks).map(function (k) { return cj.tasks[k]; });
+    var nCards = tasks.length && tasks[0] ? tasks[0].length : (cj.n_alts || 0);
+    var html = head +
+      '<div class="st-kpis">' + kpi(tasks.length, "sets") + kpi(nCards, "cards per set") +
+      kpi((cj.attributes || []).length, "attributes") +
+      kpi(cj.has_opt_out === false ? "off" : "on", "allow \u201Cnone\u201D") + "</div>" + dwell +
+      '<div class="st-cj-sum"><div class="st-cj-attrs-head"><b>Attributes</b><span class="st-meta">' +
+      (cj.generated_at ? "generated " + esc(cj.generated_at) : "") + '</span></div>';
+    (cj.attributes || []).forEach(function (a, i) {
+      var looked = (cj.groups && cj.groups[a.id]) ? cj.groups[a.id].length : 0;
+      html += '<div class="st-cj-attr"><div class="st-cj-attr-top"><span class="st-seq">' + (i + 1) + '.</span>' +
+        '<b>' + esc(a.label || a.id) + '</b>' +
+        (a.higher_is_bad ? ' <span class="st-chip warn">higher is worse</span>' : "") +
+        ' <span class="st-meta">' + (a.levels || []).length + " levels" +
+        (a.group_inclusion ? " \u00B7 asked in " + looked + " of " + tasks.length + " sets" : " \u00B7 every set") +
+        "</span></div><div class=\"st-cj-levels\">" +
+        (a.levels || []).map(function (lv, li) {
+          return '<span class="st-cj-chip">' + esc(lv) +
+            ((a.images || [])[li] ? ' <span class="st-opt">img</span>' : "") + "</span>";
+        }).join("") + "</div></div>";
+    });
+    // the first design row, so it is obvious the design is real and not just a description
+    html += '</div><div class="st-field" style="margin-top:12px"><label>First set <span class="st-opt">as the ' +
+      'respondent sees it (order is reshuffled per respondent)</span></label>' +
+      (tasks[0] || []).map(function (alt, ai) {
+        var profile = alt && alt.levels !== undefined ? alt.levels : alt;
+        var rows = (cj.attributes || []).map(function (a, i2) {
+          var lv = Array.isArray(profile) ? profile[i2] : profile[a.id];
+          if (lv === null || lv === undefined) return "";
+          return "<div>" + esc(a.label || a.id) + ": <b>" + esc((a.levels || [])[lv]) + "</b></div>";
+        }).join("");
+        return '<div class="st-cj-setcard"><b>Card ' + (ai + 1) + "</b>" + rows + "</div>";
+      }).join("") + "</div>";
+    return html;
   }
   function settingsTab() {
     var c = cur.cfg, qc = c.qc || {}, m = c.metrics || {}, ai = qc.ai || {};
@@ -2284,6 +2686,28 @@
     if (act === "back") { flushSave(function () { history.replaceState(null, "", location.pathname + location.search); loadList(); }); }
     if (act === "status") setStatus(slug, b.getAttribute("data-status"), loadList);
     if (act === "setstatus") { if (b.classList.contains("on")) return; setStatus(cur.slug, b.getAttribute("data-status")); }
+    if (act === "media-add-quick") {
+      syncFromForm();
+      if (edTab !== "content") { edTab = "content"; renderEditorPane(); }
+      var mcard = document.getElementById("card-media");
+      if (mcard && mcard.scrollIntoView) mcard.scrollIntoView({ block: "nearest" });
+      var fi2 = $("[data-act=media-upload]");
+      if (fi2) fi2.click();
+      return;
+    }
+    if (act === "edtab") {
+      syncFromForm();
+      edTab = t.getAttribute("data-t") === "cond" ? "cond" : "content";
+      renderEditorPane();
+      return;
+    }
+    if (act === "cj-open-q") {
+      readSettings();
+      var qi = (cur.cfg.questions || []).findIndex(function (x) { return x.type === "choice_task"; });
+      tab = "questions"; renderEditor();
+      if (qi >= 0) selectQuestion(qi);
+      return;
+    }
     if (act === "tab-back") { if (tab === "settings" || tab === "conjoint") readSettings(); tab = "questions"; renderEditor(); return; }
     if (act === "sopts") { var mn = document.getElementById("st-sopts"); if (mn) mn.hidden = !mn.hidden; return; }
     if (act === "so-settings") { closeSopts(); tab = "settings"; renderEditor(); }
@@ -2337,7 +2761,8 @@
     if (act === "addsec") {
       var n = cur.cfg.sections.length + 1, id = "S" + n;
       while (cur.cfg.sections.some(function (s) { return s.id === id; })) id += "b";
-      cur.cfg.sections.push({ id: id, title: "Section " + n, blurb: null });
+      // blank, not "Section 3" - section names are whatever the author types, never predefined
+      cur.cfg.sections.push({ id: id, title: "", blurb: null });
       markChanged(); renderOutline(); refreshSectionSelect();
       var inp = $('[data-sec-title="' + (cur.cfg.sections.length - 1) + '"]'); if (inp) { inp.focus(); inp.select(); }
     }
@@ -2394,25 +2819,119 @@
     if (act === "scene-down" && i < scenes().length - 1) { var L2 = scenes(), tmp2 = L2[i + 1]; L2[i + 1] = L2[i]; L2[i] = tmp2; renderScenePrev(); markChanged(); }
     if (act === "scene-clip-del") removeClip(i);
     if (act === "scene-thumb") { var s2 = document.querySelector('[data-scene-art="' + i + '"]'); if (s2) s2.focus(); }
+    // ---- conjoint experiment controls ----
+    if (act === "cj-attr-add") {
+      syncFromForm();
+      var cj = conjointOf(ed), n2 = cj.attributes.length + 1;
+      var nid = "A" + n2;
+      while (cj.attributes.some(function (a) { return a.id === nid; })) nid += "b";
+      cj.attributes.push({ id: nid, label: "", levels: ["", ""], images: [],
+                           higher_is_bad: false, group_inclusion: false, range: null });
+      rerenderCard("answers"); changed();
+      var nm = $('#st-editor .st-cj-attr:last-child [data-cj-field=label]'); if (nm) nm.focus();
+      return;
+    }
+    if (act === "cj-attr-del") {
+      syncFromForm();
+      var cja = conjointOf(ed).attributes;
+      if (cja.length <= 1) { toast("A conjoint experiment needs at least one attribute"); return; }
+      cja.splice(i, 1); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-attr-up" || act === "cj-attr-down") {
+      syncFromForm();
+      var cjL = conjointOf(ed).attributes, j2 = act === "cj-attr-up" ? i - 1 : i + 1;
+      if (j2 < 0 || j2 >= cjL.length) return;
+      var tmpA = cjL[j2]; cjL[j2] = cjL[i]; cjL[i] = tmpA;
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-level-add") {
+      syncFromForm();
+      var a3 = conjointOf(ed).attributes[i];
+      a3.levels.push(""); if (a3.images && a3.images.length) a3.images.push("");
+      rerenderCard("answers"); changed();
+      var li3 = $('#st-editor [data-cj-field=level][data-i="' + i + '"][data-l="' + (a3.levels.length - 1) + '"]');
+      if (li3) li3.focus();
+      return;
+    }
+    if (act === "cj-level-del") {
+      syncFromForm();
+      var a4 = conjointOf(ed).attributes[i];
+      if (a4.levels.length <= 2) { toast("An attribute needs at least two levels"); return; }
+      a4.levels.splice(Number(b.getAttribute("data-l")), 1);
+      if (a4.images && a4.images.length) a4.images.splice(Number(b.getAttribute("data-l")), 1);
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-level-img-del") {
+      syncFromForm();
+      var a5 = conjointOf(ed).attributes[i];
+      if (a5.images) a5.images[Number(b.getAttribute("data-l"))] = "";
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "cj-range-apply") {
+      syncFromForm();
+      var a6 = conjointOf(ed).attributes[i], r = a6.range || {};
+      var from = r.from == null ? 1 : Number(r.from), to = r.to == null ? 5 : Number(r.to);
+      var step = Math.max(1, Number(r.step) || 1);
+      if (to < from) { toast("\u201CTo\u201D must be at least \u201CFrom\u201D"); return; }
+      var lv2 = [];
+      for (var v = from; v <= to && lv2.length < 12; v += step) lv2.push(String(v) + (r.suffix || ""));
+      if (lv2.length < 2) { toast("That range gives fewer than two levels"); return; }
+      a6.levels = lv2;
+      rerenderCard("answers"); changed(); toast("Built " + lv2.length + " levels");
+      return;
+    }
+    if (act === "cj-attr-json") {
+      syncFromForm();
+      var cj6 = conjointOf(ed);
+      askText("Attributes as a list", "One attribute per line: name | level | level | \u2026",
+        cj6.attributes.map(function (a) { return a.label + " | " + a.levels.join(" | "); }).join("\n"),
+        function (txt) {
+          var lines = String(txt || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+          var out = [];
+          lines.forEach(function (l) {
+            var p2 = l.split("|").map(function (x) { return x.trim(); });
+            if (p2.length < 3) return;                       // name + at least two levels
+            out.push({ id: "A" + (out.length + 1), label: p2[0], levels: p2.slice(1),
+                       images: [], higher_is_bad: false, group_inclusion: false, range: null });
+          });
+          if (!out.length) { toast("Each line needs a name and at least two levels"); return; }
+          cj6.attributes = out; rerenderCard("answers"); changed();
+        });
+      return;
+    }
     if (act === "genconj") {
-      var attrs = String(document.getElementById("f-attrs").value).split("\n").filter(function (l) { return l.trim(); }).map(function (l) {
-        var p = l.split("|");
-        return { id: p[0].trim(), label: (p[1] || p[0]).trim(), levels: [p[2] || "low", p[3] || "mid", p[4] || "high"], higher_is_bad: p[5] === "1" };
+      syncFromForm();
+      var spec = conjointOf(ed);
+      var bad = spec.attributes.filter(function (a) { return a.levels.length < 2 || a.levels.some(function (l) { return !String(l).trim(); }); });
+      if (bad.length) { toast("Every attribute needs at least two filled-in levels"); return; }
+      var attrs = spec.attributes.map(function (a, i) {
+        return { id: a.id || ("A" + (i + 1)), label: a.label || ("Attribute " + (i + 1)),
+                 levels: a.levels.slice(), images: a.images || [],
+                 higher_is_bad: !!a.higher_is_bad, group_inclusion: !!a.group_inclusion };
       });
-      api("/api/studio/make_conjoint", { attributes: attrs, n_tasks: Number(document.getElementById("f-ntasks").value) || 9, seed: 7 }).then(function (d) {
+      api("/api/studio/make_conjoint", { attributes: attrs, n_tasks: spec.n_sets || 6,
+                                         n_alts: spec.n_cards || 2, seed: 7 }).then(function (d) {
         if (d.error) { toast("Design failed: " + d.error); return; }
+        var ids = (d.attributes || []).map(function (a) { return a.id; });
         cur.cfg.conjoint = {
-          attributes: d.attributes.map(function (id) { return { id: id, levels: d.levels[id] }; }),
-          tasks: d.tasks.map(function (task) { return task.map(function (p, k) { return { alt_id: k + 1, levels: p }; }); }),
-          n_tasks: d.n_tasks, has_opt_out: true
+          // levels are stored positionally (same order as attributes), null where a
+          // group-inclusion attribute is hidden in that task - the shape the survey
+          // renderer, the CSV export and the seeded design all read.
+          attributes: d.attributes, tasks: d.tasks.map(function (task) {
+            return task.map(function (p, k) {
+              return { alt_id: k + 1, levels: ids.map(function (id) {
+                return p[id] === undefined || p[id] === null ? null : p[id]; }) };
+            });
+          }),
+          n_tasks: d.n_tasks, n_alts: d.n_alts, has_opt_out: spec.allow_none !== false,
+          title: spec.title || "", description_html: spec.description_html || "",
+          none_label: spec.none_label || "None of these",
+          groups: d.groups || {}, generated_at: d.generated_at || ""
         };
-        readSettings();
-        if (!cur.cfg.questions.some(function (q) { return q.type === "choice_task"; })) {
-          var q = qTemplate("choice_task", "CT1", cur.cfg.sections[cur.cfg.sections.length - 1].id);
-          q.vignette = cur.cfg.vignette; cur.cfg.questions.push(q);
-        }
-        markChanged(); renderTab();
-        toast("Design generated: " + d.n_tasks + " balanced tasks");
+        if (cur.cfg.vignette) ed.vignette = ed.vignette || cur.cfg.vignette;
+        markChanged();
+        rerenderCard("answers"); renderPreview();
+        toast("Design generated: " + d.n_tasks + " sets \u00D7 " + d.n_alts + " cards");
       });
     }
     if (act === "reset") {

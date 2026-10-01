@@ -321,12 +321,20 @@ def autotranslate():
 
 @bp.post("/api/studio/make_conjoint")
 def conjoint():
+    """Build a design from the attributes authored on the conjoint question.
+
+    ``n_tasks`` is the number of choice sets and ``n_alts`` the number of cards per set.
+    """
     body = json_body()
+    n_tasks = max(1, min(60, int(body.get("n_tasks", 9) or 9)))
+    n_alts = max(2, min(6, int(body.get("n_alts", 3) or 3)))
     try:
-        return jsonify(make_conjoint(body.get("attributes", []), int(body.get("n_tasks", 9)),
-                                     int(body.get("seed", 1))))
+        design = make_conjoint(body.get("attributes", []), n_tasks,
+                               int(body.get("seed", 1)), n_alts)
     except (KeyError, ValueError, TypeError, ZeroDivisionError, IndexError) as e:
         return jsonify({"error": str(e)}), 400
+    design["generated_at"] = stamp()
+    return jsonify(design)
 
 
 # ---------------------------------------------------------------- narration clips

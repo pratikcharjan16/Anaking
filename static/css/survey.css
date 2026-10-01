@@ -538,6 +538,10 @@ h2.stem ul,h2.stem ol,.help ul,.help ol{margin:8px 0 4px;padding-left:22px;font-
 h2.stem li,.help li{margin:2px 0}
 h2.stem p,.help p{margin:0 0 6px}
 h2.stem mark,.help mark,.opt mark{padding:0 3px;border-radius:3px}
+/* tables an author inserts with the rich-text toolbar */
+h2.stem table,.help table{border-collapse:collapse;margin:8px 0;font-size:13.5px;font-weight:500}
+h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid var(--line);
+  padding:5px 10px;text-align:left}
 .qmedia{margin:6px 0 16px}
 .qmedia img,.qmedia video{max-width:100%;border-radius:10px;border:1px solid var(--line);display:block}
 .qmedia-center img,.qmedia-center video{margin:0 auto}

@@ -1,98 +1,73 @@
-"""Section defaults and the one-time rename of the old default section titles.
+"""Section names are entirely user-defined - nothing is predefined anywhere.
 
     python3 -m pytest tests/test_sections.py
 
-New studies are created by the Studio (client-side) with "Screeners" / "Main".  Studies that
-already existed when that change shipped are renamed once by models.init_db(), which records in
-the `meta` table that it has run.
+The Studio creates a new study with a single *unnamed* section; the author names it.  The server
+must not invent, default or rewrite a section title, and an unnamed section has to round-trip
+untouched rather than being filled in with "Section 1".
 """
 
-import json
-import sqlite3
+import pytest
 
 import models
 
 
 def _cfg(*titles):
-    return {"sections": [{"id": f"S{i + 1}", "title": t} for i, t in enumerate(titles)],
+    return {"sections": [{"id": f"S{i + 1}", "title": t, "blurb": None} for i, t in enumerate(titles)],
             "questions": [{"id": "Q1", "section": "S1", "type": "open_text", "stem": "x"}]}
 
 
-def _db_with(path, studies):
-    """A database holding `studies` as {slug: cfg}, the way an older install looks."""
-    conn = sqlite3.connect(path)
-    conn.executescript(models.SCHEMA)
-    for slug, cfg in studies.items():
-        conn.execute("INSERT INTO studies(slug,title,status,cfg,created_at,updated_at) "
-                     "VALUES(?,?,?,?,?,?)",
-                     (slug, slug.title(), "draft", json.dumps(cfg), "", ""))
-    conn.commit()
-    conn.close()
-    return str(path)
+def _saved(client, slug):
+    return client.get(f"/api/studio/study?slug={slug}").get_json()["cfg"]
 
 
-def _titles(path, slug):
-    conn = sqlite3.connect(path)
-    cfg = json.loads(conn.execute("SELECT cfg FROM studies WHERE slug=?", (slug,)).fetchone()[0])
-    conn.close()
-    return [s["title"] for s in cfg["sections"]]
+def test_an_unnamed_section_stays_unnamed(client):
+    """No default title is written over an empty one."""
+    r = client.post("/api/studio/save", json={"title": "Blank Section Study", "cfg": _cfg("")})
+    assert r.status_code == 200, r.get_json()
+    cfg = _saved(client, r.get_json()["slug"])
+    assert cfg["sections"][0]["title"] == ""
 
 
-def test_legacy_default_sections_are_renamed(tmp_path):
-    """A study still on "Introduction" / "Main questions" is migrated to Screeners / Main."""
-    db = _db_with(tmp_path / "old.db", {"old": _cfg("Introduction", "Main questions")})
-    renamed = models.init_db(db)
-    assert list(renamed) == ["old"]
-    assert _titles(db, "old") == ["Screeners", "Main"]
+def test_any_section_name_is_kept_verbatim(client):
+    """Whatever the author types comes back byte for byte - including odd casing and symbols."""
+    names = ["Screeners", "main questions", "Part 2 - Pricing & value", "Ünïcode ⓘ", ""]
+    r = client.post("/api/studio/save", json={"title": "Named Study", "cfg": {
+        "sections": [{"id": f"S{i + 1}", "title": t} for i, t in enumerate(names)],
+        "questions": [{"id": "Q1", "section": "S1", "type": "open_text", "stem": "x"}]}})
+    assert r.status_code == 200, r.get_json()
+    assert [s["title"] for s in _saved(client, r.get_json()["slug"])["sections"]] == names
 
 
-def test_rename_only_touches_the_old_defaults(tmp_path):
-    """Custom names survive; a section that merely ends in "Main" is untouched."""
-    db = _db_with(tmp_path / "mixed.db", {
-        "custom": _cfg("Screening", "Main", "Closing thoughts"),
-        "mixed": _cfg("Introduction", "Deep dive"),
-    })
-    models.init_db(db)
-    assert _titles(db, "custom") == ["Screening", "Main", "Closing thoughts"]
-    assert _titles(db, "mixed") == ["Screeners", "Deep dive"]
-
-
-def test_rename_runs_once(tmp_path):
-    """After the migration a section deliberately called "Introduction" is left alone."""
-    db = _db_with(tmp_path / "later.db", {})
-    assert models.init_db(db) == {}
-    conn = sqlite3.connect(db)
-    conn.execute("INSERT INTO studies(slug,title,status,cfg,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                 ("later", "Later", "draft", json.dumps(_cfg("Introduction")), "", ""))
-    conn.commit()
-    conn.close()
-    assert models.init_db(db) == {}                      # guarded by the meta row
-    assert _titles(db, "later") == ["Introduction"]
-
-
-def test_a_broken_cfg_does_not_stop_the_migration(tmp_path):
-    """A study whose cfg is not valid JSON is skipped rather than breaking startup."""
-    db = _db_with(tmp_path / "broken.db", {"good": _cfg("Introduction")})
-    conn = sqlite3.connect(db)
-    conn.execute("INSERT INTO studies(slug,title,status,cfg,created_at,updated_at) VALUES(?,?,?,?,?,?)",
-                 ("bad", "Broken", "draft", "{not json", "", ""))
-    conn.commit()
-    conn.close()
-    assert list(models.init_db(db)) == ["good"]
-
-
-def test_live_study_is_renamed_when_the_migration_has_not_run_yet(client, app):
-    """The same path the server takes on the first boot after the upgrade."""
-    r = client.post("/api/studio/save", json={"title": "Live Legacy", "cfg": _cfg(
-        "Introduction", "Main questions")})
+def test_renaming_a_section_round_trips(client):
+    r = client.post("/api/studio/save", json={"title": "Rename Study", "cfg": _cfg("Start")})
     slug = r.get_json()["slug"]
-    with app.app_context():
-        conn = models.connect()
-        conn.execute("DELETE FROM meta WHERE key=?", (models._SECTIONS_MIGRATION_KEY,))
-        conn.commit()
-        conn.close()
-        renamed = models.init_db()                       # exactly what create_app() calls
-    assert list(renamed) == [slug]
-    titles = [s["title"] for s in
-              client.get(f"/api/studio/study?slug={slug}").get_json()["cfg"]["sections"]]
-    assert titles == ["Screeners", "Main"]
+    cfg = _saved(client, slug)
+    cfg["sections"][0]["title"] = "Screening and eligibility"
+    assert client.post("/api/studio/save", json={"slug": slug, "cfg": cfg}).status_code == 200
+    assert _saved(client, slug)["sections"][0]["title"] == "Screening and eligibility"
+
+
+def test_the_server_does_not_add_sections(client):
+    """A study with one section keeps exactly one; nothing is created behind the author's back."""
+    r = client.post("/api/studio/save", json={"title": "Single Section", "cfg": _cfg("Only")})
+    assert len(_saved(client, r.get_json()["slug"])["sections"]) == 1
+
+
+def test_no_section_migration_rewrites_titles(client):
+    """models.init_db() must not touch a stored title - including the old defaults."""
+    r = client.post("/api/studio/save",
+                    json={"title": "Old Defaults", "cfg": _cfg("Introduction", "Main questions")})
+    slug = r.get_json()["slug"]
+    with client.application.app_context():
+        models.init_db()
+    assert [s["title"] for s in _saved(client, slug)["sections"]] == ["Introduction", "Main questions"]
+
+
+def test_questions_must_point_at_a_real_section(client):
+    """The one rule that survives: a section has to exist for a question to live in it."""
+    r = client.post("/api/studio/save", json={"title": "Bad Ref", "cfg": {
+        "sections": [{"id": "S1", "title": "Only"}],
+        "questions": [{"id": "Q1", "section": "S9", "type": "open_text", "stem": "x"}]}})
+    assert r.status_code == 400
+    assert "unknown section" in r.get_json()["error"]
