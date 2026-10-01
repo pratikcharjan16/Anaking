@@ -52,6 +52,13 @@ CREATE TABLE IF NOT EXISTS respondents (
     embedded TEXT DEFAULT '{}'
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_resp_code ON respondents(study_id, respondent_code);
+CREATE TABLE IF NOT EXISTS test_reviews (
+    token TEXT PRIMARY KEY,
+    study_slug TEXT,
+    payload TEXT,
+    created_at TEXT,
+    updated_at TEXT
+);
 CREATE TABLE IF NOT EXISTS answers (
     respondent_id INTEGER,
     question_id TEXT,
@@ -192,7 +199,7 @@ class Study:
     @staticmethod
     def list_with_counts() -> list[dict]:
         rows = get_db().execute(
-            "SELECT s.slug, s.title, s.status, s.updated_at, s.cfg, "
+            "SELECT s.id, s.slug, s.title, s.status, s.updated_at, s.cfg, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id) AS n, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id AND "
             "r.status='complete') AS c FROM studies s ORDER BY s.id").fetchall()
@@ -201,8 +208,30 @@ class Study:
             cfg = json.loads(r["cfg"]) if r["cfg"] else {}
             out.append({"slug": r["slug"], "title": r["title"], "status": r["status"],
                         "updated_at": r["updated_at"], "started": r["n"], "complete": r["c"],
-                        "parent": cfg.get("parent") or "", "language": cfg.get("language") or ""})
+                        "study_id": f"STU-{r['id']:06d}",
+                        "parent": cfg.get("parent") or "", "language": cfg.get("language") or "",
+                        "group_name": cfg.get("group_name") or "",
+                        "parent_study": cfg.get("parent_study") or ""})
         return out
+
+    @staticmethod
+    def save_test_review(slug: str, payload: dict, token: str = "") -> str:
+        """Create/update a shareable test-mode review snapshot."""
+        if not Study.get(slug):
+            raise StudyError("unknown study", 404)
+        token = token if re.fullmatch(r"[A-Za-z0-9_-]{12,64}", token or "") else secrets.token_urlsafe(12)
+        ts, conn = now(), get_db()
+        with write_lock, conn:
+            conn.execute("INSERT INTO test_reviews(token,study_slug,payload,created_at,updated_at) "
+                         "VALUES(?,?,?,?,?) ON CONFLICT(token) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at",
+                         (token, slug, json.dumps(payload), ts, ts))
+        return token
+
+    @staticmethod
+    def get_test_review(token: str) -> dict | None:
+        row = get_db().execute("SELECT study_slug,payload,updated_at FROM test_reviews WHERE token=?", (token,)).fetchone()
+        if not row: return None
+        return {"study": row["study_slug"], "payload": json.loads(row["payload"] or "{}"), "updated_at": row["updated_at"]}
 
     @staticmethod
     def children_of(slug: str) -> list["Study"]:

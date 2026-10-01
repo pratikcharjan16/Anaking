@@ -29,7 +29,7 @@ from core.i18n import (LANG_BY_CODE, apply_language, default_language, extract_s
 from core.qc import qc_flags
 from core.seed import load_task_map
 from core.survey_spec import TERMINATE_TEXT
-from models import Respondent, Study
+from models import Respondent, Study, StudyError
 
 from .helpers import json_body
 
@@ -182,6 +182,26 @@ def start():
                     "task_order": assignment["task_order"],
                     "alt_positions": assignment["alt_positions"],
                     "from_prebuilt_map": resp.code in (task_map or {})})
+
+
+@bp.post("/api/test-review")
+def save_test_review():
+    body = json_body()
+    try:
+        token = Study.save_test_review(body.get("study") or "beacon", {
+            "answers": body.get("answers") if isinstance(body.get("answers"), dict) else {},
+            "notes": body.get("notes") if isinstance(body.get("notes"), dict) else {},
+            "current": int(body.get("current") or 0),
+        }, str(body.get("token") or ""))
+    except StudyError as e:
+        return jsonify({"error": e.message}), e.status
+    return jsonify({"ok": True, "token": token, "url": f"/survey/{body.get('study') or 'beacon'}/test?review={token}"})
+
+
+@bp.get("/api/test-review/<token>")
+def get_test_review(token):
+    review = Study.get_test_review(token)
+    return jsonify(review if review else {"error": "review not found"}), (200 if review else 404)
 
 
 @bp.post("/api/save")
