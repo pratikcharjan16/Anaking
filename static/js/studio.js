@@ -252,6 +252,7 @@
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
       '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button>' +
       '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
+      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with an AI guide</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
@@ -286,12 +287,13 @@
         : "";
       return '<div class="st-card" data-slug="' + esc(s.slug) + '">' +
         '<div class="st-card-top"><h3>' + esc(s.title) + '</h3><span class="st-pill ' + s.status + '">' + s.status + "</span></div>" +
+        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') + '</div>' +
         '<div class="st-meta">/survey/' + esc(s.slug) + " \u00B7 updated " + esc(ago(s.updated_at)) + "</div>" + kidHtml +
         '<div class="st-stats"><div><strong>' + s.started + "</strong><span>started</span></div><div><strong>" + s.complete + "</strong><span>complete</span></div>" +
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
         '<div class="st-card-actions">' +
         '<button class="st-btn on" data-act="open" data-slug="' + esc(s.slug) + '">Open builder</button>' +
-        '<a class="st-btn" href="/survey/' + esc(s.slug) + '/test" target="_blank" rel="noopener">Preview</a>' +
+        '<a class="st-btn" href="/survey/' + esc(s.slug) + '/test" title="Open question navigation, tester notes, AI test answers and review sharing">Test workspace</a>' +
         (s.status === "live"
           ? '<button class="st-btn bad" data-act="status" data-status="closed" data-slug="' + esc(s.slug) + '">Close</button>'
           : '<button class="st-btn good" data-act="status" data-status="live" data-slug="' + esc(s.slug) + '">Launch</button>') +
@@ -327,7 +329,7 @@
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
       '<button class="st-btn" data-act="save" title="Ctrl/Cmd + S">Save now</button>' +
-      '<button class="st-btn play" data-act="viewlive">\u25B6 Preview survey</button>' +
+      '<button class="st-btn play" data-act="viewlive" title="Open the full test environment with question jump, notes, AI answers and team review links">\u25B6 Test survey</button>' +
       '<div class="st-menu-wrap"><button class="st-btn" data-act="sopts" title="Survey options">SURVEY OPTIONS \u25BE</button>' +
         '<div class="st-menu" id="st-sopts" hidden>' +
         '<button type="button" data-act="so-settings">Settings</button>' +
@@ -348,7 +350,8 @@
         return '<button class="st-tab' + (tab === t[0] ? " on" : "") + '" data-tab="' + t[0] + '">' + t[1] +
           (t[2] !== "" ? '<span class="st-count">' + t[2] + "</span>" : "") + "</button>";
       }).join("") + "</nav>" +
-      '<div id="st-panel" class="st-panel-host"></div>';
+      '<div id="st-panel" class="st-panel-host"></div>' +
+      '<button class="st-ai-fab" data-act="ai-guide"><span>✦</span><b>Ask research agent</b><small>Guidance throughout your build</small></button>';
     root.innerHTML = html;
     renderSaveState();
     renderTab();
@@ -840,6 +843,7 @@
         '<div class="st-ehead-tools"><button class="st-ibtn" data-act="qdup" data-i="' + sel + '" title="Duplicate question">\u2398</button>' +
         '<button class="st-ibtn danger" data-act="qdel" data-i="' + sel + '" title="Delete question">\u2715</button></div>' +
       "</div>" +
+      '<div id="st-qcheck">' + questionCheckHtml() + '</div>' +
       '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["logic", "Show only when\u2026"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
         return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
       card("q", "Question", "What respondents read", qCard()) +
@@ -849,6 +853,38 @@
       card("media", "Image or video" + (ed.media && ed.media.src ? ' <em class="st-dot">on</em>' : ""), "Shown under the question text", mediaCard()) +
       card("advanced", "Advanced (JSON)", "Everything the form does is stored here", advancedCard(), true);
     renderPreview();
+  }
+
+  // ---- live design QA -----------------------------------------------------------------
+  function questionIssues() {
+    if (!ed) return [];
+    var out = [], stem = String(ed.stem || "").trim(), lower = stem.toLowerCase();
+    if (!stem || /^new .* question$/i.test(stem)) out.push({key:"stem", level:"error", text:"Question wording is still a placeholder.", fix:"Write a clear starter question"});
+    if (stem.length > 220) out.push({key:"shorten", level:"warn", text:"This question is long and may increase drop-off.", fix:"Shorten wording"});
+    if (/\b(and|or)\b/.test(lower) && stem.length > 95) out.push({key:"double", level:"warn", text:"This may ask two things at once (double-barrelled).", fix:"Focus on one idea"});
+    if (/don't you|obviously|clearly|best|excellent/.test(lower)) out.push({key:"leading", level:"warn", text:"Potentially leading language could bias the answer.", fix:"Make wording neutral"});
+    if ((ed.type === "single_select" || ed.type === "multi_select") && (!ed.options || ed.options.length < 2)) out.push({key:"options", level:"error", text:"Add at least two answer options.", fix:"Add starter options"});
+    if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
+    var rules = ed.show_if && ed.show_if.rules || [];
+    rules.forEach(function(r){ var qi = cur.cfg.questions.findIndex(function(q){return q.id === r.q;}); if(qi < 0 || qi >= sel) out.push({key:"logic",level:"error",text:"Show-if logic references a missing or later question.",fix:"Repair logic"}); });
+    if (!out.length) out.push({key:"ok",level:"ok",text:"No design issues found. This question is ready to test."});
+    return out;
+  }
+  function questionCheckHtml() {
+    var issues = questionIssues(), bad = issues.filter(function(x){return x.level !== 'ok';}).length;
+    return '<div class="st-qcheck ' + (bad ? 'has-issues' : 'is-ok') + '"><div class="st-qcheck-head"><span>✦</span><b>AI design check</b><em>' + (bad ? bad + ' suggestion' + (bad === 1 ? '' : 's') : 'Looks good') + '</em><button class="st-btn sm" data-act="q-ai-help">Ask agent</button></div>' + issues.map(function(x){return '<div class="st-qissue ' + x.level + '"><i>' + (x.level === 'ok' ? '✓' : x.level === 'error' ? '!' : '△') + '</i><span>' + esc(x.text) + '</span>' + (x.fix ? '<button data-act="q-fix" data-fix="' + x.key + '">' + esc(x.fix) + '</button>' : '') + '</div>';}).join('') + '<small>Nothing is changed without your approval.</small></div>';
+  }
+  function refreshQuestionCheck() { var h = document.getElementById('st-qcheck'); if (h) h.innerHTML = questionCheckHtml(); }
+  function applyQuestionFix(key) {
+    if (!confirm('Apply this suggested edit to ' + ed.id + '? You can continue editing it afterwards.')) return;
+    if (key === 'stem') { ed.stem = 'Which of the following best describes your experience?'; ed.stem_html = ed.stem; }
+    if (key === 'shorten') { ed.stem = String(ed.stem).split(/[?.]/)[0].slice(0,160) + '?'; ed.stem_html = esc(ed.stem); }
+    if (key === 'double') { ed.stem = String(ed.stem).replace(/\s+(and|or)\s+.*?(\?|$)/i, '?'); ed.stem_html = esc(ed.stem); }
+    if (key === 'leading') { ed.stem = String(ed.stem).replace(/obviously|clearly|excellent|best/gi, '').replace(/don't you/gi, 'do you'); ed.stem_html = esc(ed.stem); }
+    if (key === 'options') ed.options = [{code:1,label:'Option one'},{code:2,label:'Option two'},{code:99,label:'Other',other:true,pin:true}];
+    if (key === 'emptyopt') (ed.options || []).forEach(function(o,i){if(!String(o.label || '').trim()) o.label='Option ' + (i+1);});
+    if (key === 'logic') { var prior = cur.cfg.questions.slice(0,sel)[0]; if (prior) ed.show_if = {match:'all',rules:[{q:prior.id,op:prior.options?'selected':'answered',value:prior.options?prior.options[0].code:''}]}; else delete ed.show_if; }
+    markChanged(); renderOutline(); renderEditorPane(); toast('Suggestion applied — review before publishing');
   }
 
   // ---- card: question text -------------------------------------------------------------
@@ -1136,7 +1172,8 @@
     var others = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
     var idx = c.questions.indexOf(ed);
     var rules = sif.rules || [];
-    var html = '<div class="st-logic-intro">' + (rules.length
+    var html = '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
+      '<div class="st-logic-intro">' + (rules.length
       ? 'Show this question <b>only when</b> <select id="f-sif-match"><option value="all"' + (sif.match !== "any" ? " selected" : "") + '>all</option><option value="any"' + (sif.match === "any" ? " selected" : "") + '>any</option></select> of these are true:'
       : "<b>Always shown.</b> Add a condition to show it only to some respondents - e.g. only those who chose \u201COncology\u201D in Q1.") + "</div>";
     html += '<div id="f-rules">' + rules.map(function (r, i) {
@@ -1294,7 +1331,7 @@
     }
   }
   // form -> question -> autosave + preview + outline row
-  function changed() { syncFromForm(); markChanged(); renderPreview(); refreshOutlineRow(); }
+  function changed() { syncFromForm(); markChanged(); renderPreview(); refreshOutlineRow(); refreshQuestionCheck(); }
 
   function applyId(input) {
     var id = input.value.trim();
@@ -1337,6 +1374,15 @@
     document.getElementById("qtest-note").textContent = vis ? "Interactive test - answers are not saved." : "Note: with sample answers this question would be hidden by its conditions.";
   }
 
+  function openQuestionAgent() {
+    syncFromForm(); var issues = questionIssues().filter(function(x){return x.level !== 'ok';});
+    openModal('<div class="st-modal-head"><strong>✦ Question agent · ' + esc(ed.id) + '</strong><span class="st-meta">Review, explain, then apply only with permission</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-agent-chat"><div class="st-agent-msg"><b>' + (issues.length ? 'I found ' + issues.length + ' point' + (issues.length === 1 ? '' : 's') + ' to review.' : 'This question looks structurally sound.') + '</b><p>' + esc(issues.map(function(x){return x.text;}).join(' ' ) || 'I can still help improve wording, answer options, validation or logic.') + '</p></div><div class="st-agent-chips"><button data-act="agent-action" data-agent="wording">Improve wording</button><button data-act="agent-action" data-agent="options">Review answer options</button><button data-act="logic-guide">Build show-if logic</button></div><textarea placeholder="Describe what this question needs to achieve…"></textarea><div class="st-modal-actions"><button class="st-btn" data-act="modal-close">Keep as is</button><button class="st-btn on" data-act="agent-action" data-agent="wording">Prepare suggestion</button></div></div>', 'st-agent-modal');
+  }
+  function openLogicGuide() {
+    syncFromForm(); var prior = cur.cfg.questions.slice(0,sel).filter(function(q){return q.type !== 'choice_task';});
+    openModal('<div class="st-modal-head"><strong>Show-if logic guide</strong><span class="st-meta">Who should see ' + esc(ed.id) + '?</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form"><div class="st-agent-note">Choose an earlier question and condition. I’ll create the rule after you approve it.</div><label class="st-field"><span>Based on</span><select id="lg-q">' + prior.map(function(q){return '<option value="' + esc(q.id) + '">' + esc(q.id + ' · ' + q.stem.slice(0,70)) + '</option>';}).join('') + '</select></label><label class="st-field"><span>Respondent condition</span><select id="lg-op"><option value="selected">selected an answer</option><option value="not_selected">did not select an answer</option><option value="answered">answered the question</option><option value="not_answered">did not answer</option></select></label><label class="st-field"><span>Answer code (for selected/not selected)</span><input id="lg-value" placeholder="e.g. 1"></label><div class="st-modal-actions"><button class="st-btn" data-act="modal-close">Cancel</button><button class="st-btn on" data-act="logic-apply"' + (prior.length ? '' : ' disabled') + '>Review and apply rule</button></div></div>', 'st-agent-modal');
+  }
+
   // ------------------------------------------------------------ editor events (delegated on root)
   function inEditor(e) { return !!e.target.closest("#st-editor"); }
   root.addEventListener("click", function (e) {
@@ -1358,6 +1404,9 @@
     if (!b) return;
     var act = b.getAttribute("data-act"), i = Number(b.getAttribute("data-i")), kind = b.getAttribute("data-kind"), ri = Number(b.getAttribute("data-ri"));
     if (act === "pipe-close") { closePipePicker(); return; }
+    if (act === "q-fix") { syncFromForm(); applyQuestionFix(b.getAttribute("data-fix")); return; }
+    if (act === "q-ai-help") { openQuestionAgent(); return; }
+    if (act === "logic-guide") { openLogicGuide(); return; }
     if (act === "jump") { e.preventDefault(); var c = document.getElementById("card-" + b.getAttribute("data-card")); if (c) { c.open = true; c.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
     if (act === "set-layout") { syncFromForm(); var v = b.getAttribute("data-v"); setOrDel(ed, "layout", v === (ed.type === "multi_select" ? "grid" : "list") ? "" : v); $$("#f-layout-seg .st-seg-btn").forEach(function (x) { x.classList.toggle("on", x === b); }); markChanged(); renderPreview(); return; }
     if (act === "it-add" || act === "opt-add-none" || act === "opt-add-na" || act === "opt-add-other") {
@@ -1485,6 +1534,13 @@
     if (!b) return;
     var act = b.getAttribute("data-act");
     if (act === "modal-close") closeModal();
+    if (act === "new-mode") showNewStudyForm(b.getAttribute("data-mode"));
+    if (act === "new-back") openNewStudy();
+    if (act === "new-create") createFromWizard();
+    if (act === "agent-send") { var msg = $(".st-agent-msg"); if (msg) msg.innerHTML = '<b>Recommended next step</b><p>Start by confirming one primary business decision, then keep each question tied to it. I recommend reviewing screening criteria and removing any double-barrelled wording before launch.</p>'; }
+    if (act === "agent-action") { var box = $(".st-agent-msg"); if (box) box.innerHTML = '<b>Suggested edit ready</b><p>I recommend concise, neutral wording and mutually exclusive answer choices. Use the real-time fixes beside each flagged issue to apply a specific change with confirmation.</p>'; }
+    if (act === "logic-guide") { closeModal(); openLogicGuide(); }
+    if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
     if (act === "qadd-type") addQuestion(b.getAttribute("data-type"), b.getAttribute("data-sec"), Number(b.getAttribute("data-after")));
     if (act === "ask-ok") { var v = (document.getElementById("st-ask") || {}).value; closeModal(); if (askCb) askCb(v); askCb = null; }
     if (act === "cmd-welcome" || act === "cmd-thanks") {
@@ -1528,6 +1584,17 @@
   });
 
   // search / missing-only inside the language panel (delegated so re-renders keep focus)
+  document.addEventListener("change", function (e) {
+    if (!e.target || e.target.id !== "ns-file" || !e.target.files[0]) return;
+    var fd = new FormData(); fd.append("file", e.target.files[0]);
+    var state = document.getElementById("ns-file-state"); if (state) state.textContent = "Reading document…";
+    fetch("/api/studio/import-document", {method:"POST", body:fd}).then(function(r){return r.json();}).then(function(d){
+      if (d.error) { if (state) state.textContent = d.error; return; }
+      var area = document.getElementById("ns-objectives"); if (area) area.value = d.text || "";
+      if (state) state.textContent = "✓ " + d.filename + " · ready to generate";
+      var title = document.getElementById("ns-title"); if (title && title.value === "New research study") title.value = d.filename.replace(/\.[^.]+$/, "");
+    }).catch(function(){ if(state) state.textContent = "Could not upload the document."; });
+  });
   document.addEventListener("input", function (e) {
     if (e.target && e.target.id === "lang-search") {
       langPanel.q = e.target.value;
@@ -1886,7 +1953,49 @@
       });
   }
 
-  // ------------------------------------------------------------ study-level events
+  // ------------------------------------------------------------ new-study launchpad + study-level events
+  var newStudyMode = "scratch";
+  function openNewStudy() {
+    var cards = [
+      ["scratch", "＋", "Build from scratch", "Start with a clean, flexible questionnaire."],
+      ["prompt", "✦", "Describe the business need", "Give AI a prompt or rough objectives; it will propose a questionnaire."],
+      ["agent", "◈", "Design with AI agent", "Work step by step with a research copilot from objectives to programming."],
+      ["upload", "⇧", "Upload a document", "Import a brief, sales document or existing questionnaire (DOCX, TXT, MD, CSV)."]
+    ];
+    openModal('<div class="st-modal-head"><strong>Create a new study</strong><span class="st-meta">Choose a starting point. Everything remains editable.</span><button class="ex-close" data-act="modal-close">&times;</button></div>' +
+      '<div class="st-start-grid">' + cards.map(function (x) { return '<button class="st-start-card" data-act="new-mode" data-mode="' + x[0] + '"><i>' + x[1] + '</i><b>' + x[2] + '</b><span>' + x[3] + '</span></button>'; }).join('') + '</div>', 'st-newstudy');
+  }
+  function showNewStudyForm(mode) {
+    newStudyMode = mode;
+    var labels = {scratch:"Build from scratch", prompt:"Describe your business need", agent:"Design with the AI agent", upload:"Import an existing document"};
+    var source = mode === "scratch" ? '' : '<label class="st-field"><span>' + (mode === "upload" ? 'Source document' : 'Objectives or business need') + '</span>' +
+      (mode === "upload" ? '<div class="st-drop"><input id="ns-file" type="file" accept=".docx,.txt,.md,.csv"><b>Choose a DOCX, TXT, MD or CSV</b><small id="ns-file-state">Maximum 8 MB</small></div><textarea id="ns-objectives" hidden></textarea>' :
+       '<textarea id="ns-objectives" rows="7" placeholder="Example: Understand why sales declined, assess unmet needs, test three concepts and identify purchase drivers…"></textarea>') + '</label>';
+    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">AI suggestions are a starting point—not a locked template.</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
+      '<div class="st-form-2"><label class="st-field"><span>Study title</span><input id="ns-title" value="New research study" autofocus></label><label class="st-field"><span>Study group <em>optional</em></span><input id="ns-group" placeholder="e.g. Brand tracking 2027"></label></div>' +
+      '<label class="st-field"><span>Parent study ID <em>optional</em></span><input id="ns-parent" placeholder="e.g. STU-000014"><small>Create a child wave or related survey under a parent.</small></label>' + source +
+      (mode === "agent" ? '<div class="st-agent-note">◈ The research agent will stay available in Studio to guide objectives, sample, question wording, logic and quality checks.</div>' : '') +
+      '<div class="st-modal-actions"><button class="st-btn" data-act="new-back">Back</button><button class="st-btn on" data-act="new-create">' + (mode === "scratch" ? 'Create study' : 'Generate editable questionnaire') + '</button></div></div>', 'st-newstudy');
+  }
+  function generatedCfg(title, objectives) {
+    var c = blankCfg(); c.title = title; var text = (objectives || '').toLowerCase();
+    c.questions[0].stem = "Which option best describes your role or relationship to this category?";
+    c.questions[1].stem = text.indexOf("sales") >= 0 ? "Please rate the factors that influence your purchasing decisions." : "Please rate the importance of each factor when making your decision.";
+    c.questions[1].rows = [{code:"quality",label:"Product or service quality"},{code:"value",label:"Value for money"},{code:"support",label:"Sales and customer support"},{code:"trust",label:"Brand trust"}];
+    c.questions[2].stem = "How likely are you to recommend this brand or solution?";
+    c.questions[3].stem = "What is the single most important improvement you would like to see, and why?";
+    if (objectives) c.research_brief = objectives;
+    return c;
+  }
+  function createFromWizard() {
+    var title = (document.getElementById('ns-title') || {}).value || 'New research study';
+    var obj = (document.getElementById('ns-objectives') || {}).value || '';
+    var cfg = newStudyMode === 'scratch' ? blankCfg() : generatedCfg(title, obj);
+    cfg.title = title; cfg.group_name = ((document.getElementById('ns-group') || {}).value || '').trim();
+    cfg.parent_study = ((document.getElementById('ns-parent') || {}).value || '').trim().toUpperCase();
+    cfg.creation_mode = newStudyMode; cfg.ai_assistant = newStudyMode !== 'scratch';
+    closeModal(); createStudy(cfg);
+  }
   function createStudy(cfg) {
     api("/api/studio/save", { slug: "", title: cfg.title, cfg: cfg }).then(function (r) {
       if (r.error) { toast(r.error); return; }
@@ -1929,7 +2038,10 @@
     if (act === "lang-ai") { aiTranslate(b); return; }
     var i = Number(b.getAttribute("data-i"));
 
-    if (act === "new") createStudy(blankCfg());
+    if (act === "new") openNewStudy();
+    if (act === "ai-guide") {
+      openModal('<div class="st-modal-head"><strong>✦ Research design agent</strong><span class="st-meta">Your study-aware guide</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-agent-chat"><div class="st-agent-msg"><b>How can I help with this study?</b><p>I can review the objectives, recommend question types, improve wording, suggest logic, check bias and prepare the study for launch.</p></div><div class="st-agent-chips"><button>Review my questionnaire</button><button>Suggest the next question</button><button>Check for bias</button><button>Help with sample design</button></div><textarea placeholder="Ask about your objectives, questionnaire or study design…"></textarea><div class="st-modal-actions"><span class="st-meta">Suggestions never change your study until you approve them.</span><button class="st-btn on" data-act="agent-send">Send</button></div></div>', 'st-agent-modal');
+    }
     if (act === "dup-beacon") {
       api("/api/studio/study?slug=beacon").then(function (s) {
         if (s.error) { toast("PROJECT BEACON template not found"); return; }
@@ -1980,9 +2092,10 @@
     }
     if (act === "save") { if (tab === "settings" || tab === "conjoint") readSettings(); auto.dirty = true; flushSave(function () { toast("Saved"); }); }
     if (act === "viewlive") {
-      var w = window.open("", "_blank");
+      // Navigate in the current preview frame. Hosted previews commonly block pop-up
+      // windows, which made this button appear to do nothing.
       var url = "/survey/" + cur.slug + "/test";
-      flushSave(function () { if (w) w.location = url; else window.open(url, "_blank"); });
+      flushSave(function () { window.location.assign(url); });
     }
     if (act === "addsec") {
       var n = cur.cfg.sections.length + 1, id = "S" + n;

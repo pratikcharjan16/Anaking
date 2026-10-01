@@ -22,7 +22,10 @@
   var t0 = Date.now();
   var points = 0;
   var seenSections = {};
-  var soundOn = true;
+  // Audio is opt-in. It must never start before the respondent chooses a preference.
+  var soundOn = false;
+  var audioPref = "manual"; // manual | all | off
+  var testNotes = {}, reviewToken = "";
   var narrator = null;
   var explainer = null;
   var dwellTimer = null;
@@ -1633,7 +1636,21 @@
       var fwd = el("button", "btn primary", last ? "Submit survey" : "Next &rarr;");
       fwd.type = "button";
       fwd.addEventListener("click", next);
-      nav.appendChild(back); nav.appendChild(fwd);
+      nav.appendChild(back);
+      if (IS_TEST) {
+        var jumpWrap = el("label", "test-jump-inline");
+        jumpWrap.innerHTML = '<span>Jump to</span>';
+        var jump = el("select"); jump.setAttribute("aria-label", "Jump to any survey question");
+        steps.forEach(function (s, i) {
+          var o = document.createElement("option"), done = answers[s.q.id] && Object.keys(answers[s.q.id]).some(function(k){ return k.charAt(0) !== "_"; });
+          o.value = i; o.selected = i === cur;
+          o.textContent = (done ? "✓ " : "") + s.q.id + " · " + String(s.q.stem || "Choice task").slice(0, 46);
+          jump.appendChild(o);
+        });
+        jump.addEventListener("change", function () { save(); go(Number(this.value)); });
+        jumpWrap.appendChild(jump); nav.appendChild(jumpWrap);
+      }
+      nav.appendChild(fwd);
       app.appendChild(nav);
       var err = el("div", "err"); err.id = "err";
       app.appendChild(err);
@@ -1681,6 +1698,28 @@
     return chip;
   }
 
+  function renderTestConsole() {
+    if (!IS_TEST) return;
+    var box = document.getElementById("test-console"); if (!box || !steps.length) return;
+    box.hidden = false;
+    var opts = steps.map(function(s,i){ var done = answers[s.q.id] && Object.keys(answers[s.q.id]).some(function(k){return k.charAt(0)!=='_';}); return '<option value="'+i+'"'+(i===cur?' selected':'')+'>'+ (done?'✓ ':'') + escHtml(s.q.id + ' · ' + String(s.q.stem || 'Choice task').slice(0,55)) + '</option>';}).join('');
+    var qid = steps[cur].q.id;
+    box.innerHTML = '<div class="tc-head"><b>Test workspace</b><span>Not shown to respondents</span><button id="tc-collapse">−</button></div><div class="tc-current">Reviewing <b>'+escHtml(qid)+'</b> · use <i>Jump to</i> beside Next to navigate</div><div class="tc-actions"><button id="tc-ai">✦ AI fill test answers</button><a href="/studio/#'+encodeURIComponent(STUDY.slug)+'" target="_blank">Edit in Studio ↗</a></div><label>Review note for '+escHtml(qid)+'<textarea id="tc-note" placeholder="Describe an error, wording issue or logic discrepancy…">'+escHtml(testNotes[qid] || '')+'</textarea></label><button class="tc-save" id="tc-share">Save notes & copy review link</button><small id="tc-state">The link preserves answers, position and notes for your team.</small>';
+    $("#tc-note").oninput=function(){ testNotes[qid]=this.value; store('test_notes',testNotes); };
+    $("#tc-ai").onclick=aiFillTest;
+    $("#tc-share").onclick=saveTestReview;
+    $("#tc-collapse").onclick=function(){box.classList.toggle('collapsed'); this.textContent=box.classList.contains('collapsed')?'+':'−';};
+  }
+  function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+  function aiFillTest(){
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
+  }
+  function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}
+  function saveTestReview(){
+    fetch('/api/test-review',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({study:STUDY.slug,token:reviewToken,answers:answers,notes:testNotes,current:cur})}).then(function(r){return r.json();}).then(function(d){reviewToken=d.token;var url=location.origin+d.url;if(navigator.clipboard)navigator.clipboard.writeText(url);toastTest('Review saved and share link copied: '+url);});
+  }
+
   function render() {
     var st = steps[cur];
     stopNarration();
@@ -1694,6 +1733,8 @@
       if (stemH) node.insertBefore(chip, stemH); else node.appendChild(chip);
     }
     show(node);
+    renderTestConsole();
+    if (audioPref === "all" && soundOn) setTimeout(function(){ speak(st.kind === "task" ? taskSpeechText(st) : qSpeechText(st.q)); }, 250);
     if (pendingDwell) { startDwell(pendingDwell); pendingDwell = null; }
 
     var pct = Math.round((cur / steps.length) * 100);
@@ -1714,7 +1755,7 @@
     if (sec.id === "C") {
       // the product profile is shown as a narrated animation before any opinion is sought
       runExplainer(SCENES, function () {
-        if (SECTION_NARRATION[sec.id]) playClip(SECTION_NARRATION[sec.id]);
+        if (audioPref === "all" && SECTION_NARRATION[sec.id]) playClip(SECTION_NARRATION[sec.id]);
         coachSay("Keep the profile fresh in mind - the questions ahead refer back to it. " +
           "Replay it any time from the panel at the bottom right.", "info");
       });
@@ -1726,7 +1767,7 @@
       });
       return;
     }
-    if (SECTION_NARRATION[sec.id]) playClip(SECTION_NARRATION[sec.id]);
+    if (audioPref === "all" && SECTION_NARRATION[sec.id]) playClip(SECTION_NARRATION[sec.id]);
   }
 
   function onLeaveSection(prevSec, nextSec) {
@@ -2022,7 +2063,9 @@
       MIN_DWELL = spec.conjoint_min_dwell || 12;
       window.BEACON_CONJOINT_SCENE = spec.conjoint_scene;
 
-      setSound(recall("sound") !== false);
+      // Default is silent; a previous explicit preference may be restored.
+      audioPref = recall("audio_pref") || "manual";
+      setSound(audioPref !== "off" && recall("sound") === true);
       $("#sound-btn").addEventListener("click", function () {
         setSound(!soundOn);
         if (soundOn && $("#welcome") && $("#welcome").parentElement) playClip("welcome");
@@ -2089,6 +2132,10 @@
 
   function afterSession(waitForClick) {
     buildSteps();
+    testNotes = recall("test_notes") || {};
+    if (IS_TEST) { try { reviewToken = new URLSearchParams(location.search).get("review") || ""; } catch(e) {}
+      if (reviewToken) fetch('/api/test-review/'+encodeURIComponent(reviewToken)).then(function(r){return r.json();}).then(function(d){if(d.payload){answers=d.payload.answers||{};testNotes=d.payload.notes||{};cur=Math.min(Number(d.payload.current||0),steps.length-1);store('answers',answers);render();toastTest('Shared review loaded — answers and team notes restored.');}});
+    }
     $("#respondent-code").textContent = (IS_TEST ? "TEST " : "") + SESSION.respondent_code;
 
     // the welcome facts and the always-available TPP card follow the active study
@@ -2138,6 +2185,9 @@
 
     if (waitForClick) {
       $("#start-btn").addEventListener("click", function () {
+        var pref = document.querySelector('input[name="audio-pref"]:checked');
+        audioPref = pref ? pref.value : "manual";
+        store("audio_pref", audioPref); setSound(audioPref !== "off");
         t0 = Date.now();
         $("#welcome").remove();
         stopNarration();
