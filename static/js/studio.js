@@ -36,6 +36,7 @@
     return String(s == null ? "" : s).replace(/&/g, "&amp;").replace(/</g, "&lt;")
       .replace(/>/g, "&gt;").replace(/"/g, "&quot;");
   }
+  function kpi(v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; }
   var toastTimer = null;
   function toast(msg, action, fn) {
     var t = document.getElementById("st-toast");
@@ -311,6 +312,41 @@
     if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) { if (cur) { e.preventDefault(); flushSave(function () { toast("Saved"); }); } }
     if (e.key === "Escape") { closeModal(); closePipePicker(); var ov = document.getElementById("qtest"); if (ov) ov.hidden = true; }
   });
+  // A CSV of recipients is read in the browser and merged into the launch list: no upload,
+  // no server-side file handling, and the addresses are visible before anything is sent.
+  document.addEventListener("change", function (e) {
+    var input = e.target;
+    if (!input.getAttribute || input.getAttribute("data-act") !== "inv-csv" ||
+        !input.files || !input.files[0]) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      var lines = String(reader.result || "").split(/\r?\n/);
+      if ((lines[0] || "").toLowerCase().indexOf("email") >= 0) lines = lines.slice(1);
+      var parsed = lines.map(function (ln) {
+        var bits = ln.split(/[,;\t]/).map(function (x) { return x.trim().replace(/^"|"$/g, ""); });
+        var email = bits.filter(function (b) { return b.indexOf("@") > 0; })[0] || "";
+        var name = bits.filter(function (b) { return b && b !== email; }).join(" ");
+        return email ? email + (name ? ", " + name : "") : "";
+      }).filter(Boolean);
+      var ta = document.getElementById("lf-recipients");
+      if (!ta || !parsed.length) { toast("No email addresses found in that file"); input.value = ""; return; }
+      var have = ta.value.split(/\r?\n/).map(function (x) { return x.split(",")[0].trim().toLowerCase(); });
+      var added = 0;
+      parsed.forEach(function (row) {
+        var email = row.split(",")[0].trim().toLowerCase();
+        if (have.indexOf(email) < 0) {
+          ta.value = (ta.value.trim() ? ta.value.replace(/\s+$/, "") + "\n" : "") + row;
+          have.push(email); added++;
+        }
+      });
+      var note = document.getElementById("lf-csv-note");
+      if (note) note.textContent = added + " address" + (added === 1 ? "" : "es") + " read from the file";
+      toast("Added " + added + " address" + (added === 1 ? "" : "es") + " from the CSV");
+      input.value = "";                     // so the same file can be picked again
+    };
+    reader.readAsText(input.files[0]);
+  });
+
   window.BeaconStudio = { flush: flushSave, state: auto, current: function () { return cur; } };
 
   // ------------------------------------------------------------ dashboard
@@ -332,7 +368,7 @@
       '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
       '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with an AI guide</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
-      '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["closed", "Closed"]].map(function (f) {
+      '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
       '<div class="st-grid" id="home-grid">' + homeCards() + "</div></div></div>";
     root.innerHTML = html;
@@ -371,15 +407,160 @@
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
         '<div class="st-card-actions">' +
         '<button class="st-btn on" data-act="open" data-slug="' + esc(s.slug) + '">Open builder</button>' +
-        '<a class="st-btn" href="/survey/' + esc(s.slug) + '/test" title="Open question navigation, tester notes, AI test answers and review sharing">Test workspace</a>' +
-        (s.status === "live"
-          ? '<button class="st-btn bad" data-act="status" data-status="closed" data-slug="' + esc(s.slug) + '">Close</button>'
-          : '<button class="st-btn good" data-act="status" data-status="live" data-slug="' + esc(s.slug) + '">Launch</button>') +
-        '<span class="st-more"><button class="st-ibtn" title="Duplicate" data-act="dup" data-slug="' + esc(s.slug) + '">\u2398</button>' +
+        '<a class="st-btn st-act-preview" href="/survey/' + esc(s.slug) + '/test" target="_blank" rel="noopener"' +
+        ' data-act="preview" title="Opens the testing link in a new window - question jump, tester notes and AI test answers">\uD83D\uDC41 Preview Survey</a>' +
+        '<button class="st-btn st-act-dup" data-act="dup" data-slug="' + esc(s.slug) + '">\u2398 Duplicate Survey</button>' +
+        "</div>" +
+        '<div class="st-card-actions">' + homeRunButtons(s) + "</div>" +
+        homeInviteLine(s) +
+        '<div class="st-card-tools">' +
+        '<span class="st-more">' +
         '<button class="st-ibtn" title="Copy respondent link" data-act="copylink" data-slug="' + esc(s.slug) + '">\uD83D\uDD17</button>' +
+        (s.status !== "closed" ? '<button class="st-ibtn" title="Close the study - no new respondents and no new submissions" data-act="status" data-status="closed" data-slug="' + esc(s.slug) + '">\u23F9</button>' : "") +
         (s.slug !== "beacon" ? '<button class="st-ibtn danger" title="Delete study" data-act="del" data-slug="' + esc(s.slug) + '">\u2715</button>' : "") +
         "</span></div></div>";
     }).join("");
+  }
+
+  // Launch / Pause / Relaunch / Reminder, and the invite summary under them.  The buttons
+  // follow the study status: a draft gets Launch, a live study gets Pause + Reminder, and a
+  // paused one gets Relaunch.
+  function homeRunButtons(s) {
+    var left = Math.max(0, 2 - (s.reminders_sent || 0));
+    var out = "";
+    if (s.status === "live") {
+      out += '<button class="st-btn st-act-pause" data-act="pause" data-slug="' + esc(s.slug) +
+        '" title="Stop new respondents starting; anyone already answering can finish">\u23F8 Pause Survey</button>';
+    } else if (s.status === "paused") {
+      out += '<button class="st-btn st-act-launch" data-act="relaunch" data-slug="' + esc(s.slug) +
+        '" title="Open the study to new respondents again">\u25B6 Relaunch Survey</button>';
+    } else {
+      out += '<button class="st-btn st-act-launch" data-act="launch" data-slug="' + esc(s.slug) +
+        '" title="Go live, create the public link and send the invites">\u{1F680} Launch Survey</button>';
+    }
+    var remindTip = !s.recipients
+      ? "Add recipients when you launch, then send them a reminder"
+      : (left ? "Email everyone on the list who has not taken part yet" : "Both reminders have already been sent");
+    out += '<button class="st-btn st-act-remind" data-act="remind" data-slug="' + esc(s.slug) + '"' +
+      (s.recipients && left && s.status !== "draft" ? "" : " disabled") + ' title="' + esc(remindTip) + '">' +
+      "\u{1F514} Send Reminder (" + left + " left)</button>";
+    return out;
+  }
+  function homeInviteLine(s) {
+    if (!s.recipients && !s.invites_sent && !s.invites_failed) {
+      return '<div class="st-meta st-invites">No invite list yet - launch to create the public link and email your panel.</div>';
+    }
+    var bits = [s.recipients + " recipient" + (s.recipients === 1 ? "" : "s")];
+    if (s.invites_sent) bits.push(s.invites_sent + " sent");
+    if (s.invites_queued) bits.push(s.invites_queued + " recorded in the log");
+    if (s.invites_failed) bits.push('<span class="bad">' + s.invites_failed + " failed</span>");
+    if (s.launched_at) bits.push("launched " + esc(ago(s.launched_at)));
+    return '<div class="st-meta st-invites">' + bits.join(" \u00B7 ") +
+      ' <button class="st-link" data-act="outbox" data-slug="' + esc(s.slug) +
+      '">View invite log</button></div>';
+  }
+
+  // ------------------------------------------------------------ launch / reminder / outbox
+  function openLaunchModal(slug) {
+    api("/api/studio/invites?study=" + encodeURIComponent(slug)).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      var who = (d.recipients || []).map(function (r) { return r.email + (r.name ? ", " + r.name : ""); }).join("\n");
+      var link = d.link || location.origin + "/survey/" + slug;   // already absolute
+      var smtp = d.smtp.configured
+        ? 'Invites are emailed through <b>' + esc(d.smtp.host) + "</b> as <b>" + esc(d.smtp.from) +
+          "</b>, and every send is kept in the log below."
+        : "No SMTP server is configured, so invites are <b>recorded in the log</b> with their personal " +
+          "links (copy them from the log, or set <code>BEACON_SMTP_HOST</code> to send for real).";
+      openModal(
+        '<div class="st-modal-head"><strong>Launch ' + esc(d.title) + "</strong>" +
+          '<span class="st-meta">' + (d.recipients.length ? d.recipients.length + " on the list" : "no recipients yet") + "</span>" +
+          '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+        '<label class="st-field"><span>Public link <em class="st-opt">goes live when you launch</em></span>' +
+          '<span class="st-copyrow"><input id="lf-link" readonly value="' + esc(link) + '">' +
+          '<button class="st-btn sm" type="button" data-act="copy-public" data-slug="' + esc(slug) + '">Copy</button></span></label>' +
+        '<label class="st-field"><span>Invite these people <em class="st-opt">one per line: email, or email, name</em></span>' +
+          '<textarea id="lf-recipients" rows="6" placeholder="dr.smith@clinic.org, Dr A Smith\npanel@example.com">' + esc(who) + "</textarea></label>" +
+        '<div class="st-row"><label class="st-btn sm ghost" title="A CSV with an email column (and an optional name column)">' +
+          "\u2B06 Upload CSV<input type=\"file\" accept=\".csv,text/csv\" data-act=\"inv-csv\" hidden></label>" +
+          '<span class="st-meta" id="lf-csv-note">or paste the list above</span></div>' +
+        '<div class="st-grid2"><label class="st-field"><span>Subject</span><input id="lf-subject" value="' +
+          esc(d.subject) + '"></label>' +
+          '<label class="st-field"><span>How many reminders allowed</span><input value="' + d.max_reminders +
+          ' per launch" readonly></label></div>' +
+        '<label class="st-field"><span>Message <em class="st-opt">optional - the link is added automatically</em></span>' +
+          '<textarea id="lf-message" rows="3" placeholder="Why their view matters, how long it takes...">' + esc(d.message) + "</textarea></label>" +
+        '<div class="st-note">' + smtp + "</div>" +
+        '<div class="st-modal-actions">' +
+          '<button class="st-btn" data-act="modal-close" type="button">Cancel</button>' +
+          '<button class="st-btn" data-act="launch-save" data-slug="' + esc(slug) + '" type="button" title="Store the list without going live">Save list only</button>' +
+          '<button class="st-btn on" data-act="launch-go" data-slug="' + esc(slug) + '" type="button">Launch &amp; send invites</button>' +
+        "</div></div>", "st-launch-modal");
+    });
+  }
+
+  function openOutboxModal(slug) {
+    api("/api/studio/invites?study=" + encodeURIComponent(slug)).then(function (d) {
+      if (d.error) { toast(d.error); return; }
+      var rows = d.outbox || [];
+      var label = { sent: "sent", queued: "queued (not emailed)", failed: "failed" };
+      openModal(
+        '<div class="st-modal-head"><strong>Invite log</strong><span class="st-meta">' + esc(d.title) +
+          '</span><button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+        '<div class="st-kpis">' + kpi(d.summary.recipients, "recipients") + kpi(d.summary.sent, "emailed") +
+          kpi(d.summary.queued, "recorded only") + kpi(d.summary.completed, "took part") + "</div>" +
+        '<div class="st-note">' + (d.smtp.configured
+            ? "Sending through <b>" + esc(d.smtp.host) + "</b>."
+            : "No SMTP configured - each row below is a ready-to-send invite with its own personal link.") +
+          " Reminders sent: " + d.reminders_sent + " of " + d.max_reminders + ".</div>" +
+        '<div class="st-outbox">' + (rows.length ? '<table class="st-tbl-out"><thead><tr>' +
+            "<th>Email</th><th>Type</th><th>Status</th><th>When</th><th>Personal link</th></tr></thead><tbody>" +
+            rows.map(function (r) {
+              return "<tr><td>" + esc(r.email) + (r.name ? '<small> ' + esc(r.name) + "</small>" : "") +
+                "</td><td>" + esc(r.kind) + '</td><td class="' + esc(r.status) + '">' + esc(label[r.status] || r.status) +
+                (r.error ? '<small title="' + esc(r.error) + '"> ' + esc(r.error.slice(0, 40)) + "</small>" : "") +
+                "</td><td>" + esc(ago(r.created_at)) + "</td>" +
+                '<td><input readonly value="' + esc(r.link) + '" class="st-link-in"></td></tr>'; }).join("") +
+            "</tbody></table>"
+          : '<div class="st-empty">Nothing has been sent yet.</div>') + "</div>" +
+        '<div class="st-modal-actions">' +
+          '<a class="st-btn" href="/api/studio/invites.csv?study=' + encodeURIComponent(slug) + '">Download CSV</a>' +
+          '<button class="st-btn" data-act="modal-close" type="button">Close</button>' +
+          (d.summary.pending && d.reminders_left ? '<button class="st-btn on" data-act="remind" data-slug="' +
+            esc(slug) + '" type="button">Send reminder to ' + d.summary.pending + "</button>" : "") +
+        "</div></div>", "st-outbox-modal");
+    });
+  }
+
+  function launchStudy(slug, draftOnly) {
+    var ta = document.getElementById("lf-recipients");
+    api("/api/studio/launch", {
+      slug: slug,
+      recipients: ta ? ta.value : "",
+      subject: (document.getElementById("lf-subject") || {}).value || "",
+      message: (document.getElementById("lf-message") || {}).value || "",
+      draft_only: !!draftOnly,
+    }).then(function (r) {
+      if (r.error) { toast(r.error); return; }
+      closeModal();
+      var bits = r.total ? r.total + " invite" + (r.total === 1 ? "" : "s") +
+        (r.smtp ? " emailed (" + r.sent + " sent, " + r.failed + " failed)" : " recorded in the invite log") : "link created";
+      if (r.rejected && r.rejected.length) bits += " \u00B7 " + r.rejected.length + " address(es) skipped";
+      toast((draftOnly ? "List saved \u00B7 " : "Live at /survey/" + slug + " \u00B7 ") + bits);
+      loadList();
+    });
+  }
+
+  function remindStudy(slug) {
+    api("/api/studio/remind", { slug: slug }).then(function (r) {
+      if (r.error) { toast(r.error); return; }
+      closeModal();
+      toast("Reminder " + (r.reminders_sent) + " of " + r.max_reminders + " sent to " + r.reminded +
+        " " + (r.reminded === 1 ? "person" : "people") +
+        (r.smtp ? " (" + r.sent + " emailed, " + r.failed + " failed)" : " - recorded in the invite log"));
+      loadList();
+    });
   }
 
   // ------------------------------------------------------------ builder shell
@@ -401,8 +582,8 @@
     var html = '<div class="st-bar">' +
       '<button class="st-btn ghost" data-act="back" title="Back to all studies">\u2190 Studies</button>' +
       '<input type="text" id="ed-title" class="st-title" value="' + esc(cur.title) + '" title="Study title">' +
-      '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Closed: no new starts.">' +
-        ["draft", "live", "closed"].map(function (s) {
+      '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Paused: nobody new can start. Closed: no new starts or submissions.">' +
+        ["draft", "live", "paused", "closed"].map(function (s) {
           return '<button class="st-status-btn ' + s + (s === cur.status ? " on" : "") + '" data-act="setstatus" data-status="' + s + '">' + s + "</button>"; }).join("") + "</div>" +
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
@@ -2128,6 +2309,11 @@
     if (!b) return;
     var act = b.getAttribute("data-act");
     if (act === "modal-close") closeModal();
+    // Launch / Reminder / copy live in the modal, which sits outside #st-root
+    if (act === "launch-go") launchStudy(b.getAttribute("data-slug"), false);
+    if (act === "launch-save") launchStudy(b.getAttribute("data-slug"), true);
+    if (act === "remind") remindStudy(b.getAttribute("data-slug"));
+    if (act === "copy-public") copyLink(b.getAttribute("data-slug"));
     if (act === "new-mode") showNewStudyForm(b.getAttribute("data-mode"));
     if (act === "new-back") openNewStudy();
     if (act === "new-create") createFromWizard();
@@ -2736,11 +2922,30 @@
     if (act === "so-title") { closeSopts(); openTitleLang(); }
     if (act === "so-del") { closeSopts(); if (confirm("Delete study /" + cur.slug + " and all of its responses? This cannot be undone.")) api("/api/studio/delete", { slug: cur.slug }).then(function () { cur = null; loadList(); }); }
     if (act === "dup") {
-      api("/api/studio/study?slug=" + slug).then(function (s) {
-        var cfg = JSON.parse(JSON.stringify(s.cfg)); cfg.title = s.title + " (copy)";
-        api("/api/studio/save", { slug: "", title: cfg.title, cfg: cfg }).then(function (r) { toast("Duplicated as /" + r.slug); loadList(); });
+      api("/api/studio/duplicate", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Duplicated as /" + r.slug, "Open", function () { openEditor(r.slug); });
+        loadList();
       });
     }
+    if (act === "launch") openLaunchModal(slug);
+    if (act === "pause") {
+      api("/api/studio/pause", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Paused - nobody new can start; anyone mid-survey can still finish");
+        loadList();
+      });
+    }
+    if (act === "relaunch") {
+      api("/api/studio/relaunch", { slug: slug }).then(function (r) {
+        if (r.error) { toast(r.error); return; }
+        toast("Live again at " + r.link);
+        loadList();
+      });
+    }
+    if (act === "remind") remindStudy(slug);
+    if (act === "outbox") openOutboxModal(slug);
+    if (act === "copy-public") copyLink(slug);
     if (act === "copylink") copyLink(slug || cur.slug);
     if (act === "del") {
       if (confirm("Delete study /" + slug + " and all of its responses? This cannot be undone.")) api("/api/studio/delete", { slug: slug }).then(function () { loadList(); });

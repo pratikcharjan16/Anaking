@@ -46,10 +46,14 @@ def _survey_page(slug: str):
     is_test = request.path.rstrip("/").endswith("/test")
     # The respondent link only opens once the study is live; test mode always renders so
     # the team can preview a draft (the Studio's "Preview" button opens /survey/<slug>/test).
-    if not study.effective_live() and not is_test:
+    paused = study.status == "paused"
+    if not study.effective_live() and not is_test and not paused:
         return render_template("survey/not_live.html", slug=slug), 403
+    # A paused study still serves the page: nobody can *start* (the client shows a paused
+    # notice and /api/start refuses), but anyone already answering can resume and finish.
     return render_template("survey/survey.html", slug=slug, study_title=study.title,
-                           is_test=is_test, is_draft=not study.effective_live())
+                           is_test=is_test, is_draft=not study.effective_live(),
+                           is_paused=paused and not is_test)
 
 
 @bp.get("/survey/")
@@ -163,6 +167,10 @@ def start():
     if not study:
         return jsonify({"error": "unknown study"}), 404
     if not study.effective_live():
+        if study.status == "paused":
+            return jsonify({"error": "This study is paused - the research team has stopped new "
+                                     "responses for now. Please try again later.",
+                            "paused": True}), 403
         return jsonify({"error": "study not live"}), 403
     lang = str(body.get("language") or "")[:12]
     if lang and not valid_language(lang):

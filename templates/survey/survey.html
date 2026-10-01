@@ -145,9 +145,9 @@ window.__beaconEscape = function () {
   for (i = 0; i < av.length; i++) { try { av[i].pause(); } catch (e) {} }
 };
 </script>
-<script>window.STUDY={slug:{{ slug|tojson }}};</script>
+<script>window.STUDY={slug:{{ slug|tojson }},paused:{{ (is_paused|default(false))|tojson }}};</script>
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=260921g"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=260921g"></script>
-<script src="{{ url_for('static', filename='js/survey.js') }}?v=261001b"></script>
+<script src="{{ url_for('static', filename='js/survey.js') }}?v=261001e"></script>
 </body>
 </html>

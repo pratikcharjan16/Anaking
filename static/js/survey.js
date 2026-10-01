@@ -2124,6 +2124,8 @@
           answers = prog.answers || {};
           if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
           afterSession(false);
+        } else if (STUDY.paused) {
+          showPaused();                      // nobody new starts while the study is paused
         } else {
           startFresh();
         }
@@ -2157,11 +2159,32 @@
                              language: SPEC.render_language || LANG || "",
                              embedded: readEmbedded() })
     }).then(function (r) { return r.json(); }).then(function (s) {
+      if (s && s.paused) { showPaused(); return; }
+      if (!s || !s.session_id) {
+        $("#app").innerHTML = '<div class="card"><h1>Unable to start</h1><p>' +
+          (s && s.error ? s.error : "The survey could not be started. Please reload.") + "</p></div>";
+        return;
+      }
       SESSION = s;
       answers = {};
       store("session_id", s.session_id);
       afterSession(true);
     });
+  }
+
+  // A paused study keeps its door closed to new respondents, but someone already answering
+  // can reload this page and resume from their saved progress.
+  function showPaused() {
+    document.body.classList.remove("answering");
+    $("#app").innerHTML =
+      '<div class="card paused-card"><h1>This study is paused</h1>' +
+      "<p>The research team has temporarily stopped new responses. Thank you for your interest - " +
+      "please try again later.</p>" +
+      '<p class="paused-resume">Already taking part? <a href="' + location.pathname +
+      '">Continue where you left off</a>.</p>' +
+      '<p class="paused-team">Part of the team? <a href="/survey/' + STUDY.slug +
+      '/test">Open it in test mode</a> or find it in the <a href="/studio/#' + STUDY.slug +
+      '">Studio</a>.</p></div>';
   }
 
   function afterSession(waitForClick) {

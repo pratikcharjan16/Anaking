@@ -17,10 +17,12 @@ Anaking/
 ├── routes/             one file per app, each mounted on its own URL
 │   ├── home.py         /            landing page + legacy redirects
 │   ├── survey.py       /survey/…    respondent survey + /api/* (incl. /api/check_text)
-│   ├── studio.py       /studio/     survey builder      + /api/studio/* (translate, move, outline)
+│   ├── studio.py       /studio/     survey builder      + /api/studio/* (translate, move, outline,
+│   │                                                    duplicate, invites, launch, remind, pause)
 │   └── admin.py        /admin/      dashboard, exports  + /api/admin/*
 ├── core/               domain logic (no Flask routes in here)
 │   ├── conjoint.py     balanced design generator + per-respondent randomisation
+│   ├── mailer.py       SMTP settings + invite/reminder mail bodies for the launch flow
 │   ├── qc.py           speeder / attention / straight-line / verbatim-quality flags
 │   ├── ai_detect.py    AI-generated & pasted answer detection + proofreading notes
 │   ├── i18n.py         language catalogue + extraction/merge of respondent-visible strings
@@ -125,8 +127,25 @@ only once the study has a conjoint question (or an existing generated design) an
 study will field.
 
 The dashboard (Studio home) lists studies as cards with completion stats, search and a
-draft / live / closed filter; status is switched from the segment in the builder bar
-(launching asks for confirmation and flushes any pending save first).
+draft / live / paused / closed filter; status is switched from the segment in the builder bar
+(launching asks for confirmation and flushes any pending save first). Every card also carries the
+study's **Actions**: Preview Survey (opens the testing link in a new window), Duplicate Survey
+(a full copy as a fresh draft), Launch Survey, Pause Survey / Relaunch Survey and Send Reminder.
+
+### Launching, invites & reminders (Studio home → the study card)
+
+**Launch Survey** asks for the recipient list (paste one person per line as `email` or
+`email, name`, or upload a CSV with an `email` column and an optional `name` column), a subject and
+an optional message. Launching takes the study live and gives every recipient a personal
+`/survey/<slug>?rid=…` link, so responses can be attributed back to the person who was invited.
+Mail goes out over SMTP when it is configured (`BEACON_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`,
+`_FROM`, `_TLS`, or a `data/mail.json` with the same keys); without it every send is still recorded
+in the built-in outbox — open **View invite log** on the card to see each recipient, its status
+(sent / queued / failed), its copyable link and a CSV download (`/api/studio/invites.csv`).
+**Send Reminder** nudges only the people who have not taken part yet, reuses their personal link and
+is capped at two per launch. **Pause Survey** stops *new* starts only: `/api/start` is refused with
+`paused: true` and respondents see a paused notice, while anyone already answering can save and
+submit normally; **Relaunch Survey** opens the study to new respondents again.
 
 Rich text is whitelisted on save (`core/sanitize.py`) and again in the browser
 (`static/js/qlogic.js`), so only formatting survives — no scripts, event handlers or unsafe URLs.
@@ -262,6 +281,7 @@ node scripts/dom/survey_chrome_test.js          # respondent chrome: no section 
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
 node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the tab only showing for conjoint studies
 node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored labels/levels/images, group inclusion, none
+node scripts/dom/studio_actions_test.js         # dashboard actions: preview / duplicate / launch / pause / relaunch / reminder
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue

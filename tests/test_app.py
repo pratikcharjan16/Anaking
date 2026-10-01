@@ -47,7 +47,7 @@ def test_survey_pages_inject_study_slug(client):
     for path in ("/survey/", "/survey/test", "/survey/beacon", "/survey/beacon/test"):
         r = client.get(path)
         assert r.status_code == 200, path
-        assert b'window.STUDY={slug:"beacon"}' in r.data
+        assert b'window.STUDY={slug:"beacon",paused:false}' in r.data
         assert b"/static/js/survey.js" in r.data
     assert client.get("/survey/does-not-exist").status_code == 404
 
