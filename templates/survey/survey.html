@@ -49,7 +49,6 @@
 
 <div class="progress-wrap" id="progress-wrap">
   <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
-  <div class="progress-label" id="progress-label"></div>
 </div>
 
 <main id="app">
@@ -111,19 +110,6 @@
   </div>
 </div>
 
-<!-- section milestone celebration -->
-<div class="celebrate" id="celebrate" hidden>
-  <div class="celebrate-inner">
-    <button class="cel-close" id="cel-close" type="button" title="Close"
-      onclick="if(window.__beaconDismiss){window.__beaconDismiss()}if(window.__beaconEscape){window.__beaconEscape()}">&times;</button>
-    <div class="celebrate-ico">&#10003;</div>
-    <h2 id="celebrate-title">Section complete</h2>
-    <p id="celebrate-sub"></p>
-    <div class="celebrate-pts" id="celebrate-pts"></div>
-    <button class="btn primary" id="celebrate-next" type="button">Continue</button>
-  </div>
-</div>
-
 <div class="tpp-panel" id="tpp-panel" hidden>
   <button class="tpp-toggle" id="tpp-toggle">Target product profile &#9662;</button>
   <div class="tpp-body" id="tpp-body" hidden>
@@ -150,7 +136,7 @@
 /* Escape hatch that lives in the HTML itself, so a close button always works even if a
    cached or failing script never wires its own handler. */
 window.__beaconEscape = function () {
-  var ids = ["explainer", "celebrate"], i, n;
+  var ids = ["explainer"], i, n;
   for (i = 0; i < ids.length; i++) {
     n = document.getElementById(ids[i]);
     if (n) n.hidden = true;

@@ -64,8 +64,13 @@ async function openSurvey(slug){
   check("no internal section wording on the card",
     !/\bScreeners?\b|\bMain section\b/i.test((card||{}).textContent||""),
     ((card||{}).textContent||"").slice(0,90));
-  const lbl=(S.$("#progress-label")||{}).textContent||"";
-  check("progress strip does not name the section", !/screen|main/i.test(lbl), JSON.stringify(lbl));
+  check("progress strip carries no text at all", !S.$("#progress-label"),
+    (S.$("#progress-label")||{}).textContent);
+  check("no step counter anywhere on the page",
+    !/Step\s+\d+\s+of\s+\d+/i.test(d.body.textContent), "found a step counter");
+  check("progress bar itself is still there and fills",
+    !!S.$("#progress-fill") && S.$("#progress-fill").style.width !== "");
+  check("the between-section popup is gone from the page", !S.$("#celebrate"));
 
   // ---------- the stylesheet actually does the hiding ----------
   check("css hides the project bar while answering",
@@ -75,13 +80,21 @@ async function openSurvey(slug){
   check("css moves the test-mode reminder to the top when the bar is gone",
     /body\.answering\.testmode::before\{top:0\}/.test(css));
 
-  // ---------- move to the second question: still answering ----------
+  // ---------- cross a section boundary: sections run straight into each other ----------
   const next=[...S.$$("button")].find(b=>/Next/.test(b.textContent));
   const pick=S.$$("#app .opt, #app label.opt, #app .opt-row");
   if (pick.length) pick[0].click();
   await sleep(120);
-  if (next) next.click();
+  const ptsBefore=Number((S.$("#points")||{}).textContent||0);
+  if (next) next.click();                            // Q1 is the last question of section S1
   await sleep(400);
+  check("crossing a section shows no popup or overlay",
+    !S.$("#celebrate") && S.$$(".overlay:not([hidden])").length===0);
+  check("the next question is on screen immediately",
+    /therapies/i.test(S.$("#app").textContent), S.$("#app").textContent.slice(0,60));
+  check("the section bonus is still awarded to the HUD",
+    Number((S.$("#points")||{}).textContent||0) > ptsBefore,
+    ptsBefore + " -> " + (S.$("#points")||{}).textContent);
   check("second question shows no section chip either", S.$$(".section-tag").length===0);
   check("still in the answering state on question 2", body.classList.contains("answering"));
 

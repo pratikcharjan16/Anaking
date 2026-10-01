@@ -6,8 +6,8 @@
 }
 *{box-sizing:border-box}
 /* The instrument shows/hides layers via the hidden attribute; without this rule the
-   display:grid on .overlay/.celebrate would override hidden and the modals would
-   sit on screen permanently. */
+   display:grid on .overlay would override hidden and the overlay would sit on screen
+   permanently. */
 [hidden]{display:none !important}
 body{
   margin:0; background:var(--bg); color:var(--ink);
@@ -43,7 +43,7 @@ body.answering.testmode::before{top:0}
 .progress-wrap{padding:14px 20px 0;max-width:860px;margin:0 auto}
 .progress-track{height:5px;background:#e2e9ee;border-radius:99px;overflow:hidden}
 .progress-fill{height:100%;width:0;background:var(--accent-2);border-radius:99px;transition:width .25s ease}
-.progress-label{font-size:12px;color:var(--muted);margin-top:6px;display:flex;justify-content:space-between}
+
 
 /* ---------- layout ---------- */
 main{max-width:860px;margin:0 auto;padding:16px 20px 90px}
@@ -302,18 +302,9 @@ body.testmode::before{
 .play-wave i:nth-child(7){animation-delay:.72s}
 @keyframes wave{0%,100%{height:18%}50%{height:100%}}
 
-/* ================= celebration ================= */
-.celebrate{position:fixed;inset:0;background:rgba(12,24,34,.66);z-index:55;display:grid;
-  place-items:center;padding:18px;animation:fadeIn .22s ease}
-.celebrate-inner{position:relative;background:#fff;border-radius:14px;padding:30px 34px;max-width:420px;width:100%;
-  text-align:center;box-shadow:0 20px 60px rgba(0,0,0,.3);animation:riseIn .4s cubic-bezier(.16,1,.3,1)}
-.celebrate-ico{width:58px;height:58px;border-radius:50%;background:var(--good);color:#fff;
-  display:grid;place-items:center;font-size:27px;margin:0 auto 14px;
-  animation:aPop .5s cubic-bezier(.34,1.56,.64,1) both}
-.celebrate-inner h2{font-size:20px;margin:0 0 6px}
-.celebrate-inner p{font-size:13.5px;color:var(--muted);margin:0 0 14px}
-.celebrate-pts{font-size:15px;font-weight:700;color:var(--accent);background:var(--accent-soft);
-  border-radius:9px;padding:10px;margin-bottom:18px}
+/* ================= confetti ================= */
+/* the between-section celebration overlay was removed - sections now run straight into each
+   other.  Confetti is still thrown on the closing screen and on a rank-up. */
 .confetti{position:fixed;width:9px;height:14px;top:-20px;z-index:56;pointer-events:none;
   animation:fall linear forwards}
 @keyframes fall{to{transform:translateY(105vh) rotate(720deg);opacity:.2}}

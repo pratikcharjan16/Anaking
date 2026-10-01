@@ -104,6 +104,12 @@ def main() -> None:
 
     app = create_app("development" if args.debug else None)
 
+    # Jinja caches compiled templates unless the app is in debug mode, so editing a .html file
+    # while the dev server runs would keep serving the old markup until a restart.  Reload them
+    # here; production (gunicorn) keeps the cache.
+    app.config["TEMPLATES_AUTO_RELOAD"] = True
+    app.jinja_env.auto_reload = True
+
     shown = "localhost" if args.host in ("0.0.0.0", "::") else args.host
     base = f"http://{shown}:{args.port}"
     print(f"PROJECT BEACON platform serving on http://{args.host}:{args.port}")

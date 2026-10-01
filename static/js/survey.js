@@ -641,17 +641,6 @@
     if (bar) bar.style.width = pct + "%";
   }
 
-  function celebrate(title, sub, pts) {
-    var c = $("#celebrate");
-    $("#celebrate-title").textContent = title;
-    $("#celebrate-sub").textContent = sub;
-    $("#celebrate-pts").innerHTML = "&#9733; +" + pts + " insight points";
-    c.hidden = false;
-    addPoints(pts);
-    confetti();
-    $("#celebrate-next").onclick = function () { c.hidden = true; };
-  }
-
   function confetti(n) {
     var colors = ["#0b4f6c", "#12789e", "#7fd4f0", "#ffd166", "#1a7f4b"];
     n = n || 40;
@@ -705,8 +694,6 @@
   }
 
   function runExplainer(scenes, onDone) {
-    // never trap the respondent behind a celebration modal
-    $("#celebrate").hidden = true;
     var ov = $("#explainer");
     $("#ex-badge").textContent = scenes.length > 1 ? "Product profile" : "How the choices work";
     ov.hidden = false;
@@ -1746,11 +1733,8 @@
     if (audioPref === "all" && soundOn) setTimeout(function(){ speak(st.kind === "task" ? taskSpeechText(st) : qSpeechText(st.q)); }, 250);
     if (pendingDwell) { startDwell(pendingDwell); pendingDwell = null; }
 
-    var pct = Math.round((cur / steps.length) * 100);
-    setProgress(pct);
-    // neutral label - the section name would tell the respondent which part they are in
-    $("#progress-label").innerHTML =
-      "<span>Progress</span><span>Step " + (cur + 1) + " of " + steps.length + "</span>";
+    // the bar fills silently: no section name, no step counter next to it
+    setProgress(Math.round((cur / steps.length) * 100));
 
     var inTPP = st.q.section === "C" || st.q.section === "D";
     $("#tpp-panel").hidden = !inTPP;
@@ -1781,11 +1765,9 @@
 
   function onLeaveSection(prevSec, nextSec) {
     if (!prevSec || prevSec.id === nextSec.id) return;
-    var pts = SECTION_POINTS[prevSec.id] || 50;
-    // sections that open with a narrated walkthrough get the points without a second overlay,
-    // so the respondent is never shown two stacked modals
-    if (nextSec.id === "C" || nextSec.id === "D") { addPoints(pts); return; }
-    celebrate("Section complete", "Nice work - that part of the study is done.", pts);
+    // The section bonus is still earned and the HUD still ticks up, but there is no between-section
+    // popup any more: once a section ends the respondent goes straight on to the next question.
+    addPoints(SECTION_POINTS[prevSec.id] || 50);
   }
 
   // show-if logic: a step is visible when its question's rules pass against current answers
