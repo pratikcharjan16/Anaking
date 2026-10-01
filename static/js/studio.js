@@ -418,7 +418,7 @@
     c.sections.forEach(function (sec, si) {
       var n = c.questions.filter(function (q) { return q.section === sec.id; }).length;
       html += '<div class="st-sec"><div class="st-sec-head">' +
-        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Section title (respondents see it)" placeholder="Section title">' +
+        '<input value="' + esc(sec.title) + '" data-sec-title="' + si + '" title="Section title - used in the Studio outline and in exports; respondents never see it" placeholder="Section title">' +
         '<span class="st-meta">' + n + "</span>" +
         '<button class="st-ibtn danger" title="Delete section" data-act="delsec" data-i="' + si + '">\u2715</button></div>';
       c.questions.forEach(function (q, qi) { if (q.section === sec.id) html += outlineRow(q, qi); });

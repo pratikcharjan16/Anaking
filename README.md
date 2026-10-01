@@ -65,7 +65,7 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 | App | URL | What it is |
 |---|---|---|
 | **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
-| **Survey** | `/survey/` | Respondent link — the live BEACON survey |
+| **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project bar, HUD and progress strip are hidden — they belong to the welcome and closing screens |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (test mode also previews drafts) |
 | **Studio** | `/studio/` (`/studio/#<slug>` opens a study) | Builder — create / edit / launch studies, design the walkthrough, generate conjoint designs, per-study analysis |
@@ -242,6 +242,7 @@ python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset 
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
+node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, bar hidden while answering
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue

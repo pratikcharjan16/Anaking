@@ -1394,9 +1394,10 @@
   }
 
   function renderQuestion(q) {
-    var sec = sectionOf(q);
+    // Which section a question sits in (screeners, main, ...) is research-team information and
+    // is never shown to the respondent - not on the card, not in the progress strip. Section
+    // titles stay visible in the Studio outline, where the team needs them.
     var card = el("div", "card");
-    card.appendChild(el("span", "section-tag", String(sec.title)));
 
     if (q.comprehension) {
       card.appendChild(el("div", "cc-banner",
@@ -1605,6 +1606,7 @@
     card.appendChild(el("div", "summary", "Screened out at <code>" + steps[cur].q.id +
       "</code> &middot; reference <code>" + SESSION.respondent_code + "</code>"));
     show(card, true);
+    setAnswering(false);                           // project bar returns on the closing screen
     $("#progress-wrap").style.display = "none";
     $("#hud").hidden = true;
     $("#tpp-panel").hidden = true;
@@ -1622,6 +1624,12 @@
   }
 
   // ============================================================ navigation
+  // ============================================================ respondent chrome
+  // The project information (brand, study name, respondent code, timer), the gamification HUD and
+  // the progress strip are shown on the welcome and closing screens only.  They are hidden for as
+  // long as a question is on screen, so nothing competes with it.  See `.answering` in survey.css.
+  function setAnswering(on) { document.body.classList.toggle("answering", !!on); }
+
   function show(node, replace) {
     var app = $("#app");
     app.innerHTML = "";
@@ -1722,6 +1730,7 @@
 
   function render() {
     var st = steps[cur];
+    setAnswering(true);
     stopNarration();
     pendingDwell = null;
     if (dwellTimer) { clearInterval(dwellTimer); dwellTimer = null; }
@@ -1739,9 +1748,9 @@
 
     var pct = Math.round((cur / steps.length) * 100);
     setProgress(pct);
+    // neutral label - the section name would tell the respondent which part they are in
     $("#progress-label").innerHTML =
-      "<span>" + sectionOf(st.q).title + "</span><span>Step " + (cur + 1) + " of " +
-      steps.length + "</span>";
+      "<span>Progress</span><span>Step " + (cur + 1) + " of " + steps.length + "</span>";
 
     var inTPP = st.q.section === "C" || st.q.section === "D";
     $("#tpp-panel").hidden = !inTPP;
@@ -1776,8 +1785,7 @@
     // sections that open with a narrated walkthrough get the points without a second overlay,
     // so the respondent is never shown two stacked modals
     if (nextSec.id === "C" || nextSec.id === "D") { addPoints(pts); return; }
-    celebrate(prevSec.title || "Section complete",
-      "You have finished the " + prevSec.title.toLowerCase() + " section.", pts);
+    celebrate("Section complete", "Nice work - that part of the study is done.", pts);
   }
 
   // show-if logic: a step is visible when its question's rules pass against current answers
@@ -1850,6 +1858,7 @@
             "your record marked for review - the rest of your answers are unaffected."));
         }
         show(card, true);
+        setAnswering(false);                     // project bar returns on the closing screen
         $("#progress-wrap").style.display = "none";
         $("#hud").hidden = true;
         $("#tpp-panel").hidden = true;

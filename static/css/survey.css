@@ -31,6 +31,14 @@ body{
 .brand-text span{font-size:12px;opacity:.82}
 .meta{display:flex;gap:14px;font-size:12px;opacity:.85;white-space:nowrap}
 
+/* While a question is on screen the respondent should see nothing but the question: the project
+   bar, the HUD and the progress strip belong to the welcome and closing screens.  survey.js puts
+   .answering on <body> for exactly as long as a question (or the pre-submit quality check) is up. */
+body.answering .topbar,
+body.answering .progress-wrap{display:none}
+/* the test-mode reminder sticks below the 54px project bar - with that bar gone it moves to the top */
+body.answering.testmode::before{top:0}
+
 /* ---------- progress ---------- */
 .progress-wrap{padding:14px 20px 0;max-width:860px;margin:0 auto}
 .progress-track{height:5px;background:#e2e9ee;border-radius:99px;overflow:hidden}
