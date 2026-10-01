@@ -935,9 +935,12 @@
   }
   function unchip(html) { return html.replace(/<span class="pipe">(\{[^}]+\})<\/span>(?:&nbsp;|\u00a0)?/g, "$1 "); }
 
-  function pipeButton(target, small) {
-    return '<button type="button" class="st-pipe-btn' + (small ? " sm" : "") + '" data-pipe-for="' + target + '" title="Insert an earlier answer into this text">' +
-      '&#10132; Pipe in answer</button>';
+  // `compact` drops the words and keeps only the arrow - used inside the option / row list, where
+  // the labelled pill would eat the whole label column.
+  function pipeButton(target, small, compact) {
+    return '<button type="button" class="st-pipe-btn' + (small ? " sm" : "") + (compact ? " icon" : "") + '" data-pipe-for="' + target + '" title="Insert an earlier answer into this text"' +
+      (compact ? ' aria-label="Pipe in answer"' : "") + ">" +
+      (compact ? "&#10132;" : "&#10132; Pipe in answer") + "</button>";
   }
 
   // ---- pipe picker -----------------------------------------------------------------------
@@ -1026,30 +1029,54 @@
   function closePipePicker() { var pop = document.getElementById("st-pipe-pop"); if (pop) pop.hidden = true; pipeTarget = null; pipeCaret = null; }
 
   // ---- card: answers --------------------------------------------------------------------
+  // One row per option / row / column: a drag grip, its position, the stored code, the label and
+  // an always-visible tool strip (image, move up, move down, delete).  Behaviour chips (Pin /
+  // Exclusive / Other) sit on a second line so they can never push the buttons out of the pane.
   function itemTable(kind, items, spec) {
-    var html = '<div class="st-items" data-kind="' + kind + '">' +
-      '<div class="st-item st-item-head"><span></span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
-      (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + (spec.flags.length ? "<span>Behaviour</span>" : "") + "<span></span></div>" +
+    var noun = spec.noun || "item";
+    var last = items.length - 1;
+    var html = '<div class="st-items' + (spec.left ? " has-poles" : "") + '" data-kind="' + kind + '">' +
+      '<div class="st-item st-item-head"><span></span><span>#</span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
+      (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + "<span>Actions</span></div>" +
       items.map(function (it, i) {
         var idl = "f-" + kind + "-" + i;
-        return '<div class="st-item" data-i="' + i + '"><span class="st-grip" title="Use the arrows to reorder">\u22EE\u22EE</span>' +
+        return '<div class="st-item" data-i="' + i + '">' +
+          '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder ' + esc(noun) + " " + (i + 1) + '" title="Drag to reorder \u00B7 focus and press \u2191 / \u2193 to swap">\u283F</span>' +
+          '<span class="st-seq" title="Position ' + (i + 1) + ' of ' + items.length + '">' + (i + 1) + ".</span>" +
           '<input class="st-it-code" data-it="' + kind + '" data-k="code" data-i="' + i + '" value="' + esc(it.code) + '" title="Code stored in the data">' +
-          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true) + "</div>" +
+          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true, true) + "</div>" +
           (spec.left ? '<input data-it="' + kind + '" data-k="left" data-i="' + i + '" value="' + esc(it.left || "") + '" placeholder="e.g. Poor">' +
                        '<input data-it="' + kind + '" data-k="right" data-i="' + i + '" value="' + esc(it.right || "") + '" placeholder="e.g. Excellent">' : "") +
-          (spec.flags.length ? '<span class="st-flags">' + spec.flags.map(function (f) {
-            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") + "</span>" : "") +
           '<span class="st-item-tools">' +
           (spec.image ? (it.image ? '<span class="st-thumb" title="' + esc(it.image.split("/").pop()) + '"><img src="' + esc(it.image) + '" alt=""><button class="st-x" data-act="it-img-del" data-i="' + i + '" title="Remove image">&times;</button></span>'
             : '<label class="st-ibtn" title="Attach an image">\uD83D\uDDBC<input type="file" accept="image/*" data-act="opt-img" data-oi="' + i + '" hidden></label>') : "") +
-          '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up">\u25B2</button>' +
-          '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down">\u25BC</button>' +
-          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Remove">\u2715</button></span></div>';
+          '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>\u25B2</button>' +
+          '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down"' + (i === last ? " disabled" : "") + '>\u25BC</button>' +
+          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span>' +
+          (spec.flags.length ? '<span class="st-flags"><span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
+            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") + "</span>" : "") +
+          "</div>";
       }).join("") + "</div>" +
       '<div class="st-item-actions"><button class="st-btn sm on" data-act="it-add" data-kind="' + kind + '">+ Add ' + spec.noun + "</button>" +
       (spec.quick || "") +
-      '<button class="st-btn sm ghost" data-act="it-paste" data-kind="' + kind + '">Paste a list\u2026</button></div>';
+      '<button class="st-btn sm ghost" data-act="it-paste" data-kind="' + kind + '">Enter multiple\u2026</button></div>';
     return html;
+  }
+
+  // Move one list entry to another position.  Used by the \u25B2 / \u25BC buttons, the drag grip and
+  // the keyboard, so all three routes share exactly the same reordering + persistence.
+  function moveItem(kind, from, to, keepFocus) {
+    var L = ed && ed[LIST_KEY[kind]];
+    if (!L || !L.length) return;
+    to = Math.max(0, Math.min(L.length - 1, to));
+    if (to === from) return;
+    var it = L.splice(from, 1)[0];
+    L.splice(to, 0, it);
+    rerenderCard("answers"); changed();
+    if (keepFocus) {
+      var g = $('#st-editor .st-items[data-kind="' + kind + '"] .st-item[data-i="' + to + '"] .st-grip');
+      if (g) g.focus();
+    }
   }
   function answersCard() {
     var t = ed.type, html = "";
@@ -1431,9 +1458,7 @@
     }
     if (act === "it-del") { syncFromForm(); ed[LIST_KEY[kind]].splice(i, 1); rerenderCard("answers"); changed(); return; }
     if (act === "it-up" || act === "it-down") {
-      syncFromForm(); var L = ed[LIST_KEY[kind]], j = act === "it-up" ? i - 1 : i + 1;
-      if (j < 0 || j >= L.length) return;
-      var tmp = L[j]; L[j] = L[i]; L[i] = tmp; rerenderCard("answers"); changed(); return;
+      syncFromForm(); moveItem(kind, i, act === "it-up" ? i - 1 : i + 1); return;
     }
     if (act === "it-img-del") { syncFromForm(); delete ed.options[i].image; rerenderCard("answers"); changed(); return; }
     if (act === "it-paste") {
@@ -1477,6 +1502,69 @@
       } catch (err) { toast("JSON did not parse: " + err.message); }
     }
   });
+  // ---- reorder by dragging the grip ------------------------------------------------------
+  // The grip is the only draggable part of a row, so text selection inside the inputs still works.
+  var dragKind = null, dragFrom = -1;
+  function itemRows(wrap) { return Array.prototype.slice.call(wrap.querySelectorAll(".st-item:not(.st-item-head)")); }
+  function clearDropMarks() {
+    $$("#st-editor .st-item.drop-before").forEach(function (n) { n.classList.remove("drop-before"); });
+    $$("#st-editor .st-items.drop-end").forEach(function (n) { n.classList.remove("drop-end"); });
+  }
+  function insertIndexAt(wrap, y) {                       // 0..n = where the row would land
+    var rows = itemRows(wrap);
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i].getBoundingClientRect();
+      if (y < r.top + r.height / 2) return i;
+    }
+    return rows.length;
+  }
+  function markDrop(wrap, at) {
+    clearDropMarks();
+    var rows = itemRows(wrap);
+    if (at >= rows.length) wrap.classList.add("drop-end");
+    else if (rows[at]) rows[at].classList.add("drop-before");
+  }
+  root.addEventListener("dragstart", function (e) {
+    if (!ed || !e.target.closest) return;
+    var grip = e.target.closest(".st-grip");
+    if (!grip) return;
+    var row = grip.closest(".st-item"), wrap = grip.closest(".st-items");
+    if (!row || !wrap) return;
+    syncFromForm();                                       // flush any half-typed label first
+    dragKind = wrap.getAttribute("data-kind");
+    dragFrom = Number(row.getAttribute("data-i"));
+    row.classList.add("dragging");
+    try {
+      e.dataTransfer.effectAllowed = "move";
+      e.dataTransfer.setData("text/plain", String(dragFrom));
+      e.dataTransfer.setDragImage(row, 16, 16);
+    } catch (err) { /* browser without a real DataTransfer - the drop still works */ }
+    e.stopPropagation();
+  });
+  root.addEventListener("dragover", function (e) {
+    if (dragKind === null || !e.target.closest) return;
+    var wrap = e.target.closest(".st-items");
+    if (!wrap || wrap.getAttribute("data-kind") !== dragKind) return;
+    e.preventDefault();
+    try { e.dataTransfer.dropEffect = "move"; } catch (err) { }
+    markDrop(wrap, insertIndexAt(wrap, e.clientY));
+  });
+  root.addEventListener("drop", function (e) {
+    if (dragKind === null || !e.target.closest) return;
+    var wrap = e.target.closest(".st-items");
+    if (!wrap || wrap.getAttribute("data-kind") !== dragKind) { clearDropMarks(); return; }
+    e.preventDefault();
+    var at = insertIndexAt(wrap, e.clientY), kind = dragKind, from = dragFrom;
+    dragKind = null; dragFrom = -1; clearDropMarks();
+    syncFromForm();
+    moveItem(kind, from, at > from ? at - 1 : at);
+  });
+  root.addEventListener("dragend", function () {
+    dragKind = null; dragFrom = -1;
+    clearDropMarks();
+    $$("#st-editor .st-item.dragging").forEach(function (n) { n.classList.remove("dragging"); });
+  });
+
   root.addEventListener("change", function (e) {
     if (!inEditor(e) || !ed) return;
     var t = e.target;
@@ -1513,7 +1601,17 @@
     changed();
   });
   root.addEventListener("keydown", function (e) {
-    if (e.target.id === "f-id" && e.key === "Enter") { e.preventDefault(); applyId(e.target); }
+    var t = e.target;
+    if (t && t.id === "f-id" && e.key === "Enter") { e.preventDefault(); applyId(t); }
+    // \u2191 / \u2193 on a focused grip swaps that entry with its neighbour
+    if (!ed || !t || !t.closest || !t.closest(".st-grip")) return;
+    if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+    var row = t.closest(".st-item"), wrap = row && row.closest(".st-items");
+    if (!row || !wrap) return;
+    e.preventDefault();
+    var kind = wrap.getAttribute("data-kind"), from = Number(row.getAttribute("data-i"));
+    syncFromForm();
+    moveItem(kind, from, from + (e.key === "ArrowUp" ? -1 : 1), true);
   });
   // keep selection-based commands working when the toolbar button steals focus
   root.addEventListener("mousedown", function (e) {
