@@ -25,6 +25,9 @@ import os
 import re
 import secrets
 import shutil
+import zipfile
+from io import BytesIO
+from xml.etree import ElementTree
 
 from flask import Blueprint, abort, current_app, jsonify, render_template, request, send_from_directory
 from werkzeug.utils import secure_filename
@@ -78,6 +81,34 @@ def save():
         return jsonify({"ok": True, "slug": Study.save(json_body())})
     except StudyError as e:
         return error(e)
+
+
+@bp.post("/api/studio/import-document")
+def import_document():
+    """Extract source text for the new-study assistant from TXT, MD or DOCX files."""
+    upload = request.files.get("file")
+    if not upload or not upload.filename:
+        return jsonify({"error": "Choose a questionnaire or brief to upload."}), 400
+    name = secure_filename(upload.filename)
+    ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
+    raw = upload.read(8 * 1024 * 1024 + 1)
+    if len(raw) > 8 * 1024 * 1024:
+        return jsonify({"error": "The document must be smaller than 8 MB."}), 413
+    try:
+        if ext in ("txt", "md", "csv"):
+            text = raw.decode("utf-8", errors="replace")
+        elif ext == "docx":
+            with zipfile.ZipFile(BytesIO(raw)) as doc:
+                xml = doc.read("word/document.xml")
+            root = ElementTree.fromstring(xml)
+            text = "\n".join("".join(node.itertext()) for node in root.iter()
+                               if node.tag.endswith("}p"))
+        else:
+            return jsonify({"error": "Use a DOCX, TXT, MD or CSV file."}), 400
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError):
+        return jsonify({"error": "That document could not be read."}), 400
+    text = re.sub(r"\n{3,}", "\n\n", text).strip()
+    return jsonify({"ok": True, "filename": name, "text": text[:50000]})
 
 
 @bp.post("/api/studio/status")

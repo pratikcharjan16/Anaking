@@ -6,7 +6,8 @@
 <title>PROJECT BEACON — US Oncologist Brand Demand Study</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=260921g">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}?v=260921g">
-{% if is_test %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921g">{% endif %}
+{% if is_test %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921g">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/survey-test.css') }}?v=261001b">{% endif %}
 </head>
 <body>
 {#- Test mode is the research team's view (drafts are previewed here too); the respondent
@@ -87,6 +88,12 @@
       hypothetical profile created for research purposes. It is not an approved medicine and
       no treatment recommendation is being made.
     </div>
+    <fieldset class="audio-choice" id="audio-choice">
+      <legend>How would you like question audio?</legend>
+      <label><input type="radio" name="audio-pref" value="manual" checked> <span><b>Play only when I choose Listen</b><small>Recommended — nothing starts automatically</small></span></label>
+      <label><input type="radio" name="audio-pref" value="all"> <span><b>Read every question aloud</b><small>Audio starts after you begin the survey</small></span></label>
+      <label><input type="radio" name="audio-pref" value="off"> <span><b>No question audio</b><small>You can turn it on later</small></span></label>
+    </fieldset>
     <button class="btn primary big" id="start-btn">Begin survey &rarr;</button>
   </div>
 </main>
@@ -134,6 +141,7 @@
   </div>
 </div>
 
+{% if is_test %}<aside class="test-console" id="test-console" hidden></aside>{% endif %}
 <footer class="foot">
   <span>PROJECT BEACON &middot; research instrument &middot; responses stored on the study server</span>
 </footer>
@@ -154,6 +162,6 @@ window.__beaconEscape = function () {
 <script>window.STUDY={slug:{{ slug|tojson }}};</script>
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=260921g"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=260921g"></script>
-<script src="{{ url_for('static', filename='js/survey.js') }}?v=260921g"></script>
+<script src="{{ url_for('static', filename='js/survey.js') }}?v=261001b"></script>
 </body>
 </html>
