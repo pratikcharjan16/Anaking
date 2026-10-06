@@ -258,49 +258,76 @@
   // Everything is evaluated against the same ctx as show-if:
   //   ctx = { answers: {qid: {...}}, questions: [...] }
 
-  // op -> { label, value, kinds }.  kinds [] means "every question type".
+  // op -> { label, value, kinds, sym?, unit? }.  kinds [] means "every question type".
+  // The order is the order of the dropdown, so the most common screening test comes first.
   var SCREEN_OPS = [
-    { op: "selected",     label: "is",                       value: "codes", kinds: ["choice"] },
-    { op: "not_selected", label: "is not",                   value: "codes", kinds: ["choice"] },
+    // ---- choice questions: one option, a group of options, or a count of them
     { op: "any_of",       label: "is any of",                value: "codes", kinds: ["choice"] },
     { op: "none_of",      label: "is none of",               value: "codes", kinds: ["choice"] },
+    { op: "selected",     label: "is",                       value: "codes", kinds: ["choice"] },
+    { op: "not_selected", label: "is not",                   value: "codes", kinds: ["choice"] },
     { op: "all_of",       label: "includes all of",          value: "codes", kinds: ["choice", "rank"] },
     { op: "exactly",      label: "is exactly these",         value: "codes", kinds: ["choice"] },
     { op: "count_gte",    label: "selects at least",         value: "count", kinds: ["choice"] },
     { op: "count_lte",    label: "selects at most",          value: "count", kinds: ["choice"] },
     { op: "count_eq",     label: "selects exactly",          value: "count", kinds: ["choice"] },
-    { op: "eq",           label: "equals",                   value: "number", kinds: ["number"] },
-    { op: "ne",           label: "does not equal",           value: "number", kinds: ["number"] },
-    { op: "gt",           label: "is more than",             value: "number", kinds: ["number"] },
-    { op: "gte",          label: "is at least",              value: "number", kinds: ["number"] },
-    { op: "lt",           label: "is less than",             value: "number", kinds: ["number"] },
-    { op: "lte",          label: "is at most",               value: "number", kinds: ["number"] },
+    // ---- numbers: the operator row with a number box
+    { op: "lt",           label: "is less than",             value: "number", kinds: ["number"], sym: "<" },
+    { op: "lte",          label: "is at most",               value: "number", kinds: ["number"], sym: "\u2264" },
+    { op: "gt",           label: "is more than",             value: "number", kinds: ["number"], sym: ">" },
+    { op: "gte",          label: "is at least",              value: "number", kinds: ["number"], sym: "\u2265" },
+    { op: "eq",           label: "equals",                   value: "number", kinds: ["number"], sym: "=" },
+    { op: "ne",           label: "does not equal",           value: "number", kinds: ["number"], sym: "\u2260" },
     { op: "between",      label: "is between",               value: "between", kinds: ["number"] },
+    { op: "not_between",  label: "is outside",               value: "between", kinds: ["number"] },
+    // ---- allocations (constant sum, numeric matrix): one row, a group, or the total
+    { op: "row_gte",      label: "row is at least",          value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "\u2265" },
+    { op: "row_lte",      label: "row is at most",           value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "\u2264" },
+    { op: "row_gt",       label: "row is more than",         value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: ">" },
+    { op: "row_lt",       label: "row is less than",         value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "<" },
+    { op: "row_eq",       label: "row is",                   value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "=" },
+    { op: "row_ne",       label: "row is not",               value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "\u2260" },
+    { op: "sum_of_gte",   label: "these rows add up to at least", value: "rowsum", kinds: ["alloc", "numrows"], sym: "\u2265" },
+    { op: "sum_of_lte",   label: "these rows add up to at most",  value: "rowsum", kinds: ["alloc", "numrows"], sym: "\u2264" },
+    { op: "total_gte",    label: "the total is at least",    value: "number", kinds: ["alloc", "numrows"], sym: "\u2265" },
+    { op: "total_lte",    label: "the total is at most",     value: "number", kinds: ["alloc", "numrows"], sym: "\u2264" },
+    { op: "total_eq",     label: "the total is",             value: "number", kinds: ["alloc", "numrows"], sym: "=" },
+    { op: "total_ne",     label: "the total is not",         value: "number", kinds: ["alloc", "numrows"], sym: "\u2260" },
+    // ---- text
     { op: "contains",     label: "mentions",                 value: "text", kinds: ["text"] },
     { op: "not_contains", label: "does not mention",         value: "text", kinds: ["text"] },
-    { op: "words_lt",     label: "is shorter than (words)",  value: "count", kinds: ["text"] },
-    { op: "row_eq",       label: "row is",                   value: "rowvalue", kinds: ["grid"] },
-    { op: "row_ne",       label: "row is not",               value: "rowvalue", kinds: ["grid"] },
-    { op: "row_gte",      label: "row is at least",          value: "rowvalue", kinds: ["grid"] },
-    { op: "row_lte",      label: "row is at most",           value: "rowvalue", kinds: ["grid"] },
+    { op: "words_lt",     label: "is shorter than",          value: "count", kinds: ["text"], unit: "words" },
+    // ---- ranking
     { op: "ranked_first", label: "ranks first",              value: "codes", kinds: ["rank"] },
     { op: "ranked_top",   label: "ranks in the top",         value: "ranktop", kinds: ["rank"] },
+    // ---- every question type
     { op: "answered",     label: "was answered",             value: "none", kinds: [] },
     { op: "not_answered", label: "was skipped",              value: "none", kinds: [] }
   ];
   var SCREEN_OP_BY_ID = {};
   SCREEN_OPS.forEach(function (o) { SCREEN_OP_BY_ID[o.op] = o; });
 
-  // Which family of controls the condition needs, per question type.
+  // Which family of controls the condition needs, per question type:
+  //   choice  - options / codes
+  //   number  - one number (numeric entry, scale, NPS, date, delta)
+  //   alloc   - an allocation split across rows (constant sum)
+  //   numrows - a number per row, with no forced total (numeric matrix)
+  //   grid    - a scale value per row (rating grid, word pairs, heat map, concept test)
   var TYPE_KIND = {
     single_select: "choice", multi_select: "choice",
     numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
     open_text: "text", loop: "text",
     rank: "rank",
-    rating_grid: "grid", semantic_diff: "grid", sum_to_100: "grid", emoji_grid: "grid",
-    heatmap: "grid", numeric_matrix: "grid", concept_test: "grid"
+    rating_grid: "grid", semantic_diff: "grid", emoji_grid: "grid",
+    heatmap: "grid", concept_test: "grid",
+    sum_to_100: "alloc", numeric_matrix: "numrows"
   };
-  function qKind(q) { return TYPE_KIND[q && q.type] || "any"; }
+  function qKind(q) {
+    if (!q) return "any";
+    // a question loop is text by default, but numbers when its children are numbers
+    if (q.type === "loop") return q.child === "numeric" ? "numrows" : "text";
+    return TYPE_KIND[q.type] || "any";
+  }
 
   function opsFor(q) {
     var k = qKind(q);
@@ -336,6 +363,26 @@
   function wordsOf(t) { return String(t).trim().split(/\s+/).filter(Boolean).length; }
   function rowKey(item) { return String(item || "").split("=")[0].trim(); }
   function rowWant(item) { var p = String(item || "").split("="); return p.length > 1 ? p.slice(1).join("=").trim() : ""; }
+  function rowList(value) {                    // "a,b=40" -> the rows the author ticked
+    var p = String(value || "").split("=");
+    return (p[0] || "").split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  // The numbers a row-based question holds: every row of a grid / allocation, or every
+  // item of a loop.  Used by the per-row, group and total conditions.
+  function rowCodes(q) {
+    var list = (q && (q.rows || q.items)) || [];
+    return list.map(function (r) { return String(r.code); });
+  }
+  function numIn(a, code) {
+    var v = a ? Number(a[code]) : NaN;
+    return isFinite(v) ? v : 0;
+  }
+  function sumOf(a, codes) {
+    var total = 0;
+    codes.forEach(function (c) { total += numIn(a, c); });
+    return total;
+  }
+  function totalOf(q, a) { return sumOf(a, rowCodes(q)); }
 
   function screenRuleTrue(r, ctx) {
     var q = findQ(ctx, r.q);
@@ -359,24 +406,42 @@
       case "gte": return isFinite(num) && num >= Number(r.value);
       case "lt": return isFinite(num) && num < Number(r.value);
       case "lte": return isFinite(num) && num <= Number(r.value);
-      case "between": {
+      case "between": case "not_between": {
         var p = String(r.value || "").split("-");
         var lo = Number(p[0]), hi = Number(p[1]);
-        return isFinite(num) && num >= lo && num <= hi;
+        var inside = isFinite(num) && num >= lo && num <= hi;
+        return r.op === "between" ? inside : !inside;
       }
       case "contains": return textOf(q, a).toLowerCase().indexOf(String(r.value || "").toLowerCase()) >= 0;
       case "not_contains": return textOf(q, a).toLowerCase().indexOf(String(r.value || "").toLowerCase()) < 0;
       case "words_lt": return wordsOf(textOf(q, a)) < Number(r.value);
-      case "row_eq": case "row_ne": case "row_gte": case "row_lte": {
+      case "row_eq": case "row_ne": case "row_gte": case "row_lte":
+      case "row_gt": case "row_lt": {
         var key = rowKey(r.value), target = Number(rowWant(r.value));
+        if (!key) return false;                     // no row chosen yet: the rule is not ready
         var got = a[key];
         if (got === undefined || got === "" || got === null) return false;
         var g = Number(got);
-        if (r.op === "row_eq") return g === target;
-        if (r.op === "row_ne") return !(g === target);
-        if (r.op === "row_gte") return g >= target;
-        return g <= target;
+        switch (r.op) {
+          case "row_eq": return g === target;
+          case "row_ne": return !(g === target);
+          case "row_gte": return g >= target;
+          case "row_lte": return g <= target;
+          case "row_gt": return g > target;
+          default: return g < target;
+        }
       }
+      // how much of an allocation went to a chosen group of rows
+      case "sum_of_gte": case "sum_of_lte": {
+        var group = rowList(r.value);
+        if (!group.length) return false;            // no rows ticked: the rule is not ready
+        var want = Number(rowWant(r.value) || 0);
+        return r.op === "sum_of_gte" ? sumOf(a, group) >= want : sumOf(a, group) <= want;
+      }
+      case "total_eq": return totalOf(q, a) === Number(r.value);
+      case "total_ne": return totalOf(q, a) !== Number(r.value);
+      case "total_gte": return totalOf(q, a) >= Number(r.value);
+      case "total_lte": return totalOf(q, a) <= Number(r.value);
       case "ranked_first": return codes.length > 0 && codes[0] === want[0];
       case "ranked_top": {
         var n = Number(rowWant(r.value));
@@ -508,15 +573,39 @@
       return labels.length ? labels.join(r.op === "all_of" ? " and " : ", ") : "…";
     }
     if (kind === "ranktop") return itemLabel(q, rowKey(r.value)) + " (top " + rowWant(r.value) + ")";
-    if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " = " + rowWant(r.value);
-    if (kind === "between") { var p = String(r.value || "").split("-"); return (p[0] || "?") + " and " + (p[1] || "?"); }
-    if (kind === "count") return String(r.value) + (r.op === "words_lt" ? " words" : "");
+    if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") +
+      " " + rowWant(r.value);
+    if (kind === "rowsum") {
+      var rows = rowList(r.value).map(function (c) { return itemLabel(q, c); });
+      return (rows.length ? rows.join(" + ") : "the rows") + " " + (opInfo(r.op).sym || "") +
+        " " + (rowWant(r.value) === "" ? "0" : rowWant(r.value));
+    }
+    if (kind === "between") {
+      var p = String(r.value || "").split("-");
+      return (p[0] || "?") + (r.op === "between" ? " and " : " \u2013 ") + (p[1] || "?");
+    }
+    if (kind === "count") {
+      var unit = opInfo(r.op).unit;
+      return String(r.value) + (unit ? " " + unit : "");
+    }
     if (kind === "none") return "";
     return String(r.value === undefined || r.value === null ? "" : r.value);
   }
+  // Numbers read the way a questionnaire reads them: "Q3 < 10", "Q19 total \u2265 90".
   function ruleText(r, questions) {
-    var v = valueText(r, questions);
-    return (r.q || "?") + " " + opInfo(r.op).label + (v ? " " + v : "");
+    var info = opInfo(r.op), v = valueText(r, questions);
+    var word = String(r.op).indexOf("total_") === 0 ? "total " + (info.sym || "")
+             : String(r.op).indexOf("sum_of_") === 0 ? "the share of "
+             : String(r.op).indexOf("row_") === 0 ? "row "
+             : (info.sym ? info.sym : info.label);
+    if (String(r.op).indexOf("sum_of_") === 0) {
+      var q = null;
+      for (var i = 0; i < (questions || []).length; i++) if (questions[i].id === r.q) q = questions[i];
+      var rows = rowList(r.value).map(function (c) { return itemLabel(q, c); });
+      return (r.q || "?") + ": " + (rows.length ? rows.join(" + ") : "the rows") +
+        " " + (info.sym || "") + " " + (rowWant(r.value) === "" ? "0" : rowWant(r.value));
+    }
+    return (r.q || "?") + " " + word + (v ? " " + v : "");
   }
   function blockText(block, questions) {
     var join = block.match === "any" ? " or " : " and ";

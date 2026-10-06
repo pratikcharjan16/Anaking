@@ -133,9 +133,145 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   box.checked = true; fire(box, "change"); await sleep(200);
   check("ticking it marks the option", !!$("#card-answers .st-flag.on"));
 
+  // ---------- numbers: the operator row with a number box ----------
+  click($('[data-act="qdup"]')); await sleep(250);           // a copy we can reshape freely
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
+  click($$('input[name="f-scr-mode"]').find(r => r.value === "off")); await sleep(200);
+  click($$(".st-etab").find(b => /Content/.test(b.textContent))); await sleep(200);
+  const tSel1 = $("#f-type"); tSel1.value = "numeric"; fire(tSel1, "change"); await sleep(300);
+  const numId = $("#f-id").value;
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
+  click($$('input[name="f-scr-mode"]').find(r => r.value === "screen_out")); await sleep(220);
+  check("a numeric question opens with one condition", $$("#f-scr-rules .st-rule").length === 1,
+    $$("#f-scr-rules .st-rule").length);
+  let numBox = $('[data-sf="value"].st-scr-num');
+  check("a numeric condition is a number box", !!numBox, ($("#f-scr-rules") || {}).innerHTML.slice(0, 200));
+  check("the number box knows the question's own range",
+    !!numBox && numBox.getAttribute("min") !== null, numBox && numBox.outerHTML);
+  const numOps = [...($('[data-sf="op"]') || { options: [] }).options].map(o => o.textContent);
+  check("the operator row is = \u2260 < \u2264 > \u2265 plus between / outside",
+    ["<", "\u2264", ">", "\u2265", "=", "\u2260"].every(t => numOps.includes(t)) &&
+    numOps.some(t => /between/.test(t)) && numOps.some(t => /outside/.test(t)), numOps.join(" | "));
+  check("the operator reads as a symbol, not a sentence",
+    ($('[data-sf="op"]').selectedOptions[0] || {}).textContent === "<",
+    ($('[data-sf="op"]').selectedOptions[0] || {}).textContent);
+  numBox.value = "25"; fire(numBox, "input"); await sleep(220);
+  check("typing a number rewrites the plain-English line",
+    new RegExp(numId + " < 25").test($(".st-scr-plain").textContent), $(".st-scr-plain").textContent);
+  let opSel2 = $('[data-sf="op"]');
+  opSel2.value = "between"; fire(opSel2, "change"); await sleep(240);
+  check("'is between' swaps the single box for two",
+    !!$('[data-sf="valueLo"]') && !!$('[data-sf="valueHi"]'), ($("#f-scr-rules") || {}).innerHTML.slice(0, 240));
+  opSel2 = $('[data-sf="op"]');
+  opSel2.value = "lt"; fire(opSel2, "change"); await sleep(240);
+  numBox = $('[data-sf="value"].st-scr-num');
+  numBox.value = "5"; fire(numBox, "input"); await sleep(220);
+  check("the numeric rule settles back to one operator and a number",
+    new RegExp(numId + " < 5").test($(".st-scr-plain").textContent), $(".st-scr-plain").textContent);
+  check("a numeric answer is judged when Next is pressed",
+    ($("#f-scr-when") || {}).value === "next", ($("#f-scr-when") || {}).value);
+
+  // ---------- allocation: totals and per-row shares ----------
+  click($('[data-act="qdup"]')); await sleep(250);
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
+  click($$('input[name="f-scr-mode"]').find(r => r.value === "off")); await sleep(200);
+  click($$(".st-etab").find(b => /Content/.test(b.textContent))); await sleep(200);
+  const tSel2 = $("#f-type"); tSel2.value = "sum_to_100"; fire(tSel2, "change"); await sleep(320);
+  const allocId = $("#f-id").value;
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
+  click($$('input[name="f-scr-mode"]').find(r => r.value === "screen_out")); await sleep(240);
+  const allocOps = [...($('[data-sf="op"]') || { options: [] }).options].map(o => o.value);
+  check("an allocation offers per-row, group and total conditions",
+    ["row_gte", "row_lte", "sum_of_gte", "sum_of_lte", "total_gte", "total_lte", "total_eq"]
+      .every(o => allocOps.includes(o)), allocOps.join(","));
+  check("a row condition names a row and a number",
+    !!$('[data-sf="row"]') && !!$('[data-sf="value"].st-scr-num'),
+    ($("#f-scr-rules") || {}).innerHTML.slice(0, 260));
+  check("the share carries the question's unit", /points/.test($("#f-scr-rules").textContent),
+    $("#f-scr-rules").textContent.slice(0, 220));
+  let rowBox = $('[data-sf="value"].st-scr-num');
+  rowBox.value = "70"; fire(rowBox, "input"); await sleep(220);
+  check("a row condition reads as plain English",
+    new RegExp(allocId + " row .+ \u2265 70").test($(".st-scr-plain").textContent),
+    $(".st-scr-plain").textContent);
+  let opSel3 = $('[data-sf="op"]');
+  opSel3.value = "sum_of_gte"; fire(opSel3, "change"); await sleep(240);
+  let grpChips = $$("#f-scr-rules .st-scr-chips .st-chip");
+  check("a group condition offers a chip per row", grpChips.length >= 2, grpChips.length);
+  click(grpChips[0]); await sleep(160);
+  click($$("#f-scr-rules .st-scr-chips .st-chip")[1]); await sleep(160);
+  check("ticking rows builds the group", ($('[data-sf="value"]') || {}).value.split(",").length === 2,
+    ($('[data-sf="value"]') || {}).value);
+  let sumBox = $('[data-sf="valueSum"]');
+  sumBox.value = "80"; fire(sumBox, "input"); await sleep(220);
+  check("the group share is stored as rows=number", /=80$/.test(($('[data-sf="value"]') || {}).value),
+    ($('[data-sf="value"]') || {}).value);
+  check("the group rule reads as a sum in plain English",
+    /\+ /.test($(".st-scr-plain").textContent) && /80/.test($(".st-scr-plain").textContent),
+    $(".st-scr-plain").textContent);
+  opSel3 = $('[data-sf="op"]');
+  opSel3.value = "total_gte"; fire(opSel3, "change"); await sleep(240);
+  let totBox = $('[data-sf="value"].st-scr-num');
+  check("a total condition is one number box", !!totBox, ($("#f-scr-rules") || {}).innerHTML.slice(0, 260));
+  check("switching condition never leaves a blank or broken number",
+    !!totBox && totBox.value !== "" && !isNaN(Number(totBox.value)) &&
+    !/NaN/.test($(".st-scr-plain").textContent), totBox && totBox.value);
+  totBox.value = "90"; fire(totBox, "input"); await sleep(220);
+  check("a total condition reads with the word total",
+    new RegExp(allocId + " total \u2265 90").test($(".st-scr-plain").textContent),
+    $(".st-scr-plain").textContent);
+  check("the tester takes an allocation row by row and shows the running total",
+    $$("#card-screening .st-scr-rownum").length >= 2 && /Total/.test($("#card-screening .st-scr-test").textContent),
+    $$("#card-screening .st-scr-rownum").length);
+  const allocRow = $$("#card-screening .st-scr-rownum")[0];
+  allocRow.value = "95"; fire(allocRow, "input"); await sleep(220);
+  allocRow.value = "5"; fire($$("#card-screening .st-scr-rownum")[0], "input"); await sleep(220);
+  check("the tester verdict follows the numbers typed",
+    /CONTINUES|SCREENED OUT/.test(($(".st-scr-verdict") || {}).textContent || ""),
+    ($(".st-scr-verdict") || {}).textContent);
+
+  // every condition on an allocation starts from a number that makes sense
+  let badOp = "";
+  for (const op of ["row_gte", "row_lte", "row_eq", "sum_of_gte", "sum_of_lte", "total_gte", "total_lte", "total_eq", "total_ne"]) {
+    const sel = $('[data-sf="op"]'); sel.value = op; fire(sel, "change"); await sleep(200);
+    const box = $('[data-sf="value"].st-scr-num') || $('[data-sf="valueSum"]');
+    const held = $('[data-sf="value"][type=hidden]');
+    const shown = (box && box.value !== undefined) ? box.value : (held ? String(held.value).split("=")[1] : undefined);
+    if (shown === undefined || shown === "" || isNaN(Number(shown)) || /NaN|\u2265 $|\u2264 $/.test($(".st-scr-plain").textContent)) {
+      badOp += op + "=" + shown + " ";
+    }
+  }
+  check("row, group and total conditions all start from a usable number", badOp === "", badOp);
+
+  // ...and settle on a total we can look for in the saved study
+  let opSel4 = $('[data-sf="op"]');
+  opSel4.value = "total_gte"; fire(opSel4, "change"); await sleep(220);
+  let totBox2 = $('[data-sf="value"].st-scr-num');
+  totBox2.value = "90"; fire(totBox2, "input"); await sleep(220);
+
+  // ---------- the rule is visible on the question, not only inside the tab ----------
+  click($$(".st-etab").find(b => /Content/.test(b.textContent))); await sleep(260);
+  check("the rule also shows as a line on the question itself",
+    /screen out when/.test(($(".st-scr-linebar") || {}).textContent || ""),
+    ($(".st-scr-linebar") || {}).textContent);
+  check("the line carries a way back to the Screening tab",
+    !!$$(".st-scr-linebar [data-act='edtab'][data-t='screen']").length);
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(220);
+  check("the Screening tab shows the sentence once, not twice",
+    $$(".st-scr-plain").length === 1, $$(".st-scr-plain").length);
+
   // ---------- it all reaches the saved study ----------
   await sleep(1600);
   const saved = JSON.parse(await get("/api/studio/study?slug=beacon")).cfg;
+  const allocSaved = (saved.questions || []).find(q => q.id === allocId && q.type === "sum_to_100");
+  check("the allocation rule reaches the saved study",
+    !!allocSaved && String((allocSaved.screening.rules[0] || {}).value) === "90" &&
+    (allocSaved.screening.rules[0] || {}).op === "total_gte",
+    JSON.stringify(allocSaved && allocSaved.screening));
+  const numSaved = (saved.questions || []).find(q => q.id === numId);
+  check("the numeric rule reaches the saved study",
+    !!numSaved && (numSaved.screening.rules[0] || {}).op === "lt" && (numSaved.screening.rules[0] || {}).value === 5,
+    JSON.stringify(numSaved && numSaved.screening));
   const mine = saved.questions.find(q => q.type === "multi_select" && q.screening);
   check("the screening block is saved with the question", !!mine, JSON.stringify((saved.questions || []).map(q => !!q.screening)));
   if (mine) {
@@ -151,9 +287,10 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   check("no script errors", errs.length === 0, errs.join(" | "));
 
   // leave the study as we found it: drop the question we added
-  if (mine) {
+  const mine2 = (saved.questions || []).filter(q => q === mine || q.id === allocId || q.id === numId);
+  if (mine2.length) {
     const del = { slug: "beacon", title: saved.title, cfg: saved };
-    del.cfg.questions = saved.questions.filter(q => q !== mine);
+    del.cfg.questions = saved.questions.filter(q => mine2.indexOf(q) < 0);
     await req("POST", "/api/studio/save", JSON.stringify(del));
   }
   console.log(fails ? "\n" + fails + " FAILED" : "\nall Studio screening checks passed");

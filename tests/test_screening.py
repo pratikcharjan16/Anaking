@@ -99,6 +99,53 @@ def test_describe_uses_option_labels_not_codes():
         "screen out when Q1 is any of Medical oncology, Radiation oncology"]
 
 
+# ---------------------------------------------------------------- numbers and allocations
+ALLOC = {
+    "id": "Q19", "section": "S1", "type": "sum_to_100", "stem": "Split 100 points",
+    "rows": [{"code": "d1", "label": "Brand A"}, {"code": "d2", "label": "Brand B"},
+             {"code": "d3", "label": "Brand C"}],
+}
+
+
+def _blocked(q, rules, mode="screen_out"):
+    q = {**q, "screening": {"mode": mode, "match": "all", "when": "next", "rules": rules}}
+    return screening.describe(q, [ALLOC, NUMERIC])
+
+
+def test_numeric_rules_read_with_their_operator():
+    assert _blocked(NUMERIC, [{"q": "Q3", "op": "lt", "value": 5}]) == [
+        "screen out when Q3 < 5"]
+    assert _blocked(NUMERIC, [{"q": "Q3", "op": "gte", "value": 40}]) == [
+        "screen out when Q3 \u2265 40"]
+    assert _blocked(NUMERIC, [{"q": "Q3", "op": "ne", "value": 40}]) == [
+        "screen out when Q3 \u2260 40"]
+
+
+def test_ranges_read_as_ranges():
+    assert _blocked(NUMERIC, [{"q": "Q3", "op": "between", "value": "5-20"}]) == [
+        "screen out when Q3 is between 5 and 20"]
+    assert _blocked(NUMERIC, [{"q": "Q3", "op": "not_between", "value": "5-20"}]) == [
+        "screen out when Q3 is outside 5 \u2013 20"]
+
+
+def test_allocation_rules_read_as_shares_and_totals():
+    assert _blocked(ALLOC, [{"q": "Q19", "op": "row_gte", "value": "d1=60"}]) == [
+        "screen out when Q19 row \u2265 Brand A 60"]
+    assert _blocked(ALLOC, [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d3=80"}]) == [
+        "screen out when Q19 share \u2265 Brand A + Brand C 80"]
+    assert _blocked(ALLOC, [{"q": "Q19", "op": "total_lte", "value": 90}]) == [
+        "screen out when Q19 total \u2264 90"]
+    assert _blocked(ALLOC, [{"q": "Q19", "op": "total_eq", "value": 100}]) == [
+        "screen out when Q19 total = 100"]
+
+
+def test_a_new_allocation_rule_survives_a_save_round_trip():
+    q = {**ALLOC, "screening": {"mode": "screen_out", "match": "all", "when": "next",
+                                "rules": [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d2=80"}]}}
+    screening.normalize(q)
+    assert q["screening"]["rules"] == [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d2=80"}]
+
+
 # ---------------------------------------------------------------- it reaches the documents
 def test_the_word_outline_shows_the_screening_rules():
     data = build_outline(CFG)

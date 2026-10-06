@@ -35,7 +35,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   check("editor is one scrolling form of cards on the Content tab",
     $$(".st-ecard").length===5 && !!$("#card-answers") && !!$("#card-display"));
   check("the reference tabs are on the editor, not the top bar",
-    $$(".st-etab").length===3 && !$(".st-tab[data-tab=content]"));
+    $$(".st-etab").length===4 && !$(".st-tab[data-tab=content]"));      // + Screening
   check("status segment + save state + autosave switch in bar", $(".st-status-btn.on.draft") && $("#st-savestate .st-ss.ok") && $("#st-autosave").checked);
   check("preview shows Q1", /Your specialty/.test($("#st-prev-body").textContent));
 
@@ -67,7 +67,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   // --- options editor on Q2
   $$(".st-qi")[1].click(); await sleep(30);
-  check("answer options card lists 2 options with flags", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && $$(".st-flag").length===6);
+  check("answer options card lists 2 options with flags", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && $$(".st-flag").length===8);
   $("[data-act=opt-add-none]").click(); await sleep(20);
   const opts=$$('.st-items[data-kind=opt] .st-item:not(.st-item-head)');
   check("+ None of these adds exclusive pinned option 99", opts.length===3 && opts[2].querySelector("[data-k=code]").value==="99" && opts[2].querySelector(".st-flag.on"));
@@ -82,8 +82,9 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   // --- question editor tabs: Content & Settings / Conditional Display + PREVIEW
   check("the editor offers the reference tab strip",
-    $$(".st-etab").length===3 && /Content & Settings/.test($$(".st-etab")[0].textContent) &&
-    /Conditional Display/.test($$(".st-etab")[1].textContent) && /PREVIEW/.test($$(".st-etab")[2].textContent),
+    $$(".st-etab").length===4 && /Content & Settings/.test($$(".st-etab")[0].textContent) &&
+    /Conditional Display/.test($$(".st-etab")[1].textContent) &&
+    /Screening/.test($$(".st-etab")[2].textContent) && /PREVIEW/.test($$(".st-etab")[3].textContent),
     $$(".st-etab").map(b=>b.textContent).join(" | "));
   check("Content & Settings is the tab we land on", $$(".st-etab")[0].classList.contains("on") && !!$("#card-answers"));
   check("the conditions live on the Conditional Display tab", !$("#card-logic"));

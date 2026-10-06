@@ -154,6 +154,88 @@ VERB.screening.rules = [{ q: "Q11", op: "words_lt", value: 3 }];
 check("word-count rule fires on a two-word answer", (verdict({ Q11: { _: "Too short" } }) || {}).qid === "Q11");
 delete VERB.screening;
 
+// ------------------------------------------------------------------ numbers: the operator row
+const SHARE = {
+  id: "Q19", type: "sum_to_100", stem: "Split 100 points",
+  rows: [{ code: "d1", label: "Brand A" }, { code: "d2", label: "Brand B" }, { code: "d3", label: "Brand C" }],
+};
+const MATRIX = {
+  id: "Q30", type: "numeric_matrix", stem: "Units per brand",
+  rows: [{ code: "u1", label: "Units A" }, { code: "u2", label: "Units B" }],
+};
+
+// a numeric question is screened with an operator and a number box
+VOLUME.screening = { mode: "screen_out", match: "all", when: "next",
+  rules: [{ q: "Q3", op: "lt", value: 5 }] };
+check("numeric: 'is less than' screens out below the threshold",
+  (verdict({ Q3: { _: 4 } }) || {}).qid === "Q3");
+check("numeric: the threshold itself continues",
+  verdict({ Q3: { _: 5 } }) === null);
+VOLUME.screening.rules = [{ q: "Q3", op: "between", value: "5-20" }];
+check("numeric: 'is between' fires inside the range", (verdict({ Q3: { _: 12 } }) || {}).qid === "Q3");
+check("numeric: 'is between' ignores an answer outside it", verdict({ Q3: { _: 40 } }) === null);
+VOLUME.screening.rules = [{ q: "Q3", op: "not_between", value: "5-20" }];
+check("numeric: 'is outside' fires outside the range", (verdict({ Q3: { _: 40 } }) || {}).qid === "Q3");
+check("numeric: 'is outside' ignores an answer inside it", verdict({ Q3: { _: 12 } }) === null);
+check("a numeric rule reads with its operator",
+  Q.screenSummary(VOLUME, QUESTIONS)[0].text === "screen out when Q3 < 5" ||
+  /Q3/.test(Q.screenSummary(VOLUME, QUESTIONS)[0].text),
+  Q.screenSummary(VOLUME, QUESTIONS)[0].text);
+VOLUME.screening.rules = [{ q: "Q3", op: "lt", value: 5 }];
+check("the operator row reads as an operator, not a sentence",
+  Q.ruleText({ q: "Q3", op: "lt", value: 5 }, QUESTIONS) === "Q3 < 5",
+  Q.ruleText({ q: "Q3", op: "lt", value: 5 }, QUESTIONS));
+check("'is between' reads as a range",
+  Q.ruleText({ q: "Q3", op: "between", value: "5-20" }, QUESTIONS) === "Q3 is between 5 and 20",
+  Q.ruleText({ q: "Q3", op: "between", value: "5-20" }, QUESTIONS));
+delete VOLUME.screening;
+
+// ------------------------------------------------------------------ allocations
+QUESTIONS.push(SHARE, MATRIX);
+SHARE.screening = { mode: "screen_out", match: "all", when: "next",
+  rules: [{ q: "Q19", op: "row_gte", value: "d1=60" }] };
+check("allocation: one row holding too much screens out",
+  (verdict({ Q19: { d1: 70, d2: 20, d3: 10 } }) || {}).qid === "Q19");
+check("allocation: a spread allocation continues",
+  verdict({ Q19: { d1: 40, d2: 35, d3: 25 } }) === null);
+SHARE.screening.rules = [{ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }];
+check("allocation: a group of rows adding up to 80 screens out",
+  (verdict({ Q19: { d1: 50, d2: 30, d3: 20 } }) || {}).qid === "Q19");
+check("allocation: the same group at 60 continues",
+  verdict({ Q19: { d1: 40, d2: 20, d3: 40 } }) === null);
+SHARE.screening.rules = [{ q: "Q19", op: "total_gte", value: 90 }];
+check("allocation: the grand total counts every row",
+  (verdict({ Q19: { d1: 60, d2: 30, d3: 10 } }) || {}).qid === "Q19");
+check("allocation: a smaller total continues",
+  verdict({ Q19: { d1: 10, d2: 10, d3: 10 } }) === null);
+check("a group-share rule reads as a sum",
+  Q.ruleText({ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }, QUESTIONS) === "Q19: Brand A + Brand B \u2265 80",
+  Q.ruleText({ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }, QUESTIONS));
+check("a total rule reads with the word total",
+  Q.ruleText({ q: "Q19", op: "total_gte", value: 90 }, QUESTIONS) === "Q19 total \u2265 90",
+  Q.ruleText({ q: "Q19", op: "total_gte", value: 90 }, QUESTIONS));
+SHARE.screening.rules = [{ q: "Q19", op: "sum_of_gte", value: "=80" }];
+check("a group rule with no rows ticked does not fire yet",
+  verdict({ Q19: { d1: 90, d2: 5, d3: 5 } }) === null);
+SHARE.screening.rules = [{ q: "Q19", op: "row_gte", value: "=60" }];
+check("a row rule with no row chosen does not fire yet",
+  verdict({ Q19: { d1: 90, d2: 5, d3: 5 } }) === null);
+SHARE.screening.rules = [{ q: "Q19", op: "row_gte", value: "d1=60" }];
+check("allocations offer row, group and total conditions",
+  ["row_gte", "sum_of_gte", "total_gte"].every(op => Q.opsFor(SHARE).some(o => o.op === op)));
+check("a numeric matrix offers the same numeric row conditions",
+  ["row_gte", "row_lte", "sum_of_lte", "total_lte"].every(op => Q.opsFor(MATRIX).some(o => o.op === op)));
+check("rating grids keep their scale conditions but not allocation totals",
+  Q.opsFor(GRID).some(o => o.op === "row_gte") && !Q.opsFor(GRID).some(o => o.op === "total_gte"));
+MATRIX.screening = { mode: "qualify", match: "all", when: "next",
+  rules: [{ q: "Q30", op: "row_gte", value: "u1=10" }] };
+check("numeric matrix: qualify gate on one row",
+  (verdict({ Q30: { u1: 2, u2: 30 } }) || {}).qid === "Q30" &&
+  verdict({ Q30: { u1: 20, u2: 30 } }) === null);
+delete MATRIX.screening;
+delete SHARE.screening;
+QUESTIONS.pop(); QUESTIONS.pop();
+
 // ------------------------------------------------------------------ plain English + typing
 SPECIALTY.screening = { mode: "screen_out", match: "any", when: "live", rules: [{ q: "Q1", op: "any_of", value: "5,6" }] };
 const sum = Q.screenSummary(SPECIALTY, QUESTIONS);

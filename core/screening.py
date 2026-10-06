@@ -37,11 +37,17 @@ OP_WORDS = {
     "all_of": "includes all of", "exactly": "is exactly",
     "count_gte": "selects at least", "count_lte": "selects at most",
     "count_eq": "selects exactly",
+    # numbers read as the operator itself: "Q3 < 10"
     "eq": "=", "ne": "\u2260", "gt": ">", "gte": "\u2265", "lt": "<", "lte": "\u2264",
-    "between": "is between",
+    "between": "is between", "not_between": "is outside",
     "contains": "mentions", "not_contains": "does not mention",
     "words_lt": "is shorter than",
+    # rows, groups of rows and totals (constant sum / numeric matrix)
     "row_eq": "row =", "row_ne": "row \u2260", "row_gte": "row \u2265", "row_lte": "row \u2264",
+    "row_gt": "row >", "row_lt": "row <",
+    "sum_of_gte": "share \u2265", "sum_of_lte": "share \u2264",
+    "total_eq": "total =", "total_ne": "total \u2260", "total_gte": "total \u2265",
+    "total_lte": "total \u2264",
     "ranked_first": "ranks first", "ranked_top": "ranks in the top",
     "answered": "was answered", "not_answered": "was skipped",
 }
@@ -132,11 +138,16 @@ def _rule_text(rule: dict, questions: dict) -> str:
     elif op == "ranked_top":
         head, _, n = str(value or "").partition("=")
         value = f"{_label(q, head)} (top {n})"
-    elif op in ("row_eq", "row_ne", "row_gte", "row_lte", "row_gt", "row_lt"):
+    elif op.startswith("row_"):
         head, _, tail = str(value or "").partition("=")
-        value = f"{_label(q, head)} = {tail}"
-    elif op == "between":
-        value = " and ".join(str(value or "").split("-"))
+        value = f"{_label(q, head)} {tail}"
+    elif op.startswith("sum_of_"):          # "a,b=40" -> what a group of rows adds up to
+        head, _, tail = str(value or "").partition("=")
+        labels = [_label(q, c) for c in _codes(head)]
+        value = f"{' + '.join(labels) or 'the rows'} {tail or 0}"
+    elif op in ("between", "not_between"):
+        halves = str(value or "").split("-")
+        value = " and ".join(halves) if op == "between" else " – ".join(halves)
     elif op == "words_lt":
         value = f"{value} words"
     return f"{rule.get('q')} {word} {value}".strip()
