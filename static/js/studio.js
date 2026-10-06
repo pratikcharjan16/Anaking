@@ -681,7 +681,7 @@
   function qBadges(q) {
     var b = "";
     if (q.required === false) b += '<span class="st-badge" title="Optional">optional</span>';
-    if (q.show_if && q.show_if.rules && q.show_if.rules.length) b += '<span class="st-badge logic" title="Shown only when its conditions are met">logic</span>';
+    if (q.show_if && q.show_if.rules && q.show_if.rules.length && q.show_if.off !== true) b += '<span class="st-badge logic" title="Shown only when its conditions are met">logic</span>';
     var sc = Q.screening(q);
     if (sc.length) b += '<span class="st-badge screen" title="' + esc(sc.map(function (x) {
       return (x.mode === "qualify" ? "Qualify: " : "Screen out: ") + Q.blockText(x, cur.cfg.questions);
@@ -1233,13 +1233,14 @@
     if (fn) body.innerHTML = fn();
     if (id === "logic" || id === "media" || id === "screening") {
       var sm = $("summary span", c); if (sm) sm.innerHTML =
-        (id === "logic" ? "Show only when\u2026" : id === "media" ? "Image or video" : "Screen in / screen out") +
+        (id === "logic" ? "Show IF" : id === "media" ? "Image or video" : "Screen in / screen out") +
         (isOn(id) ? ' <em class="st-dot">on</em>' : "");
     }
   }
   function isOn(id) {
     if (id === "screening") return scrCount() > 0;
-    return id === "logic" ? !!(ed.show_if && ed.show_if.rules && ed.show_if.rules.length) : !!(ed.media && ed.media.src);
+    return id === "logic" ? (sifOn() && !!(ed.show_if && ed.show_if.rules && ed.show_if.rules.length))
+                          : !!(ed.media && ed.media.src);
   }
   function answersTitle() {
     var t = ed.type;
@@ -1254,9 +1255,9 @@
     var rules = (ed.show_if && ed.show_if.rules) || [];
     var nscr = scrCount();
     return '<nav class="st-etabs">' +
-      [["content", "Content &amp; Settings"], ["cond", "Conditional Display"],
+      [["content", "Content &amp; Settings"], ["cond", "Show IF"],
        ["screen", "Screening"]].map(function (t) {
-        var n = t[0] === "cond" ? rules.length : t[0] === "screen" ? nscr : 0;
+        var n = t[0] === "cond" ? (sifOn() ? rules.length : 0) : t[0] === "screen" ? nscr : 0;
         return '<button type="button" class="st-etab' + (edTab === t[0] ? " on" : "") +
           '" data-act="edtab" data-t="' + t[0] + '">' + t[1] +
           (n ? '<span class="st-count' + (t[0] === "screen" ? " warn" : "") + '">' + n + "</span>" : "") +
@@ -1305,10 +1306,10 @@
       edStrip() +
       (edTab === "screen" ? "" : scrLineHtml()) +
       (edTab === "cond"
-        ? '<nav class="st-jump">' + [["logic", "Conditional display"]].map(function (j) {
+        ? '<nav class="st-jump">' + [["logic", "Show IF"]].map(function (j) {
             return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
-          card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""),
-               "Conditional display - exactly who gets this question and who skips it", logicCard())
+          card("logic", "Show IF" + (sifOn() && ((ed.show_if || {}).rules || []).length ? ' <em class="st-dot">on</em>' : ""),
+               "Show IF - exactly who gets this question and who skips it", logicCard())
         : edTab === "screen"
         ? '<nav class="st-jump">' + [["screening", "Screen in / screen out"]].map(function (j) {
             return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
@@ -1805,15 +1806,26 @@
   }
 
   // ---- card: logic -------------------------------------------------------------------
+  // Show IF has its own On / Off switch: the conditions are kept when it is off.
+  function sifOn() { var s = ed && ed.show_if; return !s || s.off !== true; }
   function logicCard() {
     var c = cur.cfg, sif = ed.show_if || { match: "all", rules: [] };
     var others = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
     var idx = c.questions.indexOf(ed);
     var rules = sif.rules || [];
-    var html = '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
+    var on = sifOn();
+    var html = '<div class="st-scr-top">' +
+      '<label class="st-switch big" title="Switch the show-if conditions on or off">' +
+        '<input type="checkbox" id="f-sif-on"' + (on ? " checked" : "") + "><i></i>Show IF</label>" +
+      '<span class="st-meta">' + (on
+        ? "This question is shown only to the respondents who match."
+        : "Shown to everybody - the conditions below are kept but never applied.") +
+      "</span></div>";
+    html += '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
       '<div class="st-logic-intro">' + (rules.length
       ? 'Show this question <b>only when</b> <select id="f-sif-match"><option value="all"' + (sif.match !== "any" ? " selected" : "") + '>all</option><option value="any"' + (sif.match === "any" ? " selected" : "") + '>any</option></select> of these are true:'
       : "<b>Always shown.</b> Add a condition to show it only to some respondents - e.g. only those who chose \u201COncology\u201D in Q1.") + "</div>";
+    if (!on) html += '<div class="st-scr-off">Show IF is switched off - the conditions below are parked, not deleted.</div>';
     html += '<div id="f-rules">' + rules.map(function (r, i) {
       var q = others.filter(function (x) { return x.id === r.q; })[0];
       var valField;
@@ -1837,15 +1849,16 @@
 
   // ---- card: screening ------------------------------------------------------------------
   // Screen in / screen out, written as data on the question:
-  //   screening: { mode: "screen_out" | "qualify", match: "all" | "any", when: "live" | "next",
+  //   screening: { enabled, mode: "screen_out" | "qualify", match, when: "live" | "next",
   //                message, reason, rules: [{ q, op, value }] }
+  // Row-based questions (grids, allocations, numeric matrices) can also be screened the
+  // structured way instead, which only needs a band or a total:
+  //   screening: { type: "individual", rows: [...], min: {code: n}, max: {code: n} }
+  //   screening: { type: "sum", rows: [...], sum: { op: "eq|lt|gt|between", value } }
+  // Both are expanded into the same rule list by BeaconQ.screening, so the verdict, the
+  // plain-English line and the exports stay in one piece.
   // The switches on individual answer options (options[].terminate) are shown here too, so
   // everything that can end the survey on this question reads in one place.
-  var SCR_MODES = [
-    ["off", "No screening", "Everybody carries on - this question never ends the survey"],
-    ["screen_out", "Screen out when…", "Matched respondents are ended and read your closing text"],
-    ["qualify", "Only continue when…", "Only matched respondents carry on - everyone else is ended"]
-  ];
   var scrTest = {};          // {qid: answer} - the tester's own picks, on top of the sample answers
 
   function qById(id) {
@@ -1854,7 +1867,8 @@
   }
   function scrOf() { return (ed && ed.screening) || null; }
   function scrRules() { var s = scrOf(); return s && s.enabled !== false ? (s.rules || []) : []; }
-  function scrMode() { var s = scrOf(); return scrRules().length ? (s.mode === "qualify" ? "qualify" : "screen_out") : "off"; }
+  // every rule the block fires, structured ones included
+  function scrMode() { var s = scrOf(); return s && s.mode === "qualify" ? "qualify" : "screen_out"; }
   function optTerm() { return ((ed && ed.options) || []).filter(function (o) { return o.terminate; }); }
   // every rule that can end the survey here: the authored block + the option switches + legacy
   function scrCount() {
@@ -2163,17 +2177,121 @@
       '<button class="st-btn sm" data-act="edtab" data-t="screen">Edit screening</button></div>';
   }
 
+  // ---- the screener: direction, screener type, On / Off ----------------------------------
+  var SCR_DIR = [
+    ["screen_out", "Screen Out", "Respondents who match are ended here"],
+    ["qualify", "Screen In", "Only respondents who match carry on past this question"]
+  ];
+  var SCR_TYPES = [
+    ["individual", "Individual", "A Minimum and Maximum for each answer on its own"],
+    ["sum", "Sum of responses", "One comparison over the answers put together"]
+  ];
+  var SUM_CMP = [["eq", "is equal to"], ["lt", "is less than"], ["gt", "is greater than"],
+                 ["between", "is between (Min to Max)"]];
+  var SCR_STRUCTURED = ["grid", "alloc", "numrows"];
+
+  function scrIsStructured() { return ed && SCR_STRUCTURED.indexOf(Q.qKind(ed)) >= 0; }
+  function scrType() { var s = scrOf(); return s && s.type === "sum" ? "sum" : "individual"; }
+  function scrOutside() { var s = scrOf(); return !s || s.outside !== false; }
+  function scrSum() { var s = scrOf(); return (s && s.sum) || { op: "eq", value: 0 }; }
+  function scrRows() { var s = scrOf(); return ((s && s.rows) || []).map(String); }
+  function scrOn() { var s = scrOf(); return !!s && s.enabled !== false; }
+  function scrBand(code, end) {                    // the Min / Max held for one answer
+    var s = scrOf() || {}, have = (s.min || {})[code] !== undefined || (s.max || {})[code] !== undefined;
+    if (!have) return end === "min" ? (ed.scale ? ed.scale.min : 0) : (ed.scale ? ed.scale.max : 100);
+    return end === "min" ? Number((s.min || {})[code] || 0) : Number((s.max || {})[code] || 0);
+  }
+  function rowByCode(code) {
+    var rows = rowItemsOf(ed);
+    for (var i = 0; i < rows.length; i++) if (String(rows[i].code) === String(code)) return rows[i];
+    return { code: code, label: code };
+  }
+  // A two-way (or three-way) choice as one connected strip of buttons.
+  function scrSeg(name, list, current) {
+    return '<span class="st-seg">' + list.map(function (o) {
+      return '<label class="st-seg-btn' + (current === o[0] ? " on" : "") + '" title="' + esc(o[2] || "") + '">' +
+        '<input type="radio" name="' + name + '" value="' + o[0] + '"' + (current === o[0] ? " checked" : "") + ">" +
+        esc(o[1]) + "</label>";
+    }).join("") + "</span>";
+  }
+
+  // "Individual": a Minimum and Maximum for every answer that takes part.
+  function scrIndividualEditor(picked) {
+    if (!picked.length) {
+      return '<div class="st-scr-block"><div class="st-scr-blockhead">Minimum and maximum for each answer</div>' +
+        '<div class="st-scr-empty">Pick the answers that take part and each one gets its own range.</div></div>';
+    }
+    var inside = !scrOutside();
+    var html = '<div class="st-scr-block"><div class="st-scr-blockhead">Minimum and maximum for each answer' +
+      '<span class="st-scr-inline">each answer must be <select id="f-scr-outside">' +
+      '<option value="inside"' + (inside ? " selected" : "") + ">inside</option>" +
+      '<option value="outside"' + (inside ? "" : " selected") + ">outside</option></select> its range</span></div>";
+    html += picked.map(function (code) {
+      var o = rowByCode(code);
+      return '<div class="st-scr-minmax"><span class="st-scr-mm-label">' + esc(rowText(o)) + "</span>" +
+        '<label class="st-mini">Minimum <input class="st-scr-num" type="number" data-sf="scrmin" data-scr-min="' +
+          esc(code) + '" value="' + esc(scrBand(code, "min")) + '"></label>' +
+        '<label class="st-mini">Maximum <input class="st-scr-num" type="number" data-sf="scrmax" data-scr-max="' +
+          esc(code) + '" value="' + esc(scrBand(code, "max")) + '"></label>' +
+        '<span class="st-meta">' + esc(scrUnit()) + "</span></div>";
+    }).join("");
+    return html + "</div>";
+  }
+  // "Sum of responses": one comparison over the answers put together.
+  function scrSumEditor(picked) {
+    var sum = scrSum(), cmp = sum.op;
+    if (!SUM_CMP.some(function (o) { return o[0] === cmp; })) cmp = "eq";
+    var html = '<div class="st-scr-block"><div class="st-scr-blockhead">The sum of these answers' +
+      (picked.length ? "" : ' <span class="st-scr-inline">pick the answers that take part first</span>') +
+      "</div>" + '<div class="st-scr-sumrow"><select id="f-scr-sum-op">' + SUM_CMP.map(function (o) {
+        return '<option value="' + o[0] + '"' + (cmp === o[0] ? " selected" : "") + ">" + esc(o[1]) + "</option>";
+      }).join("") + "</select>";
+    if (cmp === "between") {
+      var g = String(sum.value === undefined || sum.value === null ? "0-100" : sum.value).split("-");
+      html += numBox(ed, "sum_between", g[0], "f-scr-sum-lo", { placeholder: "Min" }) +
+        '<em>to</em>' + numBox(ed, "sum_between", g[1], "f-scr-sum-hi", { placeholder: "Max" });
+    } else {
+      html += numBox(ed, "sum_" + cmp, sum.value, "f-scr-sum-val", { placeholder: "value" });
+    }
+    return html + "</div></div>";
+  }
+  function scrUnit() { return unitOf(ed, "row_gte") ? String(unitOf(ed, "row_gte")) : "points"; }
+
+  // The extra conditions (and the only conditions on questions without rows): the full
+  // rule builder - one option, a group of options, a count, a number, anything.
+  function scrRulesEditor(s, rules, primary) {
+    var html = '<div id="f-scr-rules">' + rules.map(function (r, i) {
+      return scrRuleRow(r, i, s.match === "any" ? "any" : "all"); }).join("") + "</div>";
+    html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") +
+      '" data-act="scr-add">+ Add condition</button>' +
+      '<span class="st-meta">' + (rules.length
+        ? "Group a set of options with <b>is any of</b> \u00B7 count them with <b>selects at least</b>."
+        : "Start with this question, or point the condition at an earlier one.") + "</span></div>";
+    if (rules.length) {
+      // a band per answer fires when any one of them breaks; everything else waits for all
+      var anyDefault = scrIsStructured() && s.type !== "sum";
+      var isAny = s.match ? s.match === "any" : anyDefault;
+      html = '<div class="st-scr-combine">Combine these with <select id="f-scr-match">' +
+        '<option value="any"' + (isAny ? " selected" : "") + ">any</option>" +
+        '<option value="all"' + (isAny ? "" : " selected") + ">all</option></select>" +
+        '<span class="st-meta">"any" fires as soon as one of them is true.</span></div>' + html;
+    }
+    return primary ? html : '<details class="st-scr-more"' + (rules.length ? " open" : "") +
+      "><summary>More conditions" + (rules.length ? " (" + rules.length + ")" : "") + "</summary>" + html + "</details>";
+  }
+
   function screeningCard() {
-    var mode = scrMode(), s = scrOf() || {}, rules = scrRules();
+    var s = scrOf() || {}, on = scrOn(), mode = scrMode(), rules = scrRules();
+    var structured = scrIsStructured(), type = scrType(), picked = scrRows();
     var legacy = optTerm();
-    var html = '<div class="st-logic-guide"><span>\u2691</span><div><b>Who should carry on past this question?</b>' +
-      "<small>Pick a single option, a group of options, a count, or any condition on this or an " +
-      "earlier question. Nothing here is hard-coded - the rules travel with the questionnaire.</small></div></div>";
-    html += '<div class="st-radio-row st-scr-modes">' + SCR_MODES.map(function (m) {
-      return '<label class="st-radio' + (mode === m[0] ? " on" : "") + '"><input type="radio" name="f-scr-mode" value="' +
-        m[0] + '"' + (mode === m[0] ? " checked" : "") + "> " + m[1] + "<small>" + m[2] + "</small></label>";
-    }).join("") + "</div>";
-    if (mode === "off") {
+    var html = '<div class="st-scr-top">' +
+      '<label class="st-switch big" title="Turn screening on this question on or off">' +
+        '<input type="checkbox" id="f-scr-on"' + (on ? " checked" : "") + "><i></i>Screening</label>" +
+      '<span class="st-meta">' + (on
+        ? "This question can end the survey."
+        : "Everybody carries on past this question - the rules are kept, they just do not fire.") +
+      "</span></div>";
+    if (!on) {
       if (legacy.length || ed.terminate_if_lt !== undefined) {
         html += '<div class="st-note warn">Still screening from the answer options: ' +
           (legacy.length ? legacy.map(function (o) { return esc(optText(o)); }).join(", ") : "") +
@@ -2183,17 +2301,26 @@
       html += scrTester();
       return html;
     }
-    var lead = mode === "qualify" ? "Carry on only when" : "Screen out when";
-    html += '<div class="st-logic-intro"><b>' + lead + '</b> <select id="f-scr-match">' +
-      '<option value="all"' + (s.match !== "any" ? " selected" : "") + ">all</option>" +
-      '<option value="any"' + (s.match === "any" ? " selected" : "") + ">any</option></select> of these are true:</div>";
-    html += '<div id="f-scr-rules">' + rules.map(function (r, i) {
-      return scrRuleRow(r, i, s.match === "any" ? "any" : "all"); }).join("") + "</div>";
-    html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") +
-      '" data-act="scr-add">+ Add condition</button>' +
-      '<span class="st-meta">' + (rules.length ? "Group a set of options with <b>is any of</b> \u00B7 count them with <b>selects at least</b>." :
-        "Start with this question, or point the condition at an earlier one.") + "</span></div>";
-    if (rules.length) {
+    html += '<div class="st-scr-lead">Respondents will ' + scrSeg("f-scr-dir", SCR_DIR, mode) +
+      " <b>if the answer criteria is met</b>.</div>";
+    if (structured) {
+      html += '<div class="st-scr-block"><div class="st-scr-blockhead">Screener type</div>' +
+        scrSeg("f-scr-type", SCR_TYPES, type) + "</div>";
+      var rows = rowItemsOf(ed);
+      html += '<div class="st-scr-block"><div class="st-scr-blockhead">Which answers take part</div>' +
+        '<div class="st-scr-chips">' + (rows.length ? rows.map(function (o) {
+          var code = String(o.code), onRow = picked.indexOf(code) >= 0;
+          return '<button type="button" class="st-chip' + (onRow ? " on" : "") +
+            '" data-act="scr-pick-row" data-code="' + esc(code) + '" title="' +
+            (onRow ? "Leave this answer out of the screener" : "Screen this answer") + '">' +
+            (onRow ? "\u2713 " : "+ ") + esc(rowText(o)) + "</button>";
+        }).join("") : '<span class="st-meta">no rows yet</span>') + "</div></div>";
+      html += type === "sum" ? scrSumEditor(picked) : scrIndividualEditor(picked);
+      html += scrRulesEditor(s, rules, false);
+    } else {
+      html += scrRulesEditor(s, rules, true);
+    }
+    if (rules.length || (structured && picked.length)) {
       html += '<div class="st-grid2">' +
         '<div class="st-field"><label>Check the rule <span class="st-opt">when is it applied?</span></label><select id="f-scr-when">' +
         [["live", "\u26A1 As soon as it matches - the survey ends on the spot"],
@@ -2201,7 +2328,7 @@
           return '<option value="' + w[0] + '"' + (scrWhen() === w[0] ? " selected" : "") + ">" + esc(w[1]) + "</option>"; }).join("") +
         "</select></div>" +
         '<div class="st-field"><label>Reason for the data <span class="st-opt">optional - screen-out report</span></label>' +
-        '<input id="f-scr-reason" value="' + esc(s.reason || "") + '" placeholder="e.g. Specialty not eligible"></div></div>' +
+        '<input id="f-scr-reason" value="' + esc(s.reason || "") + '" placeholder="e.g. Allocation out of range"></div></div>' +
         '<div class="st-field"><label>Text the respondent reads <span class="st-opt">blank = the study\'s closing text</span></label>' +
         '<div class="st-with-pipe"><textarea id="f-scr-msg" rows="2" placeholder="Thank you for your time\u2026">' +
         esc(s.message || "") + "</textarea></div></div>";
@@ -2343,7 +2470,12 @@
         $$("[data-rule]", row).forEach(function (n) { r[n.getAttribute("data-rule")] = n.value; });
         if (r.q && r.op) rules.push(r);
       });
-      if (rules.length) { ed.show_if = { match: val("f-sif-match") || (ed.show_if && ed.show_if.match) || "all", rules: rules }; if (chk("f-sif-negate")) ed.show_if.negate = true; }
+      if (rules.length) {
+        ed.show_if = { match: val("f-sif-match") || (ed.show_if && ed.show_if.match) || "all", rules: rules };
+        if (chk("f-sif-negate")) ed.show_if.negate = true;
+        var sifNode = document.getElementById("f-sif-on");
+        if (sifNode) ed.show_if.off = !sifNode.checked;
+      }
       else delete ed.show_if;
     }
     syncScreening();
@@ -2362,13 +2494,9 @@
   // Runs on every edit while the Screening tab is open.  When the tab is closed the
   // controls are not in the DOM and whatever is stored on the question is left alone.
   function fieldIn(row, name) { var n = $('[data-sf="' + name + '"]', row); return n ? n.value : ""; }
-  function syncScreening() {
-    if (!ed) return;
-    var modeNode = $('input[name="f-scr-mode"]:checked');
-    if (!modeNode && !document.getElementById("f-scr-rules")) return;      // tab not open
-    var mode = modeNode ? modeNode.value : scrMode();
-    if (mode === "off") { delete ed.screening; return; }
-    var rules = [];
+  function sfVal(name) { var n = $('[data-sf="' + name + '"]'); return n ? n.value : ""; }
+  function readScrRules() {
+    var out = [];
     $$("#f-scr-rules .st-rule").forEach(function (row) {
       var qid = fieldIn(row, "q"), op = fieldIn(row, "op");
       if (!qid || !op) return;
@@ -2383,12 +2511,77 @@
       else if (kind === "count" || kind === "number" || kind === "text") value = fieldIn(row, "value");
       var r = { q: qid, op: op };
       if (kind !== "none") r.value = kind === "count" || kind === "number" ? Number(value || 0) : value;
-      rules.push(r);
+      out.push(r);
     });
-    if (!rules.length) { delete ed.screening; return; }
-    var s = scrEnsure();
-    s.mode = mode;
-    s.rules = rules;
+    return out;
+  }
+  // The starting point when screening is switched on: for a row-based question an
+  // Individual screener over its first answer, otherwise one plain condition.
+  function scrSeedBlock() {
+    var s = scrEnsure(), first = rowItemsOf(ed)[0];
+    if (scrIsStructured() && first) {
+      s.type = "individual";
+      s.rows = [String(first.code)];
+      s.min = {}; s.max = {};
+      s.min[first.code] = ed.scale ? ed.scale.min : 0;
+      s.max[first.code] = ed.scale ? ed.scale.max : 100;
+      s.outside = s.mode !== "qualify";
+      s.rules = [];
+    } else {
+      delete s.type; delete s.rows; delete s.min; delete s.max; delete s.sum; delete s.outside;
+      s.rules = [scrSeed(ed)];
+    }
+    s.when = scrWhenDefault(Q.screening(ed).length ? Q.screening(ed)[0].rules : s.rules);
+    return s;
+  }
+  function syncScreening() {
+    if (!ed) return;
+    var onNode = document.getElementById("f-scr-on");
+    if (!onNode) return;                                  // the Screening tab is not open
+    var s = scrOf();
+    if (!onNode.checked) { if (s) s.enabled = false; return; }   // off: keep the rules, do not fire
+    if (s) delete s.enabled;
+    s = scrEnsure();
+    var dirNode = $('input[name="f-scr-dir"]:checked');
+    if (!dirNode) return;                 // switch just flicked on: the controls are not drawn yet
+    s.mode = dirNode.value === "qualify" ? "qualify" : "screen_out";
+    if (scrIsStructured()) {
+      var tNode = $('input[name="f-scr-type"]:checked');
+      s.type = tNode && tNode.value === "sum" ? "sum" : "individual";
+      var outNode = document.getElementById("f-scr-outside");
+      if (outNode) s.outside = outNode.value !== "inside";
+      if (s.type === "sum") {
+        var opNode = document.getElementById("f-scr-sum-op");
+        if (opNode) {                                // the sum row is on screen: read it
+          var op = opNode.value;
+          if (!SUM_CMP.some(function (o) { return o[0] === op; })) op = "eq";
+          var loBox = $('[data-sf="f-scr-sum-lo"]'), hiBox = $('[data-sf="f-scr-sum-hi"]');
+          var valBox = $('[data-sf="f-scr-sum-val"]');
+          if (op === "between") {
+            if (loBox && hiBox) s.sum = { op: op, value: Number(loBox.value || 0) + "-" + Number(hiBox.value || 0) };
+            else if (String(s.sum && s.sum.value).indexOf("-") < 0) {   // one number -> a range
+              var one = Number(s.sum && s.sum.value || 0);
+              s.sum = { op: op, value: "0-" + (one || 100) };      // "up to what it was"
+            } else s.sum.op = op;
+          } else {
+            if (valBox) s.sum = { op: op, value: Number(valBox.value || 0) };
+            else if (String(s.sum && s.sum.value).indexOf("-") >= 0) {  // a range -> its top
+              s.sum = { op: op, value: Number(String(s.sum.value).split("-")[1] || 0) };
+            } else s.sum.op = op;
+          }
+        } else if (!s.sum) {                         // just switched to Sum: a sensible start
+          s.sum = { op: "eq", value: ed.type === "sum_to_100" ? 100 : 0 };
+        }
+      } else {
+        var mins = {}, maxs = {};
+        $$("[data-scr-min]").forEach(function (n) { mins[n.getAttribute("data-scr-min")] = Number(n.value || 0); });
+        $$("[data-scr-max]").forEach(function (n) { maxs[n.getAttribute("data-scr-max")] = Number(n.value || 0); });
+        s.min = mins; s.max = maxs;
+      }
+    } else {
+      delete s.type; delete s.rows; delete s.min; delete s.max; delete s.sum; delete s.outside;
+    }
+    s.rules = readScrRules();
     setOrDel(s, "match", val("f-scr-match"));
     setOrDel(s, "when", val("f-scr-when"));
     setOrDel(s, "reason", (val("f-scr-reason") || "").trim());
@@ -2611,6 +2804,20 @@
       }
       rerenderCard("screening"); changed(); return;
     }
+    if (act === "scr-pick-row") {                 // which answers the screener looks at
+      syncFromForm();
+      var sp = scrEnsure(), code4 = String(b.getAttribute("data-code"));
+      var picked4 = scrRows(), at4 = picked4.indexOf(code4);
+      if (at4 >= 0) picked4.splice(at4, 1); else picked4.push(code4);
+      sp.rows = picked4;
+      sp.min = sp.min || {}; sp.max = sp.max || {};
+      if (sp.min[code4] === undefined) {
+        sp.min[code4] = ed.scale ? ed.scale.min : 0;
+        sp.max[code4] = ed.scale ? ed.scale.max : 100;
+      }
+      if (!(sp.rows || []).length && !(sp.rules || []).length) sp.type = scrType();
+      rerenderCard("screening"); changed(); return;
+    }
     if (act === "scr-row-code") {                 // add / remove a row from a group share
       syncFromForm();
       var s5 = scrOf(), code5 = String(b.getAttribute("data-code"));
@@ -2801,16 +3008,47 @@
       }
       rerenderCard("screening"); changed(); return;
     }
-    if (t.name === "f-scr-mode") {
+    if (t.id === "f-scr-on") {                     // the Screening On / Off switch
       syncFromForm();
-      $$('#st-editor .st-scr-modes .st-radio').forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
-      if (t.value !== "off" && !scrRules().length) {        // turning screening on seeds one condition
-        var s4 = scrEnsure();
-        if (!s4.rules.length) s4.rules.push(scrSeed(ed));
-        s4.when = scrWhenDefault(s4.rules);
+      if (t.checked) {
+        var s0 = scrEnsure(); delete s0.enabled;
+        if (!(s0.rows || []).length && !(s0.rules || []).length) scrSeedBlock();
+      } else if (ed.screening) ed.screening.enabled = false;
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.name === "f-scr-dir") {                  // Respondents will Screen In / Screen Out
+      syncFromForm();
+      var sd = scrEnsure();
+      sd.mode = t.value === "qualify" ? "qualify" : "screen_out";
+      if (scrIsStructured() && (sd.rows || []).length) {
+        sd.outside = sd.mode !== "qualify";        // the usual reading of each direction
       }
       rerenderCard("screening"); changed(); return;
     }
+    if (t.name === "f-scr-type") {                 // Individual / Sum of responses
+      syncFromForm();
+      var st = scrEnsure();
+      st.type = t.value === "sum" ? "sum" : "individual";
+      if (st.type === "sum" && !st.sum) {
+        st.sum = { op: "eq", value: ed.type === "sum_to_100" ? 100 : 0 };
+      }
+      if (st.type === "individual" && !st.outside) st.outside = st.mode !== "qualify";
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.id === "f-scr-outside") {                // each answer inside or outside its range
+      syncFromForm();
+      var so = scrEnsure();
+      so.outside = t.value !== "inside";
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.id === "f-scr-sum-op") {                 // equal to / less than / greater than / Min to Max
+      syncFromForm();
+      var ss = scrEnsure();
+      if (!ss.sum) ss.sum = { op: "eq", value: 0 };
+      ss.sum.op = t.value;                           // syncScreening reshapes the number
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.id === "f-sif-on") { syncFromForm(); renderEditorPane(); changed(); return; }
     if (t.id === "f-scr-match" || t.id === "f-scr-when") { syncFromForm(); rerenderCard("screening"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-sf") && !t.classList.contains("st-scr-rownum")) {
       changed(); refreshScrPlain(); return;         // a number being typed: update the sentence only

@@ -56,7 +56,7 @@ def _strip(html: str) -> str:
 def _logic_line(q: dict, questions: list | None = None) -> str:
     """Show-if / screening logic as one plain-English line, or ''."""
     parts = []
-    si = q.get("show_if") or {}
+    si = (q.get("show_if") or {}) if (q.get("show_if") or {}).get("off") is not True else {}
     rules = si.get("rules") or []
     if rules:
         join = " AND " if si.get("match", "all") == "all" else " OR "

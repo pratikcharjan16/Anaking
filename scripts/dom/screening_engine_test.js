@@ -209,7 +209,7 @@ check("allocation: the grand total counts every row",
 check("allocation: a smaller total continues",
   verdict({ Q19: { d1: 10, d2: 10, d3: 10 } }) === null);
 check("a group-share rule reads as a sum",
-  Q.ruleText({ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }, QUESTIONS) === "Q19: Brand A + Brand B \u2265 80",
+  Q.ruleText({ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }, QUESTIONS) === "Q19: the sum of Brand A + Brand B \u2265 80",
   Q.ruleText({ q: "Q19", op: "sum_of_gte", value: "d1,d2=80" }, QUESTIONS));
 check("a total rule reads with the word total",
   Q.ruleText({ q: "Q19", op: "total_gte", value: 90 }, QUESTIONS) === "Q19 total \u2265 90",
@@ -235,6 +235,60 @@ check("numeric matrix: qualify gate on one row",
 delete MATRIX.screening;
 delete SHARE.screening;
 QUESTIONS.pop(); QUESTIONS.pop();
+
+// ------------------------------------------------------------------ the structured screener
+// "Individual" (a Min - Max band per answer) and "Sum of responses" are stored in their own
+// fields; the block they build is an ordinary rule list.
+const BAND = {
+  id: "Q40", type: "sum_to_100", stem: "Split 100 points",
+  rows: [{ code: "b1", label: "Brand A" }, { code: "b2", label: "Brand B" }, { code: "b3", label: "Brand C" }],
+};
+QUESTIONS.push(BAND);
+BAND.screening = { mode: "screen_out", type: "individual", rows: ["b1", "b2"],
+                   min: { b1: 20, b2: 10 }, max: { b1: 60, b2: 40 } };
+check("Individual: an answer above its Maximum is screened out",
+  (verdict({ Q40: { b1: 70, b2: 20, b3: 10 } }) || {}).qid === "Q40");
+check("Individual: an answer below its Minimum is screened out",
+  (verdict({ Q40: { b1: 30, b2: 5, b3: 65 } }) || {}).qid === "Q40");
+check("Individual: every answer inside its band continues",
+  verdict({ Q40: { b1: 30, b2: 20, b3: 50 } }) === null);
+check("Individual: an answer that is not screened is ignored",
+  verdict({ Q40: { b1: 30, b2: 20, b3: 95 } }) === null);
+check("Individual: a pending answer does not fire yet",
+  verdict({ Q40: { b1: 30 } }) === null);
+BAND.screening = { mode: "qualify", type: "individual", rows: ["b1"], outside: false,
+                   min: { b1: 20 }, max: { b1: 60 } };
+check("Individual: Screen In keeps only the answers inside their band",
+  verdict({ Q40: { b1: 30, b2: 20, b3: 50 } }) === null &&
+  (verdict({ Q40: { b1: 80, b2: 10, b3: 10 } }) || {}).qid === "Q40");
+BAND.screening = { mode: "screen_out", type: "sum", rows: ["b1", "b2"], sum: { op: "gt", value: 80 } };
+check("Sum: greater than fires above the number",
+  (verdict({ Q40: { b1: 60, b2: 30, b3: 10 } }) || {}).qid === "Q40");
+check("Sum: greater than ignores a smaller total",
+  verdict({ Q40: { b1: 40, b2: 30, b3: 30 } }) === null);
+BAND.screening = { mode: "screen_out", type: "sum", rows: ["b1", "b2"], sum: { op: "eq", value: 50 } };
+check("Sum: equal to fires on the exact total",
+  (verdict({ Q40: { b1: 30, b2: 20, b3: 50 } }) || {}).qid === "Q40");
+BAND.screening = { mode: "screen_out", type: "sum", rows: ["b1", "b2"], sum: { op: "lt", value: 50 } };
+check("Sum: less than fires under the number",
+  (verdict({ Q40: { b1: 20, b2: 20, b3: 60 } }) || {}).qid === "Q40");
+BAND.screening = { mode: "screen_out", type: "sum", rows: ["b1", "b2"], sum: { op: "between", value: "10-90" } };
+check("Sum: Min to Max fires inside the range",
+  (verdict({ Q40: { b1: 40, b2: 30, b3: 30 } }) || {}).qid === "Q40");
+check("Sum: Min to Max ignores a total outside it",
+  verdict({ Q40: { b1: 60, b2: 40, b3: 0 } }) === null);
+check("an Individual screener reads as a band per answer",
+  Q.screenSummary(BAND, QUESTIONS)[0].text ===
+    "screen out when Q40: the sum of Brand A + Brand B is between 10 and 90",
+  Q.screenSummary(BAND, QUESTIONS)[0].text);
+BAND.screening = { mode: "screen_out", type: "individual", rows: ["b1", "b2"],
+                   min: { b1: 20, b2: 10 }, max: { b1: 60, b2: 40 } };
+check("Individual joins the answers with 'or' - any of them breaking its band is enough",
+  Q.screenSummary(BAND, QUESTIONS)[0].text ===
+    "screen out when Q40: Brand A is outside 20 to 60 or Q40: Brand B is outside 10 to 40",
+  Q.screenSummary(BAND, QUESTIONS)[0].text);
+delete BAND.screening;
+QUESTIONS.pop();
 
 // ------------------------------------------------------------------ plain English + typing
 SPECIALTY.screening = { mode: "screen_out", match: "any", when: "live", rules: [{ q: "Q1", op: "any_of", value: "5,6" }] };

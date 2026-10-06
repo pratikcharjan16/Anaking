@@ -83,11 +83,11 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   // --- question editor tabs: Content & Settings / Conditional Display + PREVIEW
   check("the editor offers the reference tab strip",
     $$(".st-etab").length===4 && /Content & Settings/.test($$(".st-etab")[0].textContent) &&
-    /Conditional Display/.test($$(".st-etab")[1].textContent) &&
+    /Show IF/.test($$(".st-etab")[1].textContent) &&
     /Screening/.test($$(".st-etab")[2].textContent) && /PREVIEW/.test($$(".st-etab")[3].textContent),
     $$(".st-etab").map(b=>b.textContent).join(" | "));
   check("Content & Settings is the tab we land on", $$(".st-etab")[0].classList.contains("on") && !!$("#card-answers"));
-  check("the conditions live on the Conditional Display tab", !$("#card-logic"));
+  check("the conditions live on the Show IF tab", !$("#card-logic"));
   $$(".st-etab")[1].click(); await sleep(60);
   check("switching tabs swaps the cards", $$(".st-etab")[1].classList.contains("on") && !!$("#card-logic") && !$("#card-answers"));
   $$(".st-etab")[0].click(); await sleep(60);
@@ -99,13 +99,22 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   check("condition row added with plain-English connector", $$("#f-rules .st-rule").length===1 && /when/.test($(".st-rule-no").textContent) && /Show this question/.test($(".st-logic-intro").textContent));
   check("logic badge in outline + card marker", /logic/.test($$(".st-qi")[1].textContent) && $("#card-logic .st-dot"));
   $$(".st-etab")[1].click(); await sleep(60);            // re-render so the tab count is fresh
-  check("the Conditional Display tab shows how many rules are on",
+  check("the Show IF tab shows how many rules are on",
     ($$(".st-etab")[1].querySelector(".st-count")||{}).textContent==="1");
+  let sifSw=$("#f-sif-on");
+  check("Show IF has its own On / Off switch", !!sifSw && sifSw.checked);
+  sifSw.checked=false; fire(sifSw,"change"); await sleep(80);
+  check("switching it off drops the rule count off the tab",
+    !($$(".st-etab")[1].querySelector(".st-count")||{}).textContent &&
+    /switched off/.test($("#card-logic").textContent), ($$(".st-etab")[1]||{}).textContent);
+  sifSw=$("#f-sif-on"); sifSw.checked=true; fire(sifSw,"change"); await sleep(80);
+  check("switching it back on keeps the condition", $$("#f-rules .st-rule").length===1,
+    $$("#f-rules .st-rule").length);
   check("preview evaluates rule against sample answers", /SHOWN|HIDDEN/.test(($("#sif-result")||{}).textContent||""));
 
   // --- change type via header select (Q2 multi -> single keeps options)
   $$(".st-etab")[0].click(); await sleep(60);
-  check("the answer card is back after leaving Conditional Display", !!$("#card-answers"));
+  check("the answer card is back after leaving Show IF", !!$("#card-answers"));
   const ty=$("#f-type"); ty.value="single_select"; fire(ty,"change"); await sleep(30);
   check("type change keeps options", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && $(".st-qi.on .st-qi-ic").textContent==="\u25C9");
   $$(".st-etab")[1].click(); await sleep(60);

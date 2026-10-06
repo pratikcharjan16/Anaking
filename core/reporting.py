@@ -296,7 +296,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
         for line in screening.describe(q, cfg.get("questions", [])):
             dd_rows.append([q["id"], q.get("section", ""), q["type"], stem, "(screening)",
                             line, "survey ends here for the respondent"])
-        if q.get("show_if") and q["show_if"].get("rules"):
+        if q.get("show_if") and q["show_if"].get("rules") and q["show_if"].get("off") is not True:
             rules = " %s " % ("OR" if q["show_if"].get("match") == "any" else "AND")
             dd_rows.append([q["id"], q["section"], q["type"], stem, "(show-if)",
                             rules.join(f"{r.get('q')} {r.get('op')} {r.get('value', '')}".strip()

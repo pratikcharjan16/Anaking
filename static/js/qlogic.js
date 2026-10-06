@@ -192,7 +192,7 @@
   }
   function showIf(q, ctx) {
     var s = q && q.show_if;
-    if (!s || !s.rules || !s.rules.length) return true;
+    if (!s || s.off === true || !s.rules || !s.rules.length) return true;
     var results = s.rules.map(function (r) { return ruleTrue(r, ctx || {}); });
     var ok = (s.match === "any") ? results.some(Boolean) : results.every(Boolean);
     return s.negate ? !ok : ok;
@@ -287,8 +287,15 @@
     { op: "row_lt",       label: "row is less than",         value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "<" },
     { op: "row_eq",       label: "row is",                   value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "=" },
     { op: "row_ne",       label: "row is not",               value: "rowvalue", kinds: ["grid", "alloc", "numrows"], sym: "\u2260" },
+    { op: "row_between",  label: "is between",               value: "rowrange", kinds: ["grid", "alloc", "numrows"] },
+    { op: "row_outside",  label: "is outside",               value: "rowrange", kinds: ["grid", "alloc", "numrows"] },
     { op: "sum_of_gte",   label: "these rows add up to at least", value: "rowsum", kinds: ["alloc", "numrows"], sym: "\u2265" },
     { op: "sum_of_lte",   label: "these rows add up to at most",  value: "rowsum", kinds: ["alloc", "numrows"], sym: "\u2264" },
+    // ---- "Sum of responses": one comparison over the whole group
+    { op: "sum_eq",       label: "the sum is",               value: "rowsum", kinds: ["grid", "alloc", "numrows"], sym: "=" },
+    { op: "sum_lt",       label: "the sum is less than",     value: "rowsum", kinds: ["grid", "alloc", "numrows"], sym: "<" },
+    { op: "sum_gt",       label: "the sum is more than",     value: "rowsum", kinds: ["grid", "alloc", "numrows"], sym: ">" },
+    { op: "sum_between",  label: "the sum is between",       value: "rowsum", kinds: ["grid", "alloc", "numrows"] },
     { op: "total_gte",    label: "the total is at least",    value: "number", kinds: ["alloc", "numrows"], sym: "\u2265" },
     { op: "total_lte",    label: "the total is at most",     value: "number", kinds: ["alloc", "numrows"], sym: "\u2264" },
     { op: "total_eq",     label: "the total is",             value: "number", kinds: ["alloc", "numrows"], sym: "=" },
@@ -438,6 +445,29 @@
         var want = Number(rowWant(r.value) || 0);
         return r.op === "sum_of_gte" ? sumOf(a, group) >= want : sumOf(a, group) <= want;
       }
+      // one answer against its own Min - Max band
+      case "row_between": case "row_outside": {
+        var band = String(rowWant(r.value) || "").split("-");
+        var blo = Number(band[0]), bhi = Number(band[1]);
+        var code = rowKey(r.value);
+        if (!code) return false;
+        var bgot = a[code];
+        if (bgot === undefined || bgot === "" || bgot === null) return false;
+        var bnum = Number(bgot), bin = bnum >= blo && bnum <= bhi;
+        return r.op === "row_between" ? bin : !bin;
+      }
+      // the four "Sum of responses" comparisons
+      case "sum_eq": case "sum_lt": case "sum_gt": case "sum_between": {
+        var grp = rowList(r.value);
+        if (!grp.length) return false;                  // nothing ticked: the rule is not ready
+        var tail = rowWant(r.value), gsum = sumOf(a, grp);
+        if (r.op === "sum_between") {
+          var g = String(tail || "").split("-");
+          return gsum >= Number(g[0]) && gsum <= Number(g[1]);
+        }
+        if (r.op === "sum_eq") return gsum === Number(tail);
+        return r.op === "sum_lt" ? gsum < Number(tail) : gsum > Number(tail);
+      }
       case "total_eq": return totalOf(q, a) === Number(r.value);
       case "total_ne": return totalOf(q, a) !== Number(r.value);
       case "total_gte": return totalOf(q, a) >= Number(r.value);
@@ -453,19 +483,55 @@
     return ruleTrue(r, ctx);              // fall back to the show-if operators
   }
 
+  // ---- the structured screener: "Individual" (a Min - Max band per answer) and
+  // "Sum of responses" (one comparison over the group).  Both are stored in their own
+  // fields and expanded here into an ordinary rule list, so the verdict, the plain-English
+  // line and the exports all keep working without knowing anything about them.
+  //   Individual  -> one rule per answer, joined so that ANY answer outside its band fires
+  //   Sum         -> one rule over the group, with the comparison the author picked
+  function structuredRules(s, q) {
+    var rows = (s.rows || []).map(String), out = [], i;
+    if (s.type === "sum") {
+      var sum = s.sum || {};
+      var op = ["eq", "lt", "gt", "between"].indexOf(sum.op) >= 0 ? sum.op : "eq";
+      var val = (sum.value === undefined || sum.value === null || sum.value === "") ? 0 : sum.value;
+      return [{ q: q.id, op: "sum_" + op, value: rows.join(",") + "=" + val }];
+    }
+    for (i = 0; i < rows.length; i++) {
+      var lo = (s.min || {})[rows[i]], hi = (s.max || {})[rows[i]];
+      if (lo === undefined && hi === undefined) continue;
+      out.push({
+        q: q.id,
+        op: s.outside === false ? "row_between" : "row_outside",
+        value: rows[i] + "=" + (isFinite(Number(lo)) ? Number(lo) : 0) +
+               "-" + (isFinite(Number(hi)) ? Number(hi) : 100)
+      });
+    }
+    return out;
+  }
+
   // Every screening block a question carries, explicit + legacy, normalised.
   function screening(q) {
     var out = [];
     if (!q) return out;
     var s = q.screening;
-    if (s && s.enabled !== false && (s.rules || []).length) {
-      out.push({
-        owner: q.id,
-        mode: s.mode === "qualify" ? "qualify" : "screen_out",
-        match: s.match === "any" ? "any" : "all",
-        when: s.when === "next" ? "next" : "live",
-        rules: s.rules, message: s.message || "", reason: s.reason || "", source: "rules"
-      });
+    if (s && s.enabled !== false) {
+      var extra = (s.rules || []).slice();
+      var built = structuredRules(s, q);
+      var rules = built.concat(extra);
+      if (rules.length) {
+        // a band per answer fires when ANY answer breaks it; a sum is a single test
+        var match = built.length && s.type === "sum" ? "all"
+                  : built.length ? (s.match === "all" ? "all" : "any")
+                  : (s.match === "any" ? "any" : "all");
+        out.push({
+          owner: q.id,
+          mode: s.mode === "qualify" ? "qualify" : "screen_out",
+          match: match,
+          when: s.when === "next" ? "next" : "live",
+          rules: rules, message: s.message || "", reason: s.reason || "", source: "rules"
+        });
+      }
     }
     var term = ((q.options) || []).filter(function (o) { return o.terminate; });
     if (term.length) {
@@ -575,6 +641,10 @@
     if (kind === "ranktop") return itemLabel(q, rowKey(r.value)) + " (top " + rowWant(r.value) + ")";
     if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") +
       " " + rowWant(r.value);
+    if (kind === "rowrange") {                       // "code=10-60" -> the Min - Max band
+      var band2 = String(rowWant(r.value) || "").split("-");
+      return itemLabel(q, rowKey(r.value)) + " " + (band2[0] || "0") + " to " + (band2[1] || "0");
+    }
     if (kind === "rowsum") {
       var rows = rowList(r.value).map(function (c) { return itemLabel(q, c); });
       return (rows.length ? rows.join(" + ") : "the rows") + " " + (opInfo(r.op).sym || "") +
@@ -594,17 +664,30 @@
   // Numbers read the way a questionnaire reads them: "Q3 < 10", "Q19 total \u2265 90".
   function ruleText(r, questions) {
     var info = opInfo(r.op), v = valueText(r, questions);
-    var word = String(r.op).indexOf("total_") === 0 ? "total " + (info.sym || "")
-             : String(r.op).indexOf("sum_of_") === 0 ? "the share of "
-             : String(r.op).indexOf("row_") === 0 ? "row "
-             : (info.sym ? info.sym : info.label);
-    if (String(r.op).indexOf("sum_of_") === 0) {
-      var q = null;
-      for (var i = 0; i < (questions || []).length; i++) if (questions[i].id === r.q) q = questions[i];
-      var rows = rowList(r.value).map(function (c) { return itemLabel(q, c); });
-      return (r.q || "?") + ": " + (rows.length ? rows.join(" + ") : "the rows") +
-        " " + (info.sym || "") + " " + (rowWant(r.value) === "" ? "0" : rowWant(r.value));
+    var op = String(r.op);
+    var q = null;
+    for (var i = 0; i < (questions || []).length; i++) if (questions[i].id === r.q) q = questions[i];
+    // "Q19: Brand A is outside 10 to 60"
+    if (valueKind(op) === "rowrange") {
+      var band3 = String(rowWant(r.value) || "").split("-");
+      return (r.q || "?") + ": " + itemLabel(q, rowKey(r.value)) + " " + (info.label || op) +
+        " " + (band3[0] || "0") + (op === "row_between" ? " and " : " to ") + (band3[1] || "0");
     }
+    // "Q19: the sum of Brand A + Brand B = 80" / "... is between 10 and 90"
+    if (op.indexOf("sum_") === 0) {
+      var names = rowList(r.value).map(function (c) { return itemLabel(q, c); });
+      var want3 = rowWant(r.value) === "" ? "0" : rowWant(r.value);
+      var head3 = (names.length ? names.join(" + ") : "the rows");
+      if (op === "sum_between") {
+        var g3 = String(want3).split("-");
+        return (r.q || "?") + ": the sum of " + head3 + " is between " + (g3[0] || "0") +
+          " and " + (g3[1] || "0");
+      }
+      return (r.q || "?") + ": the sum of " + head3 + " " + (info.sym || info.label) + " " + want3;
+    }
+    var word = op.indexOf("total_") === 0 ? "total " + (info.sym || "")
+             : op.indexOf("row_") === 0 ? "row "
+             : (info.sym ? info.sym : info.label);
     return (r.q || "?") + " " + word + (v ? " " + v : "");
   }
   function blockText(block, questions) {
@@ -616,7 +699,7 @@
     return screening(q).map(function (b) {
       return {
         mode: b.mode, when: b.when, source: b.source,
-        text: (b.mode === "qualify" ? "continue only when " : "screen out when ") + blockText(b, questions || [q])
+        text: (b.mode === "qualify" ? "carry on only when " : "screen out when ") + blockText(b, questions || [q])
       };
     });
   }

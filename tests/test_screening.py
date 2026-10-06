@@ -132,7 +132,7 @@ def test_allocation_rules_read_as_shares_and_totals():
     assert _blocked(ALLOC, [{"q": "Q19", "op": "row_gte", "value": "d1=60"}]) == [
         "screen out when Q19 row \u2265 Brand A 60"]
     assert _blocked(ALLOC, [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d3=80"}]) == [
-        "screen out when Q19 share \u2265 Brand A + Brand C 80"]
+        "screen out when Q19: the sum of Brand A + Brand C \u2265 80"]
     assert _blocked(ALLOC, [{"q": "Q19", "op": "total_lte", "value": 90}]) == [
         "screen out when Q19 total \u2264 90"]
     assert _blocked(ALLOC, [{"q": "Q19", "op": "total_eq", "value": 100}]) == [
@@ -144,6 +144,49 @@ def test_a_new_allocation_rule_survives_a_save_round_trip():
                                 "rules": [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d2=80"}]}}
     screening.normalize(q)
     assert q["screening"]["rules"] == [{"q": "Q19", "op": "sum_of_gte", "value": "d1,d2=80"}]
+
+
+# ---------------------------------------------------------------- the structured screener
+def _blocked_structured(block):
+    q = {**ALLOC, "rows": [dict(r) for r in ALLOC["rows"]], "screening": block}
+    screening.normalize(q)
+    return q, screening.describe(q, [q])
+
+
+def test_an_individual_screener_reads_as_a_band_per_answer():
+    _, lines = _blocked_structured({
+        "mode": "screen_out", "type": "individual", "rows": ["d1", "d2"],
+        "min": {"d1": 10, "d2": 20}, "max": {"d1": 60, "d2": 40}})
+    assert lines == ["screen out when Q19: Brand A is outside 10 to 60 "
+                     "or Q19: Brand B is outside 20 to 40"]
+
+
+def test_a_sum_screener_reads_as_one_comparison():
+    for op, value, tail in (("eq", 100, "= 100"), ("lt", 80, "< 80"),
+                            ("gt", 20, "> 20"), ("between", "10-90", "is between 10 and 90")):
+        _, lines = _blocked_structured({
+            "mode": "screen_out", "type": "sum", "rows": ["d1", "d3"],
+            "sum": {"op": op, "value": value}})
+        assert lines == ["screen out when Q19: the sum of Brand A + Brand C " + tail]
+
+
+def test_the_structured_screener_survives_a_save():
+    q, _ = _blocked_structured({
+        "mode": "screen_out", "type": "sum", "rows": ["d1", "d2"],
+        "sum": {"op": "between", "value": "10-90"}, "junk": True})
+    block = q["screening"]
+    assert block["type"] == "sum" and block["rows"] == ["d1", "d2"]
+    assert block["sum"] == {"op": "between", "value": "10-90"}
+    assert "junk" not in block
+    assert screening.blocks(q)[0]["rules"] == [{"q": "Q19", "op": "sum_between", "value": "d1,d2=10-90"}]
+
+
+def test_switching_a_block_off_keeps_its_rules():
+    q = {**ALLOC, "screening": {"enabled": False, "mode": "qualify",
+                                "rules": [{"q": "Q19", "op": "row_gte", "value": "d1=60"}]}}
+    screening.normalize(q)
+    assert q["screening"]["enabled"] is False          # kept, not dropped
+    assert screening.describe(q, [q]) == []            # ...but it says nothing and fires nowhere
 
 
 # ---------------------------------------------------------------- it reaches the documents

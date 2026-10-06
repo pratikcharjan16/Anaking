@@ -45,12 +45,57 @@ OP_WORDS = {
     # rows, groups of rows and totals (constant sum / numeric matrix)
     "row_eq": "row =", "row_ne": "row \u2260", "row_gte": "row \u2265", "row_lte": "row \u2264",
     "row_gt": "row >", "row_lt": "row <",
-    "sum_of_gte": "share \u2265", "sum_of_lte": "share \u2264",
+    "row_between": "is between", "row_outside": "is outside",
+    "sum_of_gte": "\u2265", "sum_of_lte": "\u2264",
+    "sum_eq": "=", "sum_lt": "<", "sum_gt": ">", "sum_between": "is between",
     "total_eq": "total =", "total_ne": "total \u2260", "total_gte": "total \u2265",
     "total_lte": "total \u2264",
     "ranked_first": "ranks first", "ranked_top": "ranks in the top",
     "answered": "was answered", "not_answered": "was skipped",
 }
+
+
+SUM_OPS = ("eq", "lt", "gt", "between")
+
+
+def _num(value, default):
+    """A hand-edited bound can be '' or 'abc' - fall back rather than crash."""
+    try:
+        out = float(value)
+    except (TypeError, ValueError):
+        return default
+    return int(out) if out == int(out) else out
+
+
+def _is_structured(screening: dict) -> bool:
+    """A block the Individual / Sum builder owns - it has rows of its own."""
+    return bool(screening.get("rows")) and screening.get("type") in ("individual", "sum")
+
+
+def _structured_rules(screening: dict, q: dict) -> list[dict]:
+    """The "Individual" / "Sum of responses" screener, written out as rules.
+
+    Individual keeps a Min - Max band per answer and fires when any answer breaks
+    its band; Sum of responses is one comparison over the whole group.
+    """
+    qid = q.get("id")
+    rows = [str(r) for r in (screening.get("rows") or [])]
+    if screening.get("type") == "sum":
+        sum_ = screening.get("sum") or {}
+        op = sum_.get("op") if sum_.get("op") in SUM_OPS else "eq"
+        value = sum_.get("value")
+        value = 0 if value is None or value == "" else value
+        return [{"q": qid, "op": "sum_" + op, "value": ",".join(rows) + "=" + str(value)}]
+    out = []
+    for code in rows:
+        low = (screening.get("min") or {}).get(code)
+        high = (screening.get("max") or {}).get(code)
+        if low is None and high is None:
+            continue
+        out.append({"q": qid,
+                    "op": "row_between" if screening.get("outside") is False else "row_outside",
+                    "value": "%s=%s-%s" % (code, _num(low, 0), _num(high, 100))})
+    return out
 
 
 def _codes(value) -> list[str]:
@@ -75,7 +120,8 @@ def normalize(q: dict) -> dict:
         q.pop("screening", None)
         return q
     rules = [r for r in (s.get("rules") or []) if isinstance(r, dict) and r.get("q") and r.get("op")]
-    if not rules:
+    rows = [str(r) for r in (s.get("rows") or [])]
+    if not rules and not rows:
         q.pop("screening", None)
         return q
     clean = []
@@ -85,12 +131,33 @@ def normalize(q: dict) -> dict:
             item["value"] = r.get("value")
         clean.append(item)
     out = {
-        "enabled": True,
+        "enabled": s.get("enabled") is not False,
         "mode": s.get("mode") if s.get("mode") in MODES else "screen_out",
-        "match": "any" if s.get("match") == "any" else "all",
+        # a band per answer fires when any one of them breaks; everything else waits for all
+        "match": ("any" if s.get("match") == "any" else "all") if s.get("match") in ("all", "any")
+                 else ("any" if (rows and s.get("type") != "sum") else "all"),
         "when": s.get("when") if s.get("when") in WHEN else "live",
         "rules": clean,
     }
+    # the Individual / Sum of responses screener keeps its own fields
+    if rows:
+        out["rows"] = rows
+        out["type"] = "sum" if s.get("type") == "sum" else "individual"
+        if out["type"] == "sum":
+            sum_ = s.get("sum") or {}
+            value = sum_.get("value")
+            out["sum"] = {"op": sum_.get("op") if sum_.get("op") in SUM_OPS else "eq",
+                          "value": _num(value, 0) if sum_.get("op") != "between" else str(value or "0-100")}
+        else:
+            lows, highs = {}, {}
+            for code in rows:
+                low = (s.get("min") or {}).get(code)
+                high = (s.get("max") or {}).get(code)
+                if low is not None or high is not None:
+                    lows[code], highs[code] = _num(low, 0), _num(high, 100)
+            out["min"], out["max"] = lows, highs
+        if s.get("outside") is False:
+            out["outside"] = False
     for key in ("message", "reason"):
         text = str(s.get(key) or "").strip()
         if text:
@@ -105,13 +172,22 @@ def blocks(q: dict) -> list[dict]:
     if not isinstance(q, dict):
         return out
     s = q.get("screening")
-    if isinstance(s, dict) and s.get("enabled") is not False and s.get("rules"):
-        out.append({
-            "mode": "qualify" if s.get("mode") == "qualify" else "screen_out",
-            "match": "any" if s.get("match") == "any" else "all",
-            "when": "next" if s.get("when") == "next" else "live",
-            "rules": s["rules"], "source": "rules",
-        })
+    if isinstance(s, dict) and s.get("enabled") is not False:
+        built = _structured_rules(s, q) if _is_structured(s) else []
+        rules = built + [r for r in (s.get("rules") or [])]
+        if rules:
+            if built and s.get("type") == "sum":
+                match = "all"                       # one sum test
+            elif built:
+                match = "all" if s.get("match") == "all" else "any"   # any answer off its band
+            else:
+                match = "any" if s.get("match") == "any" else "all"
+            out.append({
+                "mode": "qualify" if s.get("mode") == "qualify" else "screen_out",
+                "match": match,
+                "when": "next" if s.get("when") == "next" else "live",
+                "rules": rules, "source": "rules",
+            })
     marked = [o for o in (q.get("options") or []) if isinstance(o, dict) and o.get("terminate")]
     if marked:
         out.append({
@@ -138,13 +214,21 @@ def _rule_text(rule: dict, questions: dict) -> str:
     elif op == "ranked_top":
         head, _, n = str(value or "").partition("=")
         value = f"{_label(q, head)} (top {n})"
+    elif op in ("row_between", "row_outside"):       # "a=10-60" -> one answer's Min - Max band
+        head, _, tail = str(value or "").partition("=")
+        low, _, high = tail.partition("-")
+        joiner = " and " if op == "row_between" else " to "
+        return f"{rule.get('q')}: {_label(q, head)} {word} {low or 0}{joiner}{high or 0}"
+    elif op.startswith("sum_"):             # "a,b=80" -> what a group of rows adds up to
+        head, _, tail = str(value or "").partition("=")
+        names = " + ".join(_label(q, c) for c in _codes(head)) or "the rows"
+        if op == "sum_between":
+            low, _, high = tail.partition("-")
+            return f"{rule.get('q')}: the sum of {names} is between {low or 0} and {high or 0}"
+        return f"{rule.get('q')}: the sum of {names} {word} {tail or 0}"
     elif op.startswith("row_"):
         head, _, tail = str(value or "").partition("=")
         value = f"{_label(q, head)} {tail}"
-    elif op.startswith("sum_of_"):          # "a,b=40" -> what a group of rows adds up to
-        head, _, tail = str(value or "").partition("=")
-        labels = [_label(q, c) for c in _codes(head)]
-        value = f"{' + '.join(labels) or 'the rows'} {tail or 0}"
     elif op in ("between", "not_between"):
         halves = str(value or "").split("-")
         value = " and ".join(halves) if op == "between" else " – ".join(halves)
@@ -161,6 +245,6 @@ def describe(q: dict, questions: list | None = None) -> list[str]:
     for b in blocks(q):
         joiner = " or " if b["match"] == "any" else " and "
         text = joiner.join(_rule_text(r, index) for r in b["rules"])
-        lead = "continue only when " if b["mode"] == "qualify" else "screen out when "
+        lead = "carry on only when " if b["mode"] == "qualify" else "screen out when "
         out.append(lead + text)
     return out
