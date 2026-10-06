@@ -406,6 +406,51 @@ a{color:var(--accent2)}
 
 /* randomise radios */
 .st-radio-row{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:6px;margin-top:4px}
+/* On / Off switch at the top of the Screening and Show IF tabs */
+.st-switch.big{font-size:13.5px}
+.st-switch.big i{width:40px;height:22px}
+.st-switch.big i::after{width:18px;height:18px}
+.st-switch.big input:checked+i::after{left:20px}
+.st-scr-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:2px 0 10px;
+  border-bottom:1px solid var(--line2);margin-bottom:12px}
+.st-scr-top .st-meta{font-size:11.5px}
+.st-scr-off{background:var(--soft2);border:1px dashed var(--line);border-radius:9px;padding:10px 12px;
+  font-size:12px;color:var(--muted)}
+/* "Respondents will [Screen In | Screen Out] if the answer criteria is met." */
+.st-scr-lead{display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:14px;color:var(--ink);margin:0 0 12px}
+.st-scr-lead b{font-weight:600}
+.st-seg{display:inline-flex;border:1px solid var(--line);border-radius:9px;overflow:hidden;background:#fff}
+.st-seg-btn{position:relative;padding:6px 14px;font-size:12.5px;font-weight:700;cursor:pointer;
+  border-right:1px solid var(--line);color:var(--muted);white-space:nowrap;transition:background .12s,color .12s}
+.st-seg-btn:last-child{border-right:0}
+.st-seg-btn input{position:absolute;opacity:0;width:0;height:0}
+.st-seg-btn.on{background:var(--ink);color:#fff}
+.st-seg-btn:hover:not(.on){background:var(--soft)}
+.st-seg-btn input:focus-visible+.st-seg-btn{outline:2px solid var(--accent2)}
+/* screener blocks: type, which answers, the bands, the sum */
+.st-scr-block{margin:0 0 14px}
+.st-scr-blockhead{font-size:12px;font-weight:800;letter-spacing:.02em;color:var(--muted);
+  text-transform:uppercase;margin:0 0 6px;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}
+.st-scr-blockhead .st-scr-inline,.st-scr-inline{font-size:11.5px;font-weight:500;text-transform:none;letter-spacing:0}
+.st-scr-inline select{border:1px solid var(--line);border-radius:6px;padding:2px 4px;font-size:11.5px;background:#fff}
+.st-scr-minmax{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--line2);flex-wrap:wrap}
+.st-scr-minmax:first-of-type{border-top:0}
+.st-scr-mm-label{flex:1 1 200px;min-width:140px;font-size:12.5px;font-weight:600}
+.st-scr-minmax .st-mini{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;color:var(--muted)}
+.st-scr-sumrow{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.st-scr-sumrow select{border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px;background:#fff}
+.st-scr-empty{font-size:12px;color:var(--faint);background:var(--soft2);border:1px dashed var(--line);
+  border-radius:9px;padding:10px 12px}
+/* the dropdown of every answer, and the one on each band */
+.st-scr-addrow,.st-scr-minmax select{border:1px solid var(--line);border-radius:7px;padding:5px 6px;
+  font-size:12.5px;background:#fff;max-width:260px}
+.st-scr-minmax select{flex:1 1 180px;min-width:120px;font-weight:600}
+.st-scr-addrow{max-width:300px}
+.st-scr-combine{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:0 0 8px}
+.st-scr-combine select{border:1px solid var(--line);border-radius:7px;padding:3px 5px;font-size:12px;background:#fff}
+.st-scr-more{margin:0 0 12px;border:1px solid var(--line2);border-radius:9px;background:var(--soft2)}
+.st-scr-more>summary{cursor:pointer;padding:7px 12px;font-size:12px;font-weight:700;color:var(--muted)}
+.st-scr-more>div{padding:0 12px 10px}
 .st-radio{border:1px solid var(--line);border-radius:9px;padding:8px 10px;font-size:12.5px;font-weight:700;cursor:pointer;background:#fff;display:flex;flex-direction:column;gap:2px}
 .st-radio small{font-weight:500;color:var(--muted);font-size:11px}
 .st-radio.on{border-color:var(--accent2);background:var(--soft)}
@@ -594,3 +639,84 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-tbl-out .st-link-in:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
 .st-modal-box.st-outbox-modal{width:min(1040px,100%)}
 .st-modal-box.st-launch-modal{width:min(720px,100%)}
+
+/* ---------- screening (screen in / screen out) ---------- */
+.st-badge.screen{background:#ffd9d4;color:#8c1d16}
+.st-count.warn{background:#ffd9d4;color:#8c1d16}
+.st-scr-modes{margin:12px 0 4px}
+.st-scr-modes .st-radio.on{border-color:#e08b82;background:#fff6f5}
+.st-scr-rules{margin-top:4px}
+.st-rule .st-scr-chips{grid-column:1/-1;display:flex;flex-wrap:wrap;gap:5px;margin:2px 0 4px 52px}
+.st-scr-chips{display:flex;flex-wrap:wrap;gap:5px}
+.st-scr-chips .st-chip{border:1px dashed var(--line);background:#fff;color:var(--muted);border-radius:999px;
+  padding:4px 11px;font-size:12px;font-weight:600;cursor:pointer;max-width:260px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.st-scr-chips .st-chip:hover{border-color:var(--accent2);color:var(--accent)}
+.st-scr-chips .st-chip.on{border-style:solid;border-color:#d9857c;background:#fff1ef;color:#8c1d16}
+.st-scr-chips .st-chip.sm{padding:2px 9px;font-size:11.5px}
+.st-rule .st-scr-pair{display:flex;gap:5px;align-items:center;min-width:0}
+.st-rule .st-scr-pair em{font-size:11px;color:var(--faint);font-style:normal}
+.st-rule .st-scr-pair select,.st-rule .st-scr-pair input{border:1px solid var(--line);border-radius:7px;padding:6px 7px;font-size:12.5px;background:#fff;min-width:0}
+.st-rule .st-scr-num{width:100%}
+.st-scr-plain{margin:10px 0 2px;border:1px solid var(--line2);border-radius:10px;background:var(--soft2);overflow:hidden}
+.st-scr-linerow{display:flex;gap:9px;align-items:baseline;padding:8px 12px;font-size:12.5px;border-top:1px solid var(--line2)}
+.st-scr-linerow:first-child{border-top:0}
+.st-scr-linerow i{font-style:normal;font-size:13px;line-height:1}
+.st-scr-linerow.screen_out i{color:var(--bad)}
+.st-scr-linerow.qualify i{color:var(--good)}
+.st-scr-linerow span{flex:1}
+.st-scr-linerow span b{font-weight:800}
+.st-scr-linerow em{font-style:normal;font-size:11px;color:var(--faint);text-transform:uppercase;letter-spacing:.04em}
+.st-scr-linerow u{text-decoration:none;font-size:10.5px;color:var(--muted);background:var(--amber);border-radius:4px;padding:1px 5px}
+/* the same sentence, on the question itself, on every tab */
+.st-scr-linebar{display:flex;align-items:center;gap:10px;margin:10px 0 0;border:1px solid #f2dcb3;background:#fff8ec;
+  border-radius:10px;padding:2px 10px 2px 0;overflow:hidden}
+.st-scr-linebar>div{flex:1;min-width:0}
+.st-scr-linebar .st-scr-linerow{border-top:0;padding:7px 12px;background:transparent;color:#5f4b1f}
+.st-scr-linebar .st-scr-linerow em{color:#a07a2c}
+.st-scr-linebar .st-btn{margin-right:2px}
+/* number boxes carry the question's range and unit */
+.st-scr-numwrap{display:inline-flex;align-items:center;gap:5px;min-width:0}
+.st-scr-numwrap .st-scr-num{width:92px}
+.st-scr-unit{font-style:normal;font-size:11px;color:var(--muted);white-space:nowrap;max-width:120px;overflow:hidden;text-overflow:ellipsis}
+.st-scr-rownum{width:88px;border:1px solid var(--line);border-radius:7px;padding:5px 7px;font-size:12.5px;background:#fff}
+.st-scr-total{font-size:11.5px;color:var(--muted);padding:4px 0 0}
+.st-scr-total b{color:var(--ink);font-size:13px}
+/* the tester: pick an answer by hand and read the verdict */
+.st-scr-test{margin-top:14px;border:1px solid var(--line);border-radius:11px;background:#fff;overflow:hidden}
+.st-scr-test-head{display:flex;align-items:center;gap:9px;background:var(--soft2);border-bottom:1px solid var(--line2);padding:8px 12px}
+.st-scr-test-head b{font-size:12.5px}
+.st-scr-test-head .st-btn{margin-left:auto}
+.st-scr-test .st-scr-chips{padding:11px 12px 4px}
+.st-scr-rows{padding:10px 12px 2px;display:flex;flex-direction:column;gap:7px}
+.st-scr-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.st-scr-row span{font-size:12.5px;min-width:160px;flex:1}
+.st-scr-pickrow{display:flex;gap:9px;align-items:center;padding:11px 12px 2px}
+.st-scr-pickrow input{border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:13px;width:140px}
+.st-scr-verdict{display:flex;flex-direction:column;gap:3px;padding:10px 12px;border-top:1px solid var(--line2);margin-top:8px}
+.st-scr-verdict b{font-size:12px;letter-spacing:.06em}
+.st-scr-verdict span{font-size:12.5px}
+.st-scr-verdict em{font-style:normal;font-size:11.5px;color:var(--muted)}
+.st-scr-verdict.out{background:#fff1ef}
+.st-scr-verdict.out b{color:#8c1d16}
+.st-scr-verdict.pass{background:#f0faf4}
+.st-scr-verdict.pass b{color:var(--good)}
+.st-note.warn{background:#fff8ec;border-color:#f2dcb3;color:#7a4c00}
+
+/* ---- matrix / grid questions -------------------------------------------------------
+   The scale points are a table of their own (position | value | label | format | media |
+   tools), and the N/A + comment + order settings sit in their own boxes under the rows. */
+.st-h4-n{font-weight:700;font-size:11px;letter-spacing:0;text-transform:none;color:var(--faint)}
+.st-pts .st-item{grid-template-columns:26px 44px minmax(0,1fr) 88px 38px auto}
+.st-pt-val{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;text-align:center;color:var(--muted)}
+.st-it-fmt,.st-pts select{border:1px solid var(--line);border-radius:6px;padding:3px 4px;font-size:11px;
+  background:#fff;max-width:100%}
+.st-thumb-ic{display:inline-flex;align-items:center;justify-content:center;width:30px;height:24px;
+  border:1px solid var(--line);border-radius:5px;background:var(--soft2);font-size:13px}
+.st-flag-sel{display:inline-flex;gap:4px;align-items:center;padding:2px 7px}
+.st-flag-sel select{border:0;background:transparent;font:inherit;font-size:11px;font-weight:700;
+  color:inherit;max-width:118px;padding:0}
+.st-mtx-na,.st-mtx-comments{border:1px solid var(--line2);border-radius:9px;background:var(--soft2);
+  padding:10px 12px;margin:10px 0}
+.st-mtx-na{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.st-mtx-na .st-meta{flex:1 1 260px}
+.st-narrow{max-width:130px}

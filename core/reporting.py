@@ -10,6 +10,7 @@ import time
 from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
 from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
+from . import screening
 
 
 def _verbatim_qs(cfg: dict) -> list:
@@ -84,7 +85,7 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
         elif t == "heatmap":
             for r in q["rows"]:
-                for c in q["cols"]:
+                for c in (q.get("cols") or []):
                     out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
                         r["code"] + "_" + c["code"], "")
         elif t == "multi_select":
@@ -102,8 +103,13 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
         elif t in ("date",):
             out[qid] = a.get("_", "")
         elif t == "numeric_matrix":
+            nm_cols = q.get("cols") or []
             for r in q["rows"]:
-                out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
+                if nm_cols:                      # a table: one number per row x column
+                    for c in nm_cols:
+                        out[f"{qid}_{r['code']}_{c['code']}"] = a.get(r["code"] + "_" + c["code"], "")
+                else:
+                    out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
         elif t == "delta":
             out[qid + "_before"] = a.get("before", "")
             out[qid + "_after"] = a.get("after", "")
@@ -132,8 +138,16 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                                                     "no" if ack is False else "")
             out[qid + "_pasted_chars"] = meta.get("pasted_chars", "")
             out[qid + "_keystrokes"] = meta.get("keystrokes", "")
+        # comment boxes: one for the whole question, one under any row that asked for one
+        if (q.get("comments") or {}).get("mode") and (q.get("comments") or {}).get("mode") != "none":
+            out[qid + "_comment"] = a.get("_comment", "")
+        for r in (q.get("rows") or []):
+            if isinstance(r, dict) and (r.get("comment") or "none") != "none":
+                out[f"{qid}_{r['code']}_comment"] = a.get("c_" + str(r["code"]), "")
         if q.get("randomize") and q.get("randomize") != "none":
             out[qid + "_order_shown"] = a.get("_order", "")
+        if isinstance(q.get("randomize"), dict) and q["randomize"].get("cols"):
+            out[qid + "_order_cols_shown"] = a.get("_order_cols", "")
     return out
 
 
@@ -291,7 +305,11 @@ def build_sheets(records: list, scope: str, cfg: dict):
     dd_rows = []
     for q in cfg.get("questions", []):
         stem = q["stem"]
-        if q.get("show_if") and q["show_if"].get("rules"):
+        # screening rules travel with the questionnaire - document them beside the question
+        for line in screening.describe(q, cfg.get("questions", [])):
+            dd_rows.append([q["id"], q.get("section", ""), q["type"], stem, "(screening)",
+                            line, "survey ends here for the respondent"])
+        if q.get("show_if") and q["show_if"].get("rules") and q["show_if"].get("off") is not True:
             rules = " %s " % ("OR" if q["show_if"].get("match") == "any" else "AND")
             dd_rows.append([q["id"], q["section"], q["type"], stem, "(show-if)",
                             rules.join(f"{r.get('q')} {r.get('op')} {r.get('value', '')}".strip()

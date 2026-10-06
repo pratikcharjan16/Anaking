@@ -29,8 +29,9 @@ Anaking/
 │   ├── translator.py   keyless machine translation (tag-safe), injectable for tests
 │   ├── outline.py      "Download Word Outline" - stdlib .docx questionnaire outline
 │   ├── reporting.py    flattening, export sheets, quick analysis
+│   ├── screening.py    screening (screen in / screen out): config cleanup + plain-English logic
 │   ├── seed.py         seeds the BEACON study from survey_spec + data/design
-│   ├── survey_spec.py  the 24-question BEACON instrument
+│   ├── survey_spec.py  the BEACON instrument
 │   └── xlsx_export.py  openpyxl or stdlib .xlsx writer
 ├── templates/
 │   ├── home.html       landing page
@@ -99,7 +100,7 @@ the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not sav
 | Pane | What it does |
 |---|---|
 | **Outline** (left) | Sections with their questions, as either a compact **List** or a grid of **Thumbnails** (the switch sits in the outline header, and the choice is remembered). Thumbnails show a miniature of the question — title, wording and a schematic of the answer area (option rows, rating scale, text box…). Click a row or card to edit it; hover for move / duplicate / delete (delete offers **Undo**). **+ Add question** opens a picker of plain-English types ("Choose one", "Rating grid", "Open text"…) grouped by kind; the new question lands after the selected one and gets the next free id. Sections are added from **+ Section** — in the header, so it is always reachable — or the button under the last section, and their titles are renamed in place. A new study starts with **one empty section**: section names are never predefined, they come from the author (leave one blank and it reads "Untitled section"). |
-| **Editor** (middle) | Two tabs as in the reference builder — **Content & Settings** and **Conditional Display** (who gets the question, in sentence form) — with a **PREVIEW** button for the full-size question, over one scrolling form with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (one row per entry: position number, drag grip, code, label, ➔ Pipe in answer, image, an always-visible tool strip — move up, move down, delete — and a one-click *None of these* / *Not applicable* / *Other*, *Enter multiple…*; Pin / Exclusive / Other behaviour chips sit on their own line under the label. Sequence changes three ways: **drag the grip**, the **▲ / ▼** buttons, or focus a grip and press **↑ / ↓**), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Image or video**, **Advanced (JSON)** — while **Conditional Display** holds the *Show only when…* conditions in sentence form (*when Q1 has selected Oncology*, and/or, invert) and marks the tab when rules are on. **ID** with the question **Title** stacked underneath it, type (convertible - compatible answers are kept), section and Required sit in the header. The Title is a short internal label for the sidebar and exports; respondents never see it. |
+| **Editor** (middle) | Three tabs — **Content & Settings**, **Conditional Display** (who gets the question, in sentence form) and **Screening** (who is ended, in sentence form) — with a **PREVIEW** button for the full-size question, over one scrolling form with a jump bar: **Question** (rich text + help), **Answer options / Rows & scale** (one row per entry: position number, drag grip, code, label, ➔ Pipe in answer, image, an always-visible tool strip — move up, move down, delete — and a one-click *None of these* / *Not applicable* / *Other*, *Enter multiple…*; Pin / Exclusive / Other behaviour chips sit on their own line under the label. Sequence changes three ways: **drag the grip**, the **▲ / ▼** buttons, or focus a grip and press **↑ / ↓**), **Display & order** (layout segment, randomise, hide number / codes, font / size / alignment), **Image or video**, **Advanced (JSON)** — while **Conditional Display** holds the *Show only when…* conditions in sentence form (*when Q1 has selected Oncology*, and/or, invert) and marks the tab when rules are on. **ID** with the question **Title** stacked underneath it, type (convertible - compatible answers are kept), section and Required sit in the header. The Title is a short internal label for the sidebar and exports; respondents never see it. |
 | **Live preview** (right) | The question rendered by the same code respondents run; updates as you type. Sample answers for piping / logic, reshuffle, desktop / phone width, ▶ **Test** opens it full size. |
 
 Rich text: text size and font, bold / italic / underline / strike / superscript / subscript,
@@ -112,6 +113,54 @@ earlier question ("Their answer (as text)", "Answer code", "First / last option 
 *e.g.* from the sample answers. Tokens show as chips in the editor and are stored as plain text
 (`{Q3}`, `{Q3.code}`, `{Q3.opt:2}`, `{Q3.first}`/`{Q3.last}`, `{Q3.other}`, `{Q3.row:a}`,
 `{Q3.r:a}`, `{Q3.stem}`); an unanswered reference renders as "…".
+
+### Screening — screen in / screen out (Studio → a question → **Screening**)
+
+Every question can decide who carries on. The rules are **data on the question**, never code in
+the app, so the questionnaire always explains itself and the same study can be copied, translated
+and re-fielded with its screening intact.
+
+| | |
+|---|---|
+| **No screening** | Everybody carries on. |
+| **Screen out when…** | The matched respondent is ended and reads your closing text. |
+| **Only continue when…** (qualify) | Only matched respondents carry on; everybody else is ended here. |
+
+A rule is **all** / **any** of a list of conditions, each built from three controls:
+*which question* (this one, any earlier one — later ones are grouped separately because they can
+never fire here), *the condition*, and *the value*. The condition list follows the question type:
+
+| Question type | Conditions |
+|---|---|
+| Choose one / multi-select | is · is not · **is any of** · **is none of** · **includes all of** · is exactly these · **selects at least / at most / exactly** *n* |
+| Number, slider, NPS, date | equals · does not equal · is more than · at least · less than · at most · is between |
+| Open text / loop | mentions · does not mention · is shorter than *n* words |
+| Rating grid, semantic, heat map, numeric matrix | row is / is not / is at least / is at most |
+| Ranking | ranks … first · ranks … in the top *n* · includes all of · selects at least … |
+| Any type | was answered · was skipped |
+
+Groups and counts are the point: *"screen out when Q1 is any of Radiation oncology, Surgical
+oncology"*, *"screen out when Q15 selects fewer than 2"*, *"continue only when Q3 is at least 5"*,
+or the cross-question *"screen out when Q1 is Haematology only **and** Q3 is less than 10"*.
+
+**Check the rule** decides when it is applied: **⚡ As soon as it matches** ends the survey the
+moment the answer is given (the default for choice questions), while **→ When they press Next**
+lets the respondent change their mind first (the default wherever a number, a grid or a text box
+is still being filled in). Add the **Reason for the data** (the line recorded in the screen-out
+report) and, if the standard closing wording is not right, the **Text the respondent reads**.
+
+**Try it** at the bottom of the card: pick an answer by hand and read the verdict — *SCREENED OUT*
+with the reason and the exact text the respondent would see, or *CONTINUES*. Earlier questions
+use the same sample answers as the live preview.
+
+Two more ways in:
+* a **Screen out** switch on every answer option (Content & Settings → Answer options) — the
+  quick one-click version, and it is shown on the Screening tab too;
+* the **screen** badge in the outline, whose tooltip spells the whole rule out.
+
+The rules also travel into the paperwork: the Word outline prints `Logic: screening: …` under the
+question, the Excel data dictionary gets a `(screening)` row per rule, and the screen-out reason
+and question id are stored on the respondent and shown in Admin.
 
 **Conjoint experiments** are authored on the question that asks them: add a *Conjoint* question
 and its editor shows the experiment name, a rich-text description (the `{amount}` / `{product}`
@@ -270,6 +319,7 @@ python3 -m pytest                               # in-process suite, no server ne
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
 python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
+python3 -m pytest tests/test_screening.py       # screening config on save, plain-English logic, outline & export
 
 python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
@@ -286,6 +336,9 @@ node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdo
 node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
+node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)
+node scripts/dom/screening_studio_test.js        # Studio screening tab: modes, rule builder, tester, saved config
+node scripts/dom/screening_survey_test.js        # respondent screening: ends on the spot, reason recorded
 ```
 
 ## Study design material

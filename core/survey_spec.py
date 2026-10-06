@@ -158,6 +158,18 @@ Q.append({
             "initiate or manage on systemic therapy each month?",
     "min": 0, "max": 500, "suffix": "patients per month",
     "terminate_if_lt": 5,
+    # Screening is data, not code: a haematologist who treats too few of these patients a
+    # month does not qualify, and that rule lives with the questionnaire (Studio > Q3 >
+    # Screening).  terminate_if_lt above is the plain single-question gate for everybody.
+    "screening": {
+        "enabled": True,
+        "mode": "screen_out",
+        "match": "all",
+        "when": "next",
+        "reason": "Haematology-only with fewer than 10 eligible patients/month",
+        "rules": [{"q": "Q1", "op": "selected", "value": 4},
+                  {"q": "Q3", "op": "lt", "value": 10}],
+    },
     "terminate_message": "Thank you for your time. This study requires physicians who personally "
                          "manage at least 5 eligible patients per month.",
     "note": "Volume establishes genuine decision-making exposure.",

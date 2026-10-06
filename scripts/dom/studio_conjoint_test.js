@@ -50,13 +50,14 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
 
   // ---- the question editor chrome from the reference design ----
   const strip=()=>$$(".st-etab");
-  check("the editor strip offers Content & Settings / Conditional Display / PREVIEW",
-    strip().length===3 && /Content & Settings/.test(strip()[0].textContent) &&
-    /Conditional Display/.test(strip()[1].textContent) && /PREVIEW/.test(strip()[2].textContent),
+  check("the editor strip offers Content & Settings / Show IF / Screening / PREVIEW",
+    strip().length===4 && /Content & Settings/.test(strip()[0].textContent) &&
+    /Show IF/.test(strip()[1].textContent) && /Screening/.test(strip()[2].textContent) &&
+    /PREVIEW/.test(strip()[3].textContent),
     strip().map(b=>b.textContent).join(" | "));
   check("Content & Settings is the landing tab", strip()[0].classList.contains("on") && !!$("#card-answers"));
   strip()[1].click(); await sleep(60);
-  check("Conditional Display holds the conditions",
+  check("Show IF holds the conditions",
     strip()[1].classList.contains("on") && !!$("#card-logic") && !$("#card-answers"));
   strip()[0].click(); await sleep(60);
   check("switching back restores the content cards", !!$("#card-answers") && !$("#card-logic"));
