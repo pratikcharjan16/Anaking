@@ -177,31 +177,74 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   check("a numeric answer is judged when Next is pressed",
     ($("#f-scr-when") || {}).value === "next", ($("#f-scr-when") || {}).value);
 
+  await sleep(1500);                       // the autosave has landed - read it back
+  const savedNum = JSON.parse(await get("/api/studio/study?slug=beacon")).cfg;
+  const numSaved = (savedNum.questions || []).find(q => q.id === numId);
+  check("the numeric rule reaches the saved study",
+    !!numSaved && numSaved.screening && (numSaved.screening.rules[0] || {}).op === "lt" &&
+    String((numSaved.screening.rules[0] || {}).value) === "5",
+    JSON.stringify(numSaved && numSaved.screening));
+
   // ---------- allocation: Individual and Sum of responses ----------
-  click($('[data-act="qdup"]')); await sleep(250);
   click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
   let swA = $("#f-scr-on");
   if (swA.checked) { swA.checked = false; fire(swA, "change"); await sleep(220); }
   click($$(".st-etab").find(b => /Content/.test(b.textContent))); await sleep(200);
   const tSel2 = $("#f-type"); tSel2.value = "sum_to_100"; fire(tSel2, "change"); await sleep(320);
+  // the Constant Sum template starts with two answers - grow it so the dropdown has a list to show
+  for (let r = 0; r < 5; r++) { const b = $('[data-act="it-add"][data-kind="row"]'); if (!b) break;
+    click(b); await sleep(120); }
+  await sleep(240);
+  const rowCount = $$('[data-it="row"][data-k="label"]').length;
   const allocId = $("#f-id").value;
   click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
-  swA = $("#f-scr-on"); swA.checked = true; fire(swA, "change"); await sleep(260);
+  swA = $("#f-scr-on"); swA.checked = true; fire(swA, "change"); await sleep(280);
 
   check("an allocation offers the two screener types",
     $$('input[name="f-scr-type"]').map(r => r.value).join(",") === "individual,sum",
     $$('input[name="f-scr-type"]').map(r => r.value).join(","));
-  check("the answers that take part are picked as chips",
-    $$('[data-act="scr-pick-row"]').length >= 2, $$('[data-act="scr-pick-row"]').length);
 
-  // Individual: a Minimum and Maximum for each answer that takes part
-  check("Individual gives each answer its own Minimum and Maximum",
+  check("the condition it carried over from the numeric question is kept under More conditions",
+    $$("#f-scr-rules .st-rule").length === 1 && /More conditions/.test($("#card-screening").textContent),
+    $$("#f-scr-rules .st-rule").length);
+  const addSel0 = $("#f-scr-add-row");
+  check("both screeners offer a dropdown of every answer of the question",
+    !!addSel0 && addSel0.options.length === rowCount + 1,
+    !!addSel0 + " / " + ((addSel0 || { options: [] }).options.length) + " for " + rowCount + " answers");
+  check("the dropdown opens on a prompt, not a blank",
+    /Add an answer/.test((addSel0.options[0] || {}).textContent || ""),
+    (addSel0.options[0] || {}).textContent);
+  addSel0.value = addSel0.options[1].value; fire($("#f-scr-add-row"), "change"); await sleep(280);
+  check("picking an answer from the dropdown gives it a Minimum and a Maximum",
     $$("[data-scr-min]").length === 1 && $$("[data-scr-max]").length === 1,
     $$("[data-scr-min]").length + "/" + $$("[data-scr-max]").length);
-  const chipsA = $$('[data-act="scr-pick-row"]');
-  click(chipsA[1]); await sleep(240);
-  check("picking another answer gives it a range too",
-    $$("[data-scr-min]").length === 2, $$("[data-scr-min]").length);
+  check("the band names its answer in a dropdown of all the answers",
+    $$("[data-scr-at]").length === 1 && $$("[data-scr-at]")[0].options.length === rowCount,
+    $$("[data-scr-at]").length + " x " + ($$("[data-scr-at]")[0] || { options: [] }).options.length);
+  const addSel = $("#f-scr-add-row");
+  check("the add-an-answer dropdown lists every answer still free",
+    addSel.options.length === rowCount, addSel.options.length);
+  addSel.value = addSel.options[1].value; fire($("#f-scr-add-row"), "change"); await sleep(280);
+  check("a second answer gets a band of its own", $$("[data-scr-min]").length === 2,
+    $$("[data-scr-min]").length);
+  check("...named in its own dropdown", $$("[data-scr-at]").length === 2, $$("[data-scr-at]").length);
+  const bandMatch = $("#f-scr-match");
+  check("two bands can be combined with any / all", !!bandMatch, !!bandMatch);
+  bandMatch.value = "any"; fire($("#f-scr-match"), "change"); await sleep(260);
+  const at0 = $$("[data-scr-at]")[0];
+  const firstCode = at0.value, before = $(".st-scr-plain").textContent;
+  const freeOpt = [...at0.options].find(o => !o.disabled && o.value !== at0.value);
+  at0.value = freeOpt.value; fire($$("[data-scr-at]")[0], "change"); await sleep(280);
+  check("a band can be re-pointed at another answer from the dropdown",
+    $$("[data-scr-at]")[0].value !== firstCode && $(".st-scr-plain").textContent !== before &&
+    new RegExp(allocId + ": .+ is outside 0 to 100 or " + allocId + ": .+ is outside 0 to 100")
+      .test($(".st-scr-plain").textContent), $(".st-scr-plain").textContent);
+  click($('[data-act="scr-del-row"]')); await sleep(280);
+  check("an answer can be taken back out", $$("[data-scr-min]").length === 1,
+    $$("[data-scr-min]").length);
+  const addSel2 = $("#f-scr-add-row");
+  addSel2.value = addSel2.options[1].value; fire($("#f-scr-add-row"), "change"); await sleep(280);
+  check("and put back", $$("[data-scr-min]").length === 2, $$("[data-scr-min]").length);
   let min1 = $$("[data-scr-min]")[0], max1 = $$("[data-scr-max]")[0];
   min1.value = "20"; fire(min1, "input"); await sleep(220);
   max1.value = "60"; fire($$("[data-scr-max]")[0], "input"); await sleep(220);
@@ -227,6 +270,20 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   const cmpOpts = [...($("#f-scr-sum-op") || { options: [] }).options].map(o => o.value);
   check("Sum of responses offers equal to, less than, greater than and Min to Max",
     cmpOpts.join(",") === "eq,lt,gt,between", cmpOpts.join(","));
+  const sumAdd = $("#f-scr-add-row");
+  check("Sum of responses offers the same dropdown of every answer",
+    !!sumAdd && sumAdd.options.length === rowCount - 1,
+    (sumAdd || { options: [] }).options.length + " for " + rowCount + " answers, 2 already in");
+  const thirdCode = sumAdd.options[1].value;
+  sumAdd.value = thirdCode; fire($("#f-scr-add-row"), "change"); await sleep(280);
+  check("an answer added from the dropdown joins the sum",
+    new RegExp(allocId + ": the sum of [^=]+ \\+ [^=]+ \\+ [^=]+").test($(".st-scr-plain").textContent),
+    $(".st-scr-plain").textContent);
+  click($('[data-act="scr-pick-row"][data-code="' + thirdCode + '"]')); await sleep(280);
+  check("...and the chips take it back out",
+    new RegExp(allocId + ": the sum of [^=]+ \\+ [^=]+").test($(".st-scr-plain").textContent) &&
+    !new RegExp("\\+ [^=]+ \\+ [^=]+ \\+ ").test($(".st-scr-plain").textContent),
+    $(".st-scr-plain").textContent);
   let sumOp = $("#f-scr-sum-op");
   sumOp.value = "gt"; fire(sumOp, "change"); await sleep(260);
   let sumVal = $('[data-sf="f-scr-sum-val"]');
@@ -302,10 +359,6 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
     (allocSaved.screening.rows || []).length === 2 &&
     (allocSaved.screening.sum || {}).op === "eq" && String((allocSaved.screening.sum || {}).value) === "100",
     JSON.stringify(allocSaved && allocSaved.screening));
-  const numSaved = (saved.questions || []).find(q => q.id === numId);
-  check("the numeric rule reaches the saved study",
-    !!numSaved && (numSaved.screening.rules[0] || {}).op === "lt" && (numSaved.screening.rules[0] || {}).value === 5,
-    JSON.stringify(numSaved && numSaved.screening));
   const mine = saved.questions.find(q => q.type === "multi_select" && q.screening);
   check("the screening block is saved with the question", !!mine, JSON.stringify((saved.questions || []).map(q => !!q.screening)));
   if (mine) {

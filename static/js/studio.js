@@ -2215,27 +2215,51 @@
     }).join("") + "</span>";
   }
 
+  // Every answer of the question as a dropdown - used to add an answer to the screener and
+  // to point an existing band at a different one.  Answers already spoken for are disabled.
+  function scrAnswerSelect(current, attrs) {
+    var used = scrRows();
+    return "<select " + attrs + ">" + rowItemsOf(ed).map(function (o) {
+      var code = String(o.code);
+      var taken = used.indexOf(code) >= 0 && code !== String(current);
+      return '<option value="' + esc(code) + '"' + (code === String(current) ? " selected" : "") +
+        (taken ? " disabled" : "") + ">" + esc(rowText(o)) + "</option>";
+    }).join("") + "</select>";
+  }
+  function scrAddSelect() {
+    var used = scrRows(), all = rowItemsOf(ed);
+    var free = all.filter(function (o) { return used.indexOf(String(o.code)) < 0; });
+    var lead = !all.length ? "This question has no answers yet"
+      : free.length ? "\uFF0B Add an answer\u2026" : "Every answer is already in";
+    return '<select id="f-scr-add-row" class="st-scr-addrow"' + (free.length ? "" : " disabled") + ">" +
+      '<option value="">' + lead + "</option>" + free.map(function (o) {
+        return '<option value="' + esc(o.code) + '">' + esc(rowText(o)) + "</option>"; }).join("") + "</select>";
+  }
+
   // "Individual": a Minimum and Maximum for every answer that takes part.
   function scrIndividualEditor(picked) {
-    if (!picked.length) {
-      return '<div class="st-scr-block"><div class="st-scr-blockhead">Minimum and maximum for each answer</div>' +
-        '<div class="st-scr-empty">Pick the answers that take part and each one gets its own range.</div></div>';
-    }
     var inside = !scrOutside();
     var html = '<div class="st-scr-block"><div class="st-scr-blockhead">Minimum and maximum for each answer' +
       '<span class="st-scr-inline">each answer must be <select id="f-scr-outside">' +
       '<option value="inside"' + (inside ? " selected" : "") + ">inside</option>" +
       '<option value="outside"' + (inside ? "" : " selected") + ">outside</option></select> its range</span></div>";
-    html += picked.map(function (code) {
-      var o = rowByCode(code);
-      return '<div class="st-scr-minmax"><span class="st-scr-mm-label">' + esc(rowText(o)) + "</span>" +
-        '<label class="st-mini">Minimum <input class="st-scr-num" type="number" data-sf="scrmin" data-scr-min="' +
-          esc(code) + '" value="' + esc(scrBand(code, "min")) + '"></label>' +
-        '<label class="st-mini">Maximum <input class="st-scr-num" type="number" data-sf="scrmax" data-scr-max="' +
-          esc(code) + '" value="' + esc(scrBand(code, "max")) + '"></label>' +
-        '<span class="st-meta">' + esc(scrUnit()) + "</span></div>";
+    if (!picked.length) {
+      html += '<div class="st-scr-empty">No answer yet - add one below and give it a range.</div>';
+    }
+    html += picked.map(function (code, i) {
+      return '<div class="st-scr-minmax" data-band="' + i + '">' +
+        scrAnswerSelect(code, 'data-sf="scrat" data-scr-at="' + i + '" title="Which answer this range belongs to"') +
+        '<label class="st-mini">Minimum <input class="st-scr-num" type="number" data-sf="scrmin" data-scr-min value="' +
+          esc(scrBand(code, "min")) + '"></label>' +
+        '<label class="st-mini">Maximum <input class="st-scr-num" type="number" data-sf="scrmax" data-scr-max value="' +
+          esc(scrBand(code, "max")) + '"></label>' +
+        '<span class="st-meta">' + esc(scrUnit()) + "</span>" +
+        '<button class="st-ibtn danger" data-act="scr-del-row" data-i="' + i +
+          '" title="Take this answer out of the screener">\u2715</button>' +
+        "</div>";
     }).join("");
-    return html + "</div>";
+    return html + '<div class="st-item-actions">' + scrAddSelect() +
+      '<span class="st-meta">Every answer of the question is in the list.</span></div></div>';
   }
   // "Sum of responses": one comparison over the answers put together.
   function scrSumEditor(picked) {
@@ -2253,7 +2277,10 @@
     } else {
       html += numBox(ed, "sum_" + cmp, sum.value, "f-scr-sum-val", { placeholder: "value" });
     }
-    return html + "</div></div>";
+    html += "</div>";                                  // close the comparison row
+    html += '<div class="st-item-actions">' + scrAddSelect() +
+      '<span class="st-meta">Only the answers you add are added up.</span></div>';
+    return html + "</div>";
   }
   function scrUnit() { return unitOf(ed, "row_gte") ? String(unitOf(ed, "row_gte")) : "points"; }
 
@@ -2267,16 +2294,16 @@
       '<span class="st-meta">' + (rules.length
         ? "Group a set of options with <b>is any of</b> \u00B7 count them with <b>selects at least</b>."
         : "Start with this question, or point the condition at an earlier one.") + "</span></div>";
-    if (rules.length) {
-      // a band per answer fires when any one of them breaks; everything else waits for all
-      var anyDefault = scrIsStructured() && s.type !== "sum";
-      var isAny = s.match ? s.match === "any" : anyDefault;
+    // a band per answer fires when any one of them breaks; everything else waits for all
+    var bands = scrIsStructured() && s.type !== "sum" ? scrRows().length : 0;
+    if (rules.length || bands > 1) {
+      var isAny = s.match ? s.match === "any" : bands > 0;
       html = '<div class="st-scr-combine">Combine these with <select id="f-scr-match">' +
         '<option value="any"' + (isAny ? " selected" : "") + ">any</option>" +
         '<option value="all"' + (isAny ? "" : " selected") + ">all</option></select>" +
         '<span class="st-meta">"any" fires as soon as one of them is true.</span></div>' + html;
     }
-    return primary ? html : '<details class="st-scr-more"' + (rules.length ? " open" : "") +
+    return primary ? html : '<details class="st-scr-more"' + (rules.length || bands > 1 ? " open" : "") +
       "><summary>More conditions" + (rules.length ? " (" + rules.length + ")" : "") + "</summary>" + html + "</details>";
   }
 
@@ -2306,16 +2333,22 @@
     if (structured) {
       html += '<div class="st-scr-block"><div class="st-scr-blockhead">Screener type</div>' +
         scrSeg("f-scr-type", SCR_TYPES, type) + "</div>";
-      var rows = rowItemsOf(ed);
-      html += '<div class="st-scr-block"><div class="st-scr-blockhead">Which answers take part</div>' +
-        '<div class="st-scr-chips">' + (rows.length ? rows.map(function (o) {
-          var code = String(o.code), onRow = picked.indexOf(code) >= 0;
-          return '<button type="button" class="st-chip' + (onRow ? " on" : "") +
-            '" data-act="scr-pick-row" data-code="' + esc(code) + '" title="' +
-            (onRow ? "Leave this answer out of the screener" : "Screen this answer") + '">' +
-            (onRow ? "\u2713 " : "+ ") + esc(rowText(o)) + "</button>";
-        }).join("") : '<span class="st-meta">no rows yet</span>') + "</div></div>";
-      html += type === "sum" ? scrSumEditor(picked) : scrIndividualEditor(picked);
+      // Individual names its answers row by row, so it needs no separate picker;
+      // Sum is a set, so it keeps the chips and gets the same dropdown.
+      if (type === "sum") {
+        var rows = rowItemsOf(ed);
+        html += '<div class="st-scr-block"><div class="st-scr-blockhead">Which answers take part</div>' +
+          '<div class="st-scr-chips">' + (rows.length ? rows.map(function (o) {
+            var code = String(o.code), onRow = picked.indexOf(code) >= 0;
+            return '<button type="button" class="st-chip' + (onRow ? " on" : "") +
+              '" data-act="scr-pick-row" data-code="' + esc(code) + '" title="' +
+              (onRow ? "Leave this answer out of the screener" : "Screen this answer") + '">' +
+              (onRow ? "\u2713 " : "+ ") + esc(rowText(o)) + "</button>";
+          }).join("") : '<span class="st-meta">no rows yet</span>') + "</div></div>";
+        html += scrSumEditor(picked);
+      } else {
+        html += scrIndividualEditor(picked);
+      }
       html += scrRulesEditor(s, rules, false);
     } else {
       html += scrRulesEditor(s, rules, true);
@@ -2573,10 +2606,16 @@
           s.sum = { op: "eq", value: ed.type === "sum_to_100" ? 100 : 0 };
         }
       } else {
-        var mins = {}, maxs = {};
-        $$("[data-scr-min]").forEach(function (n) { mins[n.getAttribute("data-scr-min")] = Number(n.value || 0); });
-        $$("[data-scr-max]").forEach(function (n) { maxs[n.getAttribute("data-scr-max")] = Number(n.value || 0); });
-        s.min = mins; s.max = maxs;
+        var mins = {}, maxs = {}, rows = [];
+        $$(".st-scr-minmax").forEach(function (el) {
+          var sel = $("[data-scr-at]", el), lo = $("[data-scr-min]", el), hi = $("[data-scr-max]", el);
+          var code = sel ? String(sel.value || "") : "";
+          if (!code || rows.indexOf(code) >= 0) return;          // no duplicates
+          rows.push(code);
+          mins[code] = Number(lo && lo.value || 0);
+          maxs[code] = Number(hi && hi.value || 0);
+        });
+        s.rows = rows; s.min = mins; s.max = maxs;
       }
     } else {
       delete s.type; delete s.rows; delete s.min; delete s.max; delete s.sum; delete s.outside;
@@ -2802,6 +2841,13 @@
         if (at >= 0) list.splice(at, 1); else list.push(code);
         s2.rules[ri].value = list.join(",");
       }
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-del-row") {                  // take one answer out of the screener
+      syncFromForm();
+      var sdr = scrEnsure(), gone = Number(b.getAttribute("data-i"));
+      var left = scrRows(); left.splice(gone, 1);
+      sdr.rows = left;
       rerenderCard("screening"); changed(); return;
     }
     if (act === "scr-pick-row") {                 // which answers the screener looks at
@@ -3034,6 +3080,24 @@
       }
       if (st.type === "individual" && !st.outside) st.outside = st.mode !== "qualify";
       rerenderCard("screening"); changed(); return;
+    }
+    if (t.id === "f-scr-add-row") {                // the dropdown of every answer
+      syncFromForm();
+      var sa2 = scrEnsure(), addCode = String(t.value || "");
+      if (addCode) {
+        var have2 = scrRows();
+        if (have2.indexOf(addCode) < 0) have2.push(addCode);
+        sa2.rows = have2;
+        sa2.min = sa2.min || {}; sa2.max = sa2.max || {};
+        if (sa2.min[addCode] === undefined) {
+          sa2.min[addCode] = ed.scale ? ed.scale.min : 0;
+          sa2.max[addCode] = ed.scale ? ed.scale.max : 100;
+        }
+      }
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.getAttribute && t.getAttribute("data-scr-at") !== null) {   // a band moved to another answer
+      syncFromForm(); rerenderCard("screening"); changed(); return;
     }
     if (t.id === "f-scr-outside") {                // each answer inside or outside its range
       syncFromForm();

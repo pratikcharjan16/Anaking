@@ -441,6 +441,11 @@ a{color:var(--accent2)}
 .st-scr-sumrow select{border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px;background:#fff}
 .st-scr-empty{font-size:12px;color:var(--faint);background:var(--soft2);border:1px dashed var(--line);
   border-radius:9px;padding:10px 12px}
+/* the dropdown of every answer, and the one on each band */
+.st-scr-addrow,.st-scr-minmax select{border:1px solid var(--line);border-radius:7px;padding:5px 6px;
+  font-size:12.5px;background:#fff;max-width:260px}
+.st-scr-minmax select{flex:1 1 180px;min-width:120px;font-weight:600}
+.st-scr-addrow{max-width:300px}
 .st-scr-combine{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--muted);margin:0 0 8px}
 .st-scr-combine select{border:1px solid var(--line);border-radius:7px;padding:3px 5px;font-size:12px;background:#fff}
 .st-scr-more{margin:0 0 12px;border:1px solid var(--line2);border-radius:9px;background:var(--soft2)}
