@@ -213,18 +213,23 @@
       return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
     };
   }
-  // list = q.options or q.rows. Items with pin:true keep their index. seed = respondent id.
-  function order(list, q, seed) {
-    var rz = q && q.randomize;
-    var mode = rz && typeof rz === "object" ? rz.mode : rz;
+  // list = q.options, q.rows, q.cols or the scale points.  Items with pin:true keep their
+  // index.  seed = respondent id.  axis = "rows" | "cols" - a grid gives each axis its own
+  // order, and a plain string (the older shape) always meant the rows.
+  function order(list, q, seed, axis) {
+    var rz = q && q.randomize, mode;
+    if (rz && typeof rz === "object") mode = axis ? rz[axis] : (rz.mode != null ? rz.mode : rz.rows);
+    else mode = axis === "cols" ? null : rz;
     if (!list || !mode || mode === "none") return list.slice();
-    var r = rng(hash(String(seed || "") + "|" + (q.id || "")));
+    var r = rng(hash(String(seed || "") + "|" + (q.id || "") + "|" + (axis || "")));
     var free = [], slots = [];
     list.forEach(function (it, i) { if (!it.pin) { free.push(it); slots.push(i); } });
     if (mode === "shuffle") {
       for (var i = free.length - 1; i > 0; i--) { var j = Math.floor(r() * (i + 1)); var t = free[i]; free[i] = free[j]; free[j] = t; }
     } else if (mode === "reverse") {            // half the respondents see the list flipped
       if (r() < 0.5) free.reverse();
+    } else if (mode === "revall") {             // everybody sees it the other way round
+      free.reverse();
     } else if (mode === "rotate") {             // random start point, relative order kept
       var k = Math.floor(r() * free.length);
       free = free.slice(k).concat(free.slice(0, k));

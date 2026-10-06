@@ -804,8 +804,12 @@
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
-      case "concept_test":
+      case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
+      case "heatmap":                                   // every cell is optional, one is enough
+        return Object.keys(a).some(function (k) {
+          return k.charAt(0) !== "_" && k.slice(0, 2) !== "c_" && a[k] !== "" && a[k] !== undefined;
+        });
       case "loop":
         return (q.items || []).length > 0 && (q.items || []).every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
       case "text_block":
@@ -820,14 +824,15 @@
 
   // ============================================================ renderers
   // per-respondent, stable option order (randomisation is seeded by the session id)
-  function orderedList(list, q) {
+  function orderedList(list, q, axis) {
     if (!window.BeaconQ || !q.randomize) return list;
     var seed = (SESSION && SESSION.session_id) || "preview";
-    var out = window.BeaconQ.order(list, q, seed);
+    var out = window.BeaconQ.order(list, q, seed, axis);
     // remember what the respondent actually saw, for analysis
     var a = answers[q.id] || {};
-    var shown = out.map(function (x) { return x.code; }).join(",");
-    if (a._order !== shown) setAns(q.id, "_order", shown);
+    var shown = out.map(function (x) { return x.code !== undefined ? x.code : x.v; }).join(",");
+    var key = axis === "cols" ? "_order_cols" : "_order";
+    if (a[key] !== shown) setAns(q.id, key, shown);
     return out;
   }
 
@@ -915,7 +920,111 @@
   // Spectrum scale: a draggable gradient track with detents and a value bubble.
   // Same data contract as the old 1-7 button row (one integer per item), but the
   // interaction is continuous, visual and touch friendly instead of a button strip.
-  function renderScale(min, max, val, onPick) {
+  // ============================================================ grids
+  // A grid is a title, two axes and a scale.  The Studio gives every row, column and scale
+  // point its own label, format, image / video / audio clip, comment box and place in the
+  // order - everything below simply draws what the Studio stored.
+  var EMOJI_FACES = ["\uD83D\uDE1E", "\uD83D\uDE15", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"];   // frowning .. smiling
+
+  // One entry for every value of the scale, each with its own label and attachment.
+  function scalePointsOf(q) {
+    var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
+    var max = sc.max != null ? Number(sc.max) : 5, have = {};
+    (sc.points || []).forEach(function (p) { have[Number(p.v)] = p; });
+    var out = [];
+    for (var v = min; v <= max; v++) {
+      var p = have[v] || {}, label = p.label || "";
+      if (!label && q.type === "emoji_grid") {
+        label = sc.faces ? (sc.faces[v - min] || "")
+          : (max - min + 1 === EMOJI_FACES.length ? EMOJI_FACES[v - min] : "");
+      }
+      out.push({ v: v, label: label, fmt: p.fmt, media: p.media,
+                 tip: (q.type === "emoji_grid" && sc.face_labels ? sc.face_labels[v - min] : "") || "" });
+    }
+    return out;
+  }
+  // Plain / bold / italic / bold+italic - the little format choice in the Studio.
+  function fmtNode(text, fmt) {
+    if (fmt === "b" || fmt === "bi") {
+      var b = el("b");
+      if (fmt === "bi") { var bi = el("i"); bi.textContent = text; b.appendChild(bi); }
+      else b.textContent = text;
+      return b;
+    }
+    if (fmt === "i") { var ii = el("i"); ii.textContent = text; return ii; }
+    var sp = el("span"); sp.textContent = text; return sp;
+  }
+  // A row, column or scale point label, with its attachment underneath when it carries one.
+  function itemLabelNode(it, cls) {
+    var box = el("div", cls || "rlabel");
+    var line = el("div", "rlabel-line");
+    if (it.label_html && window.BeaconQ) window.BeaconQ.richInto(line, it.label_html, logicCtx(), it.label || "");
+    else line.appendChild(fmtNode(pipeText(it.label), it.fmt));
+    box.appendChild(line);
+    var m = it.media || (it.image ? { kind: "image", src: it.image } : null);
+    if (m && m.src) box.appendChild(renderMedia(m, "qmedia-sm"));
+    return box;
+  }
+  // The exclusive N/A on one row: ticking it clears the rating, rating clears the tick.
+  function naCell(q, key, label, onRate) {
+    var lab = el("label", "na-cell");
+    var cb = el("input"); cb.type = "checkbox";
+    cb.checked = (answers[q.id] || {})[key] === "NA";
+    cb.addEventListener("change", function () {
+      setAns(q.id, key, cb.checked ? "NA" : "");
+      if (onRate) onRate(cb.checked);
+      hideErr(); ansChanged();
+    });
+    lab.appendChild(cb);
+    lab.appendChild(el("span", null, label));
+    return lab;
+  }
+  function commentBox(qid, key, mode, placeholder) {
+    var ta = el("textarea", "cmt-box" + (mode === "require" ? " req" : ""));
+    ta.rows = 2;
+    ta.placeholder = placeholder || "Add a comment";
+    ta.value = getAns(qid, key) || "";
+    ta.addEventListener("input", function () { setAns(qid, key, ta.value); if (ta.value.trim()) hideErr(); });
+    return ta;
+  }
+  // One comment box under a row, spanning the whole grid.
+  function gridCommentRow(q, r, span) {
+    var row = el("div", "grid-row grid-cmtrow");
+    var ta = commentBox(q.id, "c_" + r.code, r.comment,
+      "Comment on " + pipeText(r.label) + (r.comment === "require" ? " (required)" : ""));
+    if (span) ta.dataset.span = String(span);
+    row.appendChild(ta);
+    return row;
+  }
+  function questionComment(q) {
+    var c = q.comments || {}, box = el("div", "q-comment");
+    box.appendChild(el("label", "q-comment-lbl", pipeText(c.label || "Any other comments?") +
+      (c.mode === "require" ? " *" : "")));
+    box.appendChild(commentBox(q.id, "_comment", c.mode, c.label || "Any other comments?"));
+    return box;
+  }
+  // The header: the row group name on the left, one caption per column on the right.
+  function gridHead(q, pts, extra) {
+    var g = q.grid || {}, na = q.na || {};
+    var head = el("div", "grid-row grid-head");
+    head.appendChild(el("div", "rlabel grid-rowname", pipeText(g.row_label || "")));
+    var cells = el("div", "grid-cells");
+    if (g.col_label) cells.appendChild(el("div", "grid-colname", pipeText(g.col_label)));
+    var strip = el("div", "grid-plabels");
+    pts.forEach(function (p) {
+      var c = el("div", "grid-plabel");
+      if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
+      if (p.tip) c.title = p.tip;
+      if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
+      strip.appendChild(c);
+    });
+    if (extra) extra(strip);
+    cells.appendChild(strip);
+    head.appendChild(cells);
+    return head;
+  }
+
+  function renderScale(min, max, val, onPick, pts) {
     var box = el("div", "spectrum");
     box.setAttribute("role", "slider");
     box.setAttribute("aria-valuemin", String(min));
@@ -933,6 +1042,19 @@
       d.style.left = pct(v) + "%";
       track.appendChild(d);
       detents.push(d);
+    }
+    // one caption per scale point, sitting under the matching detent
+    if (pts && pts.some(function (p) { return p.label || (p.media && p.media.src); })) {
+      var labs = el("div", "sp-labels");
+      pts.forEach(function (p) {
+        var c = el("div", "sp-label");
+        c.style.left = pct(p.v) + "%";
+        if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
+        if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
+        labs.appendChild(c);
+      });
+      box.appendChild(labs);
+      box.classList.add("has-labels");
     }
     var bubble = el("div", "sp-bubble", val === undefined ? "tap or drag" : String(val));
     var thumb = el("button", "sp-thumb" + (val === undefined ? " idle" : ""));
@@ -1005,21 +1127,69 @@
     return wrap;
   }
 
+  // A numeric matrix: one number box per row, or a whole table of them once it has columns.
+  function numInput(q, key) {
+    var inp = el("input", "nm-input");
+    inp.type = "number";
+    if (q.min !== undefined) inp.min = q.min;
+    if (q.max !== undefined) inp.max = q.max;
+    if (q.step !== undefined) inp.step = q.step;
+    var v = (answers[q.id] || {})[key];
+    if (v !== undefined && v !== "" && v !== "NA") inp.value = v;
+    inp.addEventListener("input", function () {
+      setAns(q.id, key, inp.value);
+      hideErr(); ansChanged();
+    });
+    return inp;
+  }
   function renderNumMatrix(q) {
     var wrap = el("div", "nummatrix");
-    (q.rows || []).forEach(function (r) {
-      var row = el("div", "nm-row");
-      var lbl = el("div", "nm-label"); lbl.textContent = r.label;
-      var inp = el("input", ""); inp.type = "number";
-      if (q.min !== undefined) inp.min = q.min;
-      if (q.max !== undefined) inp.max = q.max;
-      if (q.step !== undefined) inp.step = q.step;
-      var a = answers[q.id] || {};
-      if (a[r.code] !== undefined && a[r.code] !== "") inp.value = a[r.code];
-      inp.addEventListener("input", function () { setAns(q.id, r.code, inp.value); hideErr(); ansChanged(); });
-      row.appendChild(lbl); row.appendChild(inp);
-      wrap.appendChild(row);
-    });
+    var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
+    var cols = orderedList(q.cols || [], q, "cols");
+    var anyNa = na.rows || na.col;
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (!cols.length) {                                   // one number box per row, as always
+      orderedList(q.rows || [], q, "rows").forEach(function (r) {
+        var row = el("div", "nm-row");
+        row.appendChild(itemLabelNode(r, "nm-label"));
+        row.appendChild(numInput(q, r.code));
+        if (anyNa) row.appendChild(naCell(q, r.code, naLabel, null));
+        wrap.appendChild(row);
+        if (r.comment && r.comment !== "none") {
+          wrap.appendChild(commentBox(q.id, "c_" + r.code, r.comment, "Comment on " + pipeText(r.label)));
+        }
+      });
+    } else {                                              // rows x columns
+      var tbl = el("div", "nm-table");
+      tbl.style.setProperty("--nm-cols", "minmax(140px,1.6fr) repeat(" + cols.length + ", minmax(110px,1fr))" + (anyNa ? " 74px" : ""));
+      var head = el("div", "nm-tr nm-head");
+      head.appendChild(el("div", "nm-th nm-corner", pipeText(g.row_label || "")));
+      cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "nm-th")); });
+      if (anyNa) head.appendChild(el("div", "nm-th nm-th-na", naLabel));
+      tbl.appendChild(head);
+      orderedList(q.rows || [], q, "rows").forEach(function (r) {
+        var row = el("div", "nm-tr");
+        row.appendChild(itemLabelNode(r, "nm-th nm-rowlabel"));
+        cols.forEach(function (c) {
+          var cell = el("div", "nm-td");
+          cell.appendChild(numInput(q, r.code + "_" + c.code));
+          row.appendChild(cell);
+        });
+        if (anyNa) {
+          var nc = el("div", "nm-td nm-td-na");
+          nc.appendChild(naCell(q, r.code, naLabel, null));
+          row.appendChild(nc);
+        }
+        tbl.appendChild(row);
+        if (r.comment && r.comment !== "none") {
+          var crow = el("div", "nm-tr nm-cmtrow");
+          crow.appendChild(commentBox(q.id, "c_" + r.code, r.comment, "Comment on " + pipeText(r.label)));
+          tbl.appendChild(crow);
+        }
+      });
+      wrap.appendChild(tbl);
+    }
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }
 
@@ -1115,30 +1285,148 @@
 
   function renderGrid(q, semantic) {
     var wrap = el("div", "grid");
-    orderedList(q.rows, q).forEach(function (r) {
+    var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
+    var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
+    var max = sc.max != null ? Number(sc.max) : 5;
+    var pts = orderedList(scalePointsOf(q), q, "cols");
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (g.row_label || g.col_label || na.col || pts.some(function (p) { return p.label; })) {
+      wrap.appendChild(gridHead(q, pts, na.col ? function (strip) {
+        strip.appendChild(el("div", "grid-plabel grid-plabel-na", naLabel));
+      } : null));
+    }
+    orderedList(q.rows || [], q, "rows").forEach(function (r) {
       var row = el("div", "grid-row");
-      var left = el("div", "rlabel");
-      if (semantic) { var b = el("strong"); b.textContent = pipeText(r.label); left.appendChild(b); }
-      else left.textContent = pipeText(r.label);
-      var right = el("div");
+      row.appendChild(itemLabelNode(r, "rlabel"));
+      var cells = el("div", "grid-cells");
       if (semantic) {
-        right.style.cssText = "display:flex;align-items:center;gap:9px";
-        right.appendChild(el("span", "sem-left", String(r.left)));
+        cells.style.cssText = "display:flex;align-items:center;gap:9px";
+        cells.appendChild(el("span", "sem-left", String(r.left || "")));
       }
-      right.appendChild(renderScale(q.scale.min, q.scale.max, getAns(q.id, r.code), function (v) {
-        setAns(q.id, r.code, v); hideErr(); ansChanged();
-        checkPattern(q, wrap);
-      }));
-      if (semantic) right.appendChild(el("span", "sem-right", String(r.right)));
-      row.appendChild(left); row.appendChild(right);
+      var naTick = null;
+      cells.appendChild(renderScale(min, max, getAns(q.id, r.code), function (v) {
+        setAns(q.id, r.code, v);
+        if (naTick) naTick.checked = false;              // a rating clears the N/A
+        hideErr(); ansChanged(); checkPattern(q, wrap);
+      }, pts));
+      if (semantic) cells.appendChild(el("span", "sem-right", String(r.right || "")));
+      if (na.rows || na.col) {
+        var holder = el("div", "grid-nacell"), cell = naCell(q, r.code, naLabel, null);
+        naTick = cell.querySelector("input");
+        holder.appendChild(cell); cells.appendChild(holder);
+      }
+      row.appendChild(cells);
       wrap.appendChild(row);
+      if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r));
     });
-    var ends = el("div", "scale-ends");
-    ends.appendChild(el("span", null, String(q.scale.min_label || q.scale.min)));
-    ends.appendChild(el("span", null, String(q.scale.max_label || q.scale.max)));
-    wrap.appendChild(ends);
+    var allLabelled = pts.length && pts.every(function (p) { return p.label; });
+    if (!allLabelled || sc.min_label || sc.max_label) {
+      var ends = el("div", "scale-ends");
+      ends.appendChild(el("span", null, String(sc.min_label || (pts[0] || {}).label || min)));
+      ends.appendChild(el("span", null, String(sc.max_label || (pts[pts.length - 1] || {}).label || max)));
+      wrap.appendChild(ends);
+    }
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }
+
+  // An emoji grid: the same shape as a rating grid, but each scale point is a face to tap.
+
+  function renderEmojiGrid(q) {
+    var wrap = el("div", "grid emoji-grid");
+    var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
+    var pts = orderedList(scalePointsOf(q), q, "cols");
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (g.row_label || g.col_label || na.col) {
+      wrap.appendChild(gridHead(q, pts, na.col ? function (strip) {
+        strip.appendChild(el("div", "grid-plabel grid-plabel-na", naLabel));
+      } : null));
+    }
+    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+      var row = el("div", "grid-row");
+      row.appendChild(itemLabelNode(r, "rlabel"));
+      var cells = el("div", "grid-cells emoji-cells");
+      var faces = [];
+      pts.forEach(function (p) {
+        var b = el("button", "emoji-btn");
+        b.type = "button";
+        b.appendChild(el("span", "emoji-face", pipeText(p.label || String(p.v))));
+        if (p.media && p.media.src) b.appendChild(renderMedia(p.media, "qmedia-xs"));
+        if (p.tip) b.title = p.tip;
+        b.classList.toggle("on", String(getAns(q.id, r.code)) === String(p.v));
+        b.addEventListener("click", function () {
+          setAns(q.id, r.code, p.v);
+          faces.forEach(function (x) { x.classList.remove("on"); });
+          b.classList.add("on");
+          var tick = row.querySelector(".na-cell input"); if (tick) tick.checked = false;
+          hideErr(); ansChanged();
+        });
+        faces.push(b);
+        cells.appendChild(b);
+      });
+      if (na.rows || na.col) {
+        var holder = el("div", "grid-nacell");
+        holder.appendChild(naCell(q, r.code, naLabel, null));
+        cells.appendChild(holder);
+      }
+      row.appendChild(cells);
+      wrap.appendChild(row);
+      if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r));
+    });
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  // A heat map: rows x columns, tap a cell to raise how strongly it applies (0 - 3).
+
+  function renderHeatmap(q) {
+    var wrap = el("div", "heatmap");
+    var g = q.grid || {};
+    var cols = orderedList(q.cols || [], q, "cols");
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    var tbl = el("div", "hm-table");
+    tbl.style.setProperty("--hm-cols", "minmax(120px,1.5fr) repeat(" + cols.length + ", minmax(74px,1fr))");
+    var head = el("div", "hm-tr hm-head");
+    head.appendChild(el("div", "hm-th hm-corner", pipeText(g.row_label || "")));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "hm-th")); });
+    tbl.appendChild(head);
+    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+      var row = el("div", "hm-tr");
+      row.appendChild(itemLabelNode(r, "hm-th hm-rowlabel"));
+      cols.forEach(function (c) {
+        var key = r.code + "_" + c.code;
+        var lvl = Number((answers[q.id] || {})[key] || 0);
+        var cell = el("button", "hm-cell");
+        cell.type = "button";
+        cell.dataset.lvl = String(lvl);
+        cell.title = pipeText(r.label) + " \\u00D7 " + pipeText(c.label);
+        cell.setAttribute("aria-label", cell.title);
+        var mark = el("span", "hm-mark", lvl ? String(lvl) : "");
+        cell.appendChild(mark);
+        cell.addEventListener("click", function () {
+          var next = (Number(cell.dataset.lvl || 0) + 1) % 4;      // tap cycles 0 -> 1 -> 2 -> 3 -> 0
+          cell.dataset.lvl = String(next);
+          mark.textContent = next ? String(next) : "";
+          setAns(q.id, key, next || "");
+          hideErr(); ansChanged();
+        });
+        row.appendChild(cell);
+      });
+      tbl.appendChild(row);
+      if (r.comment && r.comment !== "none") {
+        var crow = el("div", "hm-tr hm-cmtrow");
+        crow.appendChild(commentBox(q.id, "c_" + r.code, r.comment, "Comment on " + pipeText(r.label)));
+        tbl.appendChild(crow);
+      }
+    });
+    wrap.appendChild(tbl);
+    wrap.appendChild(el("div", "hm-legend",
+      "Tap a cell once for weak, twice for moderate, three times for strong \\u00B7 tap again to clear."));
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  // A numeric matrix: one number box per row, or a whole table of them once it has columns.
 
   // Gentle, in-the-moment nudge when every row carries the same rating.
   // Never blocks, never penalises - it just asks for a second look.
@@ -1177,7 +1465,7 @@
 
     orderedList(q.rows, q).forEach(function (r) {
       var row = el("div", "s100-row");
-      row.appendChild(el("div", "rlabel", null)).textContent = pipeText(r.label);
+      row.appendChild(itemLabelNode(r, "rlabel"));
       var inp = el("input");
       inp.type = "number"; inp.min = 0; inp.max = 100; inp.step = 1;
       var v = getAns(q.id, r.code);
@@ -1209,7 +1497,7 @@
         var r = q.rows.filter(function (x) { return x.code === code; })[0];
         var item = el("div", "rank-item" + (i < top ? " top" : ""));
         item.appendChild(el("span", "pos", String(i + 1)));
-        item.appendChild(el("span", null, null)).textContent = pipeText(r.label);
+        item.appendChild(itemLabelNode(r, "rank-label"));
         var ar = el("div", "arrows");
         var up = el("button", null, "&#9650;"), dn = el("button", null, "&#9660;");
         up.type = dn.type = "button";
@@ -1410,12 +1698,14 @@
     return h;
   }
 
-  function renderMedia(m) {
-    var box = el("div", "qmedia" + (m.align ? " qmedia-" + m.align : ""));
+  function renderMedia(m, cls) {
+    var box = el("div", "qmedia" + (cls ? " " + cls : "") + (m.align ? " qmedia-" + m.align : ""));
     var node;
     if (m.kind === "video") {
       node = el("video"); node.controls = true; node.src = m.src; node.preload = "metadata";
       if (m.autoplay) { node.autoplay = true; node.muted = true; }
+    } else if (m.kind === "audio") {
+      node = el("audio"); node.controls = true; node.src = m.src; node.preload = "metadata";
     } else {
       node = el("img"); node.src = m.src; node.alt = m.alt || "";
     }
@@ -1452,6 +1742,8 @@
       case "multi_select": body = renderOptions(q, true); break;
       case "date": body = renderDate(q); break;
       case "numeric_matrix": body = renderNumMatrix(q); break;
+      case "heatmap": body = renderHeatmap(q); break;
+      case "emoji_grid": body = renderEmojiGrid(q); break;
       case "delta": body = renderDelta(q); break;
       case "concept_test": body = renderConceptTest(q); break;
       case "loop": body = renderLoop(q); break;
@@ -1555,6 +1847,26 @@
   function showErr(msg) { var e = $(PREVIEW ? ".prev-err" : "#err"); if (e) { e.textContent = msg; e.classList.add("show"); } }
   function hideErr() { var e = $(PREVIEW ? ".prev-err" : "#err"); if (e) e.classList.remove("show"); }
 
+  // A comment box can be required outright, required when named rows are answered, or
+  // required on a row of its own.  Nothing else is blocked - only the box itself.
+  function missingComment(q) {
+    var a = answers[q.id] || {}, c = q.comments || {}, need = [];
+    function blank(v) { return !String(v || "").trim(); }
+    var wanted = c.mode === "require";
+    if (!wanted && (c.require_when || []).length) {
+      wanted = (c.require_when || []).some(function (code) {
+        var v = a[code];
+        return v !== undefined && v !== "" && v !== "NA";
+      });
+    }
+    if (wanted && blank(a._comment)) return "Please add a comment before continuing.";
+    (q.rows || []).forEach(function (r) {
+      if (r.comment === "require" && blank(a["c_" + r.code])) need.push(pipeText(r.label));
+    });
+    if (need.length) return "Please add a comment for " + need.join(", ") + ".";
+    return null;
+  }
+
   function validateStep() {
     var st = steps[cur];
     if (st.kind === "task") {
@@ -1585,15 +1897,22 @@
       }
     }
     if (q.type === "numeric_matrix") {
-      var na = answers[q.id] || {};
-      for (var ri = 0; ri < (q.rows || []).length; ri++) {
-        var rr = q.rows[ri], rv = na[rr.code];
-        if (rv === undefined || rv === "") continue;
-        if (!isNum(rv)) { showErr(rr.label + ": please enter a number."); return false; }
-        if (q.min !== undefined && parseFloat(rv) < q.min) { showErr(rr.label + " must be at least " + q.min + "."); return false; }
-        if (q.max !== undefined && parseFloat(rv) > q.max) { showErr(rr.label + " must be at most " + q.max + "."); return false; }
+      var na = answers[q.id] || {}, nmCells = [], nmCols = q.cols || [];
+      (q.rows || []).forEach(function (rr) {
+        if (nmCols.length) nmCols.forEach(function (cc) {
+          nmCells.push([rr.label + " \u00D7 " + cc.label, rr.code + "_" + cc.code]); });
+        else nmCells.push([rr.label, rr.code]);
+      });
+      for (var ri = 0; ri < nmCells.length; ri++) {
+        var rv = na[nmCells[ri][1]], rname = nmCells[ri][0];
+        if (rv === undefined || rv === "" || rv === "NA") continue;
+        if (!isNum(rv)) { showErr(rname + ": please enter a number."); return false; }
+        if (q.min !== undefined && parseFloat(rv) < q.min) { showErr(rname + " must be at least " + q.min + "."); return false; }
+        if (q.max !== undefined && parseFloat(rv) > q.max) { showErr(rname + " must be at most " + q.max + "."); return false; }
       }
     }
+    var cmtErr = missingComment(q);
+    if (cmtErr) { showErr(cmtErr); return false; }
     if (q.type === "delta") {
       var da = answers[q.id] || {}, need = ["before", "after"];
       for (var di = 0; di < 2; di++) {

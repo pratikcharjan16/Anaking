@@ -69,7 +69,7 @@
     rating_grid: { name: "Grid / Rating Scale", icon: "\u25A6", desc: "Rate several items on one scale", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
     nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
-    emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions", noprev: true },
+    emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
     numeric: { name: "Numeric Entry", icon: "#", desc: "Type a number - %, $, count", group: "Questions" },
     slider: { name: "Scale", icon: "\u2696", desc: "Drag to a value", group: "Questions" },
     sum_to_100: { name: "Constant Sum", icon: "\u03A3", desc: "Split 100 points across items", group: "Questions" },
@@ -78,7 +78,7 @@
     numeric_matrix: { name: "Numeric Matrix", icon: "\u25A4", desc: "A number for every row", group: "Questions" },
     delta: { name: "Delta", icon: "\u0394", desc: "Before / after values and the change", group: "Questions" },
     concept_test: { name: "Concept Test", icon: "\uD83D\uDCA1", desc: "Show a concept, rate it on rows", group: "Methodologies" },
-    heatmap: { name: "Heatmap", icon: "\u25A9", desc: "Intensity per row \u00D7 column", group: "Methodologies", noprev: true },
+    heatmap: { name: "Heatmap", icon: "\u25A9", desc: "Intensity per row \u00D7 column", group: "Methodologies" },
     maxdiff: { name: "Max Diff", icon: "\u2194", desc: "Best / worst trade-offs - the Max Diff experiment", group: "Methodologies", noprev: true },
     choice_task: { name: "Conjoint", icon: "\u21C4", desc: "Choice tasks from the conjoint design", group: "Methodologies" },
     loop: { name: "Question Loop", icon: "\u27F3", desc: "Ask the same thing for a list of items", group: "Survey flow" },
@@ -268,12 +268,35 @@
     renderSaveState();
     if (auto.on) { clearTimeout(auto.timer); auto.timer = setTimeout(function () { flushSave(); }, 1100); }
   }
+  // Rendering the Screening card seeds an empty rule set on the question being edited, and
+  // the grid fields can be opened and left blank.  Neither is worth persisting, so an
+  // author who only looked at a tab never ends up with a screener they did not write.
+  function scrBlank(s) {
+    if (!s || typeof s !== "object") return true;
+    if (s.enabled === false) return false;                    // parked on purpose - keep it
+    if ((s.rules || []).length || (s.rows || []).length) return false;
+    if (String(s.message || "").trim() || String(s.reason || "").trim()) return false;
+    if (s.sum && String(s.sum.value || "") !== "") return false;
+    if (s.min && Object.keys(s.min).length) return false;
+    if (s.max && Object.keys(s.max).length) return false;
+    return true;
+  }
+  function anyText(o) { return o ? Object.keys(o).map(function (k) { return String(o[k] || ""); }).join("").trim() : ""; }
+  function pruneEmptyExtras() {
+    (cur && cur.cfg && cur.cfg.questions || []).forEach(function (q) {
+      if (scrBlank(q.screening)) delete q.screening;
+      if (q.grid && !anyText(q.grid)) delete q.grid;
+      if (q.na && !q.na.rows && !q.na.col && String(q.na.label || "N/A") === "N/A") delete q.na;
+      if (q.comments && String(q.comments.mode || "none") === "none" && !anyText({ l: q.comments.label })) delete q.comments;
+    });
+  }
   function flushSave(cb) {
     if (!cur) { if (cb) cb(); return; }
     clearTimeout(auto.timer);
     if (auto.saving) { auto.queued = true; if (cb) auto.cbs = (auto.cbs || []).concat([cb]); return; }
     if (!auto.dirty) { if (cb) cb(); return; }
     var seq = auto.seq, slug = cur.slug;
+    pruneEmptyExtras();
     auto.saving = true; auto.error = null; renderSaveState();
     api("/api/studio/save", { slug: cur.slug, title: cur.title, cfg: cur.cfg }).then(function (r) {
       auto.saving = false;
@@ -1006,6 +1029,7 @@
     if (x.kind === "option") return qid + " \u00B7 option";
     if (x.kind === "row") return qid + " \u00B7 row";
     if (x.kind === "scale") return qid + " \u00B7 scale label";
+    if (x.kind === "axis") return qid + " \u00B7 grid heading";
     if (/help$/.test(x.key)) return qid + " \u00B7 help text";
     if (/placeholder$/.test(x.key)) return qid + " \u00B7 placeholder";
     return qid + " \u00B7 question";
@@ -1221,6 +1245,287 @@
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
   function hasRows(t) { return ["rating_grid", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
 
+  // ---- matrix / grid questions ----------------------------------------------------------
+  // A grid always has a Question title plus two axes.  On a rating grid the columns ARE the
+  // scale points (1..7, each with a label of its own); on a heat map and a numeric matrix
+  // they are a second list.  Both axes are edited the same way: add, label, format, attach
+  // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
+  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"];
+  var SCALE_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
+  var AXIS_TYPES = ["heatmap", "numeric_matrix"];                                     // columns = a second list
+  var RZ_MODES = [
+    ["none", "Fixed", "Everyone sees the list as written"],
+    ["shuffle", "Shuffle", "A fresh random order for every respondent"],
+    ["rotate", "Rotate", "Random start point, relative order kept"],
+    ["reverse", "Flip 50/50", "Half of the respondents see it reversed"],
+    ["revall", "Reverse", "Everybody sees it the other way round"]
+  ];
+  var COMMENT_MODES = [
+    ["none", "No comment", "No comment box is shown"],
+    ["allow", "Allow comment", "A box they may fill in if they want to"],
+    ["require", "Require comment", "They cannot carry on until it is filled in"]
+  ];
+  var FMT_MODES = [["", "Plain", "Plain label"], ["b", "Bold", "Bold label"],
+                   ["i", "Italic", "Italic label"], ["bi", "Bold italic", "Bold and italic"]];
+
+  function isGrid(t) { return GRID_TYPES.indexOf(t) >= 0; }
+  function hasScale(t) { return SCALE_TYPES.indexOf(t) >= 0; }
+  function hasColAxis(t) { return AXIS_TYPES.indexOf(t) >= 0; }
+  function gridOf() { return (ed && ed.grid) || {}; }
+  function naOf() { return (ed && ed.na) || {}; }
+  function commentsOf() { return (ed && ed.comments) || {}; }
+
+  function scaleRange(q) {
+    var sc = (q && q.scale) || {};
+    var min = sc.min != null ? Number(sc.min) : 1;
+    var max = sc.max != null ? Number(sc.max) : 5;
+    if (!(max >= min)) max = min;
+    return [min, max];
+  }
+  function faceLabel(q, v) {                       // emoji grids ship with a face per point
+    var sc = (q && q.scale) || {};
+    if (q && q.type === "emoji_grid" && sc.faces) {
+      var f = sc.faces[v - scaleRange(q)[0]];
+      if (f) return f;
+    }
+    return "";
+  }
+  // One entry for every value between min and max, keeping whatever the author stored.
+  function scalePoints(q) {
+    var r = scaleRange(q), have = {};
+    ((q.scale || {}).points || []).forEach(function (p) { have[Number(p.v)] = p; });
+    var out = [];
+    for (var v = r[0]; v <= r[1]; v++) {
+      var p = have[v] || {};
+      out.push({ v: v, label: p.label || faceLabel(q, v) || "", fmt: p.fmt || "", media: p.media,
+                 comment: p.comment || "" });
+    }
+    return out;
+  }
+  // The points are positional: the first is min, the last is max.  Only edited ones are stored.
+  function writeScalePoints(list) {
+    ed.scale = ed.scale || {};
+    var min = scaleRange(ed)[0], pts = [];
+    list.forEach(function (p, i) {
+      var e = { v: min + i };
+      if (String(p.label || "").trim()) e.label = p.label;
+      if (p.fmt) e.fmt = p.fmt;
+      if (p.media && p.media.src) e.media = p.media;
+      if (p.comment && p.comment !== "none") e.comment = p.comment;
+      if (e.label || e.fmt || e.media || e.comment) pts.push(e);
+    });
+    ed.scale.min = min;
+    ed.scale.max = min + list.length - 1;
+    if (pts.length) ed.scale.points = pts; else delete ed.scale.points;
+  }
+  // One media slot - image, video or audio - for a row, a column or a scale point.
+  function mediaOf(it) {
+    if (!it) return null;
+    if (it.media && it.media.src) return it.media;
+    if (it.image) return { kind: "image", src: it.image };
+    return null;
+  }
+  function mediaCell(it, kind, i) {
+    var m = mediaOf(it);
+    if (m) {
+      return '<span class="st-thumb" title="' + esc(String(m.src).split("/").pop()) + '">' +
+        (m.kind === "video" ? '<video src="' + esc(m.src) + '" muted></video>'
+          : m.kind === "audio" ? '<span class="st-thumb-ic" title="Audio clip">\\u266B</span>'
+            : '<img src="' + esc(m.src) + '" alt="">') +
+        '<button class="st-x" data-act="it-media-del" data-kind="' + kind + '" data-i="' + i +
+        '" title="Remove this attachment">\\u00D7</button></span>';
+    }
+    return '<label class="st-ibtn" title="Attach an image, video or audio clip to this ' + esc(kind === "pt" ? "point" : kind) + '">' +
+      "\\uD83D\\uDCE5" + '<input type="file" accept="image/*,video/*,audio/*" data-act="it-media" data-kind="' +
+      kind + '" data-i="' + i + '" hidden></label>';
+  }
+  // The scale points: one row per value, each with its own label, format and media.
+  function scalePointEditor() {
+    var pts = scalePoints(ed);
+    var html = '<div class="st-items st-pts" data-kind="pt">' +
+      '<div class="st-item st-item-head"><span>#</span><span>Value</span><span>Label respondents read</span>' +
+      "<span>Format</span><span>Attachment</span><span>Actions</span></div>";
+    pts.forEach(function (p, i) {
+      var pid = "f-pt-" + i;
+      html += '<div class="st-item" data-i="' + i + '">' +
+        '<span class="st-seq" title="Position ' + (i + 1) + " of " + pts.length + '">' + (i + 1) + ".</span>" +
+        '<span class="st-pt-val" title="The number stored for this point">' + p.v + "</span>" +
+        '<div class="st-with-pipe"><input id="' + pid + '" data-pt="label" data-i="' + i + '" value="' + esc(p.label || "") +
+        '" placeholder="' + (i === 0 ? "e.g. Not at all" : i === pts.length - 1 ? "e.g. Extremely" : "optional") + '">' +
+        pipeButton(pid, true, true) + "</div>" +
+        '<select data-pt="fmt" data-i="' + i + '" title="How the label is styled">' + FMT_MODES.map(function (f) {
+          return '<option value="' + f[0] + '"' + ((p.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>";
+        }).join("") + "</select>" +
+        mediaCell(p, "pt", i) +
+        '<span class="st-item-tools">' +
+        '<button class="st-ibtn" data-act="pt-up" data-i="' + i + '" title="Move this label up one point"' +
+        (i === 0 ? " disabled" : "") + ">\\u25B2</button>" +
+        '<button class="st-ibtn" data-act="pt-down" data-i="' + i + '" title="Move this label down one point"' +
+        (i === pts.length - 1 ? " disabled" : "") + ">\\u25BC</button>" +
+        '<button class="st-ibtn" data-act="pt-dup" data-i="' + i + '" title="Duplicate this point">\\u2398</button>' +
+        '<button class="st-ibtn danger" data-act="pt-del" data-i="' + i + '" title="Delete this point"' +
+        (pts.length <= 2 ? " disabled" : "") + ">\\uD83D\\uDDD1</button></span></div>";
+    });
+    html += "</div>" +
+      '<div class="st-item-actions"><button class="st-btn sm on" data-act="pt-add">+ Add column</button>' +
+      '<button class="st-btn sm ghost" data-act="pt-paste">Enter multiple\\u2026</button>' +
+      '<span class="st-meta">Adding a column extends the scale \\u00B7 deleting one shortens it. ' +
+      "The numbers stored stay in step.</span></div>";
+    return html;
+  }
+  // The title above the grid and the two group names (the row heading and the column heading).
+  function gridHeadFields() {
+    var g = gridOf();
+    return '<div class="st-grid3">' +
+      '<div class="st-field"><label>Question title <span class="st-opt">shown above the grid</span></label>' +
+      '<input id="f-gtitle" value="' + esc(g.title || "") + '" placeholder="e.g. How important is each attribute?"></div>' +
+      '<div class="st-field"><label>Rows are called <span class="st-opt">heading over the row labels</span></label>' +
+      '<input id="f-rowlabel" value="' + esc(g.row_label || "") + '" placeholder="e.g. Attribute"></div>' +
+      '<div class="st-field"><label>Columns are called <span class="st-opt">heading over the columns</span></label>' +
+      '<input id="f-collabel" value="' + esc(g.col_label || "") + '" placeholder="e.g. Rating"></div></div>';
+  }
+  // The exclusive N/A: on every row, and/or as a column of the scale.
+  function naBlock() {
+    var n = naOf();
+    return '<div class="st-mtx-na"><label class="st-switch"><input type="checkbox" id="f-na-rows"' +
+      (n.rows ? " checked" : "") + '><i></i>N/A on every row</label>' +
+      '<label class="st-switch"><input type="checkbox" id="f-na-col"' + (n.col ? " checked" : "") +
+      '><i></i>N/A as a column</label>' +
+      '<label class="st-mini">Wording <input id="f-na-label" class="st-narrow" value="' + esc(n.label || "N/A") +
+      '" placeholder="N/A"></label>' +
+      '<span class="st-meta">N/A is exclusive - it clears the rating on that row and counts as answered. ' +
+      "Offer it on every row, or give it a column of its own in the header.</span></div>";
+  }
+  // Comments: one box for the whole question, and a box under any row you like.
+  function commentBlock() {
+    var c = commentsOf();
+    var rowModes = (ed.rows || []).filter(function (r) { return r.comment && r.comment !== "none"; }).length;
+    return '<div class="st-mtx-comments"><div class="st-grid3">' +
+      '<div class="st-field"><label>Comment box for the question</label><select id="f-cmt-mode">' +
+      COMMENT_MODES.map(function (m) {
+        return '<option value="' + m[0] + '"' + ((c.mode || "none") === m[0] ? " selected" : "") + ">" + m[1] + "</option>";
+      }).join("") + "</select></div>" +
+      '<div class="st-field"><label>Prompt <span class="st-opt">what the box says</span></label>' +
+      '<input id="f-cmt-label" value="' + esc(c.label || "Any other comments?") + '"></div>' +
+      '<div class="st-field"><label>Mandatory for <span class="st-opt">rows that must be explained</span></label>' +
+      '<select id="f-cmt-rows" multiple size="3" title="Hold Ctrl / \\u2318 to pick several rows">' +
+      (ed.rows || []).map(function (r) {
+        var on = (c.require_when || []).map(String).indexOf(String(r.code)) >= 0;
+        return '<option value="' + esc(r.code) + '"' + (on ? " selected" : "") + ">" + esc(rowText(r)) + "</option>";
+      }).join("") + "</select></div></div>" +
+      '<div class="st-hint">A required comment blocks Next until it is filled in \\u00B7 ' +
+      (rowModes ? "<b>" + rowModes + " row(s)</b> carry a comment box of their own - set it on the row below."
+        : "set <b>Comment</b> on a row below to give that row its own box.") + "</div></div>";
+  }
+  // Order of the rows and of the columns, each in its own right.
+  function randomizeAxesBlock() {
+    var rz = ed.randomize || {};
+    function axis(id, name, what) {
+      var mode = typeof rz === "object" ? (rz[name] || "none") : (name === "rows" ? (rz || "none") : "none");
+      return '<div class="st-field"><label>Order of ' + what + '</label><select id="' + id + '">' +
+        RZ_MODES.map(function (m) {
+          return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + " \\u00B7 " + m[2] + "</option>";
+        }).join("") + "</select></div>";
+    }
+    return '<div class="st-grid2">' + axis("f-rz-rows", "rows", (ed.rows || []).length ? "rows" : "rows") +
+      axis("f-rz-cols", "cols", hasColAxis(ed.type) ? "columns" : "columns (the scale points)") + "</div>" +
+      '<div class="st-hint">Pinned rows and columns keep their place whatever the order \\u00B7 the order each ' +
+      "respondent saw is exported with the data.</div>";
+  }
+
+  // A fresh code for a copied item:  b -> b2, r3 -> r4, 2 -> 3, and so on.
+  function nextItemCode(list, code) {
+    var used = {}; list.forEach(function (x) { used[String(x.code)] = 1; });
+    var m = String(code || "x").match(/^(.*?)(\d+)$/);
+    var stem = m ? m[1] : String(code || "x"), n = m ? Number(m[2]) : 1;
+    var out = stem + (n + 1), guard = 0;
+    while (used[out] && guard++ < 500) { n++; out = stem + (n + 1); }
+    return out;
+  }
+  // Rows <-> columns.  On a heat map or a numeric matrix the two lists change places; on a
+  // rating scale the rows change places with the scale points.  Either way it is reversible.
+  function swapAxes() {
+    function plain(list) {
+      return (list || []).map(function (r) {
+        var e = { code: r.code, label: r.label || "" };
+        if (r.fmt) e.fmt = r.fmt;
+        if (r.media) e.media = r.media;
+        return e;
+      });
+    }
+    var rows = ed.rows || [];
+    if (hasColAxis(ed.type)) {
+      var cols = ed.cols || [];
+      if (!rows.length || !cols.length) return false;
+      ed.rows = plain(cols); ed.cols = plain(rows);
+      var g = ed.grid = ed.grid || {}, rl = g.row_label || "", cl = g.col_label || "";
+      g.row_label = cl; g.col_label = rl;
+      if (!g.row_label) delete g.row_label;
+      if (!g.col_label) delete g.col_label;
+      return true;
+    }
+    if (hasScale(ed.type)) {
+      var pts = scalePoints(ed);
+      if (!rows.length || !pts.length) return false;
+      ed.scale = ed.scale || {};
+      ed.scale.min = 1; ed.scale.max = rows.length;
+      ed.scale.points = rows.map(function (r, i) {
+        var e = { v: i + 1, label: r.label || "" };
+        if (r.fmt) e.fmt = r.fmt;
+        if (r.media) e.media = r.media;
+        if (r.comment && r.comment !== "none") e.comment = r.comment;   // carried both ways
+        return e;
+      });
+      ed.rows = pts.map(function (p, i) {
+        var e = { code: "p" + (i + 1), label: p.label || String(p.v) };
+        if (p.fmt) e.fmt = p.fmt;
+        if (p.media) e.media = p.media;
+        if (p.comment && p.comment !== "none") e.comment = p.comment;
+        return e;
+      });
+      return true;
+    }
+    return false;
+  }
+  function scaleRangeFields() {
+    var sc = ed.scale || {};
+    return '<div class="st-grid4">' +
+      '<div class="st-field"><label>From</label><input id="f-smin" type="number" value="' + (sc.min != null ? sc.min : 1) + '"></div>' +
+      '<div class="st-field"><label>To</label><input id="f-smax" type="number" value="' + (sc.max != null ? sc.max : 7) + '"></div>' +
+      '<div class="st-field"><label>Low-end label</label><input id="f-sminl" value="' + esc(sc.min_label || "") + '" placeholder="e.g. Not at all"></div>' +
+      '<div class="st-field"><label>High-end label</label><input id="f-smaxl" value="' + esc(sc.max_label || "") + '" placeholder="e.g. Extremely"></div></div>';
+  }
+
+  // The whole matrix, in the order a respondent reads it: title, scale, columns, rows,
+  // then the swap, the N/A, the comments and the order of both axes.
+  function gridBlock() {
+    var t = ed.type, html = gridHeadFields();
+    if (t === "concept_test") {
+      html += '<div class="st-field"><label>Concept shown to respondents</label><textarea id="f-concept" rows="4">' +
+        esc(ed.concept || "") + '</textarea><div class="st-hint">Attach an image or video under <b>Image / video</b>, ' +
+        "or use rich text in the question text above.</div></div>";
+    }
+    if (hasScale(t)) {
+      html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
+      html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + scalePoints(ed).length + " scale points</span></h4>" +
+        scalePointEditor();
+    }
+    if (hasColAxis(t)) {
+      html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + (ed.cols || []).length + "</span></h4>" +
+        itemTable("col", ed.cols || [], { noun: "column", flags: ["pin"], media: true, fmt: true, ph: "Column label" });
+    }
+    html += '<h4 class="st-h4">Rows <span class="st-h4-n">' + (ed.rows || []).length + "</span></h4>" +
+      itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, comment: true,
+        left: t === "semantic_diff", ph: "Row / statement", labelHead: "Row" });
+    html += '<div class="st-item-actions"><button class="st-btn sm" data-act="mtx-swap" title="Rows become columns and ' +
+      'columns become rows - codes, labels and attachments travel with them">\u21C4 Swap rows and columns</button>' +
+      '<span class="st-meta">' + (hasColAxis(t)
+        ? "Swaps the two lists over. The grid keeps the same cells, just read the other way."
+        : "Swaps the rows with the scale points: every row becomes a column of the scale.") + "</span></div>";
+    html += naBlock() + commentBlock() + randomizeAxesBlock();
+    return html;
+  }
+
   function card(id, title, hint, body, collapsed) {
     return '<details class="st-ecard" id="card-' + id + '"' + (collapsed ? "" : " open") + '><summary><span>' + title + "</span>" +
       (hint ? '<small>' + hint + "</small>" : "") + "</summary><div class=\"st-ecard-body\">" + body + "</div></details>";
@@ -1335,6 +1640,12 @@
     if (/don't you|obviously|clearly|best|excellent/.test(lower)) out.push({key:"leading", level:"warn", text:"Potentially leading language could bias the answer.", fix:"Make wording neutral"});
     if ((ed.type === "single_select" || ed.type === "multi_select") && (!ed.options || ed.options.length < 2)) out.push({key:"options", level:"error", text:"Add at least two answer options.", fix:"Add starter options"});
     if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
+    if (isGrid(ed.type)) {
+      if (!(ed.rows || []).length) out.push({ key: "gridrows", level: "error",
+        text: "This grid has no rows yet.", fix: "Add starter rows" });
+      if (hasColAxis(ed.type) && !(ed.cols || []).length) out.push({ key: "gridcols", level: "error",
+        text: "This grid has no columns yet.", fix: "Add starter columns" });
+    }
     var rules = ed.show_if && ed.show_if.rules || [];
     rules.forEach(function(r){ var qi = cur.cfg.questions.findIndex(function(q){return q.id === r.q;}); if(qi < 0 || qi >= sel) out.push({key:"logic",level:"error",text:"Show-if logic references a missing or later question.",fix:"Repair logic"}); });
     var scr = ed.screening && ed.screening.rules || [];
@@ -1363,6 +1674,8 @@
     if (key === 'double') { ed.stem = String(ed.stem).replace(/\s+(and|or)\s+.*?(\?|$)/i, '?'); ed.stem_html = esc(ed.stem); }
     if (key === 'leading') { ed.stem = String(ed.stem).replace(/obviously|clearly|excellent|best/gi, '').replace(/don't you/gi, 'do you'); ed.stem_html = esc(ed.stem); }
     if (key === 'options') ed.options = [{code:1,label:'Option one'},{code:2,label:'Option two'},{code:99,label:'Other',other:true,pin:true}];
+    if (key === 'gridrows') ed.rows = [{code:'a',label:'First row'},{code:'b',label:'Second row'},{code:'c',label:'Third row'}];
+    if (key === 'gridcols') ed.cols = [{code:'c1',label:'First column'},{code:'c2',label:'Second column'},{code:'c3',label:'Third column'}];
     if (key === 'emptyopt') (ed.options || []).forEach(function(o,i){if(!String(o.label || '').trim()) o.label='Option ' + (i+1);});
     if (key === 'logic') { var prior = cur.cfg.questions.slice(0,sel)[0]; if (prior) ed.show_if = {match:'all',rules:[{q:prior.id,op:prior.options?'selected':'answered',value:prior.options?prior.options[0].code:''}]}; else delete ed.show_if; }
     if (key === 'screen') delete ed.screening;
@@ -1555,13 +1868,22 @@
           (spec.left ? '<input data-it="' + kind + '" data-k="left" data-i="' + i + '" value="' + esc(it.left || "") + '" placeholder="e.g. Poor">' +
                        '<input data-it="' + kind + '" data-k="right" data-i="' + i + '" value="' + esc(it.right || "") + '" placeholder="e.g. Excellent">' : "") +
           '<span class="st-item-tools">' +
-          (spec.image ? (it.image ? '<span class="st-thumb" title="' + esc(it.image.split("/").pop()) + '"><img src="' + esc(it.image) + '" alt=""><button class="st-x" data-act="it-img-del" data-i="' + i + '" title="Remove image">&times;</button></span>'
-            : '<label class="st-ibtn" title="Attach an image">\uD83D\uDDBC<input type="file" accept="image/*" data-act="opt-img" data-oi="' + i + '" hidden></label>') : "") +
+          (spec.media ? mediaCell(it, kind, i)
+            : spec.image ? (it.image ? '<span class="st-thumb" title="' + esc(it.image.split("/").pop()) + '"><img src="' + esc(it.image) + '" alt=""><button class="st-x" data-act="it-img-del" data-i="' + i + '" title="Remove image">&times;</button></span>'
+              : '<label class="st-ibtn" title="Attach an image">\uD83D\uDDBC<input type="file" accept="image/*" data-act="opt-img" data-oi="' + i + '" hidden></label>') : "") +
+          (spec.fmt ? '<select class="st-it-fmt" data-it="' + kind + '" data-k="fmt" data-i="' + i + '" title="How the label is styled">' +
+            FMT_MODES.map(function (f) {
+              return '<option value="' + f[0] + '"' + ((it.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select>" : "") +
           '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>\u25B2</button>' +
           '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down"' + (i === last ? " disabled" : "") + '>\u25BC</button>' +
+          (spec.dup === false ? "" : '<button class="st-ibtn" data-act="it-dup" data-kind="' + kind + '" data-i="' + i + '" title="Duplicate this ' + esc(noun) + '">\u2398</button>') +
           '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span>' +
-          (spec.flags.length ? '<span class="st-flags"><span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
-            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") + "</span>" : "") +
+          ((spec.flags.length || spec.comment) ? '<span class="st-flags">' + (spec.flags.length ? '<span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
+            return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") : "") +
+            (spec.comment ? '<label class="st-flag st-flag-sel" title="A comment box under this ' + esc(noun) + '">Comment ' +
+              '<select data-it="' + kind + '" data-k="comment" data-i="' + i + '">' + COMMENT_MODES.map(function (m) {
+                return '<option value="' + m[0] + '"' + ((it.comment || "none") === m[0] ? " selected" : "") + ">" + m[1] + "</option>"; }).join("") + "</select></label>" : "") +
+            "</span>" : "") +
           "</div>";
       }).join("") + "</div>" +
       '<div class="st-item-actions"><button class="st-btn sm on" data-act="it-add" data-kind="' + kind + '">+ Add ' + spec.noun + "</button>" +
@@ -1593,10 +1915,8 @@
       html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box \u00B7 <b>Screen out</b> ends the survey there and then. Groups of options, counts and conditions on other questions belong on the <b>Screening</b> tab.</div>';
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
-    if (hasRows(t)) {
-      html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
-      if (t === "heatmap") html += '<h4 class="st-h4">Columns</h4>' + itemTable("col", ed.cols || [], { noun: "column", flags: [], ph: "Column label" });
-    }
+    if (isGrid(t)) html += gridBlock();
+    else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
       html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
         '<div class="st-grid3"><div class="st-field"><label>Answer type</label><select id="f-child">' +
@@ -1606,19 +1926,8 @@
         '<div class="st-field"><label>Placeholder</label><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '"></div></div>' +
         '<h4 class="st-h4">Loop over</h4>' + itemTable("item", ed.items || [], { noun: "item", flags: [], ph: "Item label" });
     }
-    if (t === "concept_test") {
-      html += '<div class="st-field"><label>Concept shown to respondents</label><textarea id="f-concept" rows="4">' + esc(ed.concept || "") + '</textarea>' +
-        '<div class="st-hint">Attach an image or video under <b>Image / video</b>, or use rich text in the question text above.</div></div>' +
-        '<h4 class="st-h4">Rating rows</h4>';
-    }
-    if (t === "rating_grid" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
-      var sc = ed.scale || {};
-      html += '<h4 class="st-h4">Scale</h4><div class="st-grid4">' +
-        '<div class="st-field"><label>From</label><input id="f-smin" type="number" value="' + (sc.min != null ? sc.min : 1) + '"></div>' +
-        '<div class="st-field"><label>To</label><input id="f-smax" type="number" value="' + (sc.max != null ? sc.max : 7) + '"></div>' +
-        '<div class="st-field"><label>Low-end label</label><input id="f-sminl" value="' + esc(sc.min_label || "") + '" placeholder="e.g. Not at all"></div>' +
-        '<div class="st-field"><label>High-end label</label><input id="f-smaxl" value="' + esc(sc.max_label || "") + '" placeholder="e.g. Extremely"></div></div>';
-    }
+
+    if (t === "nps") html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
     if (t === "numeric_matrix" || t === "delta") {
       html += '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label><input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
         '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' + (ed.max != null ? ed.max : "") + '"></div>' +
@@ -1782,7 +2091,8 @@
       html += '<div class="st-field"><label>Layout</label><div class="st-seg" id="f-layout-seg">' + [["list", "\u2630 List"], ["grid", "\u25A6 Two columns"], ["inline", "\u25AD Chips"]].map(function (l) {
         return '<button type="button" class="st-seg-btn' + (lay === l[0] ? " on" : "") + '" data-act="set-layout" data-v="' + l[0] + '">' + l[1] + "</button>"; }).join("") + "</div></div>";
     }
-    if (hasOptions(t) || hasRows(t)) html += randomizeBlock(hasOptions(t) ? "options" : "rows");
+    // a grid keeps its row / column order next to the rows themselves, not here
+    if (hasOptions(t) || (hasRows(t) && !isGrid(t))) html += randomizeBlock(hasOptions(t) ? "options" : "rows");
     html += '<div class="st-toggles">' +
       '<label class="st-switch"><input type="checkbox" id="f-hidenum"' + (ed.hide_number ? " checked" : "") + "><i></i>Hide the question number</label>" +
       (hasOptions(t) ? '<label class="st-switch"><input type="checkbox" id="f-hidecodes"' + (ed.hide_codes ? " checked" : "") + "><i></i>Hide option codes (1., 2., \u2026)</label>" : "") +
@@ -2380,8 +2690,8 @@
     return '<div class="st-media-row">' +
       (m.src ? '<div class="st-media-cur">' + (m.kind === "video" ? '<video src="' + esc(m.src) + '" controls></video>' : '<img src="' + esc(m.src) + '" alt="">') +
         '<div><code>' + esc(m.src.split("/").pop()) + '</code><br><button class="st-btn sm danger" data-act="media-del">Remove</button></div></div>' : "") +
-      '<div class="st-media-pick"><label class="st-upload big">\u2B06 ' + (m.src ? "Replace" : "Upload") + ' image or video<input type="file" accept="image/*,video/mp4,video/webm,video/quicktime" data-act="media-upload" hidden></label>' +
-      '<div class="st-meta">png, jpg, gif, webp, svg, mp4, webm, mov \u00B7 max 10 MB</div>' +
+      '<div class="st-media-pick"><label class="st-upload big">\u2B06 ' + (m.src ? "Replace" : "Upload") + ' image, video or audio<input type="file" accept="image/*,video/*,audio/*" data-act="media-upload" hidden></label>' +
+      '<div class="st-meta">png, jpg, gif, webp, svg, mp3, wav, m4a, ogg, mp4, webm, mov \u00B7 max 10 MB</div>' +
       '<div class="st-field"><label>\u2026or paste a link</label><input id="f-media-url" placeholder="https://\u2026/diagram.png or \u2026/clip.mp4" value="' + (m.external ? esc(m.src) : "") + '"></div></div></div>' +
       '<div class="st-grid3">' +
         '<div class="st-field"><label>Width</label><select id="f-media-width">' + [["", "Natural"], ["240px", "Small (240px)"], ["420px", "Medium (420px)"], ["100%", "Full width"]].map(function (w) {
@@ -2467,6 +2777,49 @@
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
       }
+    }
+    // the scale points follow the From / To boxes: the list is rebuilt from the new range
+    if ($$("#st-editor [data-pt]").length) {
+      var spts = scalePoints(ed);
+      $$("#st-editor [data-pt]").forEach(function (n) {
+        var pi2 = Number(n.getAttribute("data-i"));
+        if (!spts[pi2]) return;
+        if (n.getAttribute("data-pt") === "label") spts[pi2].label = n.value; else spts[pi2].fmt = n.value;
+      });
+      if (spts.length >= 2) writeScalePoints(spts);
+    }
+    if (document.getElementById("f-gtitle")) {          // title, row name, column name
+      var gm = ed.grid = ed.grid || {};
+      setOrDel(gm, "title", val("f-gtitle"));
+      setOrDel(gm, "row_label", val("f-rowlabel"));
+      setOrDel(gm, "col_label", val("f-collabel"));
+      if (!Object.keys(gm).length) delete ed.grid;
+    }
+    if (document.getElementById("f-na-rows")) {         // the exclusive N/A
+      var nm = {};
+      if (chk("f-na-rows")) nm.rows = true;
+      if (chk("f-na-col")) nm.col = true;
+      setOrDel(nm, "label", val("f-na-label"));
+      if (Object.keys(nm).length) ed.na = nm; else delete ed.na;
+    }
+    if (document.getElementById("f-cmt-mode")) {        // comments: question-wide and per row
+      var cm = {};
+      var cmode = val("f-cmt-mode");
+      if (cmode && cmode !== "none") cm.mode = cmode;
+      setOrDel(cm, "label", val("f-cmt-label"));
+      var creq = ($("#f-cmt-rows") ? [...$("#f-cmt-rows").selectedOptions].map(function (o) { return o.value; }) : []);
+      if (creq.length) cm.require_when = creq;
+      if (Object.keys(cm).length) ed.comments = cm; else delete ed.comments;
+    }
+    var rzR = $("#f-rz-rows"), rzC = $("#f-rz-cols");
+    if (rzR || rzC) {                                   // rows and columns, each with its own order
+      var rzo = {};
+      if (rzR && rzR.value !== "none") rzo.rows = rzR.value;
+      if (rzC && rzC.value !== "none") rzo.cols = rzC.value;
+      if (ed.randomize && typeof ed.randomize === "object") {
+        Object.keys(ed.randomize).forEach(function (kk) { if (kk !== "rows" && kk !== "cols") rzo[kk] = ed.randomize[kk]; });
+      }
+      setOrDel(ed, "randomize", Object.keys(rzo).length ? rzo : "");
     }
     if ((t === "numeric" || t === "slider") && val("f-min") !== undefined) { ed.min = num("f-min"); ed.max = num("f-max"); setOrDel(ed, "step", num("f-step")); setOrDel(ed, "prefix", val("f-prefix")); setOrDel(ed, "suffix", val("f-suffix")); }
     if (t === "open_text" && val("f-minwords") !== undefined) { setOrDel(ed, "min_words", num("f-minwords")); setOrDel(ed, "placeholder", val("f-placeholder")); }
@@ -2790,6 +3143,63 @@
       syncFromForm(); moveItem(kind, i, act === "it-up" ? i - 1 : i + 1); return;
     }
     if (act === "it-img-del") { syncFromForm(); delete ed.options[i].image; rerenderCard("answers"); changed(); return; }
+    if (act === "it-dup") {                      // copy a row / column / item, straight below it
+      syncFromForm();
+      var dlist = ed[LIST_KEY[kind]]; if (!dlist || !dlist[i]) return;
+      var copy = JSON.parse(JSON.stringify(dlist[i]));
+      copy.code = nextItemCode(dlist, String(copy.code || ""));
+      copy.label = String(copy.label || "") + " (copy)";
+      dlist.splice(i + 1, 0, copy);
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "it-media-del") {                // drop the image / video / audio on a row or column
+      syncFromForm();
+      var mdel = (ed[LIST_KEY[b.getAttribute("data-kind")]] || [])[Number(b.getAttribute("data-i"))];
+      if (mdel) { delete mdel.media; delete mdel.image; }
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "pt-add") {                      // one more column of the scale
+      syncFromForm();
+      var pa = scalePoints(ed); pa.push({ v: scaleRange(ed)[1] + 1, label: "" });
+      writeScalePoints(pa); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "pt-del") {
+      syncFromForm();
+      var pd = scalePoints(ed); if (pd.length <= 2) return;
+      pd.splice(i, 1); writeScalePoints(pd); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "pt-dup") {
+      syncFromForm();
+      var pu = scalePoints(ed), pc = JSON.parse(JSON.stringify(pu[i] || {}));
+      pu.splice(i + 1, 0, pc); writeScalePoints(pu); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "pt-up" || act === "pt-down") {   // the label moves to the neighbouring point
+      syncFromForm();
+      var pm = scalePoints(ed), pj = act === "pt-up" ? i - 1 : i + 1;
+      if (i < 0 || pj < 0 || pj >= pm.length) return;
+      var swapL = pm[i].label, swapF = pm[i].fmt, swapM = pm[i].media;
+      pm[i].label = pm[pj].label; pm[i].fmt = pm[pj].fmt; pm[i].media = pm[pj].media;
+      pm[pj].label = swapL; pm[pj].fmt = swapF; pm[pj].media = swapM;
+      writeScalePoints(pm); rerenderCard("answers"); changed(); return;
+    }
+    if (act === "pt-paste") {
+      syncFromForm();
+      askText("Paste the columns", "One scale point per line. The first line is the lowest, the last is the highest.",
+        scalePoints(ed).map(function (x) { return x.label || ""; }).join("\n"),
+        function (txt) {
+          var lines = String(txt || "").split("\n").map(function (l) { return l.trim(); }).filter(Boolean);
+          if (lines.length < 2) { toast("A scale needs at least two points"); return; }
+          writeScalePoints(lines.map(function (l) { return { label: l }; }));
+          rerenderCard("answers"); changed();
+        });
+      return;
+    }
+    if (act === "mtx-swap") {                    // rows <-> columns
+      syncFromForm();
+      if (swapAxes()) { rerenderCard("answers"); changed(); toast("Rows and columns swapped over"); }
+      else toast("Add a few columns first - then the two axes can be swapped");
+      return;
+    }
     if (act === "it-paste") {
       syncFromForm();
       var key3 = LIST_KEY[kind];
@@ -3024,6 +3434,22 @@
         at.higher_is_bad = t.checked;
       }
       rerenderCard("answers"); changed();
+      return;
+    }
+    if (act === "it-media" && t.files && t.files[0]) {
+      var mkind = t.getAttribute("data-kind"), midx = Number(t.getAttribute("data-i"));
+      uploadMedia(t.files[0], function (r) {
+        syncFromForm();
+        var media = { kind: r.kind || "image", src: r.src };
+        if (mkind === "pt") {
+          var pp = scalePoints(ed); if (!pp[midx]) return;
+          pp[midx].media = media; writeScalePoints(pp);
+        } else {
+          var host = (ed[LIST_KEY[mkind]] || [])[midx]; if (!host) return;
+          host.media = media; delete host.image;
+        }
+        rerenderCard("answers"); changed();
+      });
       return;
     }
     if (act === "opt-img" && t.files && t.files[0]) {

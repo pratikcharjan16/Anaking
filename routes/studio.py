@@ -633,7 +633,10 @@ def delete_narration():
 IMAGE_EXT = {"png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "gif": "image/gif",
              "webp": "image/webp", "svg": "image/svg+xml"}
 VIDEO_EXT = {"mp4": "video/mp4", "webm": "video/webm", "mov": "video/quicktime"}
-MEDIA_EXT = dict(IMAGE_EXT, **VIDEO_EXT)
+# audio shares the media folder with images and video - a row or a column can carry any of them
+AUDIO_MEDIA_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "ogg": "audio/ogg",
+                   "opus": "audio/ogg", "wav": "audio/wav", "aac": "audio/aac"}
+MEDIA_EXT = dict(IMAGE_EXT, **AUDIO_MEDIA_EXT, **VIDEO_EXT)
 
 
 def _media_dir(slug: str) -> str:
@@ -650,7 +653,7 @@ def upload_media():
         return jsonify({"error": "no file"}), 400
     ext = secure_filename(f.filename).rsplit(".", 1)[-1].lower() if "." in f.filename else ""
     if ext not in MEDIA_EXT:
-        return jsonify({"error": "unsupported file (png, jpg, gif, webp, svg, mp4, webm, mov)"}), 400
+        return jsonify({"error": "unsupported file (png, jpg, gif, webp, svg, mp3, wav, m4a, ogg, mp4, webm, mov)"}), 400
     data = f.read()
     if not data:
         return jsonify({"error": "empty file"}), 400
@@ -664,7 +667,8 @@ def upload_media():
     with open(os.path.join(folder, name), "wb") as out:
         out.write(data)
     return jsonify({"ok": True, "file": name, "src": f"/media/{slug}/{name}",
-                    "kind": "video" if ext in VIDEO_EXT else "image", "bytes": len(data)})
+                    "kind": "video" if ext in VIDEO_EXT else "audio" if ext in AUDIO_MEDIA_EXT else "image",
+                    "bytes": len(data)})
 
 
 @bp.post("/api/studio/media/delete")

@@ -701,3 +701,22 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-scr-verdict.pass{background:#f0faf4}
 .st-scr-verdict.pass b{color:var(--good)}
 .st-note.warn{background:#fff8ec;border-color:#f2dcb3;color:#7a4c00}
+
+/* ---- matrix / grid questions -------------------------------------------------------
+   The scale points are a table of their own (position | value | label | format | media |
+   tools), and the N/A + comment + order settings sit in their own boxes under the rows. */
+.st-h4-n{font-weight:700;font-size:11px;letter-spacing:0;text-transform:none;color:var(--faint)}
+.st-pts .st-item{grid-template-columns:26px 44px minmax(0,1fr) 88px 38px auto}
+.st-pt-val{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;text-align:center;color:var(--muted)}
+.st-it-fmt,.st-pts select{border:1px solid var(--line);border-radius:6px;padding:3px 4px;font-size:11px;
+  background:#fff;max-width:100%}
+.st-thumb-ic{display:inline-flex;align-items:center;justify-content:center;width:30px;height:24px;
+  border:1px solid var(--line);border-radius:5px;background:var(--soft2);font-size:13px}
+.st-flag-sel{display:inline-flex;gap:4px;align-items:center;padding:2px 7px}
+.st-flag-sel select{border:0;background:transparent;font:inherit;font-size:11px;font-weight:700;
+  color:inherit;max-width:118px;padding:0}
+.st-mtx-na,.st-mtx-comments{border:1px solid var(--line2);border-radius:9px;background:var(--soft2);
+  padding:10px 12px;margin:10px 0}
+.st-mtx-na{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
+.st-mtx-na .st-meta{flex:1 1 260px}
+.st-narrow{max-width:130px}
