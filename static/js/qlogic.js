@@ -4,6 +4,10 @@
  *   BeaconQ.pipe(text, ctx)            replace {Q1} {Q1.text} {Q1.opt:3} ... with answers
  *   BeaconQ.richInto(el, html, ctx)    sanitize + pipe + inject as DOM
  *   BeaconQ.showIf(q, ctx)             evaluate q.show_if -> true/false
+ *   BeaconQ.screening(q)               screening blocks of a question (explicit + legacy)
+ *   BeaconQ.screeningVerdict(qs, a, o) first block that ends the survey -> {qid,reason,message}|null
+ *   BeaconQ.screenSummary(q, qs)       the same rules in plain English, one line per block
+ *   BeaconQ.opsFor(q)                  conditions valid for that question type
  *   BeaconQ.order(list, q, seed)       apply q.randomize to options / rows (pinned kept)
  *   BeaconQ.sampleAnswers(questions)   plausible answers for every question (preview/piping)
  *
@@ -230,6 +234,304 @@
     return out;
   }
 
+  // ---------------------------------------------------------------- screening
+  // SCREEN IN / SCREEN OUT - per-question, per-option-group, fully data driven.
+  //
+  // A question can carry a screening block next to its content:
+  //
+  //   screening: { mode:  "screen_out" | "qualify",
+  //                match: "all" | "any",
+  //                when:  "live" | "next",           // as soon as it matches / on Next
+  //                message: "text respondents read when it fires",
+  //                reason:  "short line recorded in the screen-out report",
+  //                rules: [ { q: "Q1", op: "any_of", value: "5,6,7,8" }, ... ] }
+  //
+  //   screen_out  - when the rules match the respondent is screened out.
+  //   qualify     - the respondent may only continue when the rules match;
+  //                 everybody else is screened out at this question.
+  //
+  // The legacy shorthand still works and is merged in as extra blocks, so older
+  // studies keep behaving exactly as they did:
+  //   options[].terminate = true       -> screens out when that option is picked
+  //   terminate_if_lt / terminate_message on a numeric question
+  //
+  // Everything is evaluated against the same ctx as show-if:
+  //   ctx = { answers: {qid: {...}}, questions: [...] }
+
+  // op -> { label, value, kinds }.  kinds [] means "every question type".
+  var SCREEN_OPS = [
+    { op: "selected",     label: "is",                       value: "codes", kinds: ["choice"] },
+    { op: "not_selected", label: "is not",                   value: "codes", kinds: ["choice"] },
+    { op: "any_of",       label: "is any of",                value: "codes", kinds: ["choice"] },
+    { op: "none_of",      label: "is none of",               value: "codes", kinds: ["choice"] },
+    { op: "all_of",       label: "includes all of",          value: "codes", kinds: ["choice", "rank"] },
+    { op: "exactly",      label: "is exactly these",         value: "codes", kinds: ["choice"] },
+    { op: "count_gte",    label: "selects at least",         value: "count", kinds: ["choice"] },
+    { op: "count_lte",    label: "selects at most",          value: "count", kinds: ["choice"] },
+    { op: "count_eq",     label: "selects exactly",          value: "count", kinds: ["choice"] },
+    { op: "eq",           label: "equals",                   value: "number", kinds: ["number"] },
+    { op: "ne",           label: "does not equal",           value: "number", kinds: ["number"] },
+    { op: "gt",           label: "is more than",             value: "number", kinds: ["number"] },
+    { op: "gte",          label: "is at least",              value: "number", kinds: ["number"] },
+    { op: "lt",           label: "is less than",             value: "number", kinds: ["number"] },
+    { op: "lte",          label: "is at most",               value: "number", kinds: ["number"] },
+    { op: "between",      label: "is between",               value: "between", kinds: ["number"] },
+    { op: "contains",     label: "mentions",                 value: "text", kinds: ["text"] },
+    { op: "not_contains", label: "does not mention",         value: "text", kinds: ["text"] },
+    { op: "words_lt",     label: "is shorter than (words)",  value: "count", kinds: ["text"] },
+    { op: "row_eq",       label: "row is",                   value: "rowvalue", kinds: ["grid"] },
+    { op: "row_ne",       label: "row is not",               value: "rowvalue", kinds: ["grid"] },
+    { op: "row_gte",      label: "row is at least",          value: "rowvalue", kinds: ["grid"] },
+    { op: "row_lte",      label: "row is at most",           value: "rowvalue", kinds: ["grid"] },
+    { op: "ranked_first", label: "ranks first",              value: "codes", kinds: ["rank"] },
+    { op: "ranked_top",   label: "ranks in the top",         value: "ranktop", kinds: ["rank"] },
+    { op: "answered",     label: "was answered",             value: "none", kinds: [] },
+    { op: "not_answered", label: "was skipped",              value: "none", kinds: [] }
+  ];
+  var SCREEN_OP_BY_ID = {};
+  SCREEN_OPS.forEach(function (o) { SCREEN_OP_BY_ID[o.op] = o; });
+
+  // Which family of controls the condition needs, per question type.
+  var TYPE_KIND = {
+    single_select: "choice", multi_select: "choice",
+    numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
+    open_text: "text", loop: "text",
+    rank: "rank",
+    rating_grid: "grid", semantic_diff: "grid", sum_to_100: "grid", emoji_grid: "grid",
+    heatmap: "grid", numeric_matrix: "grid", concept_test: "grid"
+  };
+  function qKind(q) { return TYPE_KIND[q && q.type] || "any"; }
+
+  function opsFor(q) {
+    var k = qKind(q);
+    return SCREEN_OPS.filter(function (o) { return !o.kinds.length || o.kinds.indexOf(k) >= 0; });
+  }
+  function opInfo(op) { return SCREEN_OP_BY_ID[op] || { op: op, label: op, value: "text", kinds: [] }; }
+  function valueKind(op) { return opInfo(op).value; }
+
+  function codeList(value) {
+    return String(value === undefined || value === null ? "" : value)
+      .split(",").map(function (s) { return s.trim(); }).filter(Boolean);
+  }
+  // the codes the respondent picked for a question, whichever shape the answer has
+  function pickedCodes(q, a) {
+    a = a || {};
+    if (q && q.type === "multi_select") return (a.codes || []).map(String);
+    if (q && q.type === "rank") return (a.order || []).map(String);
+    if (a._ !== undefined && a._ !== null && String(a._) !== "") return [String(a._)];
+    return [];
+  }
+  function numOf(a) {
+    if (!a) return NaN;
+    if (a.delta !== undefined && a.before !== undefined) return Number(a.delta);
+    return a._ === undefined || a._ === null || a._ === "" ? NaN : Number(a._);
+  }
+  function textOf(q, a) {
+    a = a || {};
+    if (q && q.type === "loop") {
+      return (q.items || []).map(function (it) { return String(a[it.code] || ""); }).join(" ");
+    }
+    return String(a._ === undefined || a._ === null ? "" : a._);
+  }
+  function wordsOf(t) { return String(t).trim().split(/\s+/).filter(Boolean).length; }
+  function rowKey(item) { return String(item || "").split("=")[0].trim(); }
+  function rowWant(item) { var p = String(item || "").split("="); return p.length > 1 ? p.slice(1).join("=").trim() : ""; }
+
+  function screenRuleTrue(r, ctx) {
+    var q = findQ(ctx, r.q);
+    var a = (ctx && ctx.answers && ctx.answers[r.q]) || {};
+    var codes = pickedCodes(q, a);
+    var want = codeList(r.value);
+    var num = numOf(a);
+    switch (r.op) {
+      case "selected": return codes.indexOf(want[0]) >= 0;
+      case "not_selected": return codes.indexOf(want[0]) < 0;
+      case "any_of": return want.some(function (v) { return codes.indexOf(v) >= 0; });
+      case "none_of": return !want.some(function (v) { return codes.indexOf(v) >= 0; });
+      case "all_of": return want.length > 0 && want.every(function (v) { return codes.indexOf(v) >= 0; });
+      case "exactly": return codes.length === want.length && want.every(function (v) { return codes.indexOf(v) >= 0; });
+      case "count_gte": return codes.length >= Number(r.value);
+      case "count_lte": return codes.length <= Number(r.value);
+      case "count_eq": return codes.length === Number(r.value);
+      case "eq": return num === Number(r.value);
+      case "ne": return !(num === Number(r.value));
+      case "gt": return isFinite(num) && num > Number(r.value);
+      case "gte": return isFinite(num) && num >= Number(r.value);
+      case "lt": return isFinite(num) && num < Number(r.value);
+      case "lte": return isFinite(num) && num <= Number(r.value);
+      case "between": {
+        var p = String(r.value || "").split("-");
+        var lo = Number(p[0]), hi = Number(p[1]);
+        return isFinite(num) && num >= lo && num <= hi;
+      }
+      case "contains": return textOf(q, a).toLowerCase().indexOf(String(r.value || "").toLowerCase()) >= 0;
+      case "not_contains": return textOf(q, a).toLowerCase().indexOf(String(r.value || "").toLowerCase()) < 0;
+      case "words_lt": return wordsOf(textOf(q, a)) < Number(r.value);
+      case "row_eq": case "row_ne": case "row_gte": case "row_lte": {
+        var key = rowKey(r.value), target = Number(rowWant(r.value));
+        var got = a[key];
+        if (got === undefined || got === "" || got === null) return false;
+        var g = Number(got);
+        if (r.op === "row_eq") return g === target;
+        if (r.op === "row_ne") return !(g === target);
+        if (r.op === "row_gte") return g >= target;
+        return g <= target;
+      }
+      case "ranked_first": return codes.length > 0 && codes[0] === want[0];
+      case "ranked_top": {
+        var n = Number(rowWant(r.value));
+        return codes.slice(0, n).indexOf(rowKey(r.value)) >= 0;
+      }
+      case "answered": return isAnswered(q, a);
+      case "not_answered": return !isAnswered(q, a);
+    }
+    return ruleTrue(r, ctx);              // fall back to the show-if operators
+  }
+
+  // Every screening block a question carries, explicit + legacy, normalised.
+  function screening(q) {
+    var out = [];
+    if (!q) return out;
+    var s = q.screening;
+    if (s && s.enabled !== false && (s.rules || []).length) {
+      out.push({
+        owner: q.id,
+        mode: s.mode === "qualify" ? "qualify" : "screen_out",
+        match: s.match === "any" ? "any" : "all",
+        when: s.when === "next" ? "next" : "live",
+        rules: s.rules, message: s.message || "", reason: s.reason || "", source: "rules"
+      });
+    }
+    var term = ((q.options) || []).filter(function (o) { return o.terminate; });
+    if (term.length) {
+      out.push({
+        owner: q.id, mode: "screen_out", match: "any", when: "live",
+        rules: term.map(function (o) { return { q: q.id, op: "selected", value: o.code }; }),
+        message: q.terminate_message || "", reason: "", source: "options"
+      });
+    }
+    if (q.terminate_if_lt !== undefined && q.terminate_if_lt !== null && String(q.terminate_if_lt) !== "") {
+      out.push({
+        owner: q.id, mode: "screen_out", match: "all", when: "next",
+        rules: [{ q: q.id, op: "lt", value: q.terminate_if_lt }],
+        message: q.terminate_message || "", reason: "", source: "legacy"
+      });
+    }
+    return out;
+  }
+  function hasScreening(q) { return screening(q).length > 0; }
+
+  // Has the respondent finished this question? Stricter than `isAnswered` (which is
+  // happy with any answer at all) because a screening rule on a grid should wait for
+  // the whole grid, not fire on the first row somebody happens to tap.
+  function complete(q, a) {
+    a = a || {};
+    if (!q) return false;
+    switch (q.type) {
+      case "single_select": case "numeric": case "slider": case "nps":
+      case "open_text": case "date":
+        return a._ !== undefined && a._ !== null && String(a._) !== "";
+      case "multi_select": return (a.codes || []).length > 0;
+      case "rank": return (a.order || []).length === (q.rows || []).length && (q.rows || []).length > 0;
+      case "delta": return a.before !== undefined && a.after !== undefined;
+      case "sum_to_100": return (q.rows || []).some(function (r) { return a[r.code] !== undefined; });
+      case "loop": return (q.items || []).length > 0 && (q.items || []).every(function (it) {
+        return String(a[it.code] || "").trim() !== ""; });
+      default:
+        if ((q.rows || []).length) return (q.rows || []).every(function (r) {
+          return a[r.code] !== undefined && a[r.code] !== ""; });
+        return isAnswered(q, a);
+    }
+  }
+
+  // "match" / "no" / "pending" - pending until the questions it reads are answered.
+  function blockState(block, ctx) {
+    var answers = (ctx && ctx.answers) || {};
+    var owner = findQ(ctx, block.owner);
+    if (!complete(owner, answers[block.owner])) return "pending";
+    for (var i = 0; i < block.rules.length; i++) {
+      var r = block.rules[i];
+      if (r.q === block.owner) continue;
+      if (!isAnswered(findQ(ctx, r.q), answers[r.q] || {})) return "pending";
+    }
+    var res = block.rules.map(function (r) { return screenRuleTrue(r, ctx); });
+    var ok = block.match === "any" ? res.some(Boolean) : res.every(Boolean);
+    return ok ? "match" : "no";
+  }
+
+  // First block that ends the survey, in questionnaire order. Returns
+  // { qid, mode, reason, message } or null.
+  //   opts.phase = "live"  - only blocks that fire as soon as they match
+  //   opts.upto            - last question index to consider
+  function screeningVerdict(questions, answers, opts) {
+    opts = opts || {};
+    var ctx = { answers: answers || {}, questions: questions || [] };
+    for (var i = 0; i < ctx.questions.length; i++) {
+      if (opts.upto != null && i > opts.upto) break;
+      var q = ctx.questions[i];
+      var blocks = screening(q);
+      for (var b = 0; b < blocks.length; b++) {
+        var blk = blocks[b];
+        if (opts.phase === "live" && blk.when !== "live") continue;
+        var st = blockState(blk, ctx);
+        if (blk.mode === "screen_out" && st === "match") return hit(q, blk, ctx);
+        if (blk.mode === "qualify" && st === "no") return hit(q, blk, ctx);
+      }
+    }
+    return null;
+  }
+  function hit(q, blk, ctx) {
+    return {
+      qid: q.id,
+      mode: blk.mode,
+      message: blk.message || "",
+      reason: blk.reason ? String(blk.reason)
+        : (q.id + ": " + (blk.mode === "qualify"
+            ? "did not qualify - " + blockText(blk, ctx.questions)
+            : blockText(blk, ctx.questions)))
+    };
+  }
+
+  // ------------------------------------------------- screening in plain words
+  function itemLabel(q, code) {
+    var l = optLabel(q, code) || rowLabel(q, code);
+    return l ? String(l) : String(code);
+  }
+  function valueText(r, questions) {
+    var q = null;
+    for (var i = 0; i < (questions || []).length; i++) if (questions[i].id === r.q) q = questions[i];
+    var kind = valueKind(r.op);
+    if (kind === "codes") {
+      var codes = codeList(r.value);
+      var labels = codes.map(function (c) { return itemLabel(q, c); });
+      if (r.op === "ranked_first") return labels.join(" / ") || "…";
+      return labels.length ? labels.join(r.op === "all_of" ? " and " : ", ") : "…";
+    }
+    if (kind === "ranktop") return itemLabel(q, rowKey(r.value)) + " (top " + rowWant(r.value) + ")";
+    if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " = " + rowWant(r.value);
+    if (kind === "between") { var p = String(r.value || "").split("-"); return (p[0] || "?") + " and " + (p[1] || "?"); }
+    if (kind === "count") return String(r.value) + (r.op === "words_lt" ? " words" : "");
+    if (kind === "none") return "";
+    return String(r.value === undefined || r.value === null ? "" : r.value);
+  }
+  function ruleText(r, questions) {
+    var v = valueText(r, questions);
+    return (r.q || "?") + " " + opInfo(r.op).label + (v ? " " + v : "");
+  }
+  function blockText(block, questions) {
+    var join = block.match === "any" ? " or " : " and ";
+    return block.rules.map(function (r) { return ruleText(r, questions); }).join(join);
+  }
+  // One readable line per block, for the Studio, the Word outline and the data.
+  function screenSummary(q, questions) {
+    return screening(q).map(function (b) {
+      return {
+        mode: b.mode, when: b.when, source: b.source,
+        text: (b.mode === "qualify" ? "continue only when " : "screen out when ") + blockText(b, questions || [q])
+      };
+    });
+  }
+
   // ---------------------------------------------------------------- sample answers (preview)
   function sampleAnswers(questions, uptoId) {
     var out = {};
@@ -295,6 +597,11 @@
   window.BeaconQ = {
     sanitize: sanitize, sanitizeToFragment: sanitizeToFragment, stripTags: stripTags,
     pipe: pipe, richInto: richInto, showIf: showIf, order: order, hash: hash,
-    sampleAnswers: sampleAnswers, pipeTokens: pipeTokens, answerText: answerText
+    sampleAnswers: sampleAnswers, pipeTokens: pipeTokens, answerText: answerText,
+    // screening (screen in / screen out)
+    SCREEN_OPS: SCREEN_OPS, opsFor: opsFor, opInfo: opInfo, valueKind: valueKind,
+    qKind: qKind, screening: screening, hasScreening: hasScreening, blockState: blockState,
+    screeningVerdict: screeningVerdict, screenSummary: screenSummary,
+    ruleText: ruleText, blockText: blockText, valueText: valueText, codeList: codeList
   };
 })();

@@ -10,6 +10,7 @@ import time
 from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
 from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
+from . import screening
 
 
 def _verbatim_qs(cfg: dict) -> list:
@@ -291,6 +292,10 @@ def build_sheets(records: list, scope: str, cfg: dict):
     dd_rows = []
     for q in cfg.get("questions", []):
         stem = q["stem"]
+        # screening rules travel with the questionnaire - document them beside the question
+        for line in screening.describe(q, cfg.get("questions", [])):
+            dd_rows.append([q["id"], q.get("section", ""), q["type"], stem, "(screening)",
+                            line, "survey ends here for the respondent"])
         if q.get("show_if") and q["show_if"].get("rules"):
             rules = " %s " % ("OR" if q["show_if"].get("match") == "any" else "AND")
             dd_rows.append([q["id"], q["section"], q["type"], stem, "(show-if)",

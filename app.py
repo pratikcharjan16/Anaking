@@ -34,7 +34,7 @@ from config import CONFIGS, DATA_DIR, UPLOAD_DIR, Config
 from core.seed import seed_beacon
 from routes import register_routes
 
-__version__ = "3.2.0"
+__version__ = "3.3.0"
 
 
 class RegexConverter(BaseConverter):

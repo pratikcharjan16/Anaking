@@ -18,6 +18,7 @@ import time
 from flask import current_app, g
 
 from core.sanitize import sanitize_question
+from core.screening import normalize as normalize_screening
 
 write_lock = threading.Lock()
 
@@ -290,6 +291,7 @@ class Study:
         cfg["title"] = title
         for q in cfg.get("questions", []):
             sanitize_question(q)
+            normalize_screening(q)          # hand-edited screening JSON is cleaned, never trusted
         ids = [q.get("id") for q in cfg.get("questions", [])]
         if len(ids) != len(set(ids)):
             raise StudyError("duplicate question ids")

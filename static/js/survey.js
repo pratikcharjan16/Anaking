@@ -497,6 +497,7 @@
     ta.addEventListener("blur", function () {
       awayAt = Date.now();
       setAns(q.id, "_meta", snapshot());
+      ansChanged();                          // screening on text waits until the box is left
     });
     ta.addEventListener("focus", function () {
       if (awayAt) { meta.blur_ms += Date.now() - awayAt; awayAt = 0; }
@@ -877,6 +878,7 @@
         } else {
           setAns(q.id, "_", o.code);
         }
+        ansChanged();                          // screening: fires immediately if this answer ends it
         paint();
         if (o.other && otherBox) {
           otherBox.classList.toggle("show", input.checked);
@@ -998,7 +1000,7 @@
     if (q.min) input.min = q.min;
     if (q.max) input.max = q.max;
     input.value = a._ || "";
-    input.addEventListener("change", function () { setAns(q.id, "_", input.value); hideErr(); });
+    input.addEventListener("change", function () { setAns(q.id, "_", input.value); hideErr(); ansChanged(); });
     wrap.appendChild(input);
     return wrap;
   }
@@ -1014,7 +1016,7 @@
       if (q.step !== undefined) inp.step = q.step;
       var a = answers[q.id] || {};
       if (a[r.code] !== undefined && a[r.code] !== "") inp.value = a[r.code];
-      inp.addEventListener("input", function () { setAns(q.id, r.code, inp.value); hideErr(); });
+      inp.addEventListener("input", function () { setAns(q.id, r.code, inp.value); hideErr(); ansChanged(); });
       row.appendChild(lbl); row.appendChild(inp);
       wrap.appendChild(row);
     });
@@ -1036,7 +1038,7 @@
       var d = NaN;
       if (before.value !== "" && after.value !== "") d = parseFloat(after.value) - parseFloat(before.value);
       setAns(q.id, "delta", isFinite(d) ? d : "");
-      paint(); hideErr();
+      paint(); hideErr(); ansChanged();
     }
     function cell(label, node, val) {
       var box = el("div", "delta-cell");
@@ -1124,7 +1126,7 @@
         right.appendChild(el("span", "sem-left", String(r.left)));
       }
       right.appendChild(renderScale(q.scale.min, q.scale.max, getAns(q.id, r.code), function (v) {
-        setAns(q.id, r.code, v); hideErr();
+        setAns(q.id, r.code, v); hideErr(); ansChanged();
         checkPattern(q, wrap);
       }));
       if (semantic) right.appendChild(el("span", "sem-right", String(r.right)));
@@ -1182,6 +1184,7 @@
       inp.value = (v === undefined) ? "" : v;
       inp.addEventListener("input", function () {
         setAns(q.id, r.code, inp.value === "" ? "" : parseInt(inp.value, 10));
+        ansChanged();
         recompute();
       });
       inputs.push(inp);
@@ -1218,6 +1221,7 @@
         wrap.appendChild(item);
       });
       setAns(q.id, "order", order.slice());
+      ansChanged();
       hideErr();
     }
     function move(i, d) {
@@ -1464,7 +1468,7 @@
         var v = getAns(q.id, "_");
         inp.value = v === undefined ? "" : v;
         inp.addEventListener("input", function () {
-          setAns(q.id, "_", inp.value === "" ? "" : Number(inp.value)); hideErr();
+          setAns(q.id, "_", inp.value === "" ? "" : Number(inp.value)); hideErr(); ansChanged();
         });
         row.appendChild(inp);
         if (q.suffix) row.appendChild(el("span", "suf", String(q.suffix)));
@@ -1480,9 +1484,10 @@
         rng.type = "range"; rng.min = q.min; rng.max = q.max; rng.step = q.step || 1;
         rng.value = val;
         setAns(q.id, "_", Number(val));
+        ansChanged();
         rng.addEventListener("input", function () {
           out.textContent = rng.value + (q.suffix || "");
-          setAns(q.id, "_", Number(rng.value)); hideErr();
+          setAns(q.id, "_", Number(rng.value)); hideErr(); ansChanged();
         });
         var ends = el("div", "slider-ends");
         ends.appendChild(el("span", null, String(q.min_label || q.min)));
@@ -1624,14 +1629,18 @@
   }
 
   // ============================================================ screening
-  function screenOut(reason) {
+  // Screening is data, never code: every question can carry its own screen-in /
+  // screen-out rules (see BeaconQ.screening in qlogic.js).  Nothing about a study's
+  // quotas is hard-coded here any more - the rules travel with the questionnaire.
+  function screenOut(v) {
     stopNarration();
-    save({ screened_out: true, screen_out_reason: reason, screen_out_at: steps[cur].q.id });
+    var qid = v.qid || (steps[cur] && steps[cur].q.id) || "";
+    save({ screened_out: true, screen_out_reason: v.reason, screen_out_at: qid });
     var card = el("div", "card");
     card.appendChild(el("div", "done-icon stop", "&#10005;"));
     card.appendChild(el("h1", null, "End of survey"));
-    card.appendChild(el("p", null, String(SPEC.terminate_text)));
-    card.appendChild(el("div", "summary", "Screened out at <code>" + steps[cur].q.id +
+    card.appendChild(el("p", null, String(v.message || SPEC.terminate_text)));
+    card.appendChild(el("div", "summary", "Screened out at <code>" + qid +
       "</code> &middot; reference <code>" + SESSION.respondent_code + "</code>"));
     show(card, true);
     setAnswering(false);                           // project bar returns on the closing screen
@@ -1640,16 +1649,25 @@
     $("#tpp-panel").hidden = true;
   }
 
-  function checkTerminate() {
-    var q1 = Number(getAns("Q1", "_"));
-    var q3 = Number(getAns("Q3", "_"));
-    var q4 = Number(getAns("Q4", "_"));
-    if ([5, 6, 7, 8].indexOf(q1) >= 0) return "Specialty not eligible (Q1=" + q1 + ")";
-    if (q1 === 4 && q3 && q3 < 10) return "Hematology-only with fewer than 10 eligible patients/month";
-    if (steps[cur].q.id === "Q3" && q3 < 5) return "Fewer than 5 eligible patients per month";
-    if ([3, 4, 5].indexOf(q4) >= 0) return "Industry conflict or recent oncology research (Q4=" + q4 + ")";
-    return null;
+  // Evaluate every screening rule in the study.  phase "live" only looks at the rules
+  // marked to fire the moment they match; the Next button checks everything.
+  function evaluateScreening(phase) {
+    if (!window.BeaconQ || !window.BeaconQ.screeningVerdict) return null;
+    // questions, not steps: every conjoint task belongs to the same question
+    var idx = SPEC.questions.indexOf(steps[cur].q);
+    return window.BeaconQ.screeningVerdict(
+      SPEC.questions, answers,
+      { phase: phase, upto: idx < 0 ? SPEC.questions.length - 1 : idx });
   }
+  function screeningHit(phase) {
+    if (window.BEACON_PREVIEW_MODE) return null;   // the Studio test view never ends the survey
+    var v = evaluateScreening(phase);
+    if (v) screenOut(v);
+    return v;
+  }
+  // Fires after every answer the respondent gives.  Rules set to "as soon as it matches"
+  // end the survey there and then; the rest wait for Next.
+  function ansChanged() { return screeningHit("live"); }
 
   // ============================================================ navigation
   // ============================================================ respondent chrome
@@ -1740,7 +1758,21 @@
     box.hidden = false;
     var opts = steps.map(function(s,i){ var done = answers[s.q.id] && Object.keys(answers[s.q.id]).some(function(k){return k.charAt(0)!=='_';}); return '<option value="'+i+'"'+(i===cur?' selected':'')+'>'+ (done?'✓ ':'') + escHtml(s.q.id + ' · ' + String(s.q.stem || 'Choice task').slice(0,55)) + '</option>';}).join('');
     var qid = steps[cur].q.id;
-    box.innerHTML = '<div class="tc-head"><b>Test workspace</b><span>Not shown to respondents</span><button id="tc-collapse">−</button></div><div class="tc-current">Reviewing <b>'+escHtml(qid)+'</b> · use <i>Jump to</i> beside Next to navigate</div><div class="tc-actions"><button id="tc-ai">✦ AI fill test answers</button><a href="/studio/#'+encodeURIComponent(STUDY.slug)+'" target="_blank">Edit in Studio ↗</a></div><label>Review note for '+escHtml(qid)+'<textarea id="tc-note" placeholder="Describe an error, wording issue or logic discrepancy…">'+escHtml(testNotes[qid] || '')+'</textarea></label><button class="tc-save" id="tc-share">Save notes & copy review link</button><small id="tc-state">The link preserves answers, position and notes for your team.</small>';
+    // screening: the rules on this question and what they do to this respondent right now
+    var scrBits = "";
+    if (window.BeaconQ && window.BeaconQ.screenSummary) {
+      var scrLines = window.BeaconQ.screenSummary(steps[cur].q, SPEC.questions);
+      if (scrLines.length) {
+        var scrV = window.BeaconQ.screeningVerdict(SPEC.questions, answers,
+                     { upto: SPEC.questions.indexOf(steps[cur].q) });
+        scrBits = '<div class="tc-screen"><b>Screening</b>' + scrLines.map(function (l) {
+          return "<span>" + escHtml(l.text) + " <em>" + (l.when === "live" ? "on the spot" : "on Next") + "</em></span>";
+        }).join("") + "<i>" + (scrV
+          ? "This respondent would be screened out here - " + escHtml(scrV.reason)
+          : "This respondent continues.") + "</i></div>";
+      }
+    }
+    box.innerHTML = '<div class="tc-head"><b>Test workspace</b><span>Not shown to respondents</span><button id="tc-collapse">−</button></div><div class="tc-current">Reviewing <b>'+escHtml(qid)+'</b> · use <i>Jump to</i> beside Next to navigate</div>' + scrBits + '<div class="tc-actions"><button id="tc-ai">✦ AI fill test answers</button><a href="/studio/#'+encodeURIComponent(STUDY.slug)+'" target="_blank">Edit in Studio ↗</a></div><label>Review note for '+escHtml(qid)+'<textarea id="tc-note" placeholder="Describe an error, wording issue or logic discrepancy…">'+escHtml(testNotes[qid] || '')+'</textarea></label><button class="tc-save" id="tc-share">Save notes & copy review link</button><small id="tc-state">The link preserves answers, position and notes for your team.</small>';
     $("#tc-note").oninput=function(){ testNotes[qid]=this.value; store('test_notes',testNotes); };
     $("#tc-ai").onclick=aiFillTest;
     $("#tc-share").onclick=saveTestReview;
@@ -1832,8 +1864,7 @@
 
   function next() {
     if (!validateStep()) return;
-    var reason = checkTerminate();
-    if (reason) return screenOut(reason);
+    if (screeningHit()) return;                // screen-out rules, both live and on-Next
 
     var prevSec = sectionOf(steps[cur].q);
     var nx = nextVisible(cur, 1);

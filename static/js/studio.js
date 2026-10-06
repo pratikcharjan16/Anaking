@@ -682,6 +682,10 @@
     var b = "";
     if (q.required === false) b += '<span class="st-badge" title="Optional">optional</span>';
     if (q.show_if && q.show_if.rules && q.show_if.rules.length) b += '<span class="st-badge logic" title="Shown only when its conditions are met">logic</span>';
+    var sc = Q.screening(q);
+    if (sc.length) b += '<span class="st-badge screen" title="' + esc(sc.map(function (x) {
+      return (x.mode === "qualify" ? "Qualify: " : "Screen out: ") + Q.blockText(x, cur.cfg.questions);
+    }).join(" \u00B7 ")) + '">screen</span>';
     if (q.randomize && q.randomize !== "none") b += '<span class="st-badge" title="Randomised order">rnd</span>';
     if (q.media && q.media.src) b += '<span class="st-badge" title="Has image / video">media</span>';
     if ((q.options || []).some(function (o) { return o.exclusive; })) b += '<span class="st-badge" title="Has an exclusive option">excl</span>';
@@ -859,6 +863,7 @@
     sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("");
   }
   function selectQuestion(qi) {
+    if (qi !== sel) scrTest = {};          // the screening tester starts clean per question
     sel = qi;
     // the outline may be showing rows or thumbnails - mark the selection in whichever is up
     $$(".st-qi, .st-tcard").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
@@ -1209,7 +1214,8 @@
   var FLAG_INFO = {
     pin: { label: "\uD83D\uDCCC Pin", tip: "Keeps its place when the list is randomised" },
     exclusive: { label: "\u2298 Exclusive", tip: "Selecting it clears every other answer - for None / Not applicable" },
-    other: { label: "\u270E Other", tip: "Adds a free-text box next to this option" }
+    other: { label: "\u270E Other", tip: "Adds a free-text box next to this option" },
+    terminate: { label: "\u26D4 Screen out", tip: "Ends the survey the moment this option is picked" }
   };
 
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
@@ -1222,11 +1228,19 @@
   function rerenderCard(id) {
     var c = document.getElementById("card-" + id); if (!c) return;
     var body = $(".st-ecard-body", c);
-    var fn = { q: qCard, answers: answersCard, display: displayCard, logic: logicCard, media: mediaCard, advanced: advancedCard }[id];
+    var fn = { q: qCard, answers: answersCard, display: displayCard, logic: logicCard,
+               screening: screeningCard, media: mediaCard, advanced: advancedCard }[id];
     if (fn) body.innerHTML = fn();
-    if (id === "logic" || id === "media") { var sm = $("summary span", c); if (sm) sm.innerHTML = (id === "logic" ? "Show only when\u2026" : "Image or video") + (isOn(id) ? ' <em class="st-dot">on</em>' : ""); }
+    if (id === "logic" || id === "media" || id === "screening") {
+      var sm = $("summary span", c); if (sm) sm.innerHTML =
+        (id === "logic" ? "Show only when\u2026" : id === "media" ? "Image or video" : "Screen in / screen out") +
+        (isOn(id) ? ' <em class="st-dot">on</em>' : "");
+    }
   }
-  function isOn(id) { return id === "logic" ? !!(ed.show_if && ed.show_if.rules && ed.show_if.rules.length) : !!(ed.media && ed.media.src); }
+  function isOn(id) {
+    if (id === "screening") return scrCount() > 0;
+    return id === "logic" ? !!(ed.show_if && ed.show_if.rules && ed.show_if.rules.length) : !!(ed.media && ed.media.src);
+  }
   function answersTitle() {
     var t = ed.type;
     return hasOptions(t) ? "Answer options" : hasRows(t) ? "Rows & scale" : t === "open_text" ? "Text box" :
@@ -1238,11 +1252,14 @@
   var edTab = "content";
   function edStrip() {
     var rules = (ed.show_if && ed.show_if.rules) || [];
+    var nscr = scrCount();
     return '<nav class="st-etabs">' +
-      [["content", "Content &amp; Settings"], ["cond", "Conditional Display"]].map(function (t) {
+      [["content", "Content &amp; Settings"], ["cond", "Conditional Display"],
+       ["screen", "Screening"]].map(function (t) {
+        var n = t[0] === "cond" ? rules.length : t[0] === "screen" ? nscr : 0;
         return '<button type="button" class="st-etab' + (edTab === t[0] ? " on" : "") +
           '" data-act="edtab" data-t="' + t[0] + '">' + t[1] +
-          (t[0] === "cond" && rules.length ? '<span class="st-count">' + rules.length + "</span>" : "") +
+          (n ? '<span class="st-count' + (t[0] === "screen" ? " warn" : "") + '">' + n + "</span>" : "") +
           "</button>";
       }).join("") +
       '<span class="st-etab-sp"></span>' +
@@ -1291,6 +1308,11 @@
             return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
           card("logic", "Show only when\u2026" + (ed.show_if && ed.show_if.rules && ed.show_if.rules.length ? ' <em class="st-dot">on</em>' : ""),
                "Conditional display - exactly who gets this question and who skips it", logicCard())
+        : edTab === "screen"
+        ? '<nav class="st-jump">' + [["screening", "Screen in / screen out"]].map(function (j) {
+            return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
+          card("screening", "Screen in / screen out" + (scrCount() ? ' <em class="st-dot">on</em>' : ""),
+               "Who carries on past this question - and who is ended", screeningCard())
         : '<nav class="st-jump">' + [["q", "Question"], ["answers", answersTitle()], ["display", "Display & order"], ["media", "Image / video"], ["advanced", "Advanced"]].map(function (j) {
             return '<a href="#card-' + j[0] + '" data-act="jump" data-card="' + j[0] + '">' + j[1] + "</a>"; }).join("") + "</nav>" +
           card("q", "Question", "What respondents read", qCard()) +
@@ -1313,6 +1335,17 @@
     if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
     var rules = ed.show_if && ed.show_if.rules || [];
     rules.forEach(function(r){ var qi = cur.cfg.questions.findIndex(function(q){return q.id === r.q;}); if(qi < 0 || qi >= sel) out.push({key:"logic",level:"error",text:"Show-if logic references a missing or later question.",fix:"Repair logic"}); });
+    var scr = ed.screening && ed.screening.rules || [];
+    scr.forEach(function(r){
+      var qi = cur.cfg.questions.findIndex(function(q){return q.id === r.q;});
+      if (qi < 0) out.push({key:"screen",level:"error",text:"A screening condition points at a question that no longer exists.",fix:"Remove screening"});
+      else if (qi > sel) out.push({key:"screen",level:"warn",text:"A screening condition reads " + r.q + ", which comes later - it can never fire here.",fix:"Remove screening"});
+    });
+    if (ed.screening && ed.screening.mode === "qualify" && scr.length && ed.type === "multi_select" &&
+        scr.some(function(r){ return String(r.op).indexOf("count_") === 0; }) && ed.screening.when === "live")
+      out.push({key:"screen-next",level:"warn",text:"Counting answers 'on the spot' can end the survey before the respondent has finished ticking.",fix:"Check on Next"});
+    if ((ed.options || []).length && (ed.options || []).every(function(o){ return o.terminate; }))
+      out.push({key:"screen-opts",level:"warn",text:"Every answer option is marked Screen out - nobody can get past this question.",fix:"Clear screening"});
     if (!out.length) out.push({key:"ok",level:"ok",text:"No design issues found. This question is ready to test."});
     return out;
   }
@@ -1330,6 +1363,9 @@
     if (key === 'options') ed.options = [{code:1,label:'Option one'},{code:2,label:'Option two'},{code:99,label:'Other',other:true,pin:true}];
     if (key === 'emptyopt') (ed.options || []).forEach(function(o,i){if(!String(o.label || '').trim()) o.label='Option ' + (i+1);});
     if (key === 'logic') { var prior = cur.cfg.questions.slice(0,sel)[0]; if (prior) ed.show_if = {match:'all',rules:[{q:prior.id,op:prior.options?'selected':'answered',value:prior.options?prior.options[0].code:''}]}; else delete ed.show_if; }
+    if (key === 'screen') delete ed.screening;
+    if (key === 'screen-next' && ed.screening) ed.screening.when = 'next';
+    if (key === 'screen-opts') (ed.options || []).forEach(function(o){ delete o.terminate; });
     markChanged(); renderOutline(); renderEditorPane(); toast('Suggestion applied — review before publishing');
   }
 
@@ -1550,9 +1586,9 @@
   function answersCard() {
     var t = ed.type, html = "";
     if (hasOptions(t)) {
-      html += itemTable("opt", ed.options || [], { noun: "option", flags: ["pin", "exclusive", "other"], image: true, ph: "Option label",
+      html += itemTable("opt", ed.options || [], { noun: "option", flags: ["pin", "exclusive", "other", "terminate"], image: true, ph: "Option label",
         quick: '<button class="st-btn sm" data-act="opt-add-none">+ None of these</button><button class="st-btn sm" data-act="opt-add-na">+ Not applicable</button><button class="st-btn sm" data-act="opt-add-other">+ Other (specify)</button>' });
-      html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box.</div>';
+      html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box \u00B7 <b>Screen out</b> ends the survey there and then. Groups of options, counts and conditions on other questions belong on the <b>Screening</b> tab.</div>';
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
     if (hasRows(t)) {
@@ -1798,6 +1834,250 @@
     return html;
   }
 
+  // ---- card: screening ------------------------------------------------------------------
+  // Screen in / screen out, written as data on the question:
+  //   screening: { mode: "screen_out" | "qualify", match: "all" | "any", when: "live" | "next",
+  //                message, reason, rules: [{ q, op, value }] }
+  // The switches on individual answer options (options[].terminate) are shown here too, so
+  // everything that can end the survey on this question reads in one place.
+  var SCR_MODES = [
+    ["off", "No screening", "Everybody carries on - this question never ends the survey"],
+    ["screen_out", "Screen out when…", "Matched respondents are ended and read your closing text"],
+    ["qualify", "Only continue when…", "Only matched respondents carry on - everyone else is ended"]
+  ];
+  var scrTest = {};          // {qid: answer} - the tester's own picks, on top of the sample answers
+
+  function qById(id) {
+    for (var i = 0; i < cur.cfg.questions.length; i++) if (cur.cfg.questions[i].id === id) return cur.cfg.questions[i];
+    return null;
+  }
+  function scrOf() { return (ed && ed.screening) || null; }
+  function scrRules() { var s = scrOf(); return s && s.enabled !== false ? (s.rules || []) : []; }
+  function scrMode() { var s = scrOf(); return scrRules().length ? (s.mode === "qualify" ? "qualify" : "screen_out") : "off"; }
+  function optTerm() { return ((ed && ed.options) || []).filter(function (o) { return o.terminate; }); }
+  // every rule that can end the survey here: the authored block + the option switches + legacy
+  function scrCount() {
+    if (!ed) return 0;
+    return Q.screening(ed).reduce(function (n, b) { return n + b.rules.length; }, 0);
+  }
+  function scrEnsure() {
+    if (!ed.screening || typeof ed.screening !== "object") ed.screening = { mode: "screen_out", match: "all", when: "live", rules: [] };
+    if (!ed.screening.rules) ed.screening.rules = [];
+    ed.screening.enabled = true;
+    return ed.screening;
+  }
+  // Numbers, grids and text are still being typed into - those rules wait for Next unless
+  // the author asks for otherwise.  Choice questions fire the moment the option is picked.
+  function scrWhenDefault(rules) {
+    var next = (rules || []).some(function (r) {
+      var k = Q.qKind(qById(r.q));
+      return k === "number" || k === "text" || k === "grid";
+    });
+    return next ? "next" : "live";
+  }
+  function scrWhen() { var s = scrOf(); return (s && s.when) || scrWhenDefault(scrRules()); }
+  function optText(o) { return Q.stripTags ? Q.stripTags(o.label) : String(o.label || ""); }
+  function rowText(r) { return Q.stripTags ? Q.stripTags(r.label) : String(r.label || ""); }
+
+  function scrValueField(r, i) {
+    var q = qById(r.q) || ed, kind = Q.valueKind(r.op), codes = Q.codeList(r.value);
+    if (kind === "codes") {
+      var list = (q.options || q.rows || []);
+      if (!list.length) return '<input type="hidden" data-sf="value" value="' + esc(r.value == null ? "" : r.value) + '"><span class="st-meta">no options yet</span>';
+      return '<div class="st-scr-chips">' + list.map(function (o) {
+        var on = codes.indexOf(String(o.code)) >= 0;
+        return '<button type="button" class="st-chip' + (on ? " on" : "") + '" data-act="scr-code" data-ri="' + i +
+          '" data-code="' + esc(o.code) + '" title="' + (on ? "Remove from this group" : "Add to this group") + '">' +
+          (on ? "\u2713 " : "+ ") + esc(optText(o) || rowText(o)) + "</button>";
+      }).join("") + '<input type="hidden" data-sf="value" value="' + esc(codes.join(",")) + '"></div>';
+    }
+    if (kind === "count" || kind === "number" || kind === "text") {
+      return '<input class="st-scr-num' + (kind === "text" ? " wide" : "") + '" type="' + (kind === "text" ? "text" : "number") +
+        '" data-sf="value" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="' +
+        (kind === "count" ? "number" : kind === "text" ? "word or phrase" : "value") + '">';
+    }
+    if (kind === "between") {
+      var p = String(r.value || "").split("-");
+      return '<span class="st-scr-pair"><input type="number" data-sf="valueLo" value="' + esc(p[0] || "") + '">' +
+        '<em>and</em><input type="number" data-sf="valueHi" value="' + esc(p[1] || "") + '"></span>';
+    }
+    if (kind === "rowvalue" || kind === "ranktop") {
+      // a heat map is stored per row x column, so the condition names a cell
+      var rows = q.rows || [];
+      if (q.type === "heatmap" && (q.cols || []).length) {
+        var cells = [];
+        rows.forEach(function (rr) {
+          (q.cols || []).forEach(function (cc) {
+            cells.push({ code: rr.code + "_" + cc.code, label: rowText(rr) + " \u00D7 " + rowText(cc) });
+          });
+        });
+        rows = cells;
+      }
+      var parts = String(r.value || "").split("=");
+      var want = parts[0], num = parts[1] || "";
+      var pts = [];
+      if (kind === "ranktop") { for (var n = 1; n <= rows.length; n++) pts.push(n); }
+      else if (q.scale) { for (var v = q.scale.min; v <= q.scale.max; v++) pts.push(v); }
+      return '<span class="st-scr-pair"><select data-sf="row">' + rows.map(function (o) {
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === want ? " selected" : "") + ">" + esc(rowText(o)) + "</option>";
+      }).join("") + "</select>" +
+        (kind === "ranktop" ? '<em>top</em>' : '<em>is</em>') +
+        (pts.length
+          ? '<select data-sf="value">' + pts.map(function (v) {
+              return '<option value="' + esc(v) + '"' + (String(v) === num ? " selected" : "") + ">" + esc(v) + "</option>"; }).join("") + "</select>"
+          : '<input type="number" data-sf="value" value="' + esc(num) + '">') + "</span>";
+    }
+    return "<span></span>";
+  }
+
+  function scrRuleRow(r, i, match) {
+    var q = qById(r.q) || ed;
+    var ops = Q.opsFor(q);
+    if (!ops.some(function (o) { return o.op === r.op; })) r.op = ops.length ? ops[0].op : "answered";
+    var idx = cur.cfg.questions.indexOf(ed);
+    var earlier = cur.cfg.questions.filter(function (x, xi) { return xi < idx; });
+    var later = cur.cfg.questions.filter(function (x, xi) { return xi > idx; });
+    function qOpts(list) {
+      return list.map(function (x) {
+        return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" +
+          esc(x.id + " \u00B7 " + String(x.stem || "").slice(0, 46)) + "</option>"; }).join("");
+    }
+    return '<div class="st-rule">' +
+      '<span class="st-rule-no">' + (i ? (match === "any" ? "or" : "and") : "when") + "</span>" +
+      '<select data-sf="q" data-ri="' + i + '">' +
+        '<optgroup label="This question">' +
+        '<option value="' + esc(ed.id) + '"' + (ed.id === r.q ? " selected" : "") + ">" +
+          esc(ed.id + " (this question)") + "</option></optgroup>" +
+        (earlier.length ? '<optgroup label="Earlier questions">' + qOpts(earlier) + "</optgroup>" : "") +
+        (later.length ? '<optgroup label="Later questions - cannot fire here">' + qOpts(later) + "</optgroup>" : "") +
+      "</select>" +
+      '<select data-sf="op" data-ri="' + i + '">' + ops.map(function (o) {
+        return '<option value="' + o.op + '"' + (o.op === r.op ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select>" +
+      scrValueField(r, i) +
+      '<button class="st-ibtn danger" data-act="scr-del" data-ri="' + i + '" title="Remove condition">\u2715</button></div>';
+  }
+
+  // ---- the tester: pick answers by hand and see exactly what the rules do -----------------
+  function scrTestAnswers() {
+    var answers = Q.sampleAnswers(cur.cfg.questions, ed.id);
+    Object.keys(scrTest).forEach(function (qid) {
+      if (qid === ed.id && !Q.screening(ed).length) return;
+      answers[qid] = scrTest[qid];
+    });
+    return answers;
+  }
+  function scrPick(q, code) {
+    var a = scrTest[q.id] || (scrTest[q.id] = {});
+    if (q.type === "multi_select") {
+      var codes = (a.codes || []).slice(), i = codes.indexOf(code);
+      if (i >= 0) codes.splice(i, 1); else codes.push(code);
+      a.codes = codes;
+    } else if (q.type === "rank") {
+      var order = (a.order || []).slice(), j = order.indexOf(code);
+      if (j >= 0) order.splice(j, 1); else order.push(code);
+      a.order = order;
+    } else if (a._ === code) delete a._;
+    else a._ = code;
+    scrTest[q.id] = a;
+  }
+  function scrTester() {
+    var q = ed, t = q.type, a = scrTest[q.id] || {};
+    var picks = "";
+    if (t === "single_select" || t === "multi_select" || t === "rank") {
+      var chosen = t === "multi_select" ? (a.codes || []) : t === "rank" ? (a.order || []) : [a._];
+      picks = '<div class="st-scr-chips">' + (q.options || q.rows || []).map(function (o, i) {
+        var at = chosen.indexOf(o.code);
+        return '<button type="button" class="st-chip' + (at >= 0 ? " on" : "") + '" data-act="scr-pick" data-code="' + esc(o.code) + '">' +
+          (t === "rank" && at >= 0 ? (at + 1) + ". " : "") + esc(optText(o) || rowText(o)) + "</button>";
+      }).join("") + "</div>";
+      if (t === "rank") picks += '<div class="st-hint">Tap the items in the order the respondent would rank them \u00B7 tap again to remove.</div>';
+    } else if (Q.qKind(q) === "grid") {
+      picks = '<div class="st-scr-rows">' + (q.rows || []).map(function (r) {
+        var pts = q.scale ? Array.apply(null, { length: q.scale.max - q.scale.min + 1 }).map(function (_, k) { return q.scale.min + k; })
+                          : [0, 25, 50, 75, 100];
+        return '<div class="st-scr-row"><span>' + esc(rowText(r)) + "</span>" + pts.map(function (v) {
+          return '<button type="button" class="st-chip sm' + (String(a[r.code]) === String(v) ? " on" : "") +
+            '" data-act="scr-row" data-row="' + esc(r.code) + '" data-v="' + esc(v) + '">' + esc(v) + "</button>";
+        }).join("") + "</div>";
+      }).join("") + "</div>";
+    } else if (Q.qKind(q) === "number") {
+      var lo = q.min !== undefined ? q.min : 0, hi = q.max !== undefined ? q.max : 10;
+      picks = '<div class="st-scr-pickrow"><input type="number" id="f-scr-try" value="' +
+        esc(a._ === undefined ? Math.round((Number(lo) + Number(hi)) / 2) : a._) + '"><span class="st-meta">e.g. ' +
+        esc(lo) + " to " + esc(hi) + "</span></div>";
+    } else if (Q.qKind(q) === "text") {
+      picks = '<div class="st-scr-pickrow"><input type="text" id="f-scr-try" value="' + esc(a._ || "") +
+        '" placeholder="What the respondent writes"></div>';
+    } else {
+      picks = '<div class="st-hint">Use <b>\u25B6 Test</b> above to try this question type by hand.</div>';
+    }
+    var answers = scrTestAnswers();
+    var v = Q.screeningVerdict(cur.cfg.questions, answers, { upto: cur.cfg.questions.indexOf(q) });
+    var out = v
+      ? '<div class="st-scr-verdict out"><b>SCREENED OUT</b><span>' + esc(v.reason) + "</span>" +
+        '<em>Respondent reads: “' + esc(v.message || "the study's closing text") + '”</em></div>'
+      : '<div class="st-scr-verdict pass"><b>CONTINUES</b><span>No screening rule fires for this answer.</span></div>';
+    return '<div class="st-scr-test"><div class="st-scr-test-head"><b>Try it</b>' +
+      '<span class="st-meta">Earlier questions use sample answers</span>' +
+      '<button class="st-btn sm ghost" data-act="scr-test-clear">Reset</button></div>' +
+      picks + out + "</div>";
+  }
+
+  function screeningCard() {
+    var mode = scrMode(), s = scrOf() || {}, rules = scrRules();
+    var legacy = optTerm();
+    var html = '<div class="st-logic-guide"><span>\u2691</span><div><b>Who should carry on past this question?</b>' +
+      "<small>Pick a single option, a group of options, a count, or any condition on this or an " +
+      "earlier question. Nothing here is hard-coded - the rules travel with the questionnaire.</small></div></div>";
+    html += '<div class="st-radio-row st-scr-modes">' + SCR_MODES.map(function (m) {
+      return '<label class="st-radio' + (mode === m[0] ? " on" : "") + '"><input type="radio" name="f-scr-mode" value="' +
+        m[0] + '"' + (mode === m[0] ? " checked" : "") + "> " + m[1] + "<small>" + m[2] + "</small></label>";
+    }).join("") + "</div>";
+    if (mode === "off") {
+      if (legacy.length || ed.terminate_if_lt !== undefined) {
+        html += '<div class="st-note warn">Still screening from the answer options: ' +
+          (legacy.length ? legacy.map(function (o) { return esc(optText(o)); }).join(", ") : "") +
+          (ed.terminate_if_lt !== undefined ? (legacy.length ? " \u00B7 " : "") + "answer below " + esc(ed.terminate_if_lt) : "") +
+          '. <button class="st-btn sm ghost" data-act="scr-clear-opts">Clear these</button></div>';
+      }
+      html += scrTester();
+      return html;
+    }
+    var lead = mode === "qualify" ? "Carry on only when" : "Screen out when";
+    html += '<div class="st-logic-intro"><b>' + lead + '</b> <select id="f-scr-match">' +
+      '<option value="all"' + (s.match !== "any" ? " selected" : "") + ">all</option>" +
+      '<option value="any"' + (s.match === "any" ? " selected" : "") + ">any</option></select> of these are true:</div>";
+    html += '<div id="f-scr-rules">' + rules.map(function (r, i) {
+      return scrRuleRow(r, i, s.match === "any" ? "any" : "all"); }).join("") + "</div>";
+    html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") +
+      '" data-act="scr-add">+ Add condition</button>' +
+      '<span class="st-meta">' + (rules.length ? "Group a set of options with <b>is any of</b> \u00B7 count them with <b>selects at least</b>." :
+        "Start with this question, or point the condition at an earlier one.") + "</span></div>";
+    if (rules.length) {
+      html += '<div class="st-grid2">' +
+        '<div class="st-field"><label>Check the rule <span class="st-opt">when is it applied?</span></label><select id="f-scr-when">' +
+        [["live", "\u26A1 As soon as it matches - the survey ends on the spot"],
+         ["next", "\u2192 When they press Next - they can still change their mind"]].map(function (w) {
+          return '<option value="' + w[0] + '"' + (scrWhen() === w[0] ? " selected" : "") + ">" + esc(w[1]) + "</option>"; }).join("") +
+        "</select></div>" +
+        '<div class="st-field"><label>Reason for the data <span class="st-opt">optional - screen-out report</span></label>' +
+        '<input id="f-scr-reason" value="' + esc(s.reason || "") + '" placeholder="e.g. Specialty not eligible"></div></div>' +
+        '<div class="st-field"><label>Text the respondent reads <span class="st-opt">blank = the study\'s closing text</span></label>' +
+        '<div class="st-with-pipe"><textarea id="f-scr-msg" rows="2" placeholder="Thank you for your time\u2026">' +
+        esc(s.message || "") + "</textarea></div></div>";
+      html += '<div class="st-scr-plain">' + Q.screenSummary(ed, cur.cfg.questions).map(function (b) {
+        return '<div class="st-scr-line ' + b.mode + '"><i>' + (b.mode === "qualify" ? "\u2713" : "\u26D4") + "</i><span>" +
+          esc(b.text) + "</span><em>" + (b.when === "live" ? "on the spot" : "on Next") + "</em>" +
+          (b.source === "options" ? '<u>from the options list</u>' : "") + "</div>";
+      }).join("") + "</div>";
+    }
+    if (legacy.length) html += '<div class="st-note">The answer options <b>' +
+      legacy.map(function (o) { return esc(optText(o)); }).join(", ") +
+      '</b> are also marked <b>Screen out</b> in the Content &amp; Settings tab.</div>';
+    html += scrTester();
+    return html;
+  }
+
   // ---- card: media -----------------------------------------------------------------------
   function mediaCard() {
     var m = ed.media || {};
@@ -1820,7 +2100,7 @@
   function advancedCard() {
     return '<div class="st-field"><textarea id="f-raw" class="st-raw">' + esc(JSON.stringify(ed, null, 2)) + "</textarea>" +
       '<div class="st-item-actions"><button class="st-btn sm" data-act="raw-apply">Load JSON into the question</button>' +
-      '<span class="st-meta">Fields: stem_html, help_html, style, options[].exclusive/pin/other/image, randomize, show_if, media, layout, hide_codes, hide_number.</span></div></div>';
+      '<span class="st-meta">Fields: stem_html, help_html, style, options[].exclusive/pin/other/terminate/image, randomize, show_if, screening, media, layout, hide_codes, hide_number.</span></div></div>';
   }
 
   // ---- live preview ------------------------------------------------------------------------
@@ -1836,6 +2116,9 @@
     var visible = Q.showIf(ed, { answers: answers, questions: cur.cfg.questions });
     var bits = [];
     if (!visible) bits.push("<b>Hidden</b> for these sample answers - respondents matching them would skip it.");
+    var scrNow = Q.screeningVerdict(cur.cfg.questions, scrTestAnswers(),
+                   { upto: cur.cfg.questions.indexOf(ed) });
+    if (scrNow) bits.push("<b>Screened out</b> by the rule on this question - " + esc(scrNow.reason) + ".");
     if (ed.randomize && ed.randomize !== "none") bits.push("Order shown is one random draw - press \u21BB for another.");
     if (res && res.unresolved && res.unresolved.length) bits.push("Unresolved piping: <code>" + res.unresolved.map(esc).join("</code> <code>") + "</code>.");
     if (tinfo(ed.type).noprev) bits.push("This type has no respondent renderer yet - the survey will skip it.");
@@ -1927,6 +2210,7 @@
       if (rules.length) { ed.show_if = { match: val("f-sif-match") || (ed.show_if && ed.show_if.match) || "all", rules: rules }; if (chk("f-sif-negate")) ed.show_if.negate = true; }
       else delete ed.show_if;
     }
+    syncScreening();
     // media
     if (document.getElementById("f-media-url")) {
       var m = ed.media || {};
@@ -1938,6 +2222,39 @@
       if (m.src) ed.media = m; else delete ed.media;
     }
   }
+  // ---- screening: form -> question -------------------------------------------------------
+  // Runs on every edit while the Screening tab is open.  When the tab is closed the
+  // controls are not in the DOM and whatever is stored on the question is left alone.
+  function fieldIn(row, name) { var n = $('[data-sf="' + name + '"]', row); return n ? n.value : ""; }
+  function syncScreening() {
+    if (!ed) return;
+    var modeNode = $('input[name="f-scr-mode"]:checked');
+    if (!modeNode && !document.getElementById("f-scr-rules")) return;      // tab not open
+    var mode = modeNode ? modeNode.value : scrMode();
+    if (mode === "off") { delete ed.screening; return; }
+    var rules = [];
+    $$("#f-scr-rules .st-rule").forEach(function (row) {
+      var qid = fieldIn(row, "q"), op = fieldIn(row, "op");
+      if (!qid || !op) return;
+      var kind = Q.valueKind(op), value = "";
+      if (kind === "codes") value = fieldIn(row, "value");
+      else if (kind === "between") value = fieldIn(row, "valueLo") + "-" + fieldIn(row, "valueHi");
+      else if (kind === "rowvalue" || kind === "ranktop") value = fieldIn(row, "row") + "=" + fieldIn(row, "value");
+      else if (kind === "count" || kind === "number" || kind === "text") value = fieldIn(row, "value");
+      var r = { q: qid, op: op };
+      if (kind !== "none") r.value = kind === "count" || kind === "number" ? Number(value || 0) : value;
+      rules.push(r);
+    });
+    if (!rules.length) { delete ed.screening; return; }
+    var s = scrEnsure();
+    s.mode = mode;
+    s.rules = rules;
+    setOrDel(s, "match", val("f-scr-match"));
+    setOrDel(s, "when", val("f-scr-when"));
+    setOrDel(s, "reason", (val("f-scr-reason") || "").trim());
+    setOrDel(s, "message", (val("f-scr-msg") || "").trim());
+  }
+
   // form -> question -> autosave + preview + outline row
   function changed() { syncFromForm(); markChanged(); renderPreview(); refreshOutlineRow(); refreshQuestionCheck(); }
 
@@ -1949,7 +2266,7 @@
   }
   function convertType(newType) {
     var old = ed, fresh = qTemplate(newType, old.id, old.section);
-    ["stem", "stem_html", "help", "help_html", "required", "show_if", "media", "style", "hide_number", "randomize", "concept", "body", "body_html", "vignette"].forEach(function (k) { if (old[k] !== undefined) fresh[k] = old[k]; });
+    ["stem", "stem_html", "help", "help_html", "required", "show_if", "screening", "media", "style", "hide_number", "randomize", "concept", "body", "body_html", "vignette"].forEach(function (k) { if (old[k] !== undefined) fresh[k] = old[k]; });
     if (hasOptions(newType) && old.options) fresh.options = old.options;
     if (hasRows(newType) && old.rows) fresh.rows = old.rows;
     if (old.items && fresh.items) fresh.items = old.items;
@@ -2127,6 +2444,58 @@
       rerenderCard("logic"); changed(); return;
     }
     if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length) delete ed.show_if; rerenderCard("logic"); changed(); return; }
+
+    // ---- screening builder -------------------------------------------------------------
+    if (act === "scr-add") {
+      syncFromForm();
+      var s0 = scrEnsure();
+      if (!s0.rules.length) { s0.mode = "screen_out"; s0.match = "all"; }
+      var ops0 = Q.opsFor(ed), op0 = ops0.length ? ops0[0].op : "answered";
+      var first = { q: ed.id, op: op0 };
+      if (Q.valueKind(op0) === "codes") first.value = String(((ed.options || ed.rows) || [])[0] ? (ed.options || ed.rows)[0].code : "");
+      else if (Q.valueKind(op0) === "count" || Q.valueKind(op0) === "number") first.value = 1;
+      else if (Q.valueKind(op0) === "text") first.value = "";
+      s0.rules.push(first);
+      s0.when = scrWhenDefault(s0.rules);
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-del") {
+      syncFromForm();
+      var s1 = scrOf(); if (!s1) return;
+      s1.rules.splice(ri, 1);
+      if (!s1.rules.length) delete ed.screening;
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-code") {                      // add / remove an option from a rule's group
+      syncFromForm();
+      var s2 = scrOf(), code = String(b.getAttribute("data-code"));
+      if (s2 && s2.rules[ri]) {
+        var list = Q.codeList(s2.rules[ri].value), at = list.indexOf(code);
+        if (at >= 0) list.splice(at, 1); else list.push(code);
+        s2.rules[ri].value = list.join(",");
+      }
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-clear-opts") {
+      syncFromForm();
+      (ed.options || []).forEach(function (o) { delete o.terminate; });
+      delete ed.terminate_if_lt; delete ed.terminate_message;
+      rerenderCard("screening"); changed();
+      toast("Screening cleared from the answer options"); return;
+    }
+    if (act === "scr-pick") {                      // tester: pick an answer by hand
+      syncFromForm();
+      scrPick(ed, b.getAttribute("data-code"));
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-row") {
+      syncFromForm();
+      var ta = scrTest[ed.id] || (scrTest[ed.id] = {});
+      ta[b.getAttribute("data-row")] = Number(b.getAttribute("data-v"));
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-test-clear") { syncFromForm(); delete scrTest[ed.id]; rerenderCard("screening"); changed(); return; }
+
     if (act === "media-del") {
       syncFromForm();
       var m = ed.media;
@@ -2267,6 +2636,44 @@
     if (t.id === "f-type") { if (t.value !== ed.type) convertType(t.value); return; }
     if (t.id === "f-section") { changed(); renderOutline(); return; }
     if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op" || t.id === "f-sif-match") { syncFromForm(); rerenderCard("logic"); changed(); return; }
+    // screening: switching the question or the condition rebuilds the value control
+    if (t.getAttribute("data-sf") === "q" || t.getAttribute("data-sf") === "op") {
+      syncFromForm();
+      var row = t.closest(".st-rule"), ri3 = Number(t.getAttribute("data-ri"));
+      var s3 = scrOf();
+      if (s3 && s3.rules[ri3]) {
+        if (t.getAttribute("data-sf") === "q") {            // new question -> first valid condition
+          var qn = qById(s3.rules[ri3].q), opsN = Q.opsFor(qn || ed);
+          s3.rules[ri3].op = opsN.length ? opsN[0].op : "answered";
+        }
+        var k3 = Q.valueKind(s3.rules[ri3].op);
+        if (k3 === "none") delete s3.rules[ri3].value;
+        else if (k3 !== "codes" && k3 !== "rowvalue" && k3 !== "ranktop" && k3 !== "between") {
+          if (typeof s3.rules[ri3].value === "string") s3.rules[ri3].value = "";
+        }
+        s3.when = scrWhenDefault(s3.rules);
+      }
+      void row;
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.name === "f-scr-mode") {
+      syncFromForm();
+      $$('#st-editor .st-scr-modes .st-radio').forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); });
+      if (t.value !== "off" && !scrRules().length) {        // turning screening on seeds one condition
+        var s4 = scrEnsure();
+        if (!s4.rules.length) {
+          var ops4 = Q.opsFor(ed), op4 = ops4.length ? ops4[0].op : "answered";
+          var seed = { q: ed.id, op: op4 };
+          if (Q.valueKind(op4) === "codes") seed.value = String(((ed.options || ed.rows) || [])[0] ? (ed.options || ed.rows)[0].code : "");
+          else if (Q.valueKind(op4) === "count" || Q.valueKind(op4) === "number") seed.value = 1;
+          else seed.value = "";
+          s4.rules.push(seed);
+        }
+        s4.when = scrWhenDefault(s4.rules);
+      }
+      rerenderCard("screening"); changed(); return;
+    }
+    if (t.id === "f-scr-match" || t.id === "f-scr-when") { syncFromForm(); rerenderCard("screening"); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }
@@ -2275,6 +2682,12 @@
   root.addEventListener("input", function (e) {
     if (!inEditor(e) || !ed) return;
     if (e.target.id === "f-raw" || e.target.id === "f-id" || e.target.classList.contains("st-pipe-search")) return;
+    if (e.target.id === "f-scr-try") {                  // tester: a hand-typed answer
+      syncFromForm();
+      var ta2 = scrTest[ed.id] || (scrTest[ed.id] = {});
+      ta2._ = Q.qKind(ed) === "number" ? Number(e.target.value || 0) : e.target.value;
+      rerenderCard("screening"); changed(); return;
+    }
     changed();
   });
   root.addEventListener("keydown", function (e) {
@@ -2883,7 +3296,8 @@
     }
     if (act === "edtab") {
       syncFromForm();
-      edTab = t.getAttribute("data-t") === "cond" ? "cond" : "content";
+      var want = t.getAttribute("data-t");
+      edTab = want === "cond" ? "cond" : want === "screen" ? "screen" : "content";
       renderEditorPane();
       return;
     }
