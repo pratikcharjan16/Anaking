@@ -461,7 +461,7 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     await post("/api/studio/delete", { slug: slug2 });
   }
 
-  await post("/api/studio/delete", { rslug });
+  await post("/api/studio/delete", { slug: rslug });
   console.log(fails ? "\n" + fails + " FAILED" : "\nall matrix / grid checks passed");
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });
