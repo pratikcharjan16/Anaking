@@ -620,6 +620,20 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .grid-plabels{display:flex;justify-content:space-between;gap:6px}
 .grid-plabel{font-size:10.5px;color:var(--muted);text-align:center;line-height:1.25;max-width:110px;
   display:flex;flex-direction:column;align-items:center;gap:2px}
+/* choice grid: rows x columns, one or several picks per row */
+.choice-grid{overflow-x:auto}
+.cg-row{display:grid;grid-template-columns:var(--cg-tmpl);gap:8px;align-items:center;
+  padding:10px 14px;border-bottom:1px solid var(--line)}
+.cg-row:last-child{border-bottom:none}
+.cg-row:nth-child(even){background:#fafcfd}
+.cg-head{background:#f4f7f9;border-bottom:1px solid var(--line)}
+.cg-head .cg-col{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);text-align:center}
+.cg-corner{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.cg-rlabel{font-size:13.5px}
+.cg-cell{display:flex;justify-content:center;align-items:center;margin:0;cursor:pointer}
+.cg-cell input{width:19px;height:19px;accent-color:var(--accent-2);cursor:pointer}
+.cg-na .na-cell{justify-content:center}
 .grid-plabel-na{font-weight:700;color:var(--ink)}
 .grid-nacell{display:inline-flex;align-items:center;margin-left:10px}
 .na-cell{display:inline-flex;align-items:center;gap:4px;font-size:11.5px;font-weight:700;

@@ -66,7 +66,7 @@
     single_select: { name: "Multiple Choice", icon: "\u25C9", desc: "One answer from a list", group: "Questions" },
     multi_select: { name: "Multiple Choice (many)", icon: "\u2611", desc: "Tick all that apply", group: "Questions" },
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
-    rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rate several items on one scale", group: "Questions" },
+    rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
     nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
@@ -101,8 +101,10 @@
     if (type === "slider") { q.min = 0; q.max = 100; q.step = 5; }
     if (type === "open_text") { q.min_words = 3; }
     if (type === "rating_grid") {
-      q.scale = { min: 1, max: 7, min_label: "Not at all", max_label: "Extremely" };
-      q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" }];
+      q.select = "single";
+      q.rows = [{ code: "a", label: "First row" }, { code: "b", label: "Second row" }];
+      q.cols = [{ code: "c1", label: "Column one" }, { code: "c2", label: "Column two" },
+                { code: "c3", label: "Column three" }];
     }
     if (type === "rating_scale") {
       q.scale = { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" };
@@ -784,6 +786,7 @@
       case "multi_select":
         return thumbOptions(q);
       case "rating_grid":
+        return thumbRows(q, 3);
       case "rating_scale":
       case "semantic_diff":
       case "nps":
@@ -894,6 +897,7 @@
   function selectQuestion(qi) {
     if (qi !== sel) scrTest = {};          // the screening tester starts clean per question
     sel = qi;
+    if (migrateLegacyGrid(cur.cfg.questions[qi])) markChanged();
     // the outline may be showing rows or thumbnails - mark the selection in whichever is up
     $$(".st-qi, .st-tcard").forEach(function (r) { r.classList.toggle("on", Number(r.getAttribute("data-qi")) === qi); });
     renderEditorPane();
@@ -1235,7 +1239,9 @@
     ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
     ["eq", "equals"], ["ne", "does not equal"], ["gt", "is greater than"], ["gte", "is at least"], ["lt", "is less than"], ["lte", "is at most"],
     ["contains", "answer text contains"], ["answered", "was answered"], ["not_answered", "was skipped"],
-    ["row_eq", "row rating equals (row=value)"]];
+    ["row_eq", "row rating equals (row=value)"],
+    ["cell_is", "grid row is column (row=col)"], ["cell_not", "grid row is not column (row=col)"],
+    ["cell_includes", "grid row includes column (row=col)"], ["cell_lacks", "grid row does not include column (row=col)"]];
   var FONTS = [["", "Default"], ["Georgia, serif", "Georgia (serif)"], ["'Times New Roman', serif", "Times New Roman"],
     ["Arial, Helvetica, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["'Trebuchet MS', sans-serif", "Trebuchet"],
     ["'Courier New', monospace", "Courier (mono)"]];
@@ -1257,8 +1263,8 @@
   // they are a second list.  Both axes are edited the same way: add, label, format, attach
   // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
   var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"];
-  var SCALE_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
-  var AXIS_TYPES = ["heatmap", "numeric_matrix"];                                     // columns = a second list
+  var SCALE_TYPES = ["semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
+  var AXIS_TYPES = ["rating_grid", "heatmap", "numeric_matrix"];       // columns = a second list
   var RZ_MODES = [
     ["none", "Fixed", "Everyone sees the list as written"],
     ["shuffle", "Shuffle", "A fresh random order for every respondent"],
@@ -1277,6 +1283,29 @@
   function isGrid(t) { return GRID_TYPES.indexOf(t) >= 0; }
   function hasScale(t) { return SCALE_TYPES.indexOf(t) >= 0; }
   function hasColAxis(t) { return AXIS_TYPES.indexOf(t) >= 0; }
+
+  // Older studies carried grids with a scale (one rating per row).  A grid is now rows x
+  // columns with a pick per row, so the first time such a question is opened its scale
+  // points become the columns - codes and labels travel with them, nothing is thrown away.
+  function migrateLegacyGrid(q) {
+    if (!q || q.type !== "rating_grid" || (q.cols && q.cols.length)) return false;
+    var sc = q.scale || {};
+    var min = sc.min != null ? Number(sc.min) : 1, max = sc.max != null ? Number(sc.max) : 5;
+    if (!(max >= min)) max = min;
+    var pts = {};
+    (sc.points || []).forEach(function (p) { pts[Number(p.v)] = p; });
+    var cols = [];
+    for (var v = min; v <= max; v++) {
+      var c = { code: String(v), label: (pts[v] && pts[v].label) || String(v) };
+      if (pts[v] && pts[v].media) c.media = pts[v].media;
+      cols.push(c);
+    }
+    q.cols = cols;
+    if (!q.select) q.select = "single";
+    delete q.scale;
+    if (q.na && q.na.col) { delete q.na.col; if (!Object.keys(q.na).length) delete q.na; }
+    return true;
+  }
   function gridOf() { return (ed && ed.grid) || {}; }
   function naOf() { return (ed && ed.na) || {}; }
   function commentsOf() { return (ed && ed.comments) || {}; }
@@ -1402,6 +1431,15 @@
       '<span class="st-meta">N/A is exclusive - it clears the rating on that row and counts as answered. ' +
       "Offer it on every row, or give it a column of its own in the header.</span></div>";
   }
+  // The choice grid keeps the exclusive N/A on every row (there is no scale column for it).
+  function naRowsBlock() {
+    var n = naOf();
+    return '<div class="st-mtx-na"><label class="st-switch"><input type="checkbox" id="f-na-rows"' +
+      (n.rows ? " checked" : "") + '><i></i>N/A on every row</label>' +
+      '<label class="st-mini">Wording <input id="f-na-label" class="st-narrow" value="' + esc(n.label || "N/A") +
+      '" placeholder="N/A"></label>' +
+      '<span class="st-meta">N/A is exclusive - it clears the picks on that row and counts as answered.</span></div>';
+  }
   // Comments: one box for the whole question, and a box under any row you like.
   function commentBlock() {
     var c = commentsOf();
@@ -1504,8 +1542,20 @@
 
   // The whole matrix, in the order a respondent reads it: title, scale, columns, rows,
   // then the swap, the N/A, the comments and the order of both axes.
+  // A grid is rows x columns.  The dropdown at the top decides whether a respondent may
+  // pick one column per row (single select) or several (multi select).
+  function gridSelectField() {
+    var sel = ed.select === "multi" ? "multi" : "single";
+    return '<div class="st-field"><label>Answers <span class="st-opt">what a respondent may pick in every row</span></label>' +
+      '<select id="f-gselect">' +
+      '<option value="single"' + (sel === "single" ? " selected" : "") + ">Single select - one column per row</option>" +
+      '<option value="multi"' + (sel === "multi" ? " selected" : "") + ">Multi select - several columns per row</option>" +
+      "</select></div>";
+  }
   function gridBlock() {
-    var t = ed.type, html = gridHeadFields();
+    var t = ed.type, html = "";
+    if (t === "rating_grid") html += gridSelectField();
+    html += gridHeadFields();
     if (t === "concept_test") {
       html += '<div class="st-field"><label>Concept shown to respondents</label><textarea id="f-concept" rows="4">' +
         esc(ed.concept || "") + '</textarea><div class="st-hint">Attach an image or video under <b>Image / video</b>, ' +
@@ -1528,7 +1578,7 @@
       '<span class="st-meta">' + (hasColAxis(t)
         ? "Swaps the two lists over. The grid keeps the same cells, just read the other way."
         : "Swaps the rows with the scale points: every row becomes a column of the scale.") + "</span></div>";
-    html += naBlock() + commentBlock() + randomizeAxesBlock();
+    html += (t === "rating_grid" ? naRowsBlock() : naBlock()) + commentBlock() + randomizeAxesBlock();
     return html;
   }
 
@@ -2172,6 +2222,14 @@
       if (q && q.options && ["selected", "not_selected", "eq", "ne"].indexOf(r.op) >= 0) {
         valField = '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function (o) {
           return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select>";
+      } else if (q && (q.cols || []).length && ["cell_is", "cell_not", "cell_includes", "cell_lacks"].indexOf(r.op) >= 0) {
+        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
+          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
+            var v = rr.code + "=" + cc.code;
+            return '<option value="' + esc(v) + '"' + (v === String(r.value) ? " selected" : "") + ">" +
+              esc(String(rr.label || rr.code) + " \u2192 " + String(cc.label || cc.code)) + "</option>";
+          }).join("") + "</optgroup>";
+        }).join("") + "</select>";
       } else if (r.op === "answered" || r.op === "not_answered") valField = "<span></span>";
       else valField = '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
       return '<div class="st-rule"><span class="st-rule-no">' + (i ? (sif.match === "any" ? "or" : "and") : "when") + "</span>" +
@@ -2226,6 +2284,7 @@
     if (kind === "between") return (q.min === undefined ? 0 : q.min) + "-" + (q.max === undefined ? 100 : q.max);
     var row = (q.rows || q.items || [])[0], code = row ? String(row.code) : "";
     if (kind === "rowvalue") return code + "=" + (q.scale ? q.scale.max : 0);
+    if (kind === "rowcode") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "");
     if (kind === "ranktop") return code + "=1";
     if (kind === "rowsum") return "=0";
     if (String(op).indexOf("total_") === 0) return q.type === "sum_to_100" ? 100 : 0;
@@ -2240,6 +2299,7 @@
   function scrSeed(q) {
     var kind = Q.qKind(q), ops = Q.opsFor(q);
     var want = (kind === "alloc" || kind === "numrows" || kind === "grid") ? "row_gte"
+             : kind === "choicegrid" ? "cell_is"
              : kind === "number" ? "lt"
              : kind === "choice" ? "any_of"
              : kind === "rank" ? "ranked_first"
@@ -2392,6 +2452,20 @@
               return '<option value="' + esc(v) + '"' + (String(v) === num ? " selected" : "") + ">" + esc(v) + "</option>"; }).join("") + "</select>"
           : numBox(q, r.op, num, "value", { placeholder: "value" })) + "</span>";
     }
+    // "row is [column]" - pick the row, then the column it must point at
+    if (kind === "rowcode") {
+      var grows = rowItemsOf(q), gcols = q.cols || [];
+      if (!grows.length || !gcols.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var gparts = String(r.value || "").split("=");
+      var gwant = gparts[0], gcol = gparts[1] || "";
+      var gword = { cell_is: "is", cell_not: "is not", cell_includes: "includes",
+                    cell_lacks: "does not include" }[r.op] || "is";
+      return '<span class="st-scr-pair"><select data-sf="row">' + grows.map(function (o) {
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === gwant ? " selected" : "") + ">" + esc(rowText(o)) + "</option>";
+      }).join("") + "</select><em>" + gword + '</em><select data-sf="col">' + gcols.map(function (c) {
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === gcol ? " selected" : "") + ">" + esc(rowText(c)) + "</option>";
+      }).join("") + "</select></span>";
+    }
     return "<span></span>";
   }
 
@@ -2457,6 +2531,20 @@
           (t === "rank" && at >= 0 ? (at + 1) + ". " : "") + esc(optText(o) || rowText(o)) + "</button>";
       }).join("") + "</div>";
       if (t === "rank") picks += '<div class="st-hint">Tap the items in the order the respondent would rank them \u00B7 tap again to remove.</div>';
+    } else if (Q.qKind(q) === "choicegrid") {
+      var multiG = q.select === "multi", colsG = q.cols || [];
+      picks = '<div class="st-scr-rows">' + (q.rows || []).map(function (r) {
+        var cur = a[r.code], on = Array.isArray(cur) ? cur.map(String) : cur === undefined ? [] : [String(cur)];
+        return '<div class="st-scr-row"><span>' + esc(rowText(r)) + "</span>" + colsG.map(function (c) {
+          var hit = on.indexOf(String(c.code)) >= 0;
+          return '<button type="button" class="st-chip sm' + (hit ? " on" : "") + '" data-act="scr-cell" data-row="' +
+            esc(r.code) + '" data-col="' + esc(c.code) + '">' + esc(rowText(c)) + "</button>";
+        }).join("") + (a[r.code] === "NA" ? '<button type="button" class="st-chip sm on" disabled>N/A</button>' : "") +
+          "</div>";
+      }).join("") + "</div>" +
+      '<div class="st-hint">' + (multiG
+        ? "Tap the columns each row would tick - tap again to untick."
+        : "Tap the column each row would pick - like the respondent's radio buttons.") + "</div>";
     } else if (["grid", "alloc", "numrows"].indexOf(Q.qKind(q)) >= 0) {
       var k2 = Q.qKind(q), rows2 = q.rows || q.items || [], running = 0;
       picks = '<div class="st-scr-rows">' + rows2.map(function (r) {
@@ -2819,6 +2907,9 @@
       });
       if (spts.length >= 2) writeScalePoints(spts);
     }
+    if (document.getElementById("f-gselect")) {         // single or several picks per row
+      ed.select = val("f-gselect") === "multi" ? "multi" : "single";
+    }
     if (document.getElementById("f-gtitle")) {          // title, row name, column name
       var gm = ed.grid = ed.grid || {};
       setOrDel(gm, "title", val("f-gtitle"));
@@ -2921,6 +3012,7 @@
       if (kind === "codes") value = fieldIn(row, "value");
       else if (kind === "between") value = fieldIn(row, "valueLo") + "-" + fieldIn(row, "valueHi");
       else if (kind === "rowvalue" || kind === "ranktop") value = fieldIn(row, "row") + "=" + fieldIn(row, "value");
+      else if (kind === "rowcode") value = fieldIn(row, "row") + "=" + fieldIn(row, "col");
       else if (kind === "rowsum") {
         var held = String(fieldIn(row, "value") || "");
         value = (held.split("=")[0] || "") + "=" + fieldIn(row, "valueSum");
@@ -3332,6 +3424,21 @@
       syncFromForm();
       var ta = scrTest[ed.id] || (scrTest[ed.id] = {});
       ta[b.getAttribute("data-row")] = Number(b.getAttribute("data-v"));
+      rerenderCard("screening"); changed(); return;
+    }
+    if (act === "scr-cell") {
+      syncFromForm();
+      var tg = scrTest[ed.id] || (scrTest[ed.id] = {});
+      var rcode = b.getAttribute("data-row"), ccode = b.getAttribute("data-col");
+      if (ed.select === "multi") {
+        var have = Array.isArray(tg[rcode]) ? tg[rcode].slice() : [];
+        var at = have.map(String).indexOf(String(ccode));
+        if (at >= 0) have.splice(at, 1); else have.push(ccode);
+        tg[rcode] = have;
+      } else {
+        tg[rcode] = String(tg[rcode]) === String(ccode) ? undefined : ccode;
+        if (tg[rcode] === undefined) delete tg[rcode];
+      }
       rerenderCard("screening"); changed(); return;
     }
     if (act === "scr-test-clear") { syncFromForm(); delete scrTest[ed.id]; rerenderCard("screening"); changed(); return; }

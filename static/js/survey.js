@@ -203,7 +203,11 @@
     var t = q.id + ". " + q.stem + (q.help ? " " + q.help : "");
     if (q.options) t += " The options are: " +
       q.options.map(function (o) { return o.label; }).join("; ") + ".";
-    if (q.rows && q.scale) t += " Please rate each item from " + q.scale.min + " to " + q.scale.max +
+    if (q.rows && q.cols) t += (q.select === "multi" ? " For each row, tick every column that applies."
+      : " For each row, choose one column.") +
+      " Rows: " + q.rows.map(function (r) { return r.label; }).join("; ") +
+      ". Columns: " + q.cols.map(function (c) { return c.label; }).join("; ") + ".";
+    else if (q.rows && q.scale) t += " Please rate each item from " + q.scale.min + " to " + q.scale.max +
       ". Items: " + q.rows.map(function (r) { return r.label; }).join("; ") + ".";
     return t;
   }
@@ -793,7 +797,11 @@
       case "single_select": case "numeric": case "slider": case "open_text":
         return a._ !== undefined && a._ !== "";
       case "rating_grid": case "semantic_diff": case "rating_scale":
-        return q.rows.every(function (r) { return a[r.code] !== undefined; });
+        return q.rows.every(function (r) {
+          var v = a[r.code];
+          if (Array.isArray(v)) return v.length > 0;   // a multi-select grid row needs one tick
+          return v !== undefined && v !== "";
+        });
       case "sum_to_100":
         return q.rows.some(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       case "multi_select":
@@ -1283,7 +1291,80 @@
     return wrap;
   }
 
+  // A choice grid: rows x columns, and every row picks one column (single select) or
+  // several of them (multi select).  One value per row is stored - the column's code.
+  function renderChoiceGrid(q) {
+    var wrap = el("div", "grid choice-grid");
+    var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
+    var multi = q.select === "multi";
+    var cols = orderedList(q.cols || [], q, "cols");
+    var rows = orderedList(q.rows || [], q, "rows");
+    wrap.style.setProperty("--cg-tmpl", "minmax(140px, 1.4fr) repeat(" + cols.length +
+      ", minmax(44px, 1fr))" + (na.rows ? " minmax(64px, auto)" : ""));
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+
+    var head = el("div", "cg-row cg-head");
+    head.appendChild(el("div", "cg-corner", pipeText(g.row_label || "")));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "cg-col")); });
+    if (na.rows) head.appendChild(el("div", "cg-col cg-col-na", ""));
+    wrap.appendChild(head);
+
+    rows.forEach(function (r) {
+      var row = el("div", "cg-row");
+      row.appendChild(itemLabelNode(r, "rlabel cg-rlabel"));
+      var cur = (answers[q.id] || {})[r.code];
+      var on = Array.isArray(cur) ? cur.map(String) : (cur === undefined || cur === "" ? [] : [String(cur)]);
+      var isNa = cur === "NA";
+      cols.forEach(function (c) {
+        var cell = el("label", "cg-cell");
+        var inp = el("input");
+        inp.type = multi ? "checkbox" : "radio";
+        inp.name = q.id + "_" + r.code;
+        inp.checked = !isNa && on.indexOf(String(c.code)) >= 0;
+        inp.addEventListener("change", function () {
+          if (multi) {
+            var have = getAns(q.id, r.code);
+            have = Array.isArray(have) ? have.map(String) : [];
+            var at = have.indexOf(String(c.code));
+            if (inp.checked && at < 0) have.push(c.code);
+            if (!inp.checked && at >= 0) have.splice(at, 1);
+            setAns(q.id, r.code, have);
+          } else {
+            setAns(q.id, r.code, c.code);
+          }
+          var tick = row.querySelector(".cg-na input"); if (tick) tick.checked = false;
+          hideErr(); ansChanged(); checkPattern(q, wrap);
+        });
+        cell.appendChild(inp);
+        if (c.media && c.media.src) cell.title = pipeText(c.label);
+        row.appendChild(cell);
+      });
+      if (na.rows) {
+        var holder = el("div", "cg-cell cg-na");
+        var nl = el("label", "na-cell");
+        var ncb = el("input"); ncb.type = "checkbox";
+        ncb.checked = isNa;
+        ncb.addEventListener("change", function () {
+          setAns(q.id, r.code, ncb.checked ? "NA" : "");
+          Array.prototype.forEach.call(row.querySelectorAll(".cg-cell input"), function (x) {
+            if (x !== ncb) x.checked = false;              // N/A clears every pick on the row
+          });
+          hideErr(); ansChanged();
+        });
+        nl.appendChild(ncb);
+        nl.appendChild(el("span", null, naLabel));
+        holder.appendChild(nl);
+        row.appendChild(holder);
+      }
+      wrap.appendChild(row);
+      if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r, cols.length + 1));
+    });
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
   function renderGrid(q, semantic) {
+    if (q.cols && q.cols.length && !semantic) return renderChoiceGrid(q);   // rows x columns
     var wrap = el("div", "grid");
     var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
     var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
@@ -1887,6 +1968,7 @@
     }
     if (wanted && blank(a._comment)) return "Please add a comment before continuing.";
     (q.rows || []).forEach(function (r) {
+      if (a[r.code] === "NA") return;               // N/A rows carry nothing to comment on
       if (r.comment === "require" && blank(a["c_" + r.code])) need.push(pipeText(r.label));
     });
     if (need.length) return "Please add a comment for " + need.join(", ") + ".";

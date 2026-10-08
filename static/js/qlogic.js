@@ -163,7 +163,12 @@
     if (q.type === "multi_select") return (a.codes || []).length > 0;
     if (q.type === "rank") return (a.order || []).length > 0;
     if (a._ !== undefined && a._ !== "") return true;
-    return Object.keys(a).some(function (k) { return k !== "_order" && a[k] !== undefined && a[k] !== ""; });
+    return Object.keys(a).some(function (k) {
+      if (k === "_order") return false;
+      var v = a[k];
+      if (Array.isArray(v)) return v.length > 0;      // a multi-select grid row with nothing ticked
+      return v !== undefined && v !== "";
+    });
   }
   function ruleTrue(r, ctx) {
     var q = findQ(ctx, r.q);
@@ -312,6 +317,11 @@
     // ---- ranking
     { op: "ranked_first", label: "ranks first",              value: "codes", kinds: ["rank"] },
     { op: "ranked_top",   label: "ranks in the top",         value: "ranktop", kinds: ["rank"] },
+    // ---- choice grids: one row picks one column (or several)
+    { op: "cell_is",       label: "row is",                  value: "rowcode", kinds: ["choicegrid"], sym: "=" },
+    { op: "cell_not",      label: "row is not",              value: "rowcode", kinds: ["choicegrid"], sym: "\u2260" },
+    { op: "cell_includes", label: "row includes",            value: "rowcode", kinds: ["choicegrid"] },
+    { op: "cell_lacks",    label: "row does not include",    value: "rowcode", kinds: ["choicegrid"] },
     // ---- every question type
     { op: "answered",     label: "was answered",             value: "none", kinds: [] },
     { op: "not_answered", label: "was skipped",              value: "none", kinds: [] }
@@ -320,11 +330,13 @@
   SCREEN_OPS.forEach(function (o) { SCREEN_OP_BY_ID[o.op] = o; });
 
   // Which family of controls the condition needs, per question type:
-  //   choice  - options / codes
-  //   number  - one number (numeric entry, scale, NPS, date, delta)
-  //   alloc   - an allocation split across rows (constant sum)
-  //   numrows - a number per row, with no forced total (numeric matrix)
-  //   grid    - a scale value per row (rating grid, word pairs, heat map, concept test)
+  //   choice      - options / codes
+  //   number      - one number (numeric entry, scale, NPS, date, delta)
+  //   alloc       - an allocation split across rows (constant sum)
+  //   numrows     - a number per row, with no forced total (numeric matrix)
+  //   grid        - a scale value per row (rating scale, word pairs, heat map, concept test,
+  //                 and older scale-based grids)
+  //   choicegrid  - a grid of rows x columns where each row picks one or several columns
   var TYPE_KIND = {
     single_select: "choice", multi_select: "choice",
     numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
@@ -338,6 +350,9 @@
     if (!q) return "any";
     // a question loop is text by default, but numbers when its children are numbers
     if (q.type === "loop") return q.child === "numeric" ? "numrows" : "text";
+    // a grid with columns is a rows x columns choice grid; without columns it is the
+    // older scale-based grid (one rating per row)
+    if (q.type === "rating_grid") return (q.cols && q.cols.length) ? "choicegrid" : "grid";
     return TYPE_KIND[q.type] || "any";
   }
 
@@ -481,6 +496,17 @@
       case "ranked_top": {
         var n = Number(rowWant(r.value));
         return codes.slice(0, n).indexOf(rowKey(r.value)) >= 0;
+      }
+      // a grid row picks one column (single select) or several (multi select)
+      case "cell_is": case "cell_not": case "cell_includes": case "cell_lacks": {
+        var ckey = rowKey(r.value), cw = rowWant(r.value);
+        if (!ckey) return false;                      // no row chosen yet: the rule is not ready
+        var got2 = a[ckey];
+        var picked = Array.isArray(got2) ? got2.map(String)
+                   : (got2 === undefined || got2 === null || got2 === "" ? [] : [String(got2)]);
+        var has = picked.indexOf(cw) >= 0;
+        return r.op === "cell_is" ? has : r.op === "cell_not" ? !has
+             : r.op === "cell_includes" ? has : !has;
       }
       case "answered": return isAnswered(q, a);
       case "not_answered": return !isAnswered(q, a);
@@ -644,6 +670,12 @@
       return labels.length ? labels.join(r.op === "all_of" ? " and " : ", ") : "…";
     }
     if (kind === "ranktop") return itemLabel(q, rowKey(r.value)) + " (top " + rowWant(r.value) + ")";
+    if (kind === "rowcode") {
+      var col = null;
+      ((q && q.cols) || []).forEach(function (c) { if (String(c.code) === rowWant(r.value)) col = c; });
+      return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") + " " +
+        (col ? (col.label || String(col.code)) : rowWant(r.value));
+    }
     if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") +
       " " + rowWant(r.value);
     if (kind === "rowrange") {                       // "code=10-60" -> the Min - Max band
@@ -722,8 +754,17 @@
         case "numeric": case "slider": a._ = Math.round(((q.min || 0) + (q.max || 100)) / 2); break;
         case "open_text": a._ = "(sample answer to " + q.id + ")"; break;
         case "rank": a.order = (q.rows || []).map(function (r) { return r.code; }); break;
-        case "rating_grid": case "rating_scale": case "semantic_diff": case "emoji_grid":
+        case "rating_scale": case "semantic_diff": case "emoji_grid":
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
+        case "rating_grid":
+          if ((q.cols || []).length) {                // a rows x columns choice grid
+            (q.rows || []).forEach(function (r) {
+              a[r.code] = q.select === "multi" ? [q.cols[0].code] : q.cols[0].code;
+            });
+          } else {                                    // an older scale-based grid
+            (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; });
+          }
+          break;
         case "sum_to_100":
           (q.rows || []).forEach(function (r, k, arr) { a[r.code] = k === 0 ? 100 - 10 * (arr.length - 1) : 10; }); break;
         case "date": a._ = "2026-01-15"; break;

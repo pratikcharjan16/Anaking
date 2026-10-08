@@ -51,6 +51,9 @@ OP_WORDS = {
     "total_eq": "total =", "total_ne": "total \u2260", "total_gte": "total \u2265",
     "total_lte": "total \u2264",
     "ranked_first": "ranks first", "ranked_top": "ranks in the top",
+    # a grid row pointing at a column: "Q2: Ease of use is Column one"
+    "cell_is": "is", "cell_not": "is not",
+    "cell_includes": "includes", "cell_lacks": "does not include",
     "answered": "was answered", "not_answered": "was skipped",
 }
 
@@ -226,6 +229,11 @@ def _rule_text(rule: dict, questions: dict) -> str:
             low, _, high = tail.partition("-")
             return f"{rule.get('q')}: the sum of {names} is between {low or 0} and {high or 0}"
         return f"{rule.get('q')}: the sum of {names} {word} {tail or 0}"
+    elif op.startswith("cell_"):            # "a=c1" -> one grid row and the column it picked
+        head, _, tail = str(value or "").partition("=")
+        col = next((c.get("label") or c.get("code") for c in (q.get("cols") or [])
+                    if str(c.get("code")) == tail), tail or "…")
+        value = f"{_label(q, head)} {col}"
     elif op.startswith("row_"):
         head, _, tail = str(value or "").partition("=")
         value = f"{_label(q, head)} {tail}"
