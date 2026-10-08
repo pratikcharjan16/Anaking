@@ -60,7 +60,10 @@ function say(text){
   rec.onresult({resultIndex:0,results:[{isFinal:true,length:1,0:{transcript:text}}]});
 }
 
-async function openSurvey(slug,withVoice){
+// what a browser keeps for this survey (the page saves its position on unload; fire that here)
+function storageOf(S){S.w.dispatchEvent(new S.w.Event("beforeunload"));const ls=S.w.localStorage,o={};for(let i=0;i<ls.length;i++){const k=ls.key(i);o[k]=ls.getItem(k);}return o;}
+
+async function openSurvey(slug,withVoice,seed){
   const url="/survey/"+slug+"/test";
   const dom=new JSDOM(await get(url),{url:BASE+url,runScripts:"outside-only",pretendToBeVisual:true});
   const w=dom.window; w.scrollTo=()=>{}; w.requestAnimationFrame=fn=>setTimeout(fn,0);
@@ -68,6 +71,7 @@ async function openSurvey(slug,withVoice){
   w.fetch=(u,o)=>{const U=new URL(u,BASE);
     return req((o&&o.method)||"GET",U.pathname+U.search,o&&o.body).then(x=>({ok:x.status<400,status:x.status,json:()=>Promise.resolve(JSON.parse(x.body))}));};
   w.STUDY={slug:slug};
+  if(seed) for(const k of Object.keys(seed)) w.localStorage.setItem(k,seed[k]);   // a browser that already has a saved session
   if(withVoice) w.webkitSpeechRecognition=FakeSR;
   for (const f of ["qlogic.js","voice.js","explainer.js","survey.js"]) w.eval(await get("/static/js/"+f));
   await sleep(900);
@@ -168,6 +172,23 @@ async function openSurvey(slug,withVoice){
   check("the coach says the microphone cannot be heard",
     /Can\u2019t hear the microphone/.test(S6.$(".coach-msg").textContent), S6.$(".coach-msg").textContent);
 
+  // ---------- a returning visitor is offered the choice again until they have answered something ----------
+  const slugBack=await makeStudy("Voice Test Return");
+  const R1=await openSurvey(slugBack,true);                              // first visit: welcome, session saved
+  check("first visit shows the welcome", !!R1.$("#start-btn"));
+  const R2=await openSurvey(slugBack,true,storageOf(R1));                // came back before answering anything
+  check("a returning visitor who has answered nothing sees the welcome again", !!R2.$("#start-btn") && !!R2.$("#voice-choice"));
+  check("the returning visitor is offered the voice option again",
+    !!R2.$('input[name="voice-pref"][value="voice"]') && R2.$('input[name="voice-pref"][value="voice"]').disabled===false);
+  R2.$('input[name="voice-pref"][value="voice"]').click();
+  R2.$("#start-btn").click(); await sleep(500);
+  check("the same session carries on from the welcome into Q1", /specialty/i.test(R2.$("#app").textContent));
+  R2.$('#app .opt[data-code="1"] input').click(); await sleep(250);
+  R2.$(".nav .btn.primary").click(); await sleep(900);                   // Q1 answered and saved -> Q2
+  const R3=await openSurvey(slugBack,true,storageOf(R2));                // came back after answering
+  check("a returning visitor mid-survey resumes at the next question, not the welcome",
+    !R3.$("#start-btn") && /therapies/i.test(R3.$("#app").textContent), R3.$("#app").textContent.slice(0,80));
+
   // ---------- gamification switch ----------
   const slugFlat=await makeStudy("Voice Test Flat",false);
   const S3=await openSurvey(slugFlat,true);
@@ -184,6 +205,7 @@ async function openSurvey(slug,withVoice){
   await req("POST","/api/studio/delete",JSON.stringify({slug:slug}));
   await req("POST","/api/studio/delete",JSON.stringify({slug:slugFlat}));
   await req("POST","/api/studio/delete",JSON.stringify({slug:slugGame}));
+  await req("POST","/api/studio/delete",JSON.stringify({slug:slugBack}));
   console.log(fails?("\n"+fails+" FAIL"):"\nALL PASS");
   process.exit(fails?1:0);
 })().catch(e=>{console.error("CRASH",e);process.exit(2);});

@@ -107,6 +107,10 @@ button on the voice bar switch voice off and on at any time; tapping always work
   the survey carries on with taps. Inside an embedded preview the browser may refuse the microphone —
   open the survey in its own tab to use voice.
 
+**Coming back.** If a respondent returns in the same browser before answering anything, the welcome page
+(and the choice of how to answer) shows again; the saved session is kept. Once a question has been
+answered, reloading resumes at the next question. To start over in a browser, add `?new=1` to the link.
+
 **Gamified feel** (Studio → the study → *Settings & QC* → *Respondent experience*; on by default): the
 progress ring, insight points, ranks and confetti; a bull's-eye ripple on every answer; a "+N" that floats
 up when a bonus lands; the arrow-in-target finish. While a question is on screen the project details

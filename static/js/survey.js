@@ -2796,7 +2796,9 @@
                       task_order: prog.task_order, alt_positions: prog.alt_positions };
           answers = prog.answers || {};
           if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
-          afterSession(false);
+          // Nothing answered yet: show the welcome page again so the choice of how to answer
+          // (tap or voice) is offered before Q1.  The saved session itself is kept.
+          afterSession(Object.keys(answers).length === 0);
         } else if (STUDY.paused) {
           showPaused();                      // nobody new starts while the study is paused
         } else {
