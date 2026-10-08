@@ -112,6 +112,24 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     $$("#f-rules .st-rule").length);
   check("preview evaluates rule against sample answers", /SHOWN|HIDDEN/.test(($("#sif-result")||{}).textContent||""));
 
+  // --- the switch also works on a question with no conditions (it used to spring straight back on)
+  $$(".st-qi")[2].click(); await sleep(60);                        // Q3: no conditions yet
+  $$(".st-etab")[1].click(); await sleep(60);
+  check("a question with no conditions shows the switch on", !!$("#f-sif-on") && $("#f-sif-on").checked);
+  $("#f-sif-on").click(); await sleep(60);                          // a real click, not a synthetic change
+  check("switching it off with no conditions sticks", !!$("#f-sif-on") && !$("#f-sif-on").checked && /switched off/i.test($("#card-logic").textContent));
+  await sleep(1300);
+  check("the off switch is saved for that question", ((await saved()).questions[2].show_if||{}).off===true);
+  $("[data-act=rule-add]").click(); await sleep(60);
+  check("the first condition switches Show IF back on", !!$("#f-sif-on") && $("#f-sif-on").checked && $$("#f-rules .st-rule").length===1);
+  $("[data-act=rule-del]").click(); await sleep(1300);
+  check("removing that condition leaves the question as it was", (await saved()).questions[2].show_if===undefined);
+  $$(".st-qi")[1].click(); await sleep(60);                        // back on Q2, the question the rest of this test edits
+  // respondents: a switched-off condition is never applied; a switched-on one is
+  const sQ=[{id:"Q1",type:"single_select"}];
+  check("respondent logic applies a live condition", w.BeaconQ.showIf({show_if:{match:"all",rules:[{q:"Q1",op:"selected",value:"1"}]}},{answers:{Q1:{_:"2"}},questions:sQ})===false);
+  check("respondent logic ignores a switched-off condition", w.BeaconQ.showIf({show_if:{match:"all",rules:[{q:"Q1",op:"selected",value:"1"}],off:true}},{answers:{Q1:{_:"2"}},questions:sQ})===true);
+
   // --- change type via header select (Q2 multi -> single keeps options)
   $$(".st-etab")[0].click(); await sleep(60);
   check("the answer card is back after leaving Show IF", !!$("#card-answers"));
