@@ -2213,14 +2213,14 @@
       '<label class="st-switch big" title="Switch the show-if conditions on or off">' +
         '<input type="checkbox" id="f-sif-on"' + (on ? " checked" : "") + "><i></i>Show IF</label>" +
       '<span class="st-meta">' + (on
-        ? "This question is shown only to the respondents who match."
-        : "Shown to everybody - the conditions below are kept but never applied.") +
+        ? (rules.length ? "This question is shown only to the respondents who match." : "No conditions yet - everybody sees this question.")
+        : (rules.length ? "Shown to everybody - the conditions below are kept but never applied." : "Switched off - everybody sees this question.")) +
       "</span></div>";
     html += '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
       '<div class="st-logic-intro">' + (rules.length
       ? 'Show this question <b>only when</b> <select id="f-sif-match"><option value="all"' + (sif.match !== "any" ? " selected" : "") + '>all</option><option value="any"' + (sif.match === "any" ? " selected" : "") + '>any</option></select> of these are true:'
       : "<b>Always shown.</b> Add a condition to show it only to some respondents - e.g. only those who chose \u201COncology\u201D in Q1.") + "</div>";
-    if (!on) html += '<div class="st-scr-off">Show IF is switched off - the conditions below are parked, not deleted.</div>';
+    if (!on && rules.length) html += '<div class="st-scr-off">Show IF is switched off - the conditions below are parked, not deleted.</div>';
     html += '<div id="f-rules">' + rules.map(function (r, i) {
       var q = others.filter(function (x) { return x.id === r.q; })[0];
       var valField;
@@ -3041,12 +3041,14 @@
         if (r.cellnum !== undefined) { r.value = (r.value || "") + "=" + r.cellnum; delete r.cellnum; }
         if (r.q && r.op) rules.push(r);
       });
+      var sifNode = document.getElementById("f-sif-on");
       if (rules.length) {
         ed.show_if = { match: val("f-sif-match") || (ed.show_if && ed.show_if.match) || "all", rules: rules };
         if (chk("f-sif-negate")) ed.show_if.negate = true;
-        var sifNode = document.getElementById("f-sif-on");
         if (sifNode) ed.show_if.off = !sifNode.checked;
       }
+      // switched off with no conditions yet: keep that choice, or the switch would spring back on
+      else if (sifNode && !sifNode.checked) ed.show_if = { match: (ed.show_if && ed.show_if.match) || "all", rules: [], off: true };
       else delete ed.show_if;
     }
     syncScreening();
@@ -3413,11 +3415,13 @@
       syncFromForm();
       var others = cur.cfg.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
       var q0 = others[0]; if (!q0) return;
+      var firstRule = !((ed.show_if && ed.show_if.rules) || []).length;
       ed.show_if = ed.show_if || { match: "all", rules: [] };
+      if (firstRule) delete ed.show_if.off;          // the first condition switches Show IF on: nothing is parked yet
       ed.show_if.rules.push({ q: q0.id, op: q0.options ? "selected" : "answered", value: q0.options ? q0.options[0].code : "" });
       rerenderCard("logic"); changed(); return;
     }
-    if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length) delete ed.show_if; rerenderCard("logic"); changed(); return; }
+    if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length && ed.show_if.off !== true) delete ed.show_if; rerenderCard("logic"); changed(); return; }
 
     // ---- screening builder -------------------------------------------------------------
     if (act === "scr-add") {
@@ -3823,7 +3827,7 @@
     if (act === "agent-send") { var msg = $(".st-agent-msg"); if (msg) msg.innerHTML = '<b>Recommended next step</b><p>Start by confirming one primary business decision, then keep each question tied to it. I recommend reviewing screening criteria and removing any double-barrelled wording before launch.</p>'; }
     if (act === "agent-action") { var box = $(".st-agent-msg"); if (box) box.innerHTML = '<b>Suggested edit ready</b><p>I recommend concise, neutral wording and mutually exclusive answer choices. Use the real-time fixes beside each flagged issue to apply a specific change with confirmation.</p>'; }
     if (act === "logic-guide") { closeModal(); openLogicGuide(); }
-    if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
+    if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; if (!((ed.show_if.rules || []).length)) delete ed.show_if.off; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
     if (act === "qadd-type") addQuestion(b.getAttribute("data-type"), b.getAttribute("data-sec"), Number(b.getAttribute("data-after")));
     if (act === "ask-ok") { var v = (document.getElementById("st-ask") || {}).value; closeModal(); if (askCb) askCb(v); askCb = null; }
     if (act === "cmd-welcome" || act === "cmd-thanks") {
@@ -4151,11 +4155,11 @@
       '<div class="st-field"><label>Embedded variables <span class="st-opt">names captured from the survey link, comma separated</span></label><input id="f-embedded" data-set="1" value="' + esc((c.embedded || []).map(function (e2) { return e2.name; }).join(", ")) + '" placeholder="panel, rid">' +
       '<div class="st-meta">A respondent opening <code>/survey/' + esc(cur.slug) + "?panel=A</code> is stored with <code>ev_panel = A</code> and it appears in every export.</div></div></div>" +
       '<label class="st-switch"><input type="checkbox" id="f-randpages" data-set="1"' + (c.randomize_pages ? " checked" : "") + '><i></i>Page Randomizer - respondents see the middle pages in a random order</label>' +
-      '<h4 class="st-h4">Respondent experience <span class="st-opt">gamified feel &amp; voice answers</span></h4>' +
-      '<label class="st-switch"><input type="checkbox" id="f-gamify" data-set="1"' + (c.gamify === false ? "" : " checked") + '><i></i>Gamified feel - progress target, insight points, ranks and confetti (on by default)</label>' +
-      '<div class="st-meta">Voice answering comes with it, free of charge: on browsers that support speech recognition ' +
-      'respondents may say an option (or its number, several joined with \u201cand\u201d) and \u201cnext\u201d. ' +
-      'Tapping always works too - respondents pick their mode on the welcome page.</div>' +
+      '<h4 class="st-h4">Respondent experience <span class="st-opt">gamified feel &amp; answer by voice</span></h4>' +
+      '<label class="st-switch"><input type="checkbox" id="f-gamify" data-set="1"' + (c.gamify === false ? "" : " checked") + '><i></i>Gamified feel - progress ring, insight points, ranks and confetti; the strip stays on top while questions are shown (on by default)</label>' +
+      '<div class="st-meta"><b>Answer by voice (free to deploy).</b> Respondents who pick it on the welcome page say an option (or its number, several joined with \u201cand\u201d) and \u201cnext\u201d. ' +
+      'It runs on the browser\u2019s own speech recognition (Chrome, Edge, Safari), so there is no server key, account or cost. ' +
+      'That browser\u2019s speech service does the recognising (Google\u2019s in Chrome), so check it suits your respondents. Tapping always works too.</div>' +
       '<h4 class="st-h4">Quality flags</h4><div class="st-grid2">' +
       f("f-attq", "Attention-check question id", "", qc.attention_q, "e.g. Q13") +
       f("f-attok", "\u2026correct answer code", "", qc.attention_ok, "e.g. 2") +

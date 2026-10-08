@@ -97,16 +97,31 @@
     return !!(window.SpeechRecognition || window.webkitSpeechRecognition);
   }
 
-  // handlers: onFinal(text), onInterim(text), onState("listening"|"off"|"error", detail)
+  // Errors that end listening.  The browser will not grant them on a retry, so restarting would
+  // only spin.  "no-speech" (a pause with nothing said) and "aborted" (we stopped it) are ordinary.
+  var BENIGN = { "no-speech": 1, "aborted": 1 };
+
+  // handlers: onFinal(text), onInterim(text), onState("listening"|"off"|"error", code)
   function create(handlers) {
     var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!SR) return null;
-    var rec = new SR(), on = false, restarts = 0;
-    rec.lang = (document.documentElement && document.documentElement.lang) ||
-               (navigator.language || "en-US");
+    var rec = new SR(), on = false, heard = false, silentEnds = 0;
+    var lang = (document.documentElement && document.documentElement.lang) || navigator.language || "en-US";
+    rec.lang = lang === "en" ? "en-US" : lang;
     rec.interimResults = true;
     rec.continuous = false;
     rec.maxAlternatives = 1;
+
+    function emit(state, code) { if (handlers.onState) handlers.onState(state, code); }
+    function fail(code) { on = false; emit("error", code); }
+    // false only when the browser refused to start listening at all
+    function begin() {
+      heard = false;
+      try { rec.start(); return true; }
+      catch (e) { return !!e && e.name === "InvalidStateError"; }   // already running is fine
+    }
+
+    rec.onaudiostart = function () { heard = true; silentEnds = 0; };
     rec.onresult = function (e) {
       var fin = "", inter = "", i;
       for (i = e.resultIndex; i < e.results.length; i++) {
@@ -116,25 +131,31 @@
       if (inter && handlers.onInterim) handlers.onInterim(inter.trim());
       if (fin && handlers.onFinal) handlers.onFinal(fin.trim());
     };
-    rec.onend = function () {
-      if (!on) { if (handlers.onState) handlers.onState("off"); return; }
-      // the browser stops listening after each utterance - start again at once
-      if (restarts < 400) { restarts++; try { rec.start(); } catch (e) {} }
-      if (handlers.onState) handlers.onState("listening");
-    };
     rec.onerror = function (e) {
-      if (handlers.onState) handlers.onState("error", e && e.error);
+      var code = (e && e.error) || "error";
+      if (!BENIGN[code]) fail(code);
     };
+    rec.onend = function () {
+      if (!on) { emit("off"); return; }
+      // A session that ends without ever capturing audio means the microphone is blocked or missing.
+      // A few in a row is a fault to report, not something to keep retrying.
+      silentEnds = heard ? 0 : silentEnds + 1;
+      if (silentEnds >= 3) { fail("no-audio"); return; }
+      // the browser stops listening after each utterance - start again at once
+      if (!begin()) { fail("no-start"); return; }
+      emit("listening");
+    };
+
     return {
       start: function () {
-        on = true; restarts = 0;
-        try { rec.start(); } catch (e) {}
-        if (handlers.onState) handlers.onState("listening");
+        on = true; silentEnds = 0;
+        if (!begin()) { fail("no-start"); return; }
+        emit("listening");
       },
       stop: function () {
         on = false;
         try { rec.stop(); } catch (e) {}
-        if (handlers.onState) handlers.onState("off");
+        emit("off");
       },
       active: function () { return on; }
     };

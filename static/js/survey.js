@@ -262,7 +262,7 @@
   // It never blocks the survey - it only comments.
   var coachTimer = null;
   var PREVIEW = !!window.BEACON_PREVIEW_MODE;   // set by the Studio: render questions, no session/boot
-  function coachSay(html, tone) {
+  function coachSay(html, tone, ms) {
     if (PREVIEW) return;
     var c = $("#coach");
     if (!c) {
@@ -282,7 +282,7 @@
     c.className = "coach show " + (tone || "info");
     c.querySelector(".coach-msg").innerHTML = html;
     if (coachTimer) clearTimeout(coachTimer);
-    coachTimer = setTimeout(function () { c.classList.remove("show"); }, 5200);
+    coachTimer = setTimeout(function () { c.classList.remove("show"); }, ms || 5200);
   }
 
   // ============================================================ verbatim quality
@@ -644,10 +644,20 @@
     box.classList.remove("bump");
     void box.offsetWidth;
     box.classList.add("bump");
+    floatPoints(n);
     if (before !== after) {
       toast("&#9733; Rank up: " + after);
       confetti(18);
     }
+  }
+
+  // "+25" rises out of the points counter, so a reward is seen as it lands.
+  function floatPoints(n) {
+    var box = $("#points") && $("#points").parentElement;
+    if (!box || !(n > 0)) return;
+    var f = el("span", "pts-float", "+" + n);
+    box.appendChild(f);
+    setTimeout(function () { f.remove(); }, 1400);
   }
 
   function setProgress(pct) {
@@ -702,7 +712,12 @@
       voiceBar = el("div", "voice-bar",
         '<span class="vb-mic" aria-hidden="true"><i></i></span>' +
         '<span class="vb-live">Listening\u2026</span>' +
-        '<span class="vb-heard" aria-live="polite"></span>');
+        '<span class="vb-heard" aria-live="polite"></span>' +
+        '<button type="button" class="vb-stop">Stop</button>');
+      voiceBar.querySelector(".vb-stop").addEventListener("click", function () {
+        setVoice(false);
+        coachSay("Voice answering is off - tap your answers.", "info");
+      });
       document.body.appendChild(voiceBar);
     }
     var live = voiceBar.querySelector(".vb-live");
@@ -764,26 +779,47 @@
     });
   }
 
+  // What a respondent hears when voice answering stops by itself: the microphone is blocked or
+  // missing, or the speech service cannot be reached.  Every message ends with a way forward.
+  var VOICE_ERRORS = {
+    "not-allowed": "Microphone access is blocked. Allow it for this site, then turn voice on again.",
+    "service-not-allowed": "This browser won\u2019t use its speech service here. Tap your answers to carry on.",
+    "audio-capture": "No microphone was found. Connect one, then turn voice on again.",
+    "network": "Couldn\u2019t reach the browser\u2019s speech service. Tap your answers to carry on.",
+    "language-not-supported": "This browser can\u2019t listen in this survey\u2019s language. Tap your answers to carry on.",
+    "no-audio": "Can\u2019t hear the microphone. Check that it is allowed and not muted, then turn voice on again.",
+    "no-start": "Voice answering couldn\u2019t start in this browser. Tap your answers to carry on."
+  };
+  function voiceFailed(code) {
+    if (!voiceOn) return;                              // a late report after we already stopped
+    setVoice(false);
+    coachSay(VOICE_ERRORS[code] || "Voice answering stopped. Tap your answers to carry on.", "warn", 9000);
+  }
+
   function setVoice(on) {
     if (on && !voiceSupported()) return;
     if (on && !voice) {
       voice = window.BeaconVoice.create({
         onInterim: function (t) { voiceTranscript(t); },
         onFinal: function (t) { voiceHear(t); },
-        onState: function (state, detail) {
-          if (state === "waiting") showVoiceBar(detail === "denied"
-            ? "Microphone blocked \u2014 allow it in the browser to use voice."
-            : "Couldn\u2019t reach the speech service \u2014 tap answers for now.");
-        }
+        onState: function (state, code) { if (state === "error") voiceFailed(code); }
       });
     }
     if (!voice) return;
     voiceOn = on;
-    if (voiceOn) { voice.start(); showVoiceBar(); } else { voice.stop(); hideVoiceBar(); }
     var btn = $("#voice-btn");
-    if (btn) btn.classList.toggle("on", voiceOn);
+    if (on) {
+      voice.start();                                   // may report a failure straight away
+      if (voiceOn) {
+        showVoiceBar();
+        coachSay("Voice mode on \u2014 say an option or its number, then \u201Cnext\u201D. Press <b>Stop</b> below to switch it off.", "info");
+      }
+    } else {
+      voice.stop();
+      hideVoiceBar();
+    }
+    if (btn) { btn.classList.toggle("on", voiceOn); btn.setAttribute("aria-pressed", voiceOn ? "true" : "false"); }
     document.body.classList.toggle("voice-on", voiceOn);
-    if (voiceOn) coachSay("Voice mode on \u2014 say an option or its number, then \u201Cnext\u201D.", "info");
   }
 
   // ============================================================ explainer
@@ -2713,6 +2749,7 @@
       CONJOINT = spec.conjoint;
       NARR = spec.narration;
       SCENES = spec.explainer_scenes;
+      document.body.classList.toggle("gamified", gamifyOn());
       // 0 is a valid setting (no gate) - only an absent value falls back to the default
       MIN_DWELL = spec.conjoint_min_dwell === undefined || spec.conjoint_min_dwell === null
                   ? 12 : Number(spec.conjoint_min_dwell);
@@ -2726,10 +2763,15 @@
         if (soundOn && $("#welcome") && $("#welcome").parentElement) playClip("welcome");
       });
 
-      // Voice mode: offered only where the browser has speech recognition,
-      // so respondents on other browsers keep the normal tap-through flow.
-      var vc = $("#voice-choice");
-      if (vc && voiceSupported()) vc.hidden = false;
+      // Voice answering is always listed on the welcome page, so respondents can see it.  Where the
+      // browser has no speech recognition the option stays there, disabled, with the reason given.
+      var vRadio = document.querySelector('input[name="voice-pref"][value="voice"]');
+      if (vRadio && !voiceSupported()) {
+        vRadio.disabled = true;
+        if (vRadio.closest("label")) vRadio.closest("label").classList.add("is-off");
+        var vnote = $(".voice-note");
+        if (vnote) vnote.textContent = "Not available in this browser. Open this survey in Chrome, Edge or Safari to answer by voice.";
+      }
       var vb = $("#voice-btn");
       if (vb && voiceSupported()) {
         vb.hidden = false;
@@ -2754,7 +2796,9 @@
                       task_order: prog.task_order, alt_positions: prog.alt_positions };
           answers = prog.answers || {};
           if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
-          afterSession(false);
+          // Nothing answered yet: show the welcome page again so the choice of how to answer
+          // (tap or voice) is offered before Q1.  The saved session itself is kept.
+          afterSession(Object.keys(answers).length === 0);
         } else if (STUDY.paused) {
           showPaused();                      // nobody new starts while the study is paused
         } else {
