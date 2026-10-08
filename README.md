@@ -242,7 +242,7 @@ Variables** (names captured from the respondent link, e.g. `?panel=A` → export
 
 ### The add-item library (Studio → + Add question)
 
-Grouped exactly like a commercial builder: **Questions** - Multiple Choice (incl. image
+Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
 options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
 Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
 Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -

@@ -124,7 +124,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   // --- add question via type picker
   $$("[data-act=qadd]")[1].click(); await sleep(20);
   check("type picker modal opens as the grouped add-item library", !$("#st-modal").hidden && $$(".st-type").length===26 &&
-    /Multiple Choice/.test($("#st-modal").textContent) && /Methodologies/.test($("#st-modal").textContent) &&
+    /Single Select/.test($("#st-modal").textContent) && /Methodologies/.test($("#st-modal").textContent) &&
     /Page Randomizer/.test($("#st-modal").textContent) && /Embedded Variable/.test($("#st-modal").textContent));
   $$(".st-type").find(b=>b.getAttribute("data-type")==="rating_grid").click(); await sleep(40);
   check("new rating grid inserted after selected question in Main, selected, next free id", $("#st-modal").hidden && $$(".st-qi").length===4 && $(".st-qi.on .st-qi-id").textContent==="Q10" && $$(".st-qi")[2].classList.contains("on"));

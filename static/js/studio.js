@@ -63,7 +63,7 @@
 
   // ------------------------------------------------------------ question types
   var TYPE_INFO = {
-    single_select: { name: "Multiple Choice", icon: "\u25C9", desc: "One answer from a list", group: "Questions" },
+    single_select: { name: "Single Select", icon: "\u25C9", desc: "One answer from a list", group: "Questions" },
     multi_select: { name: "Multiple Choice (many)", icon: "\u2611", desc: "Tick all that apply", group: "Questions" },
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
     rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
