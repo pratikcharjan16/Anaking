@@ -52,6 +52,20 @@
 .survey-skin .grid-row:last-child{border-bottom:none}
 .survey-skin .grid-row:nth-child(even){background:#fafcfd}
 .survey-skin .grid-row .rlabel{font-size:13.5px}
+/* choice grid: rows x columns, one or several picks per row */
+.survey-skin .choice-grid{overflow-x:auto}
+.survey-skin .cg-row{display:grid;grid-template-columns:var(--cg-tmpl);gap:8px;align-items:center;
+  padding:10px 14px;border-bottom:1px solid var(--line)}
+.survey-skin .cg-row:last-child{border-bottom:none}
+.survey-skin .cg-row:nth-child(even){background:#fafcfd}
+.survey-skin .cg-head{background:#f4f7f9;border-bottom:1px solid var(--line)}
+.survey-skin .cg-head .cg-col{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--muted);text-align:center}
+.survey-skin .cg-corner{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
+.survey-skin .cg-rlabel{font-size:13.5px}
+.survey-skin .cg-cell{display:flex;justify-content:center;align-items:center;margin:0;cursor:pointer}
+.survey-skin .cg-cell input{width:19px;height:19px;accent-color:var(--accent-2);cursor:pointer}
+.survey-skin .cg-na .na-cell{justify-content:center}
 .survey-skin .scale{display:flex;gap:5px;align-items:center}
 .survey-skin .scale button{width:34px;height:32px;border:1px solid var(--line);background:#fff;border-radius:6px;
   cursor:pointer;font-size:12.5px;color:var(--ink);transition:all .1s;}
@@ -59,6 +73,11 @@
 .survey-skin .scale button.on{background:var(--accent-2);border-color:var(--accent-2);color:#fff;font-weight:600}
 .survey-skin .scale-ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);
   padding:7px 14px;background:#f4f7f9;border-top:1px solid var(--line)}
+/* rating scale: three anchor labels - low end, middle, high end */
+.survey-skin .scale-ends.rs-ends{position:relative}
+.survey-skin .rs-end-low{text-align:left;max-width:30%}
+.survey-skin .rs-end-high{text-align:right;max-width:30%;margin-left:auto}
+.survey-skin .rs-end-mid{position:absolute;left:50%;transform:translateX(-50%);text-align:center;max-width:36%}
 .survey-skin .sem-left,.survey-skin .sem-right{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .survey-skin input[type=number],.survey-skin input[type=text],.survey-skin textarea,.survey-skin select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font:inherit;color:var(--ink);}
 .survey-skin input:focus,.survey-skin textarea:focus,.survey-skin select:focus{outline:none;border-color:var(--accent-2);

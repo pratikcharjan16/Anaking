@@ -64,9 +64,13 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   const cfg = {
     sections: [{ id: "S1", title: "Grids" }],
     questions: [
-      { id: "G1", section: "S1", type: "rating_grid", stem: "How important is each attribute?",
-        rows: [{ code: "a", label: "Efficacy" }, { code: "b", label: "Safety" }, { code: "c", label: "Cost" }],
-        scale: { min: 1, max: 5, min_label: "Not at all", max_label: "Critically" } },
+      { id: "G1", section: "S1", type: "rating_grid", stem: "How well does each describe it?",
+        select: "single",
+        rows: [{ code: "a", label: "Ease of use" }, { code: "b", label: "Trust" }, { code: "c", label: "Value" }],
+        cols: [{ code: "c1", label: "Poor" }, { code: "c2", label: "Okay" }, { code: "c3", label: "Great" }] },
+      { id: "G5", section: "S1", type: "rating_grid", stem: "An older scale-based grid",
+        rows: [{ code: "a", label: "One" }, { code: "b", label: "Two" }],
+        scale: { min: 1, max: 3, points: [{ v: 1, label: "Low" }, { v: 3, label: "High" }] } },
       { id: "G2", section: "S1", type: "numeric_matrix", stem: "How many patients a year?",
         rows: [{ code: "r1", label: "Treated" }, { code: "r2", label: "Eligible" }] },
       { id: "G3", section: "S1", type: "heatmap", stem: "Where do you want more evidence?",
@@ -75,54 +79,64 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
       { id: "G4", section: "S1", type: "emoji_grid", stem: "Your gut reaction",
         rows: [{ code: "t", label: "Trust" }, { code: "i", label: "Innovation" }],
         scale: { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE15", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"] } },
+      { id: "R1", section: "S1", type: "rating_scale", stem: "How well does each describe you?",
+        rows: [{ code: "a", label: "Ease of use" }, { code: "b", label: "Trust" }],
+        scale: { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" } },
     ],
     tpp: {}, explainer_scenes: [],
   };
   const slug = (await post("/api/studio/save", { title: "Matrix Test", cfg })).slug;
   const s = await studio(slug);
 
-  // ---------------------------------------------------------------- the rating grid
+  // ---------------------------------------------------------------- the grid: rows x columns
   await s.open("G1");
-  check("a grid opens with a title and a name for each axis",
+  check("a grid opens with the single / multi select dropdown at the top",
+    !!s.$("#f-gselect") && s.$("#f-gselect").value === "single" &&
+    [...s.$("#f-gselect").options].map(o => o.value).join(",") === "single,multi");
+  check("a grid keeps its title and a name for each axis",
     !!s.$("#f-gtitle") && !!s.$("#f-rowlabel") && !!s.$("#f-collabel"));
-  check("it lists its rows, its columns and the scale",
-    rowsOf(s).length === 3 && ptsOf(s).length === 5 && !!s.$("#f-smin") && !!s.$("#f-smax"),
-    rowsOf(s).length + " rows / " + ptsOf(s).length + " points");
-  check("every row offers add-a-row, duplicate, move and delete",
+  check("it lists its rows and its columns - the scale section is gone",
+    rowsOf(s).length === 3 && colsOf(s).length === 3 && !s.$("#f-smin") && !s.$('[data-kind="pt"]'),
+    rowsOf(s).length + " rows / " + colsOf(s).length + " cols");
+  check("every row offers add, duplicate, move, delete and an attachment",
     !!s.$('[data-act="it-add"][data-kind="row"]') && !!s.$('[data-act="it-dup"][data-kind="row"]') &&
-    !!s.$('[data-act="it-up"][data-kind="row"]') && !!s.$('[data-act="it-del"][data-kind="row"]'));
-  check("every row can carry an image, a video or an audio clip",
-    !!s.$('[data-act="it-media"][data-kind="row"]') && /audio/.test(s.$('[data-act="it-media"][data-kind="row"]').accept),
+    !!s.$('[data-act="it-up"][data-kind="row"]') && !!s.$('[data-act="it-del"][data-kind="row"]') &&
+    !!s.$('[data-act="it-media"][data-kind="row"]') &&
+    /audio/.test(s.$('[data-act="it-media"][data-kind="row"]').accept),
     s.$('[data-act="it-media"][data-kind="row"]').accept);
+  check("every column offers add, duplicate, move, delete and an attachment",
+    !!s.$('[data-act="it-add"][data-kind="col"]') && !!s.$('[data-act="it-dup"][data-kind="col"]') &&
+    !!s.$('[data-act="it-up"][data-kind="col"]') && !!s.$('[data-act="it-del"][data-kind="col"]') &&
+    !!s.$('[data-act="it-media"][data-kind="col"]') &&
+    /audio/.test(s.$('[data-act="it-media"][data-kind="col"]').accept));
   check("every row has a comment box of its own and a format",
     s.$$('select[data-it="row"][data-k="comment"]').length === 3 &&
     s.$$('select[data-it="row"][data-k="fmt"]').length === 3);
 
-  // ---- the columns of a rating grid are the scale points
-  s.click(s.$('[data-act="pt-add"]')); await sleep(220);
-  check("adding a column stretches the scale by one", ptsOf(s).length === 6 && s.$("#f-smax").value === "6",
-    ptsOf(s).length + " / " + s.$("#f-smax").value);
-  const ptDel = s.$$('[data-act="pt-del"]').pop();
-  s.click(ptDel); await sleep(220);
-  check("deleting one pulls the scale back", ptsOf(s).length === 5 && s.$("#f-smax").value === "5",
-    ptsOf(s).length + " / " + s.$("#f-smax").value);
-  s.click(s.$$('[data-act="pt-dup"]')[0]); await sleep(220);
-  check("a column can be duplicated", ptsOf(s).length === 6);
-  s.click(s.$$('[data-act="pt-del"]').pop()); await sleep(220);
-  const pt0 = s.$$('input[data-pt="label"]')[0];
-  pt0.value = "Not at all important"; s.fire(pt0, "change"); await sleep(260);
-  const pt4 = s.$$('input[data-pt="label"]')[4];
-  pt4.value = "Critically important"; s.fire(pt4, "change"); await sleep(260);
+  // ---- columns: add, duplicate, move, delete, label
+  s.click(s.$('[data-act="it-add"][data-kind="col"]')); await sleep(240);
+  check("+ Add column grows the grid", colsOf(s).length === 4, colsOf(s).length);
+  s.click(s.$$('[data-act="it-dup"][data-kind="col"]')[0]); await sleep(240);
+  check("a column can be duplicated in place", colsOf(s).length === 5 &&
+    /\(copy\)$/.test(s.$$('[data-it="col"][data-k="label"]')[1].value),
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+  check("the copy gets a code of its own",
+    s.$$('[data-it="col"][data-k="code"]')[0].value !== s.$$('[data-it="col"][data-k="code"]')[1].value,
+    s.$$('[data-it="col"][data-k="code"]').map(n => n.value).join(","));
+  s.click(s.$$('[data-act="it-down"][data-kind="col"]')[1]); await sleep(240);
+  check("a column can be moved along the header",
+    /\(copy\)/.test(s.$$('[data-it="col"][data-k="label"]')[2].value),
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+  s.click(s.$$('[data-act="it-del"][data-kind="col"]')[2]); await sleep(240);
+  check("a column can be deleted", colsOf(s).length === 4 &&
+    !s.$$('[data-it="col"][data-k="label"]').some(n => /\(copy\)/.test(n.value)));
+  s.click(s.$$('[data-act="it-del"][data-kind="col"]')[3]); await sleep(240);
+  check("...and the grid is back to its three columns", colsOf(s).length === 3, colsOf(s).length);
+  const col0 = s.$$('[data-it="col"][data-k="label"]')[0];
+  col0.value = "Not good"; s.fire(col0, "change"); await sleep(240);
   check("each column keeps its own label",
-    s.$$('input[data-pt="label"]')[0].value === "Not at all important" &&
-    s.$$('input[data-pt="label"]')[4].value === "Critically important");
-  s.click(s.$$('[data-act="pt-down"]')[0]); await sleep(260);
-  check("a column's label can be moved along the scale",
-    s.$$('input[data-pt="label"]')[0].value === "" &&
-    s.$$('input[data-pt="label"]')[1].value === "Not at all important",
-    s.$$('input[data-pt="label"]').map(n => n.value).join("|"));
-  s.click(s.$$('[data-act="pt-up"]')[1]); await sleep(260);
-  check("...and moved back", s.$$('input[data-pt="label"]')[0].value === "Not at all important");
+    s.$$('[data-it="col"][data-k="label"]')[0].value === "Not good",
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
 
   // ---- rows
   s.click(s.$('[data-act="it-add"][data-kind="row"]')); await sleep(240);
@@ -143,16 +157,19 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     !s.$$('[data-it="row"][data-k="label"]').some(n => /\(copy\)/.test(n.value)));
 
   // ---- the title and the two group names
-  const gt = s.$("#f-gtitle"); gt.value = "How important is each attribute?"; s.fire(gt, "change"); await sleep(200);
-  const rl = s.$("#f-rowlabel"); rl.value = "Attribute"; s.fire(rl, "change"); await sleep(200);
-  const cl = s.$("#f-collabel"); cl.value = "Importance"; s.fire(cl, "change"); await sleep(200);
+  const gt = s.$("#f-gtitle"); gt.value = "How well does each describe it?"; s.fire(gt, "change"); await sleep(200);
+  const rl = s.$("#f-rowlabel"); rl.value = "Statement"; s.fire(rl, "change"); await sleep(200);
+  const cl = s.$("#f-collabel"); cl.value = "Rating"; s.fire(cl, "change"); await sleep(200);
 
-  // ---- the exclusive N/A, in both shapes
+  // ---- single select or multi select, chosen from the dropdown at the top
+  const gs = s.$("#f-gselect"); gs.value = "multi"; s.fire(gs, "change"); await sleep(240);
+  check("the dropdown switches the grid to multi select", s.$("#f-gselect").value === "multi");
+
+  // ---- the exclusive N/A, on every row
   const naR = s.$("#f-na-rows"); naR.checked = true; s.fire(naR, "change"); await sleep(240);
-  const naC = s.$("#f-na-col"); naC.checked = true; s.fire(naC, "change"); await sleep(240);
   const naL = s.$("#f-na-label"); naL.value = "Not applicable"; s.fire(naL, "change"); await sleep(240);
-  check("the grid offers the exclusive N/A on every row and as a column",
-    s.$("#f-na-rows").checked && s.$("#f-na-col").checked && s.$("#f-na-label").value === "Not applicable");
+  check("the grid offers the exclusive N/A on every row",
+    s.$("#f-na-rows").checked && !s.$("#f-na-col") && s.$("#f-na-label").value === "Not applicable");
 
   // ---- the order of the rows and of the columns
   const rzRows = s.$("#f-rz-rows");
@@ -165,22 +182,25 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   check("rows and columns are ordered independently",
     s.$("#f-rz-rows").value === "shuffle" && s.$("#f-rz-cols").value === "rotate");
 
-  // ---- Swap rows / columns on a rating grid: the rows become the scale points
+  // ---- Swap rows / columns: the two lists change places
   const before = {
     rows: s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|"),
-    pts: s.$$('input[data-pt="label"]').map(n => n.value).join("|"),
+    cols: s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"),
   };
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
   check("Swap turns the rows into columns and the columns into rows",
-    ptsOf(s).length === 4 && rowsOf(s).length === 5,
-    ptsOf(s).length + " points / " + rowsOf(s).length + " rows");
+    colsOf(s).length === 4 && rowsOf(s).length === 3,
+    colsOf(s).length + " cols / " + rowsOf(s).length + " rows");
   check("...and the wording travels with them",
-    s.$$('input[data-pt="label"]').map(n => n.value).join("|") === before.rows ||
-    /Efficacy/.test(s.$$('input[data-pt="label"]').map(n => n.value).join("|")),
-    s.$$('input[data-pt="label"]').map(n => n.value).join("|"));
+    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") === before.cols &&
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|") === before.rows,
+    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") + " / " +
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
   check("swapping again puts it back the way it was",
-    rowsOf(s).length === 4 && ptsOf(s).length === 5, rowsOf(s).length + " / " + ptsOf(s).length);
+    rowsOf(s).length === 4 && colsOf(s).length === 3 &&
+    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") === before.rows,
+    rowsOf(s).length + " / " + colsOf(s).length);
 
   // ---- comments for the whole question
   const cm = s.$("#f-cmt-mode"); cm.value = "allow"; s.fire(cm, "change"); await sleep(240);
@@ -237,18 +257,43 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     ptsOf(s).length === 5 && /\uD83D\uDE1E/.test(s.$$('input[data-pt="label"]')[0].value),
     JSON.stringify(s.$$('input[data-pt="label"]').map(n => n.value)));
 
+  // ---- an older scale-based grid becomes rows x columns when opened
+  await s.open("G5");
+  check("an older scale-based grid is migrated to rows x columns",
+    colsOf(s).length === 3 && rowsOf(s).length === 2 && !s.$("#f-smin"),
+    colsOf(s).length + " cols / " + rowsOf(s).length + " rows");
+  check("...and its scale points become labelled columns",
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|") === "Low|2|High",
+    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+
+  // ---------------------------------------------------------------- the rating scale
+  await s.open("R1");
+  check("a rating scale keeps its rows but has no column axis of its own",
+    rowsOf(s).length === 2 && ptsOf(s).length === 0 && !s.$("#f-gtitle"),
+    rowsOf(s).length + " rows / " + ptsOf(s).length + " points");
+  check("a rating scale edits its range and its three anchor labels",
+    !!s.$("#f-smin") && !!s.$("#f-smax") && !!s.$("#f-sminl") && !!s.$("#f-smidl") && !!s.$("#f-smaxl"),
+    ["#f-smin", "#f-smax", "#f-sminl", "#f-smidl", "#f-smaxl"].map(x => x + "=" + (s.$(x) ? s.$(x).value : "?")).join(" "));
+  check("the three anchor labels start from the question's own wording",
+    s.$("#f-sminl").value === "Not at all" && s.$("#f-smidl").value === "Neutral" &&
+    s.$("#f-smaxl").value === "Extremely");
+  const mid = s.$("#f-smidl"); mid.value = "Somewhat"; s.fire(mid, "change"); await sleep(260);
+  s.click(s.$('[data-act="it-add"][data-kind="row"]')); await sleep(240);
+  check("a rating scale grows its rows like a grid", rowsOf(s).length === 3, rowsOf(s).length);
+
   // ---------------------------------------------------------------- it all reaches the study
   await sleep(1700);
   const saved = await s.saved();
   const g1 = saved.questions.find(q => q.id === "G1"), g2 = saved.questions.find(q => q.id === "G2");
   check("the title and the two group names are stored",
-    g1.grid && g1.grid.title === "How important is each attribute?" && g1.grid.row_label === "Attribute" &&
-    g1.grid.col_label === "Importance", JSON.stringify(g1.grid));
-  check("the scale points are stored as columns of the scale",
-    g1.scale.points && g1.scale.points.length === 5 && g1.scale.max === 5 &&
-    g1.scale.points[0].label === "Not at all important", JSON.stringify(g1.scale));
-  check("the N/A is stored, both ways round",
-    g1.na && g1.na.rows === true && g1.na.col === true && g1.na.label === "Not applicable",
+    g1.grid && g1.grid.title === "How well does each describe it?" && g1.grid.row_label === "Statement" &&
+    g1.grid.col_label === "Rating", JSON.stringify(g1.grid));
+  check("the select mode is stored on the grid", g1.select === "multi", g1.select);
+  check("the columns are stored with their labels",
+    g1.cols && g1.cols.length === 3 && g1.cols[0].label === "Not good" && g1.cols[2].label === "Great" &&
+    !g1.scale, JSON.stringify(g1.cols));
+  check("the N/A is stored on the rows",
+    g1.na && g1.na.rows === true && !g1.na.col && g1.na.label === "Not applicable",
     JSON.stringify(g1.na));
   check("the comments are stored - the question's own and the rows'",
     g1.comments && g1.comments.mode === "allow" && g1.comments.label === "Anything else we should know?" &&
@@ -260,6 +305,15 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     JSON.stringify(g1.randomize));
   check("a numeric matrix keeps the columns it was given",
     (g2.cols || []).length === 2 && g2.cols[0].label === "This year", JSON.stringify(g2.cols));
+  const g5 = saved.questions.find(q => q.id === "G5");
+  check("the migrated grid saves its columns in place of the scale",
+    g5 && g5.cols.length === 3 && g5.cols[0].label === "Low" && !g5.scale && g5.select === "single",
+    JSON.stringify(g5 && g5.cols));
+  const r1 = saved.questions.find(q => q.id === "R1");
+  check("a rating scale stores its three anchor labels on the scale",
+    r1 && r1.scale.mid_label === "Somewhat" && r1.scale.min_label === "Not at all" &&
+    r1.scale.max_label === "Extremely" && r1.rows.length === 3,
+    JSON.stringify(r1 && r1.scale) + " rows=" + (r1 && r1.rows.length));
   check("no script errors in the Studio", s.errs.length === 0, s.errs.join(" | "));
   await post("/api/studio/delete", { slug });
 
@@ -308,28 +362,38 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   const rcfg = {
     sections: [{ id: "S1", title: "Grids" }],
     questions: [
-      { id: "M1", section: "S1", type: "rating_grid", stem: "Rate each attribute", required: false,
-        grid: { title: "How much does each one matter?", row_label: "Attribute", col_label: "Importance" },
-        na: { rows: true, col: true, label: "Not applicable" },
+      { id: "M1", section: "S1", type: "rating_grid", stem: "Pick the one that fits each row", required: false,
+        select: "single",
+        grid: { title: "How well does each one fit?", row_label: "Statement", col_label: "Rating" },
+        na: { rows: true, label: "Not applicable" },
         comments: { mode: "allow", label: "Anything else?" },
         rows: [
           { code: "a", label: "Efficacy", comment: "require", fmt: "b",
             media: { kind: "image", src: "/media/matrixtest/row.png" } },
           { code: "b", label: "Safety", media: { kind: "audio", src: "/media/matrixtest/row.mp3" } },
         ],
-        scale: { min: 1, max: 3, points: [{ v: 1, label: "Low" }, { v: 2, label: "Medium" }, { v: 3, label: "High" }] } },
+        cols: [{ code: "c1", label: "Poor" }, { code: "c2", label: "Okay" }, { code: "c3", label: "Great" }] },
       { id: "M2", section: "S1", type: "heatmap", stem: "Tap the cells", required: false,
         rows: [{ code: "OS", label: "Survival" }, { code: "AE", label: "Side effects" }],
         cols: [{ code: "cte", label: "Trial" }, { code: "rwe", label: "Real world" }] },
       { id: "M3", section: "S1", type: "emoji_grid", stem: "Your reaction", required: false,
         rows: [{ code: "t", label: "Trust" }],
         scale: { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE15", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"] } },
-      { id: "M4", section: "S1", type: "numeric_matrix", stem: "Patients a year", required: false,
+      { id: "M4", section: "S1", type: "numeric_matrix", stem: "Patients a year", required: true,
+        na: { rows: true, label: "Not applicable" },
         rows: [{ code: "p1", label: "Treated" }, { code: "p2", label: "Eligible" }],
         cols: [{ code: "this", label: "This year" }, { code: "next", label: "Next year" }] },
       { id: "M5", section: "S1", type: "rating_grid", stem: "One comment needed", required: false,
         comments: { mode: "require", label: "Tell us why" },
         rows: [{ code: "x", label: "Overall" }], scale: { min: 1, max: 3 } },
+      { id: "MM", section: "S1", type: "rating_grid", stem: "Tick every source you use", required: true,
+        select: "multi", na: { rows: true, label: "None apply" },
+        rows: [{ code: "s", label: "Sources of information" }, { code: "t", label: "Trust in them" }],
+        cols: [{ code: "j", label: "Journals" }, { code: "p", label: "Peers" }, { code: "c", label: "Conferences" }] },
+      { id: "M6", section: "S1", type: "rating_scale", stem: "How well does each describe it?",
+        required: true,
+        rows: [{ code: "a", label: "Ease of use" }, { code: "b", label: "Trust" }],
+        scale: { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" } },
     ],
     tpp: {}, explainer_scenes: [],
   };
@@ -368,17 +432,20 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   {
     const r = await run(rslug);
     r.click(r.$("#start-btn")); await sleep(400);
-    check("the grid title sits above the grid", /How much does each one matter/.test(r.$("#app").textContent));
-    check("the header names the rows and the columns",
-      /Attribute/.test(r.$("#app .grid-head").textContent) && /Importance/.test(r.$("#app .grid-head").textContent),
-      r.$("#app .grid-head").textContent.replace(/\s+/g, " ").trim());
-    check("every column of the scale is captioned under the slider",
-      r.$$("#app .sp-labels").length === 2 &&
-      r.$$("#app .sp-labels")[0].textContent.replace(/\s+/g, "") === "LowMediumHigh",
-      r.$$("#app .sp-labels")[0] && r.$$("#app .sp-labels")[0].textContent);
-    check("the N/A column has its own heading, and every row carries one",
-      /Not applicable/.test(r.$("#app .grid-head").textContent) && r.$$("#app .na-cell input").length === 2,
-      r.$$("#app .na-cell input").length);
+    check("the grid title sits above the grid", /How well does each one fit/.test(r.$("#app").textContent));
+    check("the header names the rows and carries one caption per column",
+      /Statement/.test(r.$("#app .cg-head").textContent) &&
+      r.$$("#app .cg-head .cg-col:not(.cg-col-na)").map(n => n.textContent.trim()).join("|") === "Poor|Okay|Great",
+      r.$("#app .cg-head").textContent.replace(/\s+/g, " ").trim());
+    check("a single-select grid offers one radio per row and column",
+      r.$$("#app .choice-grid input[type=radio]").length === 6,
+      r.$$("#app .choice-grid input[type=radio]").length);
+    check("every row carries the exclusive N/A", r.$$("#app .cg-na input").length === 2,
+      r.$$("#app .cg-na input").length);
+    const radio = r.$$("#app .choice-grid input[type=radio]")[1];   // row a, column Okay
+    radio.checked = true; r.fire(radio, "change"); await sleep(160);
+    check("picking a column records it for the row",
+      r.$$("#app .choice-grid input:checked").length === 1, r.$$("#app .choice-grid input:checked").length);
     check("a row's image and another row's audio clip are both shown",
       !!r.$("#app .rlabel img") && !!r.$("#app .rlabel audio"),
       r.$("#app .rlabel") && r.$("#app .rlabel").innerHTML.slice(0, 120));
@@ -422,20 +489,90 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
 
     r.next(); await sleep(400);
     check("a numeric matrix with columns becomes a table of number boxes",
-      r.$$("#app .nm-input").length === 4 && r.$$("#app .nm-head .nm-th").length === 3,
+      r.$$("#app .nm-input").length === 4 &&
+      r.$$("#app .nm-head .nm-th:not(.nm-th-na)").length === 3,
       r.$$("#app .nm-input").length + " / " + r.$$("#app .nm-head .nm-th").length);
-    r.$$("#app .nm-input")[0].value = "42"; r.fire(r.$$("#app .nm-input")[0], "input"); await sleep(200);
+    check("the matrix offers the exclusive N/A on every row",
+      r.$$("#app .nm-td-na input").length === 2, r.$$("#app .nm-td-na input").length);
+    r.next(); await sleep(300);
+    check("a required matrix holds until every cell is answered",
+      /required/i.test(r.$("#err").textContent), r.$("#err").textContent);
+    const nmIn = r.$$("#app .nm-input");
+    nmIn[0].value = "42"; r.fire(nmIn[0], "input"); await sleep(150);
+    nmIn[1].value = "57"; r.fire(nmIn[1], "input"); await sleep(150);
+    nmIn[2].value = "7"; r.fire(nmIn[2], "input"); await sleep(150);
+    const naM = r.$$("#app .nm-td-na input");
+    r.click(naM[1]); await sleep(250);
+    check("ticking N/A empties that row's cells",
+      r.$$("#app .nm-input")[2].value === "", r.$$("#app .nm-input")[2].value);
+    nmIn[2] = r.$$("#app .nm-input")[2];
+    nmIn[2].value = "9"; r.fire(nmIn[2], "input"); await sleep(200);
+    check("typing in a cell lifts the row's N/A",
+      !r.$$("#app .nm-td-na input")[1].checked, r.$$("#app .nm-td-na input")[1].checked);
+    r.click(r.$$("#app .nm-td-na input")[1]); await sleep(250);
+    r.next(); await sleep(400);
+    check("rows that are filled or N/A'd carry on",
+      /One comment needed/.test(r.$("#app").textContent), r.$("#app").textContent.slice(0, 80));
 
     r.next(); await sleep(400);
     check("the last grid is the one that needs a comment", /One comment needed/.test(r.$("#app").textContent),
       r.$("#app").textContent.slice(0, 80));
+    check("an older scale-based grid still renders its scale for respondents",
+      r.$$("#app .grid .spectrum").length === 1 && !r.$$("#app .choice-grid").length,
+      r.$$("#app .grid .spectrum").length);
     r.next(); await sleep(300);
     check("a required question comment blocks Next too", /comment/i.test(r.$("#err").textContent),
       r.$("#err").textContent);
     const qb = r.$("#app .q-comment .cmt-box");
     qb.value = "Because it matters"; r.fire(qb, "input"); await sleep(200);
     r.next(); await sleep(500);
-    check("and the survey finishes once it is filled in",
+
+    // the multi-select grid: checkboxes, several ticks per row, N/A stands in
+    check("a multi-select grid shows a checkbox for every row and column",
+      /Tick every source you use/.test(r.$("#app").textContent) &&
+      r.$$("#app .choice-grid .cg-cell:not(.cg-na) input[type=checkbox]").length === 6 &&
+      !r.$$("#app .choice-grid input[type=radio]").length,
+      r.$$("#app .choice-grid .cg-cell:not(.cg-na) input[type=checkbox]").length);
+    r.next(); await sleep(300);
+    check("a required multi-select grid waits for every row", /required/i.test(r.$("#err").textContent),
+      r.$("#err").textContent);
+    const mmRows = r.$$("#app .choice-grid .cg-row:not(.cg-head)");
+    const tick = box => { box.click(); r.fire(box, "change"); };
+    tick(mmRows[0].querySelectorAll("input[type=checkbox]")[0]); await sleep(120);
+    tick(mmRows[0].querySelectorAll("input[type=checkbox]")[2]); await sleep(120);
+    check("a row may tick several columns at once",
+      mmRows[0].querySelectorAll("input:checked").length === 2,
+      mmRows[0].querySelectorAll("input:checked").length);
+    const mmNa = mmRows[1].querySelector(".cg-na input");
+    tick(mmNa); await sleep(120);
+    check("N/A answers a row without any tick", mmNa.checked);
+    r.next(); await sleep(500);
+
+    // the rating scale: rows on one scale, labelled at the low end, the middle, the high end
+    check("a rating scale shows its rows each with its own scale",
+      /How well does each describe it/.test(r.$("#app").textContent) &&
+      r.$$("#app .rating-scale .grid-row").length === 2 &&
+      r.$$("#app .rating-scale [role=slider]").length === 2,
+      r.$$("#app .rating-scale .grid-row").length + " rows");
+    check("a rating scale labels the low end, the middle and the high end",
+      !!r.$("#app .rs-ends .rs-end-low") && !!r.$("#app .rs-ends .rs-end-mid") &&
+      !!r.$("#app .rs-ends .rs-end-high") &&
+      /Not at all/.test(r.$("#app .rs-end-low").textContent) &&
+      /Neutral/.test(r.$("#app .rs-end-mid").textContent) &&
+      /Extremely/.test(r.$("#app .rs-end-high").textContent),
+      r.$("#app .rs-ends") && r.$("#app .rs-ends").textContent.replace(/\s+/g, " ").trim());
+    r.next(); await sleep(300);
+    check("a required rating scale waits for every row", /required/i.test(r.$("#err").textContent),
+      r.$("#err").textContent);
+    const scales = r.$$("#app .rating-scale .spectrum");
+    const key = (elm, k) => elm.dispatchEvent(new r.w.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+    key(scales[0], "ArrowRight"); await sleep(160);           // row a: midpoint 3 -> 4
+    key(scales[1], "ArrowLeft"); await sleep(160);            // row b: midpoint 3 -> 2
+    check("rating a row of a rating scale records its value",
+      scales[0].getAttribute("aria-valuenow") === "4" && scales[1].getAttribute("aria-valuenow") === "2",
+      scales.map(x => x.getAttribute("aria-valuenow")).join("/"));
+    r.next(); await sleep(500);
+    check("and the survey finishes once every row is rated",
       /Thank you|End of survey|complete/i.test(r.$("#app").textContent), r.$("#app").textContent.slice(0, 120));
     check("no script errors for the respondent", r.errs.length === 0, r.errs.join(" | "));
   }
@@ -452,11 +589,13 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     r.next(); await sleep(300);
     check("a required grid that is unanswered holds the respondent",
       /required/i.test(r.$("#err").textContent), r.$("#err").textContent);
-    const ticks = r.$$("#app .na-cell input");
-    r.click(ticks[0]); await sleep(200); r.click(r.$$("#app .na-cell input")[1]); await sleep(200);
+    const ticks = r.$$("#app .cg-na input");
+    r.click(ticks[0]); await sleep(200); r.click(r.$$("#app .cg-na input")[1]); await sleep(200);
     r.next(); await sleep(400);
-    check("ticking N/A on every row answers the grid without a rating",
-      /Done/.test(r.$("#app").textContent), r.$("#app").textContent.slice(0, 90));
+    check("ticking N/A on every row answers the grid without a pick",
+      !r.$("#app .choice-grid") && /N2\./.test(r.$("#app").textContent) &&
+      /Done/.test(r.$("#app").textContent),
+      r.$("#app").textContent.slice(0, 90));
     check("no script errors on the N/A route", r.errs.length === 0, r.errs.join(" | "));
     await post("/api/studio/delete", { slug: slug2 });
   }

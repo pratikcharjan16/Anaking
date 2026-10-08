@@ -135,7 +135,7 @@ never fire here), *the condition*, and *the value*. The condition list follows t
 | Choose one / multi-select | is · is not · **is any of** · **is none of** · **includes all of** · is exactly these · **selects at least / at most / exactly** *n* |
 | Number, slider, NPS, date | equals · does not equal · is more than · at least · less than · at most · is between |
 | Open text / loop | mentions · does not mention · is shorter than *n* words |
-| Rating grid, semantic, heat map, numeric matrix | row is / is not / is at least / is at most |
+| Rating grid, rating scale, semantic, heat map, numeric matrix | row is / is not / is at least / is at most |
 | Ranking | ranks … first · ranks … in the top *n* · includes all of · selects at least … |
 | Any type | was answered · was skipped |
 
@@ -242,8 +242,9 @@ Variables** (names captured from the respondent link, e.g. `?panel=A` → export
 
 ### The add-item library (Studio → + Add question)
 
-Grouped exactly like a commercial builder: **Questions** - Multiple Choice (incl. image
-options), Grid / Rating Scale, Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
+Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
+options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
+Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
 Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -
 Max Diff experiment, Conjoint, Concept Test, Heatmap; **Survey flow** - Welcome Page,
 Thank You Page, Question Page, Question Loop, Page Randomizer; **Objects** - Embedded
@@ -337,6 +338,7 @@ node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gat
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)
+node scripts/dom/voice_commands_test.js          # voice answering: parser, mic bar, speak picks + next, manual fallback
 node scripts/dom/screening_studio_test.js        # Studio screening tab: modes, rule builder, tester, saved config
 node scripts/dom/screening_survey_test.js        # respondent screening: ends on the spot, reason recorded
 ```

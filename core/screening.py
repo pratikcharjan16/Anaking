@@ -51,6 +51,13 @@ OP_WORDS = {
     "total_eq": "total =", "total_ne": "total \u2260", "total_gte": "total \u2265",
     "total_lte": "total \u2264",
     "ranked_first": "ranks first", "ranked_top": "ranks in the top",
+    # a grid row pointing at a column: "Q2: Ease of use is Column one"
+    "cell_is": "is", "cell_not": "is not",
+    "cell_includes": "includes", "cell_lacks": "does not include",
+    # one number box of a rows x columns numeric matrix: "Q4: Treated x This year >= 40"
+    "cell_gte": "is at least", "cell_lte": "is at most",
+    "cell_gt": "is more than", "cell_lt": "is less than",
+    "cell_eq": "is", "cell_ne": "is not", "cell_between": "is between",
     "answered": "was answered", "not_answered": "was skipped",
 }
 
@@ -122,7 +129,12 @@ def normalize(q: dict) -> dict:
     rules = [r for r in (s.get("rules") or []) if isinstance(r, dict) and r.get("q") and r.get("op")]
     rows = [str(r) for r in (s.get("rows") or [])]
     if not rules and not rows:
-        q.pop("screening", None)
+        # nothing authored - but an explicit off must survive the save, or the
+        # legacy shorthand it mutes would switch itself back on
+        if s.get("enabled") is False:
+            q["screening"] = {"enabled": False}
+        else:
+            q.pop("screening", None)
         return q
     clean = []
     for r in rules:
@@ -167,11 +179,18 @@ def normalize(q: dict) -> dict:
 
 
 def blocks(q: dict) -> list[dict]:
-    """Every screening block of a question: the authored one, then the legacy shorthand."""
+    """Every screening block of a question: the authored one, then the legacy shorthand.
+
+    The Studio on/off switch owns the whole feature: a block stored with
+    ``enabled: False`` mutes the authored rules *and* the legacy shorthand, so
+    nothing the question carries can fire while the switch is off.
+    """
     out = []
     if not isinstance(q, dict):
         return out
     s = q.get("screening")
+    if isinstance(s, dict) and s.get("enabled") is False:
+        return out
     if isinstance(s, dict) and s.get("enabled") is not False:
         built = _structured_rules(s, q) if _is_structured(s) else []
         rules = built + [r for r in (s.get("rules") or [])]
@@ -226,6 +245,21 @@ def _rule_text(rule: dict, questions: dict) -> str:
             low, _, high = tail.partition("-")
             return f"{rule.get('q')}: the sum of {names} is between {low or 0} and {high or 0}"
         return f"{rule.get('q')}: the sum of {names} {word} {tail or 0}"
+    elif op in ("cell_gte", "cell_lte", "cell_gt", "cell_lt",
+                "cell_eq", "cell_ne", "cell_between"):      # "a=c1=40" -> one number box
+        head, _, tail = str(value or "").partition("=")
+        colcode, _, num = tail.partition("=")
+        col = next((c.get("label") or c.get("code") for c in (q.get("cols") or [])
+                    if str(c.get("code")) == colcode), colcode or "…")
+        if op == "cell_between":
+            low, _, high = num.partition("-")
+            return f"{rule.get('q')}: {_label(q, head)} \u00D7 {col} {word} {low or 0} and {high or 0}"
+        value = f"{_label(q, head)} \u00D7 {col} {num}"
+    elif op.startswith("cell_"):            # "a=c1" -> one grid row and the column it picked
+        head, _, tail = str(value or "").partition("=")
+        col = next((c.get("label") or c.get("code") for c in (q.get("cols") or [])
+                    if str(c.get("code")) == tail), tail or "…")
+        value = f"{_label(q, head)} {col}"
     elif op.startswith("row_"):
         head, _, tail = str(value or "").partition("=")
         value = f"{_label(q, head)} {tail}"

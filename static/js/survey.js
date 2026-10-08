@@ -203,7 +203,11 @@
     var t = q.id + ". " + q.stem + (q.help ? " " + q.help : "");
     if (q.options) t += " The options are: " +
       q.options.map(function (o) { return o.label; }).join("; ") + ".";
-    if (q.rows && q.scale) t += " Please rate each item from " + q.scale.min + " to " + q.scale.max +
+    if (q.rows && q.cols) t += (q.select === "multi" ? " For each row, tick every column that applies."
+      : " For each row, choose one column.") +
+      " Rows: " + q.rows.map(function (r) { return r.label; }).join("; ") +
+      ". Columns: " + q.cols.map(function (c) { return c.label; }).join("; ") + ".";
+    else if (q.rows && q.scale) t += " Please rate each item from " + q.scale.min + " to " + q.scale.max +
       ". Items: " + q.rows.map(function (r) { return r.label; }).join("; ") + ".";
     return t;
   }
@@ -615,8 +619,19 @@
     setTimeout(function () { t.remove(); }, 2750);
   }
 
+  // Authors can switch the game layer off in Studio; the plain progress bar on top stays.
+  function gamifyOn() { return !!(SPEC && SPEC.gamify !== false); }
+
+  // A quiet bull's-eye: two target rings ripple out of an answer the moment it lands,
+  // so picking feels like hitting the mark - no words, no noise, just feedback.
+  function bullseye(node) {
+    if (!node || node.classList.contains("hit")) return;
+    node.classList.add("hit");
+    setTimeout(function () { node.classList.remove("hit"); }, 800);
+  }
+
   function addPoints(n) {
-    if (PREVIEW) return;
+    if (PREVIEW || !gamifyOn()) return;
     var before = rankFor(points);
     points += n;
     var after = rankFor(points);
@@ -645,6 +660,7 @@
   }
 
   function confetti(n) {
+    if (!gamifyOn()) return;
     var colors = ["#0b4f6c", "#12789e", "#7fd4f0", "#ffd166", "#1a7f4b"];
     n = n || 40;
     for (var i = 0; i < n; i++) {
@@ -660,6 +676,114 @@
         }, i * 28);
       })(i);
     }
+  }
+
+  // ============================================================ voice commands
+  // Speak your answers: say an option (or its number), several options joined
+  // with "and", then say "next". Runs on the browser's own speech recognition
+  // (Web Speech API) - free to ship, nothing to configure server-side. Voice is
+  // strictly optional: tapping always works, and on browsers without the API
+  // every voice control simply stays hidden.
+  var voice = null, voiceOn = false, voiceBar = null;
+
+  function voiceSupported() {
+    return !PREVIEW && window.BeaconVoice && window.BeaconVoice.supported();
+  }
+
+  // Options of the question currently on screen (options the voice picks from).
+  function voiceCtx() {
+    var q = steps[cur] && steps[cur].q;
+    if (!q || !q.options) return { options: [], multi: false, type: (q && q.type) || "" };
+    return { options: q.options, multi: q.type === "multi_select", type: q.type };
+  }
+
+  function showVoiceBar(msg) {
+    if (!voiceBar) {
+      voiceBar = el("div", "voice-bar",
+        '<span class="vb-mic" aria-hidden="true"><i></i></span>' +
+        '<span class="vb-live">Listening\u2026</span>' +
+        '<span class="vb-heard" aria-live="polite"></span>');
+      document.body.appendChild(voiceBar);
+    }
+    var live = voiceBar.querySelector(".vb-live");
+    var heard = voiceBar.querySelector(".vb-heard");
+    live.textContent = msg || "Listening\u2026 say an option or \u201Cnext\u201D";
+    heard.textContent = "";
+    voiceBar.classList.add("listening");
+    voiceBar.hidden = false;
+  }
+
+  function hideVoiceBar() {
+    if (voiceBar) voiceBar.hidden = true;
+  }
+
+  function voiceTranscript(text) {
+    if (!voiceBar) return;
+    var heard = voiceBar.querySelector(".vb-heard");
+    heard.textContent = "\u201C" + text + "\u201D";
+  }
+
+  // Turn one finished utterance into survey actions and run them in order.
+  function voiceHear(text) {
+    if (!text || !voiceOn) return;
+    voiceTranscript(text);
+    var ctx = voiceCtx();
+    var acts = window.BeaconVoice.parseCommand(text, ctx);
+    var picked = 0, spoken = false;
+    acts.forEach(function (a) {
+      if (a.act === "next") {
+        if (spoken) coachSay("Next question coming up\u2026", "info");
+        next();
+      } else if (a.act === "back") {
+        go(cur - 1);
+      } else if (a.act === "clear") {
+        voiceClear();
+        coachSay("Selections cleared.", "info");
+      } else if (a.act === "pick") {
+        if (ctx.type !== "single_select" && ctx.type !== "multi_select") {
+          if (!spoken) {
+            coachSay("This one needs a quick tap \u2014 then say \u201Cnext\u201D when you\u2019re ready.", "info");
+            spoken = true;
+          }
+          return;
+        }
+        var row = document.querySelector('#app .opt[data-code="' + String(a.code).replace(/"/g, '\\"') + '"]');
+        if (row) { row.click(); picked++; }
+      } else if (!spoken) {
+        coachSay("I heard \u201C" + escHtml(a.text) + "\u201D \u2014 say an option name or number, or \u201Cnext\u201D.", "warn");
+        spoken = true;
+      }
+    });
+    if (picked) coachSay(picked === 1 ? "Locked in." : "Locked in " + picked + " answers.", "info");
+    showVoiceBar(); // settle the bar back to listening state for the next utterance
+  }
+
+  function voiceClear() {
+    Array.prototype.forEach.call(document.querySelectorAll("#app .opt input[type='checkbox']"), function (i) {
+      if (i.checked) i.closest(".opt").click();
+    });
+  }
+
+  function setVoice(on) {
+    if (on && !voiceSupported()) return;
+    if (on && !voice) {
+      voice = window.BeaconVoice.create({
+        onInterim: function (t) { voiceTranscript(t); },
+        onFinal: function (t) { voiceHear(t); },
+        onState: function (state, detail) {
+          if (state === "waiting") showVoiceBar(detail === "denied"
+            ? "Microphone blocked \u2014 allow it in the browser to use voice."
+            : "Couldn\u2019t reach the speech service \u2014 tap answers for now.");
+        }
+      });
+    }
+    if (!voice) return;
+    voiceOn = on;
+    if (voiceOn) { voice.start(); showVoiceBar(); } else { voice.stop(); hideVoiceBar(); }
+    var btn = $("#voice-btn");
+    if (btn) btn.classList.toggle("on", voiceOn);
+    document.body.classList.toggle("voice-on", voiceOn);
+    if (voiceOn) coachSay("Voice mode on \u2014 say an option or its number, then \u201Cnext\u201D.", "info");
   }
 
   // ============================================================ explainer
@@ -792,16 +916,31 @@
     switch (q.type) {
       case "single_select": case "numeric": case "slider": case "open_text":
         return a._ !== undefined && a._ !== "";
-      case "rating_grid": case "semantic_diff":
-        return q.rows.every(function (r) { return a[r.code] !== undefined; });
+      case "rating_grid": case "semantic_diff": case "rating_scale":
+        return q.rows.every(function (r) {
+          var v = a[r.code];
+          if (Array.isArray(v)) return v.length > 0;   // a multi-select grid row needs one tick
+          return v !== undefined && v !== "";
+        });
       case "sum_to_100":
         return q.rows.some(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       case "multi_select":
         return (a.codes || []).length > 0;
       case "date":
         return !!(a && a._);
-      case "numeric_matrix":
+      case "numeric_matrix": {
+        var nmc = q.cols || [];
+        if (nmc.length) {                            // a table: every cell, unless the row is N/A
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;
+            return nmc.every(function (c) {
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && v !== "";
+            });
+          });
+        }
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
+      }
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
@@ -844,6 +983,7 @@
 
     options.forEach(function (o) {
       var row = el("div", "opt" + (o.exclusive ? " opt-excl" : ""));
+      row.dataset.code = String(o.code);
       var input = el("input");
       input.type = multi ? "checkbox" : "radio";
       input.name = q.id;
@@ -860,6 +1000,7 @@
 
       row.addEventListener("click", function (ev) {
         if (ev.target.tagName !== "INPUT") input.checked = !input.checked;
+        if (input.checked) bullseye(row);
         var codes = getAns(q.id, "codes") || [];
         if (multi) {
           var i = codes.map(String).indexOf(String(o.code));
@@ -1128,7 +1269,7 @@
   }
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
-  function numInput(q, key) {
+  function numInput(q, key, onType) {
     var inp = el("input", "nm-input");
     inp.type = "number";
     if (q.min !== undefined) inp.min = q.min;
@@ -1138,6 +1279,7 @@
     if (v !== undefined && v !== "" && v !== "NA") inp.value = v;
     inp.addEventListener("input", function () {
       setAns(q.id, key, inp.value);
+      if (onType) onType();
       hideErr(); ansChanged();
     });
     return inp;
@@ -1170,14 +1312,28 @@
       orderedList(q.rows || [], q, "rows").forEach(function (r) {
         var row = el("div", "nm-tr");
         row.appendChild(itemLabelNode(r, "nm-th nm-rowlabel"));
+        // typing into any cell of the row lifts an N/A tick on that row
+        var clearNa = (function (rowEl, rowCode) {
+          return function () {
+            if ((answers[q.id] || {})[rowCode] !== "NA") return;
+            setAns(q.id, rowCode, "");
+            var nb = rowEl.querySelector(".na-cell input");
+            if (nb) nb.checked = false;
+          };
+        })(row, r.code);
         cols.forEach(function (c) {
           var cell = el("div", "nm-td");
-          cell.appendChild(numInput(q, r.code + "_" + c.code));
+          cell.appendChild(numInput(q, r.code + "_" + c.code, clearNa));
           row.appendChild(cell);
         });
         if (anyNa) {
           var nc = el("div", "nm-td nm-td-na");
-          nc.appendChild(naCell(q, r.code, naLabel, null));
+          // N/A stands in for the whole row: ticking it empties the cells
+          nc.appendChild(naCell(q, r.code, naLabel, function (checked) {
+            if (!checked) return;
+            cols.forEach(function (c) { setAns(q.id, r.code + "_" + c.code, ""); });
+            row.querySelectorAll(".nm-input").forEach(function (ni) { ni.value = ""; });
+          }));
           row.appendChild(nc);
         }
         tbl.appendChild(row);
@@ -1283,7 +1439,81 @@
     return wrap;
   }
 
+  // A choice grid: rows x columns, and every row picks one column (single select) or
+  // several of them (multi select).  One value per row is stored - the column's code.
+  function renderChoiceGrid(q) {
+    var wrap = el("div", "grid choice-grid");
+    var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
+    var multi = q.select === "multi";
+    var cols = orderedList(q.cols || [], q, "cols");
+    var rows = orderedList(q.rows || [], q, "rows");
+    wrap.style.setProperty("--cg-tmpl", "minmax(140px, 1.4fr) repeat(" + cols.length +
+      ", minmax(44px, 1fr))" + (na.rows ? " minmax(64px, auto)" : ""));
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+
+    var head = el("div", "cg-row cg-head");
+    head.appendChild(el("div", "cg-corner", pipeText(g.row_label || "")));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "cg-col")); });
+    if (na.rows) head.appendChild(el("div", "cg-col cg-col-na", ""));
+    wrap.appendChild(head);
+
+    rows.forEach(function (r) {
+      var row = el("div", "cg-row");
+      row.appendChild(itemLabelNode(r, "rlabel cg-rlabel"));
+      var cur = (answers[q.id] || {})[r.code];
+      var on = Array.isArray(cur) ? cur.map(String) : (cur === undefined || cur === "" ? [] : [String(cur)]);
+      var isNa = cur === "NA";
+      cols.forEach(function (c) {
+        var cell = el("label", "cg-cell");
+        var inp = el("input");
+        inp.type = multi ? "checkbox" : "radio";
+        inp.name = q.id + "_" + r.code;
+        inp.checked = !isNa && on.indexOf(String(c.code)) >= 0;
+        inp.addEventListener("change", function () {
+          if (multi) {
+            var have = getAns(q.id, r.code);
+            have = Array.isArray(have) ? have.map(String) : [];
+            var at = have.indexOf(String(c.code));
+            if (inp.checked && at < 0) have.push(c.code);
+            if (!inp.checked && at >= 0) have.splice(at, 1);
+            setAns(q.id, r.code, have);
+          } else {
+            setAns(q.id, r.code, c.code);
+          }
+          var tick = row.querySelector(".cg-na input"); if (tick) tick.checked = false;
+          if (inp.checked) bullseye(cell);
+          hideErr(); ansChanged(); checkPattern(q, wrap);
+        });
+        cell.appendChild(inp);
+        if (c.media && c.media.src) cell.title = pipeText(c.label);
+        row.appendChild(cell);
+      });
+      if (na.rows) {
+        var holder = el("div", "cg-cell cg-na");
+        var nl = el("label", "na-cell");
+        var ncb = el("input"); ncb.type = "checkbox";
+        ncb.checked = isNa;
+        ncb.addEventListener("change", function () {
+          setAns(q.id, r.code, ncb.checked ? "NA" : "");
+          Array.prototype.forEach.call(row.querySelectorAll(".cg-cell input"), function (x) {
+            if (x !== ncb) x.checked = false;              // N/A clears every pick on the row
+          });
+          hideErr(); ansChanged();
+        });
+        nl.appendChild(ncb);
+        nl.appendChild(el("span", null, naLabel));
+        holder.appendChild(nl);
+        row.appendChild(holder);
+      }
+      wrap.appendChild(row);
+      if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r, cols.length + 1));
+    });
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
   function renderGrid(q, semantic) {
+    if (q.cols && q.cols.length && !semantic) return renderChoiceGrid(q);   // rows x columns
     var wrap = el("div", "grid");
     var g = q.grid || {}, na = q.na || {}, naLabel = na.label || "N/A";
     var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
@@ -1327,6 +1557,31 @@
       wrap.appendChild(ends);
     }
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  // A rating scale: rows rated on one scale, labelled at the low end, the middle and the
+  // high end.  The three anchor labels sit under the scale once, below all the rows.
+  function renderRatingScale(q) {
+    var wrap = el("div", "grid rating-scale");
+    var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
+    var max = sc.max != null ? Number(sc.max) : 5;
+    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+      var row = el("div", "grid-row");
+      row.appendChild(itemLabelNode(r, "rlabel"));
+      var cells = el("div", "grid-cells");
+      cells.appendChild(renderScale(min, max, getAns(q.id, r.code), function (v) {
+        setAns(q.id, r.code, v);
+        hideErr(); ansChanged(); checkPattern(q, wrap);
+      }, null));
+      row.appendChild(cells);
+      wrap.appendChild(row);
+    });
+    var ends = el("div", "scale-ends rs-ends");
+    ends.appendChild(el("span", "rs-end-low", pipeText(sc.min_label) || String(min)));
+    if (sc.mid_label) ends.appendChild(el("span", "rs-end-mid", pipeText(sc.mid_label)));
+    ends.appendChild(el("span", "rs-end-high", pipeText(sc.max_label) || String(max)));
+    wrap.appendChild(ends);
     return wrap;
   }
 
@@ -1750,6 +2005,7 @@
       case "text_block": body = renderTextBlock(q); break;
       case "rating_grid": body = renderGrid(q, false); break;
       case "semantic_diff": body = renderGrid(q, true); break;
+      case "rating_scale": body = renderRatingScale(q); break;
       case "sum_to_100": body = renderSum100(q); break;
       case "rank": body = renderRank(q); break;
       case "numeric": {
@@ -1861,6 +2117,7 @@
     }
     if (wanted && blank(a._comment)) return "Please add a comment before continuing.";
     (q.rows || []).forEach(function (r) {
+      if (a[r.code] === "NA") return;               // N/A rows carry nothing to comment on
       if (r.comment === "require" && blank(a["c_" + r.code])) need.push(pipeText(r.label));
     });
     if (need.length) return "Please add a comment for " + need.join(", ") + ".";
@@ -2215,16 +2472,30 @@
         body: JSON.stringify({ session_id: SESSION.session_id, answers: answers, elapsed_seconds: secs })
       }).then(function (r) { return r.json(); }).then(function (res) {
         var card = el("div", "card");
-        card.appendChild(el("div", "done-icon", "&#10003;"));
+        card.appendChild(el("div", gamifyOn() ? "done-icon done-target" : "done-icon",
+          gamifyOn()
+            ? '<svg viewBox="0 0 72 72" aria-hidden="true">' +
+              '<circle cx="36" cy="36" r="32" fill="#e8f2f7"/>' +
+              '<circle cx="36" cy="36" r="22" fill="#fff" stroke="#12789e" stroke-width="3"/>' +
+              '<circle cx="36" cy="36" r="12.5" fill="#e8f2f7" stroke="#12789e" stroke-width="3"/>' +
+              '<circle cx="36" cy="36" r="4.5" fill="#0b4f6c"/>' +
+              '<path d="M36 36 L60 12" stroke="#0b4f6c" stroke-width="3.5" stroke-linecap="round"/>' +
+              '<path d="M60 12 l-9 2.2 M60 12 l-2.2 9" stroke="#0b4f6c" stroke-width="3.5" stroke-linecap="round"/>' +
+              '</svg>'
+            : "&#10003;"));
         card.appendChild(el("h1", null, SPEC.thanks_title || "Thank you"));
         card.appendChild(el("p", null, SPEC.thanks_text || "Your responses have been recorded. Thank you for the " +
           "time and clinical insight you have given this study."));
         var flags = res.flags || [];
         card.appendChild(el("div", "summary",
-          "Reference <code>" + res.respondent_code + "</code> &middot; " +
-          Math.round(secs / 60) + " min &middot; <strong>" + points +
-          "</strong> insight points &middot; quality control: <code>" +
-          (flags.length ? flags.join(", ") : "clean") + "</code>"));
+          gamifyOn()
+            ? "Reference <code>" + res.respondent_code + "</code> &middot; " +
+              Math.round(secs / 60) + " min &middot; <strong>" + points +
+              "</strong> insight points &middot; rank <strong>" + rankFor(points) +
+              "</strong> &middot; quality control: <code>" +
+              (flags.length ? flags.join(", ") : "clean") + "</code>"
+            : "Reference <code>" + res.respondent_code + "</code> &middot; " +
+              Math.round(secs / 60) + " min"));
         if (flags.indexOf("ai_generated_verbatim") >= 0) {
           card.appendChild(el("div", "ai-note",
             "One or more written answers were flagged as possibly AI-generated. They stay on " +
@@ -2454,6 +2725,16 @@
         setSound(!soundOn);
         if (soundOn && $("#welcome") && $("#welcome").parentElement) playClip("welcome");
       });
+
+      // Voice mode: offered only where the browser has speech recognition,
+      // so respondents on other browsers keep the normal tap-through flow.
+      var vc = $("#voice-choice");
+      if (vc && voiceSupported()) vc.hidden = false;
+      var vb = $("#voice-btn");
+      if (vb && voiceSupported()) {
+        vb.hidden = false;
+        vb.addEventListener("click", function () { setVoice(!voiceOn); });
+      }
       wireWelcomeAudio();
       setupLangPicker();
       applyWelcomeCopy();
@@ -2571,7 +2852,7 @@
       });
     }
     if (IS_TEST) document.body.classList.add("testmode");
-    $("#hud").hidden = false;
+    $("#hud").hidden = !gamifyOn();
     $("#points").textContent = String(points);
     var rb = $("#rank-badge");
     if (rb) rb.textContent = rankFor(points);
@@ -2595,6 +2876,9 @@
         var pref = document.querySelector('input[name="audio-pref"]:checked');
         audioPref = pref ? pref.value : "manual";
         store("audio_pref", audioPref); setSound(audioPref !== "off");
+        var vpref = document.querySelector('input[name="voice-pref"]:checked');
+        store("voice_pref", vpref ? vpref.value : "manual");
+        if (vpref && vpref.value === "voice") setVoice(true);
         t0 = Date.now();
         $("#welcome").remove();
         stopNarration();

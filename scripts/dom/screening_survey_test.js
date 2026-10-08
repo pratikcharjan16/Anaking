@@ -24,8 +24,9 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 let fails = 0;
 const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c ? "" : "  -> " + d)); if (!c) fails++; };
 
+let TEST_SLUG = "beacon";
 async function session() {
-  const dom = new JSDOM(await get("/survey/beacon/test"), { url: BASE + "/survey/beacon/test", runScripts: "outside-only", pretendToBeVisual: true });
+  const dom = new JSDOM(await get("/survey/" + TEST_SLUG + "/test"), { url: BASE + "/survey/" + TEST_SLUG + "/test", runScripts: "outside-only", pretendToBeVisual: true });
   const w = dom.window;
   w.scrollTo = () => {}; w.requestAnimationFrame = f => setTimeout(f, 0);
   w.Element.prototype.scrollIntoView = function () {};
@@ -36,6 +37,8 @@ async function session() {
       .then(x => ({ ok: x.status < 400, status: x.status, json: () => Promise.resolve(JSON.parse(x.body)) }));
   };
   const errs = []; w.addEventListener("error", e => errs.push(e.message));
+  // the page's inline window.STUDY never runs under jsdom - point it at the test study
+  w.STUDY = { slug: TEST_SLUG, paused: false };
   for (const f of ["qlogic.js", "survey.js", "explainer.js"]) w.eval(await get("/static/js/" + f));
   await sleep(600);
   const d = w.document;
@@ -48,6 +51,17 @@ async function session() {
 }
 
 (async () => {
+  // The live study's screening switch may be off (an author's choice), so the respondent
+  // checks run on a throwaway clone whose Q1 switch is removed - the seeded option marks
+  // then fire exactly as they did when the study shipped.
+  {
+    const base = JSON.parse(await get("/api/studio/study?slug=beacon")).cfg;
+    const q1 = (base.questions || []).find(q => q.id === "Q1");
+    if (q1) delete q1.screening;
+    TEST_SLUG = (await post("/api/studio/save", { title: "Screening Survey Test", cfg: base })).slug;
+    await post("/api/studio/status", { slug: TEST_SLUG, status: "live" });
+  }
+
   // ---------------- an ineligible specialty ends the survey on the spot ----------------
   {
     const s = await session();
@@ -80,11 +94,11 @@ async function session() {
 
   // ---------------- the server records why the respondent was screened out ----------------
   {
-    const started = await post("/api/start", { study: "beacon", is_test: true });
+    const started = await post("/api/start", { study: TEST_SLUG, is_test: true });
     const sid = started.session_id;
     await post("/api/save", { session_id: sid, answers: { Q1: { _: 5 } }, screened_out: true,
       screen_out_at: "Q1", screen_out_reason: "Q1: Q1 is Radiation oncology", elapsed_seconds: 30 });
-    const dash = JSON.parse(await get("/api/admin/data?study=beacon"));
+    const dash = JSON.parse(await get("/api/admin/data?study=" + TEST_SLUG));
     const row = (dash.recent || []).find(r => /Radiation oncology/.test(r.screen_out_reason || ""));
     check("the screen-out reason is stored on the respondent record", !!row,
       JSON.stringify((dash.recent || []).slice(0, 3)));
@@ -92,6 +106,7 @@ async function session() {
       !!row && row.screen_out === "Q1", row && row.screen_out);
   }
 
+  await post("/api/studio/delete", { slug: TEST_SLUG });
   console.log(fails ? "\n" + fails + " FAILED" : "\nall respondent screening checks passed");
   process.exit(fails ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

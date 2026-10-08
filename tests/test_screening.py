@@ -204,3 +204,19 @@ def test_the_data_dictionary_shows_the_screening_rules():
     lines = [r[5] for r in dd if r[4] == "(screening)"]
     assert lines == ["screen out when Q1 is Radiation oncology",
                      "screen out when Q1 is 4 and Q3 < 10"]
+
+
+# ---------------------------------------------------------------- the on/off switch owns everything
+def test_the_off_switch_mutes_the_option_terminate_marks():
+    q = {"id": "Q1", "type": "single_select", "stem": "Specialty",
+         "options": [{"code": 1, "label": "Eligible"}, {"code": 2, "label": "Not", "terminate": True}],
+         "screening": {"enabled": False}}
+    assert screening.blocks(q) == []          # nothing fires while the switch is off
+    assert screening.describe(q, [q]) == []
+
+
+def test_without_a_block_the_option_marks_still_fire():
+    q = {"id": "Q1", "type": "single_select", "stem": "Specialty",
+         "options": [{"code": 1, "label": "Eligible"}, {"code": 2, "label": "Not", "terminate": True}]}
+    blocks = screening.blocks(q)
+    assert len(blocks) == 1 and blocks[0]["source"] == "options"

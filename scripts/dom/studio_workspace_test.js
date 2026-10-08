@@ -123,12 +123,25 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   // --- add question via type picker
   $$("[data-act=qadd]")[1].click(); await sleep(20);
-  check("type picker modal opens as the grouped add-item library", !$("#st-modal").hidden && $$(".st-type").length===25 &&
-    /Multiple Choice/.test($("#st-modal").textContent) && /Methodologies/.test($("#st-modal").textContent) &&
+  check("type picker modal opens as the grouped add-item library", !$("#st-modal").hidden && $$(".st-type").length===26 &&
+    /Single Select/.test($("#st-modal").textContent) && /Methodologies/.test($("#st-modal").textContent) &&
     /Page Randomizer/.test($("#st-modal").textContent) && /Embedded Variable/.test($("#st-modal").textContent));
   $$(".st-type").find(b=>b.getAttribute("data-type")==="rating_grid").click(); await sleep(40);
   check("new rating grid inserted after selected question in Main, selected, next free id", $("#st-modal").hidden && $$(".st-qi").length===4 && $(".st-qi.on .st-qi-id").textContent==="Q10" && $$(".st-qi")[2].classList.contains("on"));
-  check("rows card with scale fields shown", $$('.st-items[data-kind=row] .st-item:not(.st-item-head)').length===2 && $("#f-smin"));
+  check("rows and columns cards with the select dropdown shown (no scale fields)",
+    $$('.st-items[data-kind=row] .st-item:not(.st-item-head)').length===2 &&
+    $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length===3 &&
+    $("#f-gselect") && !$("#f-smin"));
+
+  // --- the numeric matrix gets the same rows x columns editor
+  $$("[data-act=qadd]")[1].click(); await sleep(20);
+  $$(".st-type").find(b=>b.getAttribute("data-type")==="numeric_matrix").click(); await sleep(40);
+  check("a new numeric matrix opens as a rows x columns editor (no scale, no pick mode)",
+    $$('.st-items[data-kind=row] .st-item:not(.st-item-head)').length===2 &&
+    $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length===2 &&
+    !$("#f-gselect") && !$("#f-smin") && !!$("#f-nmin"),
+    $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length + " cols");
+  $(".st-qi.on [data-act=qdel]").click(); await sleep(30);   // drop it again
 
   // --- delete with undo
   $$("[data-act=qdel]").find(b=>b.closest(".st-qi-tools")).click(); await sleep(30);

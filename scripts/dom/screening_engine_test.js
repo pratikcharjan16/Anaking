@@ -140,6 +140,80 @@ check("grid row rule ignores a low rating", verdict({ Q7: { pa: 2, st: 2 } }) ==
 check("grid rule waits until every row is answered", verdict({ Q7: { pa: 5 } }) === null);
 delete GRID.screening;
 
+// ---- the choice grid: rows x columns, one or several picks per row ----------------------
+const CHOICEGRID = {
+  id: "Q7C", type: "rating_grid", stem: "How well does each fit?", select: "single",
+  rows: [{ code: "eff", label: "Efficacy" }, { code: "tol", label: "Tolerability" }],
+  cols: [{ code: "low", label: "Poor" }, { code: "mid", label: "Okay" }, { code: "high", label: "Great" }],
+};
+QUESTIONS.push(CHOICEGRID);
+
+check("a grid with columns is read as a choice grid", Q.qKind(CHOICEGRID) === "choicegrid");
+{
+  const ops = Q.opsFor(CHOICEGRID, QUESTIONS).map(o => o.op);
+  check("the choice grid offers the cell operators",
+    ["cell_is", "cell_not", "cell_includes", "cell_lacks"].every(op => ops.indexOf(op) >= 0), ops.join(","));
+  check("the choice grid drops the scale-row operators",
+    ["row_gte", "row_between", "sum_gt"].every(op => ops.indexOf(op) < 0), ops.join(","));
+}
+CHOICEGRID.screening = { mode: "screen_out", match: "all", when: "live", rules: [{ q: "Q7C", op: "cell_is", value: "eff=low" }] };
+check("cell_is fires on the matching pick", (verdict({ Q7C: { eff: "low", tol: "mid" } }) || {}).qid === "Q7C");
+check("cell_is ignores a different column", verdict({ Q7C: { eff: "mid", tol: "low" } }) === null);
+CHOICEGRID.screening.rules = [{ q: "Q7C", op: "cell_not", value: "eff=low" }];
+check("cell_not fires when the pick is elsewhere", (verdict({ Q7C: { eff: "mid", tol: "mid" } }) || {}).qid === "Q7C");
+CHOICEGRID.select = "multi";
+CHOICEGRID.screening.rules = [{ q: "Q7C", op: "cell_includes", value: "tol=high" }];
+check("cell_includes fires inside a multi pick", (verdict({ Q7C: { eff: ["mid"], tol: ["low", "high"] } }) || {}).qid === "Q7C");
+check("cell_includes ignores a row without the pick", verdict({ Q7C: { eff: ["high"], tol: ["low"] } }) === null);
+CHOICEGRID.screening.rules = [{ q: "Q7C", op: "cell_lacks", value: "tol=high" }];
+check("cell_lacks fires when the pick is missing", (verdict({ Q7C: { eff: ["mid"], tol: ["low"] } }) || {}).qid === "Q7C");
+check("a choice-grid rule waits until every row is answered", verdict({ Q7C: { eff: ["mid"] } }) === null);
+CHOICEGRID.screening.rules = [{ q: "Q7C", op: "answered", value: "" }];
+check("'was answered' works on a choice grid", (verdict({ Q7C: { eff: ["mid"], tol: [] } }) || {}).qid === "Q7C");
+CHOICEGRID.screening.rules = [{ q: "Q7C", op: "cell_is", value: "eff=low" }];
+{
+  const line = (Q.screenSummary(CHOICEGRID, QUESTIONS)[0] || {}).text || "";
+  check("the choice-grid rule reads as plain English",
+    /Efficacy/.test(line) && /Poor/.test(line), line);
+}
+delete CHOICEGRID.screening;
+CHOICEGRID.select = "single";
+
+// ---- the numeric matrix: one number per row x column ---------------------------------
+const NUMMATRIX = {
+  id: "Q7N", type: "numeric_matrix", stem: "Patients per month",
+  rows: [{ code: "tr", label: "Treated" }, { code: "el", label: "Eligible" }],
+  cols: [{ code: "now", label: "This year" }, { code: "next", label: "Next year" }],
+};
+QUESTIONS.push(NUMMATRIX);
+
+check("a numeric matrix with columns is read as a nummatrix", Q.qKind(NUMMATRIX) === "nummatrix");
+{
+  const nops = Q.opsFor(NUMMATRIX, QUESTIONS).map(o => o.op);
+  check("the numeric matrix offers the cell number operators",
+    ["cell_gte", "cell_lte", "cell_gt", "cell_lt", "cell_eq", "cell_ne", "cell_between"]
+      .every(op => nops.indexOf(op) >= 0), nops.join(","));
+  check("...and not the pick-grid operators",
+    ["cell_is", "cell_includes"].every(op => nops.indexOf(op) < 0), nops.join(","));
+}
+NUMMATRIX.screening = { mode: "screen_out", match: "all", when: "live", rules: [{ q: "Q7N", op: "cell_gte", value: "tr=now=40" }] };
+check("cell_gte fires on a big cell",
+  (verdict({ Q7N: { tr_now: 50, tr_next: 5, el_now: 5, el_next: 5 } }) || {}).qid === "Q7N");
+check("cell_gte ignores a small cell",
+  verdict({ Q7N: { tr_now: 30, tr_next: 5, el_now: 5, el_next: 5 } }) === null);
+NUMMATRIX.screening.rules = [{ q: "Q7N", op: "cell_between", value: "el=next=10-20" }];
+check("cell_between reads the band",
+  (verdict({ Q7N: { tr_now: 1, tr_next: 1, el_now: 1, el_next: 15 } }) || {}).qid === "Q7N");
+check("a numeric-matrix rule waits until every cell is answered",
+  verdict({ Q7N: { tr_now: 50 } }) === null);
+NUMMATRIX.screening.rules = [{ q: "Q7N", op: "cell_gte", value: "tr=now=40" }];
+{
+  const nline = (Q.screenSummary(NUMMATRIX, QUESTIONS)[0] || {}).text || "";
+  check("the numeric-cell rule reads as plain English",
+    /Treated/.test(nline) && /This year/.test(nline) && /40/.test(nline), nline);
+}
+delete NUMMATRIX.screening;
+
 RANK.screening = { mode: "screen_out", match: "all", when: "live", rules: [{ q: "Q9", op: "ranked_first", value: "cost" }] };
 check("rank: cost first screens out", (verdict({ Q9: { order: ["cost", "eff", "tol"] } }) || {}).qid === "Q9");
 check("rank: efficacy first continues", verdict({ Q9: { order: ["eff", "cost", "tol"] } }) === null);

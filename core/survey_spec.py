@@ -7,8 +7,8 @@ file, so editing a question here changes what respondents see. Mirrors
 BEACON_survey_questionnaire.md exactly: 4 screeners, 15 main questions, 1 conjoint.
 
 Question types the renderer understands:
-    single_select, multi_select, rating_grid, semantic_diff, sum_to_100,
-    numeric, slider, open_text, rank, choice_task
+    single_select, multi_select, rating_grid, rating_scale, semantic_diff,
+    sum_to_100, numeric, slider, open_text, rank, choice_task
 """
 
 TARGET_INDICATION = "advanced/metastatic NSCLC progressing on prior IO-based therapy"

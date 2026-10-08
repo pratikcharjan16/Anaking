@@ -140,6 +140,8 @@ def spec(slug="beacon"):
         "conjoint_scene": cfg.get("conjoint_scene"),
         "conjoint_min_dwell": cfg.get("conjoint_min_dwell", 12),
         "use_tts": cfg.get("use_tts", False),
+        # gamified respondent experience (ring/points/confetti); absent or true keeps it on
+        "gamify": cfg.get("gamify", True),
         "tpp": cfg.get("tpp", {}),
         # study-wide AI-answer check settings; questions can override with ai_check/ai_action
         "ai_check": cfg.get("qc", {}).get("ai", {}),

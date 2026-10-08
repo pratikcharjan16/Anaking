@@ -54,25 +54,48 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   check("the display-logic tab is called Show IF", tabs.includes("Show IF"), JSON.stringify(tabs));
 
   // ---------- Q1: options marked Screen out ----------
+  // The switch mirrors the saved study: a question whose block is parked off shows off
+  // (and hides everything); a question whose option switches fire with no authored block
+  // shows on.  The live studio may hold either, so read the truth first.
+  const beaconCfg = JSON.parse(await get("/api/studio/study?slug=beacon")).cfg;
+  const q1Saved = (beaconCfg.questions || []).find(q => q.id === "Q1");
+  const q1Off = !!(q1Saved && q1Saved.screening && q1Saved.screening.enabled === false);
   click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(120);
   check("the Screening tab opens its card", !!$("#card-screening"), !!$("#card-screening"));
-  check("Q1 starts with screening switched off (it uses the option switches)",
-    $("#f-scr-on").checked === false, $("#f-scr-on").checked);
-  check("...but the option switches are shown here",
-    /Radiation oncology/.test($("#card-screening").textContent), $("#card-screening").textContent.slice(0, 120));
+  check("the On/Off switch mirrors the saved study", $("#f-scr-on").checked === !q1Off,
+    "checked=" + $("#f-scr-on").checked + " savedOff=" + q1Off);
+  if (q1Off) {
+    check("an off switch hides every piece of screening logic, option marks included",
+      !$("#f-scr-rules") && !$("#card-screening .st-scr-test") &&
+      !/Radiation oncology/.test($("#card-screening").textContent) &&
+      /Screening is switched off/.test($("#card-screening").textContent),
+      $("#card-screening").textContent.slice(0, 160));
+  } else {
+    check("the live option switches are named on the card",
+      /Radiation oncology/.test($("#card-screening").textContent), $("#card-screening").textContent.slice(0, 120));
+  }
+  // Badge count tracks whatever screening is actually switched on in the live study
+  // (authors flip the master switch between runs), so derive the expectation from it.
+  const expectBadges = (beaconCfg.questions || []).filter(q => {
+    const s = q.screening || {};
+    return s.enabled !== false && ((s.rules || []).length || (s.rows || []).length);
+  }).length;
   const badges = $$(".st-qi .st-badge.screen").length;
-  check("the outline marks screening questions with a badge", badges >= 2, badges);
+  check("the outline marks screening questions with a badge", badges === expectBadges,
+    badges + " shown vs " + expectBadges + " with live screening");
 
-  // ---------- the tester: pick an answer by hand ----------
-  const pickChip = label => $$("#card-screening .st-scr-test .st-chip").find(c => new RegExp(label).test(c.textContent));
-  click(pickChip("Radiation oncology")); await sleep(120);
-  check("picking a terminating option reads SCREENED OUT",
-    /SCREENED OUT/.test(($(".st-scr-verdict") || {}).textContent || ""),
-    ($(".st-scr-verdict") || {}).textContent);
-  click(pickChip("Medical oncology")); await sleep(120);
-  check("picking an eligible option reads CONTINUES",
-    /CONTINUES/.test(($(".st-scr-verdict") || {}).textContent || ""),
-    ($(".st-scr-verdict") || {}).textContent);
+  // ---------- the tester: pick an answer by hand (needs the switch on) ----------
+  if (!q1Off) {
+    const pickChip = label => $$("#card-screening .st-scr-test .st-chip").find(c => new RegExp(label).test(c.textContent));
+    click(pickChip("Radiation oncology")); await sleep(120);
+    check("picking a terminating option reads SCREENED OUT",
+      /SCREENED OUT/.test(($(".st-scr-verdict") || {}).textContent || ""),
+      ($(".st-scr-verdict") || {}).textContent);
+    click(pickChip("Medical oncology")); await sleep(120);
+    check("picking an eligible option reads CONTINUES",
+      /CONTINUES/.test(($(".st-scr-verdict") || {}).textContent || ""),
+      ($(".st-scr-verdict") || {}).textContent);
+  }
 
   // ---------- build a group rule on a multi-select ----------
   // add a question we can shape freely: duplicate Q1 then make it multi select
@@ -85,6 +108,12 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   const swOn = $("#f-scr-on");
   swOn.checked = true; fire(swOn, "change"); await sleep(250);
   check("choosing 'Screen out when…' seeds one condition", $$("#f-scr-rules .st-rule").length === 1,
+    $$("#f-scr-rules .st-rule").length);
+  // a duplicate can inherit its source's conditions - clear them to build from scratch
+  $$("#f-scr-rules [data-act='scr-del']").forEach(x => { click(x); });
+  await sleep(200);
+  click($('[data-act="scr-add"]')); await sleep(200);
+  check("a fresh condition starts on the current question", $$("#f-scr-rules .st-rule").length === 1,
     $$("#f-scr-rules .st-rule").length);
   check("the condition defaults to the current question",
     ($('[data-sf="q"]') || {}).value === $("#f-id").value, ($('[data-sf="q"]') || {}).value);
@@ -133,6 +162,28 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   box.checked = true; fire(box, "change"); await sleep(200);
   check("ticking it marks the option", !!$("#card-answers .st-flag.on"));
 
+  // ---------- off means off: the switch mutes rules AND option switches ----------
+  click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(180);
+  const badgesBefore = $$(".st-qi .st-badge.screen").length;
+  check("the card is on while this question carries rules and an option switch",
+    $("#f-scr-on").checked === true, $("#f-scr-on").checked);
+  const swM = $("#f-scr-on");
+  swM.checked = false; fire(swM, "change"); await sleep(280);
+  check("switching off hides every screening control, tester and note",
+    !$("#f-scr-rules") && !$("#card-screening .st-scr-test") &&
+    !/oncology/i.test($("#card-screening").textContent) &&
+    /Screening is switched off/.test($("#card-screening").textContent),
+    $("#card-screening").textContent.slice(0, 160));
+  check("...and the outline badge for this question goes away",
+    $$(".st-qi .st-badge.screen").length === badgesBefore - 1,
+    $$(".st-qi .st-badge.screen").length + " vs " + badgesBefore);
+  const swM2 = $("#f-scr-on");
+  swM2.checked = true; fire(swM2, "change"); await sleep(300);
+  check("switching back on restores the rules, the tester and the option note",
+    !!$("#f-scr-rules") && !!$("#card-screening .st-scr-test") &&
+    /marked .Screen out.|Screen out/i.test($("#card-screening").textContent),
+    $("#card-screening").textContent.slice(0, 160));
+
   // ---------- numbers: the operator row with a number box ----------
   click($('[data-act="qdup"]')); await sleep(250);           // a copy we can reshape freely
   click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
@@ -148,6 +199,14 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
     /Respondents will/.test($("#card-screening").textContent) &&
     /if the answer criteria is met/.test($("#card-screening").textContent),
     $("#card-screening").textContent.slice(0, 200));
+  // reshape whatever the duplicate inherited into one plain numeric condition
+  // (pointing it at this question first resets the operator, so set q then op)
+  {
+    const qN = $('[data-sf="q"]');
+    if (qN.value !== numId) { qN.value = numId; fire(qN, "change"); await sleep(240); }
+    const opN = $('[data-sf="op"]');
+    opN.value = "lt"; fire(opN, "change"); await sleep(240);
+  }
   check("a numeric question opens with one condition", $$("#f-scr-rules .st-rule").length === 1,
     $$("#f-scr-rules .st-rule").length);
   let numBox = $('[data-sf="value"].st-scr-num');

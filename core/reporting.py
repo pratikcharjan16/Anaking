@@ -80,7 +80,21 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                                          else "Detractor")
             except (ValueError, TypeError):
                 out[qid + "_segment"] = ""
-        elif t in ("rating_grid", "semantic_diff", "emoji_grid", "sum_to_100"):
+        elif t == "rating_grid" and q.get("cols"):
+            # a rows x columns choice grid: one column code per row, plus its wording
+            col_labels = {str(c["code"]): c.get("label", "") for c in q["cols"]}
+            for r in q["rows"]:
+                v = a.get(r["code"], "")
+                if isinstance(v, list):               # multi select: several columns on one row
+                    out[f"{qid}_{r['code']}"] = ";".join(str(x) for x in v)
+                    out[f"{qid}_{r['code']}_text"] = "; ".join(
+                        col_labels.get(str(x), str(x)) for x in v)
+                else:
+                    out[f"{qid}_{r['code']}"] = v
+                    if v not in ("", None):
+                        out[f"{qid}_{r['code']}_text"] = (
+                            col_labels.get(str(v), str(v)) if str(v) != "NA" else "NA")
+        elif t in ("rating_grid", "rating_scale", "semantic_diff", "emoji_grid", "sum_to_100"):
             for r in q["rows"]:
                 out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
         elif t == "heatmap":
@@ -321,6 +335,23 @@ def build_sheets(records: list, scope: str, cfg: dict):
                                 "option" + (" - TERMINATES" if o.get("terminate") else "")
                                 + (" - EXCLUSIVE" if o.get("exclusive") else "")
                                 + (" - pinned" if o.get("pin") else "")])
+        elif q["type"] == "rating_grid" and q.get("cols"):
+            mode = "multi-select" if q.get("select") == "multi" else "single-select"
+            coltxt = ", ".join(f"{c['code']} {c.get('label', '')}".strip()
+                               for c in q["cols"])
+            for r in q["rows"]:
+                dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
+                                f"{mode} from: {coltxt}"])
+        elif q["type"] == "rating_scale":
+            sc = q.get("scale") or {}
+            scale = f"{sc.get('min', 1)}-{sc.get('max', 5)}"
+            labels = [sc.get("min_label"), sc.get("mid_label"), sc.get("max_label")]
+            labels = [x for x in labels if x]
+            if labels:
+                scale += " (" + " / ".join(labels) + ")"
+            for r in q["rows"]:
+                dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
+                                scale])
         elif q["type"] in ("rating_grid", "semantic_diff", "sum_to_100", "emoji_grid"):
             scale = (f"{q['scale']['min']}-{q['scale']['max']}" if "scale" in q
                      else "0-100, rows sum to 100")
@@ -352,9 +383,16 @@ def build_sheets(records: list, scope: str, cfg: dict):
             dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "calendar date",
                             "YYYY-MM-DD"])
         elif q["type"] == "numeric_matrix":
+            nm_cols = q.get("cols") or []
             for r in q["rows"]:
-                dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
-                                f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
+                if nm_cols:                # a table: one field per row x column
+                    for c in nm_cols:
+                        dd_rows.append([q["id"], q["section"], q["type"], stem,
+                                        f"{r['code']}_{c['code']}", f"{r['label']} \u00D7 {c['label']}",
+                                        f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
+                else:
+                    dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
         elif q["type"] == "delta":
             dd_rows.append([q["id"], q["section"], q["type"], stem,
                             "before/after/delta", "two values and their difference",
@@ -391,6 +429,13 @@ def build_sheets(records: list, scope: str, cfg: dict):
     ]
 
 
+def _picked(v, code) -> bool:
+    """Whether a choice-grid row's answer contains the column's code (single or multi)."""
+    if isinstance(v, list):
+        return any(str(x) == str(code) for x in v)
+    return v is not None and v != "" and str(v) == str(code)
+
+
 def analysis_for(records: list, cfg: dict) -> dict:
     complete = [r for r in records if r["status"] == "complete"]
     out = {"n_started": len(records), "n_complete": len(complete),
@@ -406,13 +451,28 @@ def analysis_for(records: list, cfg: dict) -> dict:
 
     for q in cfg.get("questions", []):
         t = q["type"]
-        if t in ("rating_grid", "semantic_diff", "emoji_grid"):
+        if t in ("rating_scale", "semantic_diff", "emoji_grid") or \
+           (t == "rating_grid" and not q.get("cols")):
             rows = []
             for r in q["rows"]:
                 rows.append({"label": r["label"],
                              "mean": mean([rec["answers"].get(q["id"], {}).get(r["code"])
                                            for rec in complete])})
             out["ratings"].append({"id": q["id"], "stem": q["stem"][:60], "rows": rows})
+        elif t == "rating_grid" and q.get("cols"):
+            # a choice grid: share of respondents picking each column, per row
+            rows = []
+            for r in q["rows"]:
+                cells = []
+                for c in q["cols"]:
+                    n = sum(1 for rec in complete
+                            if _picked(rec["answers"].get(q["id"], {}).get(r["code"]),
+                                       c["code"]))
+                    cells.append({"label": c.get("label", str(c["code"])),
+                                  "share": round(100 * n / len(complete), 1) if complete else 0})
+                rows.append({"label": r["label"], "cells": cells})
+            out.setdefault("choice_grids", []).append(
+                {"id": q["id"], "stem": q["stem"][:60], "rows": rows})
         elif t == "nps":
             seg = {"Promoter": 0, "Passive": 0, "Detractor": 0}
             for rec in complete:
