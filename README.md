@@ -338,6 +338,7 @@ node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gat
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)
+node scripts/dom/voice_commands_test.js          # voice answering: parser, mic bar, speak picks + next, manual fallback
 node scripts/dom/screening_studio_test.js        # Studio screening tab: modes, rule builder, tester, saved config
 node scripts/dom/screening_survey_test.js        # respondent screening: ends on the spot, reason recorded
 ```

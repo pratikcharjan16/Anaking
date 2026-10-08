@@ -31,6 +31,8 @@
     <div class="hud-item" title="Sections completed">
       <svg class="ring" viewBox="0 0 36 36">
         <circle class="ring-bg" cx="18" cy="18" r="15.9"/>
+        <circle class="ring-mid" cx="18" cy="18" r="11.4"/>
+        <circle class="ring-core" cx="18" cy="18" r="6.6"/>
         <circle class="ring-fg" id="ring-fg" cx="18" cy="18" r="15.9"/>
       </svg>
       <span id="ring-label">0%</span>
@@ -39,6 +41,7 @@
       <span class="star">&#9733;</span><span id="points">0</span>
     </div>
     <span class="rank" id="rank-badge" title="Insight rank">Observer</span>
+    <button class="hud-btn" id="voice-btn" title="Answer by voice - say options and “next” (uses your browser's free speech recognition)" hidden>&#127908;</button>
     <button class="hud-btn" id="sound-btn" title="Narration on/off">&#128266;</button>
   </div>
   <div class="meta">
@@ -92,6 +95,11 @@
       <label><input type="radio" name="audio-pref" value="manual" checked> <span><b>Play only when I choose Listen</b><small>Recommended — nothing starts automatically</small></span></label>
       <label><input type="radio" name="audio-pref" value="all"> <span><b>Read every question aloud</b><small>Audio starts after you begin the survey</small></span></label>
       <label><input type="radio" name="audio-pref" value="off"> <span><b>No question audio</b><small>You can turn it on later</small></span></label>
+    </fieldset>
+    <fieldset class="audio-choice" id="voice-choice" hidden>
+      <legend>How would you like to answer?</legend>
+      <label><input type="radio" name="voice-pref" value="manual" checked> <span><b>Tap my answers</b><small>Classic mode &mdash; click or tap the options, use Next to move on</small></span></label>
+      <label><input type="radio" name="voice-pref" value="voice"> <span><b>Speak my answers &#127908;</b><small>Say option names or numbers, several with &ldquo;and&rdquo;, and &ldquo;next&rdquo; to continue &mdash; your browser&rsquo;s own free speech recognition, no account needed</small></span></label>
     </fieldset>
     <button class="btn primary big" id="start-btn">Begin survey &rarr;</button>
   </div>
@@ -147,6 +155,7 @@ window.__beaconEscape = function () {
 </script>
 <script>window.STUDY={slug:{{ slug|tojson }},paused:{{ (is_paused|default(false))|tojson }}};</script>
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=261006a"></script>
+<script src="{{ url_for('static', filename='js/voice.js') }}?v=261008a"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=261006a"></script>
 <script src="{{ url_for('static', filename='js/survey.js') }}?v=261006a"></script>
 </body>

@@ -4151,6 +4151,11 @@
       '<div class="st-field"><label>Embedded variables <span class="st-opt">names captured from the survey link, comma separated</span></label><input id="f-embedded" data-set="1" value="' + esc((c.embedded || []).map(function (e2) { return e2.name; }).join(", ")) + '" placeholder="panel, rid">' +
       '<div class="st-meta">A respondent opening <code>/survey/' + esc(cur.slug) + "?panel=A</code> is stored with <code>ev_panel = A</code> and it appears in every export.</div></div></div>" +
       '<label class="st-switch"><input type="checkbox" id="f-randpages" data-set="1"' + (c.randomize_pages ? " checked" : "") + '><i></i>Page Randomizer - respondents see the middle pages in a random order</label>' +
+      '<h4 class="st-h4">Respondent experience <span class="st-opt">gamified feel &amp; voice answers</span></h4>' +
+      '<label class="st-switch"><input type="checkbox" id="f-gamify" data-set="1"' + (c.gamify === false ? "" : " checked") + '><i></i>Gamified feel - progress target, insight points, ranks and confetti (on by default)</label>' +
+      '<div class="st-meta">Voice answering comes with it, free of charge: on browsers that support speech recognition ' +
+      'respondents may say an option (or its number, several joined with \u201cand\u201d) and \u201cnext\u201d. ' +
+      'Tapping always works too - respondents pick their mode on the welcome page.</div>' +
       '<h4 class="st-h4">Quality flags</h4><div class="st-grid2">' +
       f("f-attq", "Attention-check question id", "", qc.attention_q, "e.g. Q13") +
       f("f-attok", "\u2026correct answer code", "", qc.attention_ok, "e.g. 2") +
@@ -4211,6 +4216,7 @@
       setOrDel(c, "thanks_text", (val("f-thanks") || "").trim());
       setOrDel(c, "language", val("f-deflang") === "en-US" ? "" : val("f-deflang"));
       c.randomize_pages = chk("f-randpages") === true;
+      if (chk("f-gamify") === false) c.gamify = false; else delete c.gamify;
       c.embedded = (val("f-embedded") || "").split(",").map(function (x) { return x.trim(); }).filter(Boolean)
         .map(function (nm) { return { name: nm }; });
     }

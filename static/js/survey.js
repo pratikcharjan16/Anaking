@@ -619,8 +619,19 @@
     setTimeout(function () { t.remove(); }, 2750);
   }
 
+  // Authors can switch the game layer off in Studio; the plain progress bar on top stays.
+  function gamifyOn() { return !!(SPEC && SPEC.gamify !== false); }
+
+  // A quiet bull's-eye: two target rings ripple out of an answer the moment it lands,
+  // so picking feels like hitting the mark - no words, no noise, just feedback.
+  function bullseye(node) {
+    if (!node || node.classList.contains("hit")) return;
+    node.classList.add("hit");
+    setTimeout(function () { node.classList.remove("hit"); }, 800);
+  }
+
   function addPoints(n) {
-    if (PREVIEW) return;
+    if (PREVIEW || !gamifyOn()) return;
     var before = rankFor(points);
     points += n;
     var after = rankFor(points);
@@ -649,6 +660,7 @@
   }
 
   function confetti(n) {
+    if (!gamifyOn()) return;
     var colors = ["#0b4f6c", "#12789e", "#7fd4f0", "#ffd166", "#1a7f4b"];
     n = n || 40;
     for (var i = 0; i < n; i++) {
@@ -664,6 +676,114 @@
         }, i * 28);
       })(i);
     }
+  }
+
+  // ============================================================ voice commands
+  // Speak your answers: say an option (or its number), several options joined
+  // with "and", then say "next". Runs on the browser's own speech recognition
+  // (Web Speech API) - free to ship, nothing to configure server-side. Voice is
+  // strictly optional: tapping always works, and on browsers without the API
+  // every voice control simply stays hidden.
+  var voice = null, voiceOn = false, voiceBar = null;
+
+  function voiceSupported() {
+    return !PREVIEW && window.BeaconVoice && window.BeaconVoice.supported();
+  }
+
+  // Options of the question currently on screen (options the voice picks from).
+  function voiceCtx() {
+    var q = steps[cur] && steps[cur].q;
+    if (!q || !q.options) return { options: [], multi: false, type: (q && q.type) || "" };
+    return { options: q.options, multi: q.type === "multi_select", type: q.type };
+  }
+
+  function showVoiceBar(msg) {
+    if (!voiceBar) {
+      voiceBar = el("div", "voice-bar",
+        '<span class="vb-mic" aria-hidden="true"><i></i></span>' +
+        '<span class="vb-live">Listening\u2026</span>' +
+        '<span class="vb-heard" aria-live="polite"></span>');
+      document.body.appendChild(voiceBar);
+    }
+    var live = voiceBar.querySelector(".vb-live");
+    var heard = voiceBar.querySelector(".vb-heard");
+    live.textContent = msg || "Listening\u2026 say an option or \u201Cnext\u201D";
+    heard.textContent = "";
+    voiceBar.classList.add("listening");
+    voiceBar.hidden = false;
+  }
+
+  function hideVoiceBar() {
+    if (voiceBar) voiceBar.hidden = true;
+  }
+
+  function voiceTranscript(text) {
+    if (!voiceBar) return;
+    var heard = voiceBar.querySelector(".vb-heard");
+    heard.textContent = "\u201C" + text + "\u201D";
+  }
+
+  // Turn one finished utterance into survey actions and run them in order.
+  function voiceHear(text) {
+    if (!text || !voiceOn) return;
+    voiceTranscript(text);
+    var ctx = voiceCtx();
+    var acts = window.BeaconVoice.parseCommand(text, ctx);
+    var picked = 0, spoken = false;
+    acts.forEach(function (a) {
+      if (a.act === "next") {
+        if (spoken) coachSay("Next question coming up\u2026", "info");
+        next();
+      } else if (a.act === "back") {
+        go(cur - 1);
+      } else if (a.act === "clear") {
+        voiceClear();
+        coachSay("Selections cleared.", "info");
+      } else if (a.act === "pick") {
+        if (ctx.type !== "single_select" && ctx.type !== "multi_select") {
+          if (!spoken) {
+            coachSay("This one needs a quick tap \u2014 then say \u201Cnext\u201D when you\u2019re ready.", "info");
+            spoken = true;
+          }
+          return;
+        }
+        var row = document.querySelector('#app .opt[data-code="' + String(a.code).replace(/"/g, '\\"') + '"]');
+        if (row) { row.click(); picked++; }
+      } else if (!spoken) {
+        coachSay("I heard \u201C" + escHtml(a.text) + "\u201D \u2014 say an option name or number, or \u201Cnext\u201D.", "warn");
+        spoken = true;
+      }
+    });
+    if (picked) coachSay(picked === 1 ? "Locked in." : "Locked in " + picked + " answers.", "info");
+    showVoiceBar(); // settle the bar back to listening state for the next utterance
+  }
+
+  function voiceClear() {
+    Array.prototype.forEach.call(document.querySelectorAll("#app .opt input[type='checkbox']"), function (i) {
+      if (i.checked) i.closest(".opt").click();
+    });
+  }
+
+  function setVoice(on) {
+    if (on && !voiceSupported()) return;
+    if (on && !voice) {
+      voice = window.BeaconVoice.create({
+        onInterim: function (t) { voiceTranscript(t); },
+        onFinal: function (t) { voiceHear(t); },
+        onState: function (state, detail) {
+          if (state === "waiting") showVoiceBar(detail === "denied"
+            ? "Microphone blocked \u2014 allow it in the browser to use voice."
+            : "Couldn\u2019t reach the speech service \u2014 tap answers for now.");
+        }
+      });
+    }
+    if (!voice) return;
+    voiceOn = on;
+    if (voiceOn) { voice.start(); showVoiceBar(); } else { voice.stop(); hideVoiceBar(); }
+    var btn = $("#voice-btn");
+    if (btn) btn.classList.toggle("on", voiceOn);
+    document.body.classList.toggle("voice-on", voiceOn);
+    if (voiceOn) coachSay("Voice mode on \u2014 say an option or its number, then \u201Cnext\u201D.", "info");
   }
 
   // ============================================================ explainer
@@ -863,6 +983,7 @@
 
     options.forEach(function (o) {
       var row = el("div", "opt" + (o.exclusive ? " opt-excl" : ""));
+      row.dataset.code = String(o.code);
       var input = el("input");
       input.type = multi ? "checkbox" : "radio";
       input.name = q.id;
@@ -879,6 +1000,7 @@
 
       row.addEventListener("click", function (ev) {
         if (ev.target.tagName !== "INPUT") input.checked = !input.checked;
+        if (input.checked) bullseye(row);
         var codes = getAns(q.id, "codes") || [];
         if (multi) {
           var i = codes.map(String).indexOf(String(o.code));
@@ -1359,6 +1481,7 @@
             setAns(q.id, r.code, c.code);
           }
           var tick = row.querySelector(".cg-na input"); if (tick) tick.checked = false;
+          if (inp.checked) bullseye(cell);
           hideErr(); ansChanged(); checkPattern(q, wrap);
         });
         cell.appendChild(inp);
@@ -2349,16 +2472,30 @@
         body: JSON.stringify({ session_id: SESSION.session_id, answers: answers, elapsed_seconds: secs })
       }).then(function (r) { return r.json(); }).then(function (res) {
         var card = el("div", "card");
-        card.appendChild(el("div", "done-icon", "&#10003;"));
+        card.appendChild(el("div", gamifyOn() ? "done-icon done-target" : "done-icon",
+          gamifyOn()
+            ? '<svg viewBox="0 0 72 72" aria-hidden="true">' +
+              '<circle cx="36" cy="36" r="32" fill="#e8f2f7"/>' +
+              '<circle cx="36" cy="36" r="22" fill="#fff" stroke="#12789e" stroke-width="3"/>' +
+              '<circle cx="36" cy="36" r="12.5" fill="#e8f2f7" stroke="#12789e" stroke-width="3"/>' +
+              '<circle cx="36" cy="36" r="4.5" fill="#0b4f6c"/>' +
+              '<path d="M36 36 L60 12" stroke="#0b4f6c" stroke-width="3.5" stroke-linecap="round"/>' +
+              '<path d="M60 12 l-9 2.2 M60 12 l-2.2 9" stroke="#0b4f6c" stroke-width="3.5" stroke-linecap="round"/>' +
+              '</svg>'
+            : "&#10003;"));
         card.appendChild(el("h1", null, SPEC.thanks_title || "Thank you"));
         card.appendChild(el("p", null, SPEC.thanks_text || "Your responses have been recorded. Thank you for the " +
           "time and clinical insight you have given this study."));
         var flags = res.flags || [];
         card.appendChild(el("div", "summary",
-          "Reference <code>" + res.respondent_code + "</code> &middot; " +
-          Math.round(secs / 60) + " min &middot; <strong>" + points +
-          "</strong> insight points &middot; quality control: <code>" +
-          (flags.length ? flags.join(", ") : "clean") + "</code>"));
+          gamifyOn()
+            ? "Reference <code>" + res.respondent_code + "</code> &middot; " +
+              Math.round(secs / 60) + " min &middot; <strong>" + points +
+              "</strong> insight points &middot; rank <strong>" + rankFor(points) +
+              "</strong> &middot; quality control: <code>" +
+              (flags.length ? flags.join(", ") : "clean") + "</code>"
+            : "Reference <code>" + res.respondent_code + "</code> &middot; " +
+              Math.round(secs / 60) + " min"));
         if (flags.indexOf("ai_generated_verbatim") >= 0) {
           card.appendChild(el("div", "ai-note",
             "One or more written answers were flagged as possibly AI-generated. They stay on " +
@@ -2588,6 +2725,16 @@
         setSound(!soundOn);
         if (soundOn && $("#welcome") && $("#welcome").parentElement) playClip("welcome");
       });
+
+      // Voice mode: offered only where the browser has speech recognition,
+      // so respondents on other browsers keep the normal tap-through flow.
+      var vc = $("#voice-choice");
+      if (vc && voiceSupported()) vc.hidden = false;
+      var vb = $("#voice-btn");
+      if (vb && voiceSupported()) {
+        vb.hidden = false;
+        vb.addEventListener("click", function () { setVoice(!voiceOn); });
+      }
       wireWelcomeAudio();
       setupLangPicker();
       applyWelcomeCopy();
@@ -2705,7 +2852,7 @@
       });
     }
     if (IS_TEST) document.body.classList.add("testmode");
-    $("#hud").hidden = false;
+    $("#hud").hidden = !gamifyOn();
     $("#points").textContent = String(points);
     var rb = $("#rank-badge");
     if (rb) rb.textContent = rankFor(points);
@@ -2729,6 +2876,9 @@
         var pref = document.querySelector('input[name="audio-pref"]:checked');
         audioPref = pref ? pref.value : "manual";
         store("audio_pref", audioPref); setSound(audioPref !== "off");
+        var vpref = document.querySelector('input[name="voice-pref"]:checked');
+        store("voice_pref", vpref ? vpref.value : "manual");
+        if (vpref && vpref.value === "voice") setVoice(true);
         t0 = Date.now();
         $("#welcome").remove();
         stopNarration();

@@ -690,3 +690,64 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .nm-td-na,.nm-th-na{text-align:center}
 .nm-input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .nm-cmtrow{border-top:1px solid var(--line);padding:6px 10px;background:#fcfdfe}
+
+/* ============ gamified touches: bull's-eyes, voice mode, target HUD ============ */
+.opt{position:relative}
+/* The "hit": two target rings ripple out of the answer the moment it lands. */
+.opt.hit::before,.opt.hit::after{
+  content:"";position:absolute;left:14px;top:50%;width:12px;height:12px;margin:-6px 0 0 -6px;
+  border-radius:50%;border:2px solid #12789e;pointer-events:none;
+  animation:hit-ring .7s ease-out forwards;
+}
+.opt.hit::after{animation-delay:.18s;border-color:#ffd166}
+@keyframes hit-ring{
+  0%{opacity:.95;transform:scale(.4)}
+  70%{opacity:.55}
+  100%{opacity:0;transform:scale(2.6)}
+}
+.opt.hit{animation:hit-pop .35s ease-out}
+@keyframes hit-pop{0%{transform:scale(1)}40%{transform:scale(1.015) translateX(3px)}100%{transform:scale(1)}}
+.cg-cell{position:relative}
+.cg-cell.hit::before{
+  content:"";position:absolute;left:50%;top:50%;width:10px;height:10px;margin:-5px 0 0 -5px;
+  border-radius:50%;border:2px solid #12789e;pointer-events:none;animation:hit-ring .7s ease-out forwards;
+}
+
+/* HUD progress ring reads as a little target: outer guide, mid ring, solid core. */
+.ring-mid{stroke:rgba(255,255,255,.4);stroke-dasharray:2 3}
+.ring-core{fill:#ffd166;stroke:none}
+
+/* Mic toggle in the HUD (hidden by default; revealed where speech recognition exists). */
+#voice-btn{
+  width:34px;height:34px;border-radius:50%;border:1px solid rgba(255,255,255,.35);
+  background:rgba(255,255,255,.08);color:inherit;display:grid;place-items:center;
+  cursor:pointer;transition:background .2s,border-color .2s,box-shadow .2s;
+}
+#voice-btn:hover{background:rgba(255,255,255,.18)}
+#voice-btn.on{background:#ffd166;color:#0b4f6c;border-color:#ffd166;box-shadow:0 0 0 4px rgba(255,209,102,.25)}
+#voice-btn svg{width:16px;height:16px}
+
+/* Floating voice bar: pulsing mic, a live hint, and what was heard. */
+.voice-bar{
+  position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:70;
+  display:flex;align-items:center;gap:10px;max-width:92vw;
+  background:#0b4f6c;color:#fff;border-radius:999px;padding:9px 18px 9px 12px;
+  box-shadow:0 8px 28px rgba(11,79,108,.35);font-size:13.5px;
+}
+.vb-mic{position:relative;width:30px;height:30px;border-radius:50%;background:#12789e;display:grid;place-items:center;flex:0 0 auto}
+.vb-mic::before{
+  content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(127,212,240,.7);
+  animation:mic-pulse 1.6s ease-out infinite;
+}
+.vb-mic::after{
+  content:"";position:absolute;inset:-5px;border-radius:50%;border:2px solid rgba(127,212,240,.45);
+  animation:mic-pulse 1.6s .5s ease-out infinite;
+}
+@keyframes mic-pulse{0%{opacity:.9;transform:scale(.75)}100%{opacity:0;transform:scale(1.5)}}
+.vb-mic i{width:8px;height:14px;border-radius:4px;background:#fff}
+.vb-live{opacity:.9;white-space:nowrap}
+.vb-heard{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw;color:#7fd4f0}
+
+/* Completion screen: arrow in the bull's-eye. */
+.done-icon.done-target{background:#fff;border:none;width:76px;height:76px}
+.done-icon.done-target svg{width:100%;height:100%;display:block}

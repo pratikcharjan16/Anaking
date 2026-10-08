@@ -74,8 +74,15 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
     check("the live option switches are named on the card",
       /Radiation oncology/.test($("#card-screening").textContent), $("#card-screening").textContent.slice(0, 120));
   }
+  // Badge count tracks whatever screening is actually switched on in the live study
+  // (authors flip the master switch between runs), so derive the expectation from it.
+  const expectBadges = (beaconCfg.questions || []).filter(q => {
+    const s = q.screening || {};
+    return s.enabled !== false && ((s.rules || []).length || (s.rows || []).length);
+  }).length;
   const badges = $$(".st-qi .st-badge.screen").length;
-  check("the outline marks screening questions with a badge", badges >= 2, badges);
+  check("the outline marks screening questions with a badge", badges === expectBadges,
+    badges + " shown vs " + expectBadges + " with live screening");
 
   // ---------- the tester: pick an answer by hand (needs the switch on) ----------
   if (!q1Off) {
