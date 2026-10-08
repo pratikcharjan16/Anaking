@@ -179,6 +179,41 @@ CHOICEGRID.screening.rules = [{ q: "Q7C", op: "cell_is", value: "eff=low" }];
 delete CHOICEGRID.screening;
 CHOICEGRID.select = "single";
 
+// ---- the numeric matrix: one number per row x column ---------------------------------
+const NUMMATRIX = {
+  id: "Q7N", type: "numeric_matrix", stem: "Patients per month",
+  rows: [{ code: "tr", label: "Treated" }, { code: "el", label: "Eligible" }],
+  cols: [{ code: "now", label: "This year" }, { code: "next", label: "Next year" }],
+};
+QUESTIONS.push(NUMMATRIX);
+
+check("a numeric matrix with columns is read as a nummatrix", Q.qKind(NUMMATRIX) === "nummatrix");
+{
+  const nops = Q.opsFor(NUMMATRIX, QUESTIONS).map(o => o.op);
+  check("the numeric matrix offers the cell number operators",
+    ["cell_gte", "cell_lte", "cell_gt", "cell_lt", "cell_eq", "cell_ne", "cell_between"]
+      .every(op => nops.indexOf(op) >= 0), nops.join(","));
+  check("...and not the pick-grid operators",
+    ["cell_is", "cell_includes"].every(op => nops.indexOf(op) < 0), nops.join(","));
+}
+NUMMATRIX.screening = { mode: "screen_out", match: "all", when: "live", rules: [{ q: "Q7N", op: "cell_gte", value: "tr=now=40" }] };
+check("cell_gte fires on a big cell",
+  (verdict({ Q7N: { tr_now: 50, tr_next: 5, el_now: 5, el_next: 5 } }) || {}).qid === "Q7N");
+check("cell_gte ignores a small cell",
+  verdict({ Q7N: { tr_now: 30, tr_next: 5, el_now: 5, el_next: 5 } }) === null);
+NUMMATRIX.screening.rules = [{ q: "Q7N", op: "cell_between", value: "el=next=10-20" }];
+check("cell_between reads the band",
+  (verdict({ Q7N: { tr_now: 1, tr_next: 1, el_now: 1, el_next: 15 } }) || {}).qid === "Q7N");
+check("a numeric-matrix rule waits until every cell is answered",
+  verdict({ Q7N: { tr_now: 50 } }) === null);
+NUMMATRIX.screening.rules = [{ q: "Q7N", op: "cell_gte", value: "tr=now=40" }];
+{
+  const nline = (Q.screenSummary(NUMMATRIX, QUESTIONS)[0] || {}).text || "";
+  check("the numeric-cell rule reads as plain English",
+    /Treated/.test(nline) && /This year/.test(nline) && /40/.test(nline), nline);
+}
+delete NUMMATRIX.screening;
+
 RANK.screening = { mode: "screen_out", match: "all", when: "live", rules: [{ q: "Q9", op: "ranked_first", value: "cost" }] };
 check("rank: cost first screens out", (verdict({ Q9: { order: ["cost", "eff", "tol"] } }) || {}).qid === "Q9");
 check("rank: efficacy first continues", verdict({ Q9: { order: ["eff", "cost", "tol"] } }) === null);

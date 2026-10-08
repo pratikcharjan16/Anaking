@@ -113,8 +113,14 @@ async function openSurvey(slug){
     !!S.$(".topbar") && /PROJECT BEACON/.test(S.$(".topbar").textContent));
 
   // ---------- screening out also ends the answering state ----------
-  // the seeded BEACON study screens out on Q1 = "Radiation oncology" (code 5)
-  const S2=await openSurvey("beacon");
+  // the seeded BEACON study screens out on Q1 = "Radiation oncology" (code 5); the live
+  // study's screening switch may be parked off by its author, so run this on a clone
+  // whose Q1 switch is removed - the option marks then fire as shipped
+  const bcfg=JSON.parse(await get("/api/studio/study?slug=beacon")).cfg;
+  const bq1=(bcfg.questions||[]).find(q=>q.id==="Q1"); if (bq1) delete bq1.screening;
+  const bslug=JSON.parse((await req("POST","/api/studio/save",JSON.stringify({title:"Chrome Beacon Clone",cfg:bcfg}))).body).slug;
+  await req("POST","/api/studio/status",JSON.stringify({slug:bslug,status:"live"}));
+  const S2=await openSurvey(bslug);
   S2.$("#start-btn").click(); await sleep(600);
   const body2=S2.w.document.body;
   check("beacon run: answering while on a question", body2.classList.contains("answering"));
@@ -132,6 +138,7 @@ async function openSurvey(slug){
   }
 
   await req("POST","/api/studio/delete",JSON.stringify({slug:slug}));    // leave the DB as we found it
+  await req("POST","/api/studio/delete",JSON.stringify({slug:bslug}));
 
   check("no JS errors", S.errs.length===0, S.errs.join(" | "));
   console.log(fails? "\n"+fails+" CHECK(S) FAILED" : "\nall checks passed");

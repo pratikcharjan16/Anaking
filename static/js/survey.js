@@ -808,8 +808,19 @@
         return (a.codes || []).length > 0;
       case "date":
         return !!(a && a._);
-      case "numeric_matrix":
+      case "numeric_matrix": {
+        var nmc = q.cols || [];
+        if (nmc.length) {                            // a table: every cell, unless the row is N/A
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;
+            return nmc.every(function (c) {
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && v !== "";
+            });
+          });
+        }
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
+      }
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
@@ -1136,7 +1147,7 @@
   }
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
-  function numInput(q, key) {
+  function numInput(q, key, onType) {
     var inp = el("input", "nm-input");
     inp.type = "number";
     if (q.min !== undefined) inp.min = q.min;
@@ -1146,6 +1157,7 @@
     if (v !== undefined && v !== "" && v !== "NA") inp.value = v;
     inp.addEventListener("input", function () {
       setAns(q.id, key, inp.value);
+      if (onType) onType();
       hideErr(); ansChanged();
     });
     return inp;
@@ -1178,14 +1190,28 @@
       orderedList(q.rows || [], q, "rows").forEach(function (r) {
         var row = el("div", "nm-tr");
         row.appendChild(itemLabelNode(r, "nm-th nm-rowlabel"));
+        // typing into any cell of the row lifts an N/A tick on that row
+        var clearNa = (function (rowEl, rowCode) {
+          return function () {
+            if ((answers[q.id] || {})[rowCode] !== "NA") return;
+            setAns(q.id, rowCode, "");
+            var nb = rowEl.querySelector(".na-cell input");
+            if (nb) nb.checked = false;
+          };
+        })(row, r.code);
         cols.forEach(function (c) {
           var cell = el("div", "nm-td");
-          cell.appendChild(numInput(q, r.code + "_" + c.code));
+          cell.appendChild(numInput(q, r.code + "_" + c.code, clearNa));
           row.appendChild(cell);
         });
         if (anyNa) {
           var nc = el("div", "nm-td nm-td-na");
-          nc.appendChild(naCell(q, r.code, naLabel, null));
+          // N/A stands in for the whole row: ticking it empties the cells
+          nc.appendChild(naCell(q, r.code, naLabel, function (checked) {
+            if (!checked) return;
+            cols.forEach(function (c) { setAns(q.id, r.code + "_" + c.code, ""); });
+            row.querySelectorAll(".nm-input").forEach(function (ni) { ni.value = ""; });
+          }));
           row.appendChild(nc);
         }
         tbl.appendChild(row);

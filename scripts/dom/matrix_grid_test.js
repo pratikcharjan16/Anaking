@@ -379,7 +379,8 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
       { id: "M3", section: "S1", type: "emoji_grid", stem: "Your reaction", required: false,
         rows: [{ code: "t", label: "Trust" }],
         scale: { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE15", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"] } },
-      { id: "M4", section: "S1", type: "numeric_matrix", stem: "Patients a year", required: false,
+      { id: "M4", section: "S1", type: "numeric_matrix", stem: "Patients a year", required: true,
+        na: { rows: true, label: "Not applicable" },
         rows: [{ code: "p1", label: "Treated" }, { code: "p2", label: "Eligible" }],
         cols: [{ code: "this", label: "This year" }, { code: "next", label: "Next year" }] },
       { id: "M5", section: "S1", type: "rating_grid", stem: "One comment needed", required: false,
@@ -488,9 +489,30 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
 
     r.next(); await sleep(400);
     check("a numeric matrix with columns becomes a table of number boxes",
-      r.$$("#app .nm-input").length === 4 && r.$$("#app .nm-head .nm-th").length === 3,
+      r.$$("#app .nm-input").length === 4 &&
+      r.$$("#app .nm-head .nm-th:not(.nm-th-na)").length === 3,
       r.$$("#app .nm-input").length + " / " + r.$$("#app .nm-head .nm-th").length);
-    r.$$("#app .nm-input")[0].value = "42"; r.fire(r.$$("#app .nm-input")[0], "input"); await sleep(200);
+    check("the matrix offers the exclusive N/A on every row",
+      r.$$("#app .nm-td-na input").length === 2, r.$$("#app .nm-td-na input").length);
+    r.next(); await sleep(300);
+    check("a required matrix holds until every cell is answered",
+      /required/i.test(r.$("#err").textContent), r.$("#err").textContent);
+    const nmIn = r.$$("#app .nm-input");
+    nmIn[0].value = "42"; r.fire(nmIn[0], "input"); await sleep(150);
+    nmIn[1].value = "57"; r.fire(nmIn[1], "input"); await sleep(150);
+    nmIn[2].value = "7"; r.fire(nmIn[2], "input"); await sleep(150);
+    const naM = r.$$("#app .nm-td-na input");
+    r.click(naM[1]); await sleep(250);
+    check("ticking N/A empties that row's cells",
+      r.$$("#app .nm-input")[2].value === "", r.$$("#app .nm-input")[2].value);
+    nmIn[2] = r.$$("#app .nm-input")[2];
+    nmIn[2].value = "9"; r.fire(nmIn[2], "input"); await sleep(200);
+    check("typing in a cell lifts the row's N/A",
+      !r.$$("#app .nm-td-na input")[1].checked, r.$$("#app .nm-td-na input")[1].checked);
+    r.click(r.$$("#app .nm-td-na input")[1]); await sleep(250);
+    r.next(); await sleep(400);
+    check("rows that are filled or N/A'd carry on",
+      /One comment needed/.test(r.$("#app").textContent), r.$("#app").textContent.slice(0, 80));
 
     r.next(); await sleep(400);
     check("the last grid is the one that needs a comment", /One comment needed/.test(r.$("#app").textContent),

@@ -133,6 +133,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length===3 &&
     $("#f-gselect") && !$("#f-smin"));
 
+  // --- the numeric matrix gets the same rows x columns editor
+  $$("[data-act=qadd]")[1].click(); await sleep(20);
+  $$(".st-type").find(b=>b.getAttribute("data-type")==="numeric_matrix").click(); await sleep(40);
+  check("a new numeric matrix opens as a rows x columns editor (no scale, no pick mode)",
+    $$('.st-items[data-kind=row] .st-item:not(.st-item-head)').length===2 &&
+    $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length===2 &&
+    !$("#f-gselect") && !$("#f-smin") && !!$("#f-nmin"),
+    $$('.st-items[data-kind=col] .st-item:not(.st-item-head)').length + " cols");
+  $(".st-qi.on [data-act=qdel]").click(); await sleep(30);   // drop it again
+
   // --- delete with undo
   $$("[data-act=qdel]").find(b=>b.closest(".st-qi-tools")).click(); await sleep(30);
   check("delete removes row and offers undo", $$(".st-qi").length===3 && /Undo/.test($("#st-toast").textContent));

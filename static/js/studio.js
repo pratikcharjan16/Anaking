@@ -140,6 +140,7 @@
     if (type === "numeric_matrix") {
       q.min = 0; q.max = 100;
       q.rows = [{ code: "a", label: "First row" }, { code: "b", label: "Second row" }];
+      q.cols = [{ code: "c1", label: "Column one" }, { code: "c2", label: "Column two" }];
     }
     if (type === "delta") { q.min = 0; q.max = 100; q.before_label = "Before"; q.after_label = "After"; }
     if (type === "concept_test") {
@@ -1241,7 +1242,11 @@
     ["contains", "answer text contains"], ["answered", "was answered"], ["not_answered", "was skipped"],
     ["row_eq", "row rating equals (row=value)"],
     ["cell_is", "grid row is column (row=col)"], ["cell_not", "grid row is not column (row=col)"],
-    ["cell_includes", "grid row includes column (row=col)"], ["cell_lacks", "grid row does not include column (row=col)"]];
+    ["cell_includes", "grid row includes column (row=col)"], ["cell_lacks", "grid row does not include column (row=col)"],
+    ["cell_gte", "matrix cell is at least (row=col=number)"], ["cell_lte", "matrix cell is at most (row=col=number)"],
+    ["cell_gt", "matrix cell is more than (row=col=number)"], ["cell_lt", "matrix cell is less than (row=col=number)"],
+    ["cell_eq", "matrix cell equals (row=col=number)"], ["cell_ne", "matrix cell is not (row=col=number)"],
+    ["cell_between", "matrix cell is between (row=col=min-max)"]];
   var FONTS = [["", "Default"], ["Georgia, serif", "Georgia (serif)"], ["'Times New Roman', serif", "Times New Roman"],
     ["Arial, Helvetica, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["'Trebuchet MS', sans-serif", "Trebuchet"],
     ["'Courier New', monospace", "Courier (mono)"]];
@@ -1722,7 +1727,7 @@
     if (isGrid(ed.type) || ed.type === "rating_scale") {
       if (!(ed.rows || []).length) out.push({ key: "gridrows", level: "error",
         text: (ed.type === "rating_scale" ? "This rating scale" : "This grid") + " has no rows yet.", fix: "Add starter rows" });
-      if (hasColAxis(ed.type) && !(ed.cols || []).length) out.push({ key: "gridcols", level: "error",
+      if (hasColAxis(ed.type) && ed.type !== "numeric_matrix" && !(ed.cols || []).length) out.push({ key: "gridcols", level: "error",
         text: "This grid has no columns yet.", fix: "Add starter columns" });
     }
     var rules = ed.show_if && ed.show_if.rules || [];
@@ -2230,6 +2235,18 @@
               esc(String(rr.label || rr.code) + " \u2192 " + String(cc.label || cc.code)) + "</option>";
           }).join("") + "</optgroup>";
         }).join("") + "</select>";
+      } else if (q && q.type === "numeric_matrix" && (q.cols || []).length &&
+                 ["cell_gte", "cell_lte", "cell_gt", "cell_lt", "cell_eq", "cell_ne", "cell_between"].indexOf(r.op) >= 0) {
+        var nvp = String(r.value == null ? "" : r.value).split("=");
+        var nvc = nvp[0] + "=" + (nvp[1] || ""), nvn = nvp.slice(2).join("=");
+        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
+          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
+            var v = rr.code + "=" + cc.code;
+            return '<option value="' + esc(v) + '"' + (v === nvc ? " selected" : "") + ">" +
+              esc(String(rr.label || rr.code) + " \u00D7 " + String(cc.label || cc.code)) + "</option>";
+          }).join("") + "</optgroup>";
+        }).join("") + '</select><input data-rule="cellnum" data-ri="' + i + '" type="number" class="st-scr-cellnum" value="' +
+          esc(nvn) + '" placeholder="number">';
       } else if (r.op === "answered" || r.op === "not_answered") valField = "<span></span>";
       else valField = '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
       return '<div class="st-rule"><span class="st-rule-no">' + (i ? (sif.match === "any" ? "or" : "and") : "when") + "</span>" +
@@ -2285,6 +2302,10 @@
     var row = (q.rows || q.items || [])[0], code = row ? String(row.code) : "";
     if (kind === "rowvalue") return code + "=" + (q.scale ? q.scale.max : 0);
     if (kind === "rowcode") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "");
+    if (kind === "cellnum") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") +
+      "=" + (q.min === undefined ? 0 : q.min);
+    if (kind === "cellrange") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") +
+      "=" + (q.min === undefined ? 0 : q.min) + "-" + (q.max === undefined ? 100 : q.max);
     if (kind === "ranktop") return code + "=1";
     if (kind === "rowsum") return "=0";
     if (String(op).indexOf("total_") === 0) return q.type === "sum_to_100" ? 100 : 0;
@@ -2300,6 +2321,7 @@
     var kind = Q.qKind(q), ops = Q.opsFor(q);
     var want = (kind === "alloc" || kind === "numrows" || kind === "grid") ? "row_gte"
              : kind === "choicegrid" ? "cell_is"
+             : kind === "nummatrix" ? "cell_gte"
              : kind === "number" ? "lt"
              : kind === "choice" ? "any_of"
              : kind === "rank" ? "ranked_first"
@@ -2315,6 +2337,7 @@
     if (kind === "codes" || kind === "text") return typeof value === "string" && value !== "";
     if (kind === "between") return typeof value === "string" && value.indexOf("-") > 0;
     if (kind === "rowsum") return typeof value === "string" && value.indexOf("=") >= 0;
+    if (kind === "cellnum" || kind === "cellrange") return typeof value === "string" && value.split("=").length === 3;
     return typeof value === "string" && value.indexOf("=") > 0;      // rowvalue / ranktop
   }
 
@@ -2329,7 +2352,7 @@
   function scrWhenDefault(rules) {
     var next = (rules || []).some(function (r) {
       var k = Q.qKind(qById(r.q));
-      return k === "number" || k === "text" || k === "grid" || k === "alloc" || k === "numrows";
+      return k === "number" || k === "text" || k === "grid" || k === "alloc" || k === "numrows" || k === "nummatrix";
     });
     return next ? "next" : "live";
   }
@@ -2466,6 +2489,27 @@
         return '<option value="' + esc(c.code) + '"' + (String(c.code) === gcol ? " selected" : "") + ">" + esc(rowText(c)) + "</option>";
       }).join("") + "</select></span>";
     }
+    // "cell is at least [number]" - pick the row and the column, then the number to compare
+    if (kind === "cellnum" || kind === "cellrange") {
+      var nrows = rowItemsOf(q), ncolz = q.cols || [];
+      if (!nrows.length || !ncolz.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var nparts = String(r.value || "").split("=");
+      var nwantR = nparts[0] || "", nwantC = nparts[1] || "", ntail = nparts.slice(2).join("=");
+      var nword = { cell_gte: "is at least", cell_lte: "is at most", cell_gt: "is more than",
+                    cell_lt: "is less than", cell_eq: "is", cell_ne: "is not",
+                    cell_between: "is between" }[r.op] || "is";
+      var nhtml = '<span class="st-scr-pair"><select data-sf="row">' + nrows.map(function (o) {
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === nwantR ? " selected" : "") + ">" + esc(rowText(o)) + "</option>";
+      }).join("") + '</select><em>\u00D7</em><select data-sf="col">' + ncolz.map(function (c) {
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === nwantC ? " selected" : "") + ">" + esc(rowText(c)) + "</option>";
+      }).join("") + '</select><em>' + nword + "</em>";
+      if (kind === "cellrange") {
+        var nband = String(ntail || "").split("-");
+        return nhtml + numBox(q, r.op, nband[0], "valueLo", { range: true, placeholder: "min" }) +
+          "<em>and</em>" + numBox(q, r.op, nband[1], "valueHi", { range: true, placeholder: "max" }) + "</span>";
+      }
+      return nhtml + numBox(q, r.op, ntail, "value", { range: true, placeholder: "value" }) + "</span>";
+    }
     return "<span></span>";
   }
 
@@ -2545,6 +2589,17 @@
       '<div class="st-hint">' + (multiG
         ? "Tap the columns each row would tick - tap again to untick."
         : "Tap the column each row would pick - like the respondent's radio buttons.") + "</div>";
+    } else if (Q.qKind(q) === "nummatrix") {
+      var colsN = q.cols || [];
+      picks = '<div class="st-scr-rows">' + (q.rows || []).map(function (r) {
+        return '<div class="st-scr-row"><span>' + esc(rowText(r)) + "</span>" + colsN.map(function (c) {
+          var key = r.code + "_" + c.code, v = a[key];
+          return '<span class="st-scr-cell"><i>' + esc(rowText(c)) + '</i><input type="number" class="st-scr-rownum" data-scr-row="' +
+            esc(key) + '" value="' + esc(v === undefined ? "" : v) + '" placeholder="0"></span>';
+        }).join("") + (a[r.code] === "NA" ? '<button type="button" class="st-chip sm on" disabled>N/A</button>' : "") +
+          "</div>";
+      }).join("") + "</div>" +
+      '<div class="st-hint">Type the number the respondent would enter in each cell.</div>';
     } else if (["grid", "alloc", "numrows"].indexOf(Q.qKind(q)) >= 0) {
       var k2 = Q.qKind(q), rows2 = q.rows || q.items || [], running = 0;
       picks = '<div class="st-scr-rows">' + rows2.map(function (r) {
@@ -2623,7 +2678,16 @@
   function scrOutside() { var s = scrOf(); return !s || s.outside !== false; }
   function scrSum() { var s = scrOf(); return (s && s.sum) || { op: "eq", value: 0 }; }
   function scrRows() { var s = scrOf(); return ((s && s.rows) || []).map(String); }
-  function scrOn() { var s = scrOf(); return !!s && s.enabled !== false; }
+  function scrOn() {
+    var s = scrOf();
+    if (s) return s.enabled !== false;
+    // no authored block yet: the switch mirrors whatever legacy logic is already
+    // live on this question (Screen-out marks on options, terminate_if_lt) so the
+    // card never claims to be off while something still fires
+    return optTerm().length > 0 ||
+      (ed && ed.terminate_if_lt !== undefined && ed.terminate_if_lt !== null &&
+       String(ed.terminate_if_lt) !== "");
+  }
   function scrBand(code, end) {                    // the Min / Max held for one answer
     var s = scrOf() || {}, have = (s.min || {})[code] !== undefined || (s.max || {})[code] !== undefined;
     if (!have) return end === "min" ? (ed.scale ? ed.scale.min : 0) : (ed.scale ? ed.scale.max : 100);
@@ -2744,16 +2808,14 @@
         '<input type="checkbox" id="f-scr-on"' + (on ? " checked" : "") + "><i></i>Screening</label>" +
       '<span class="st-meta">' + (on
         ? "This question can end the survey."
-        : "Everybody carries on past this question - the rules are kept, they just do not fire.") +
+        : "Screening is off - nobody is ended on this question.") +
       "</span></div>";
     if (!on) {
-      if (legacy.length || ed.terminate_if_lt !== undefined) {
-        html += '<div class="st-note warn">Still screening from the answer options: ' +
-          (legacy.length ? legacy.map(function (o) { return esc(optText(o)); }).join(", ") : "") +
-          (ed.terminate_if_lt !== undefined ? (legacy.length ? " \u00B7 " : "") + "answer below " + esc(ed.terminate_if_lt) : "") +
-          '. <button class="st-btn sm ghost" data-act="scr-clear-opts">Clear these</button></div>';
-      }
-      html += scrTester();
+      // off means off: no rule, no tester, no "still screening" note anywhere on the card.
+      // Everything the author set up is kept on the question and comes back with the switch.
+      html += '<div class="st-scr-off">Screening is switched off, so no screening logic is shown or ' +
+        'applied. Any conditions and the Screen-out marks on answer options are kept - switch it on ' +
+        'to see and edit them.</div>';
       return html;
     }
     html += '<div class="st-scr-lead">Respondents will ' + scrSeg("f-scr-dir", SCR_DIR, mode) +
@@ -2973,9 +3035,10 @@
     // logic
     if (document.getElementById("f-rules")) {
       var rules = [];
-      $$("#f-rules .st-rule").forEach(function (row) {
+        $$("#f-rules .st-rule").forEach(function (row) {
         var r = {};
         $$("[data-rule]", row).forEach(function (n) { r[n.getAttribute("data-rule")] = n.value; });
+        if (r.cellnum !== undefined) { r.value = (r.value || "") + "=" + r.cellnum; delete r.cellnum; }
         if (r.q && r.op) rules.push(r);
       });
       if (rules.length) {
@@ -3013,6 +3076,9 @@
       else if (kind === "between") value = fieldIn(row, "valueLo") + "-" + fieldIn(row, "valueHi");
       else if (kind === "rowvalue" || kind === "ranktop") value = fieldIn(row, "row") + "=" + fieldIn(row, "value");
       else if (kind === "rowcode") value = fieldIn(row, "row") + "=" + fieldIn(row, "col");
+      else if (kind === "cellnum") value = fieldIn(row, "row") + "=" + fieldIn(row, "col") + "=" + fieldIn(row, "value");
+      else if (kind === "cellrange") value = fieldIn(row, "row") + "=" + fieldIn(row, "col") + "=" +
+        fieldIn(row, "valueLo") + "-" + fieldIn(row, "valueHi");
       else if (kind === "rowsum") {
         var held = String(fieldIn(row, "value") || "");
         value = (held.split("=")[0] || "") + "=" + fieldIn(row, "valueSum");
@@ -3048,7 +3114,10 @@
     var onNode = document.getElementById("f-scr-on");
     if (!onNode) return;                                  // the Screening tab is not open
     var s = scrOf();
-    if (!onNode.checked) { if (s) s.enabled = false; return; }   // off: keep the rules, do not fire
+    if (!onNode.checked) {                                // off: keep everything, fire nothing
+      var sHold = scrEnsure(); sHold.enabled = false;
+      return;
+    }
     if (s) delete s.enabled;
     s = scrEnsure();
     var dirNode = $('input[name="f-scr-dir"]:checked');
@@ -3623,7 +3692,9 @@
       if (t.checked) {
         var s0 = scrEnsure(); delete s0.enabled;
         if (!(s0.rows || []).length && !(s0.rules || []).length) scrSeedBlock();
-      } else if (ed.screening) ed.screening.enabled = false;
+      } else {
+        var sOff = scrEnsure(); sOff.enabled = false;   // off covers the option marks too
+      }
       rerenderCard("screening"); changed(); return;
     }
     if (t.name === "f-scr-dir") {                  // Respondents will Screen In / Screen Out
@@ -4418,7 +4489,13 @@
     if (act === "qtest") openTestView(i);
     if (act === "qtest-cur") { if (sel >= 0) openTestView(sel); }
     if (act === "qdup") {
-      var copy = JSON.parse(JSON.stringify(cur.cfg.questions[i])); copy.id = nextQid();
+      var src = cur.cfg.questions[i];
+      var copy = JSON.parse(JSON.stringify(src)); copy.id = nextQid();
+      // conditions that point at the source question follow the copy; conditions that
+      // read other questions stay as they are
+      [copy.screening, copy.show_if].forEach(function (blk) {
+        ((blk && blk.rules) || []).forEach(function (r) { if (r && r.q === src.id) r.q = copy.id; });
+      });
       cur.cfg.questions.splice(i + 1, 0, copy); markChanged(); renderOutline(); selectQuestion(i + 1); toast("Duplicated as " + copy.id);
     }
     if (act === "qdel") {

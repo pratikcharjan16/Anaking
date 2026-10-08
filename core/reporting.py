@@ -383,9 +383,16 @@ def build_sheets(records: list, scope: str, cfg: dict):
             dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "calendar date",
                             "YYYY-MM-DD"])
         elif q["type"] == "numeric_matrix":
+            nm_cols = q.get("cols") or []
             for r in q["rows"]:
-                dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
-                                f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
+                if nm_cols:                # a table: one field per row x column
+                    for c in nm_cols:
+                        dd_rows.append([q["id"], q["section"], q["type"], stem,
+                                        f"{r['code']}_{c['code']}", f"{r['label']} \u00D7 {c['label']}",
+                                        f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
+                else:
+                    dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
         elif q["type"] == "delta":
             dd_rows.append([q["id"], q["section"], q["type"], stem,
                             "before/after/delta", "two values and their difference",

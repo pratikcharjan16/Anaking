@@ -170,6 +170,36 @@
       return v !== undefined && v !== "";
     });
   }
+  // One cell of a rows x columns grid: which column the row picked (stored on the row's
+  // own key), shared by the show-if conditions and the screening rules.
+  function cellPickTrue(op, a, value) {
+    var ckey = rowKey(value), cw = rowWant(value);
+    if (!ckey) return false;                      // no row chosen yet: the rule is not ready
+    var got2 = a[ckey];
+    var picked = Array.isArray(got2) ? got2.map(String)
+               : (got2 === undefined || got2 === null || got2 === "" ? [] : [String(got2)]);
+    var has = picked.indexOf(cw) >= 0;
+    return op === "cell_is" ? has : op === "cell_not" ? !has
+         : op === "cell_includes" ? has : !has;
+  }
+  // One number box of a rows x columns numeric matrix, stored as "row_col".  The rule's
+  // value reads "row=col=N" (or "row=col=lo-hi" for the between condition).
+  function cellNumTrue(op, a, value) {
+    var nkey = rowKey(value), ntail = rowWant(value);
+    if (!nkey || ntail.indexOf("=") < 0) return false;   // the rule is not ready yet
+    var bits = ntail.split("="), ncol = bits[0].trim(), nwant = bits.slice(1).join("=").trim();
+    var nv = Number(a[nkey + "_" + ncol]);
+    if (isNaN(nv)) return false;
+    if (op === "cell_between") {
+      var nb = String(nwant || "").split("-");
+      return nv >= Number(nb[0]) && nv <= Number(nb[1]);
+    }
+    var nw = Number(nwant);
+    if (isNaN(nw)) return false;
+    return op === "cell_gte" ? nv >= nw : op === "cell_lte" ? nv <= nw
+         : op === "cell_gt" ? nv > nw : op === "cell_lt" ? nv < nw
+         : op === "cell_eq" ? nv === nw : nv !== nw;
+  }
   function ruleTrue(r, ctx) {
     var q = findQ(ctx, r.q);
     var a = (ctx.answers && ctx.answers[r.q]) || {};
@@ -192,6 +222,11 @@
       case "lte": return !isNaN(num) && a._ !== undefined && num <= Number(want);
       case "contains": return String(answerText(q, a)).toLowerCase().indexOf(want.toLowerCase()) >= 0;
       case "row_eq": { var parts = want.split("="); return parts.length === 2 && String(a[parts[0].trim()]) === parts[1].trim(); }
+      case "cell_is": case "cell_not": case "cell_includes": case "cell_lacks":
+        return cellPickTrue(r.op, a, want);
+      case "cell_gte": case "cell_lte": case "cell_gt": case "cell_lt":
+      case "cell_eq": case "cell_ne": case "cell_between":
+        return cellNumTrue(r.op, a, want);
     }
     return true;
   }
@@ -322,6 +357,13 @@
     { op: "cell_not",      label: "row is not",              value: "rowcode", kinds: ["choicegrid"], sym: "\u2260" },
     { op: "cell_includes", label: "row includes",            value: "rowcode", kinds: ["choicegrid"] },
     { op: "cell_lacks",    label: "row does not include",    value: "rowcode", kinds: ["choicegrid"] },
+    { op: "cell_gte",      label: "cell is at least",        value: "cellnum", kinds: ["nummatrix"], sym: "\u2265" },
+    { op: "cell_lte",      label: "cell is at most",         value: "cellnum", kinds: ["nummatrix"], sym: "\u2264" },
+    { op: "cell_gt",       label: "cell is more than",       value: "cellnum", kinds: ["nummatrix"], sym: ">" },
+    { op: "cell_lt",       label: "cell is less than",       value: "cellnum", kinds: ["nummatrix"], sym: "<" },
+    { op: "cell_eq",       label: "cell is",                 value: "cellnum", kinds: ["nummatrix"], sym: "=" },
+    { op: "cell_ne",       label: "cell is not",             value: "cellnum", kinds: ["nummatrix"], sym: "\u2260" },
+    { op: "cell_between",  label: "cell is between",         value: "cellrange", kinds: ["nummatrix"] },
     // ---- every question type
     { op: "answered",     label: "was answered",             value: "none", kinds: [] },
     { op: "not_answered", label: "was skipped",              value: "none", kinds: [] }
@@ -333,7 +375,8 @@
   //   choice      - options / codes
   //   number      - one number (numeric entry, scale, NPS, date, delta)
   //   alloc       - an allocation split across rows (constant sum)
-  //   numrows     - a number per row, with no forced total (numeric matrix)
+  //   numrows     - a number per row, with no forced total (a numeric matrix without columns)
+  //   nummatrix   - a numeric matrix of rows x columns, one number per cell
   //   grid        - a scale value per row (rating scale, word pairs, heat map, concept test,
   //                 and older scale-based grids)
   //   choicegrid  - a grid of rows x columns where each row picks one or several columns
@@ -353,6 +396,9 @@
     // a grid with columns is a rows x columns choice grid; without columns it is the
     // older scale-based grid (one rating per row)
     if (q.type === "rating_grid") return (q.cols && q.cols.length) ? "choicegrid" : "grid";
+    // a numeric matrix with columns is a rows x columns table of number boxes; without
+    // columns it keeps the older one-number-per-row shape
+    if (q.type === "numeric_matrix") return (q.cols && q.cols.length) ? "nummatrix" : "numrows";
     return TYPE_KIND[q.type] || "any";
   }
 
@@ -498,16 +544,12 @@
         return codes.slice(0, n).indexOf(rowKey(r.value)) >= 0;
       }
       // a grid row picks one column (single select) or several (multi select)
-      case "cell_is": case "cell_not": case "cell_includes": case "cell_lacks": {
-        var ckey = rowKey(r.value), cw = rowWant(r.value);
-        if (!ckey) return false;                      // no row chosen yet: the rule is not ready
-        var got2 = a[ckey];
-        var picked = Array.isArray(got2) ? got2.map(String)
-                   : (got2 === undefined || got2 === null || got2 === "" ? [] : [String(got2)]);
-        var has = picked.indexOf(cw) >= 0;
-        return r.op === "cell_is" ? has : r.op === "cell_not" ? !has
-             : r.op === "cell_includes" ? has : !has;
-      }
+      case "cell_is": case "cell_not": case "cell_includes": case "cell_lacks":
+        return cellPickTrue(r.op, a, r.value);
+      // a numeric matrix cell holds one number, stored under "row_col"
+      case "cell_gte": case "cell_lte": case "cell_gt": case "cell_lt":
+      case "cell_eq": case "cell_ne": case "cell_between":
+        return cellNumTrue(r.op, a, r.value);
       case "answered": return isAnswered(q, a);
       case "not_answered": return !isAnswered(q, a);
     }
@@ -542,10 +584,14 @@
   }
 
   // Every screening block a question carries, explicit + legacy, normalised.
+  // The Studio switch owns the whole feature: when it is off, nothing fires -
+  // not the authored rules, not the Screen-out marks on the answer options,
+  // not the legacy terminate shorthand.
   function screening(q) {
     var out = [];
     if (!q) return out;
     var s = q.screening;
+    if (s && s.enabled === false) return out;
     if (s && s.enabled !== false) {
       var extra = (s.rules || []).slice();
       var built = structuredRules(s, q);
@@ -597,6 +643,16 @@
       case "rank": return (a.order || []).length === (q.rows || []).length && (q.rows || []).length > 0;
       case "delta": return a.before !== undefined && a.after !== undefined;
       case "sum_to_100": return (q.rows || []).some(function (r) { return a[r.code] !== undefined; });
+      case "numeric_matrix":
+        if ((q.cols || []).length) return (q.rows || []).every(function (r) {
+          if (a[r.code] === "NA") return true;                 // N/A stands in for the row
+          return (q.cols || []).every(function (c) {
+            var v = a[r.code + "_" + c.code];
+            return v !== undefined && String(v) !== "";
+          });
+        });
+        return (q.rows || []).every(function (r) {
+          return a[r.code] !== undefined && String(a[r.code]) !== ""; });
       case "loop": return (q.items || []).length > 0 && (q.items || []).every(function (it) {
         return String(a[it.code] || "").trim() !== ""; });
       default:
@@ -675,6 +731,18 @@
       ((q && q.cols) || []).forEach(function (c) { if (String(c.code) === rowWant(r.value)) col = c; });
       return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") + " " +
         (col ? (col.label || String(col.code)) : rowWant(r.value));
+    }
+    if (kind === "cellnum" || kind === "cellrange") {   // "row=col=N" - one number box
+      var nt = String(rowWant(r.value) || ""), nb2 = nt.split("=");
+      var col2 = null, ccode2 = (nb2[0] || "").trim();
+      ((q && q.cols) || []).forEach(function (c) { if (String(c.code) === ccode2) col2 = c; });
+      var base2 = itemLabel(q, rowKey(r.value)) + " \u00D7 " +
+        (col2 ? (col2.label || String(col2.code)) : ccode2);
+      if (kind === "cellrange") {
+        var cb2 = nb2.slice(1).join("=").split("-");
+        return base2 + " between " + (cb2[0] || "?") + " and " + (cb2[1] || "?");
+      }
+      return base2 + " " + (opInfo(r.op).sym || "=") + " " + nb2.slice(1).join("=");
     }
     if (kind === "rowvalue") return itemLabel(q, rowKey(r.value)) + " " + (opInfo(r.op).sym || "=") +
       " " + rowWant(r.value);
@@ -768,7 +836,14 @@
         case "sum_to_100":
           (q.rows || []).forEach(function (r, k, arr) { a[r.code] = k === 0 ? 100 - 10 * (arr.length - 1) : 10; }); break;
         case "date": a._ = "2026-01-15"; break;
-        case "numeric_matrix": (q.rows || []).forEach(function (r, k) { a[r.code] = 10 + k * 5; }); break;
+        case "numeric_matrix": {
+          var nmc = q.cols || [];
+          (q.rows || []).forEach(function (r, k) {
+            if (nmc.length) nmc.forEach(function (c, ci) { a[r.code + "_" + c.code] = 10 + k * 5 + ci; });
+            else a[r.code] = 10 + k * 5;
+          });
+          break;
+        }
         case "delta": a.before = 40; a.after = 60; a.delta = 20; break;
         case "concept_test":
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
