@@ -68,7 +68,7 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 | App | URL | What it is |
 |---|---|---|
 | **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
-| **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project bar, HUD and progress strip are hidden — they belong to the welcome and closing screens |
+| **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project details and progress line are hidden; the gamified strip (ring, points, rank, mic, sound) stays on top when *Gamified feel* is on — see below |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (test mode also previews drafts) |
 | **Studio** | `/studio/` (`/studio/#<slug>` opens a study) | Builder — create / edit / launch studies, design the walkthrough, generate conjoint designs, per-study analysis |
@@ -90,6 +90,28 @@ open to anyone who can reach the server. Restrict access at the network or rever
 Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
 `MEDIA_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`, respondent recordings in
 `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
+
+### Respondent survey: answer by voice & the gamified feel
+
+**Answer by voice.** The welcome page asks *How would you like to answer?* — **Tap my answers** (the
+default) or **Answer by voice**. Voice uses the browser's own speech recognition (Web Speech API), so
+there is no server key, account or cost. It works in Chrome, Edge and Safari; elsewhere the option stays
+visible but disabled, with the reason. Respondents say an option's name or its number — several joined
+with *and* — then *next* (also *back* and *clear*). The mic button in the top strip and the **Stop**
+button on the voice bar switch voice off and on at any time; tapping always works too.
+
+* Speech is recognised by the browser's speech service (Google's in Chrome), so check that suits your
+  respondents before a live field.
+* The browser asks for microphone permission the first time voice is turned on. If access is blocked,
+  no microphone is found or the speech service cannot be reached, voice stops and the coach says why;
+  the survey carries on with taps. Inside an embedded preview the browser may refuse the microphone —
+  open the survey in its own tab to use voice.
+
+**Gamified feel** (Studio → the study → *Settings & QC* → *Respondent experience*; on by default): the
+progress ring, insight points, ranks and confetti; a bull's-eye ripple on every answer; a "+N" that floats
+up when a bonus lands; the arrow-in-target finish. While a question is on screen the project details
+(brand, study, respondent code, timer) and the progress line are hidden, and a slim strip keeps the ring,
+points, rank, mic and sound buttons on top. With the gamified feel off, questions show with nothing on top.
 
 ### Studio workspace (Studio → Questions)
 
@@ -328,7 +350,7 @@ python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset 
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
-node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, bar hidden while answering
+node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
 node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the tab only showing for conjoint studies
 node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored labels/levels/images, group inclusion, none
@@ -338,7 +360,7 @@ node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gat
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)
-node scripts/dom/voice_commands_test.js          # voice answering: parser, mic bar, speak picks + next, manual fallback
+node scripts/dom/voice_commands_test.js          # voice answering: parser, welcome option, mic bar + Stop, blocked / silent mic messages, manual fallback
 node scripts/dom/screening_studio_test.js        # Studio screening tab: modes, rule builder, tester, saved config
 node scripts/dom/screening_survey_test.js        # respondent screening: ends on the spot, reason recorded
 ```

@@ -31,12 +31,18 @@ body{
 .brand-text span{font-size:12px;opacity:.82}
 .meta{display:flex;gap:14px;font-size:12px;opacity:.85;white-space:nowrap}
 
-/* While a question is on screen the respondent should see nothing but the question: the project
-   bar, the HUD and the progress strip belong to the welcome and closing screens.  survey.js puts
-   .answering on <body> for exactly as long as a question (or the pre-submit quality check) is up. */
+/* While a question is on screen the respondent sees the question first.  survey.js puts .answering on
+   <body> for exactly as long as a question (or the pre-submit quality check) is up.  The project
+   details (brand, study, respondent code, timer) and the progress line are hidden then.  When the
+   author keeps the gamified feel on (body.gamified), a slim strip stays on top with the progress ring,
+   insight points, rank and the voice and sound buttons, so the reward is visible while answering. */
 body.answering .topbar,
 body.answering .progress-wrap{display:none}
-/* the test-mode reminder sticks below the 54px project bar - with that bar gone it moves to the top */
+body.answering.gamified .topbar{display:flex;justify-content:center;padding:6px 20px}
+body.answering.gamified .topbar .brand,
+body.answering.gamified .topbar .meta{display:none}
+/* the test-mode reminder sticks below the project bar - with that bar gone it moves to the top.
+   It must not sit lower: the team bar above it is not sticky, so a lower offset would cover it */
 body.answering.testmode::before{top:0}
 
 /* ---------- progress ---------- */
@@ -272,12 +278,18 @@ body.testmode::before{
 .hud-item.pts{font-size:13.5px;font-weight:700;font-variant-numeric:tabular-nums}
 .hud-item.pts .star{color:#ffd166;font-size:15px}
 .hud-item.pts.bump{animation:bump .5s cubic-bezier(.34,1.56,.64,1)}
+.hud-item.pts{position:relative}
+.pts-float{position:absolute;left:50%;top:100%;margin-top:1px;transform:translateX(-50%);
+  font-size:12px;font-weight:800;color:#ffd166;white-space:nowrap;pointer-events:none;
+  animation:pts-rise 1.4s ease-out forwards}
+@keyframes pts-rise{0%{opacity:0;transform:translate(-50%,2px)}18%{opacity:1}100%{opacity:0;transform:translate(-50%,-16px)}}
 @keyframes bump{0%{transform:scale(1)}40%{transform:scale(1.35)}100%{transform:scale(1)}}
 .hud-btn{background:rgba(255,255,255,.14);border:none;color:#fff;width:30px;height:30px;
   border-radius:7px;cursor:pointer;font-size:14px;line-height:1}
 .hud-btn:hover{background:rgba(255,255,255,.26)}
 .hud-btn.off{opacity:.45}
-@media (max-width:720px){.meta{display:none}}
+/* phones: the study name steps aside so the gamified strip (ring, points, rank, mic, sound) fits */
+@media (max-width:720px){.meta{display:none}.brand-text{display:none}}
 
 /* ================= welcome hero + audio ================= */
 .welcome-hero{text-align:center;padding:6px 0 4px}
@@ -286,6 +298,18 @@ body.testmode::before{
 .welcome-hero h1{margin-bottom:8px}
 .welcome-hero p{font-size:14.5px;color:var(--muted);max-width:520px;margin:0 auto}
 .btn.big{padding:14px 30px;font-size:15px;width:100%}
+
+/* welcome: audio + answer-mode choices. A disabled option (no speech recognition in this browser)
+   stays visible and says why. */
+.audio-choice{border:1px solid var(--line);border-radius:12px;padding:12px 14px;margin:18px 0;background:#f8fafb}
+.audio-choice legend{font-weight:800;padding:0 6px}
+.audio-choice label{display:flex;gap:9px;align-items:flex-start;padding:8px;border-radius:8px;cursor:pointer}
+.audio-choice label:hover{background:#e8f2f7}
+.audio-choice label.is-off{opacity:.55;cursor:not-allowed}
+.audio-choice label.is-off:hover{background:none}
+.audio-choice input{margin-top:4px;accent-color:var(--accent-2)}
+.audio-choice span,.audio-choice small{display:block}
+.audio-choice small{color:var(--muted);margin-top:2px}
 
 .audio-card{background:#f8fafb;border:1px solid var(--line);border-radius:10px;padding:13px;
   margin-bottom:18px}
@@ -438,6 +462,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .coach-msg{font-size:12.5px;color:var(--ink);line-height:1.45}
 .coach-msg a{color:var(--accent);font-weight:800;text-decoration:underline}
+@media (max-width:640px){body.voice-on .coach{bottom:76px}}
 
 .oq-chip{display:none;margin-top:8px;font-size:12px;font-weight:600;border-radius:8px;padding:7px 11px}
 .oq-chip.warn{display:block;background:#fff4e2;color:#b26a00;border:1px solid #ecd6a8;animation:capIn .3s ease}
@@ -747,6 +772,9 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .vb-mic i{width:8px;height:14px;border-radius:4px;background:#fff}
 .vb-live{opacity:.9;white-space:nowrap}
 .vb-heard{font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:46vw;color:#7fd4f0}
+.vb-stop{flex:0 0 auto;border:1px solid rgba(255,255,255,.5);background:transparent;color:#fff;
+  border-radius:999px;padding:3px 12px;font:inherit;font-size:12px;font-weight:700;cursor:pointer}
+.vb-stop:hover{background:rgba(255,255,255,.14)}
 
 /* Completion screen: arrow in the bull's-eye. */
 .done-icon.done-target{background:#fff;border:none;width:76px;height:76px}

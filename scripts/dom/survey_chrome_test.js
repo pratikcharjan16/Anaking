@@ -1,6 +1,7 @@
 /* jsdom check of the respondent-facing survey chrome: which section a question belongs to must
-   never reach the respondent, and the project information bar / HUD / progress strip are shown on
-   the welcome and closing screens only - not while questions are on screen.
+   never reach the respondent.  While a question is on screen the project details (brand, study,
+   respondent code, timer) and the progress line are hidden; with the gamified feel on, a slim strip
+   (ring, insight points, rank, voice and sound buttons) stays on top so the reward is visible.
    Needs the server on :8000 and jsdom.
    node scripts/dom/survey_chrome_test.js */
 let JSDOM; try { ({ JSDOM } = require("jsdom")); } catch (e) { ({ JSDOM } = require("/tmp/node_modules/jsdom")); }
@@ -79,6 +80,10 @@ async function openSurvey(slug){
     /body\.answering \.progress-wrap/.test(css));
   check("css moves the test-mode reminder to the top when the bar is gone",
     /body\.answering\.testmode::before\{top:0\}/.test(css));
+  check("css keeps the gamified strip on top while answering",
+    /body\.answering\.gamified \.topbar\{display:flex/.test(css));
+  check("css hides brand and study name inside that strip",
+    /body\.answering\.gamified \.topbar \.brand,body\.answering\.gamified \.topbar \.meta\{display:none\}/.test(css));
 
   // ---------- cross a section boundary: sections run straight into each other ----------
   const next=[...S.$$("button")].find(b=>/Next/.test(b.textContent));
@@ -95,6 +100,7 @@ async function openSurvey(slug){
   check("the section bonus is still awarded to the HUD",
     Number((S.$("#points")||{}).textContent||0) > ptsBefore,
     ptsBefore + " -> " + (S.$("#points")||{}).textContent);
+  check("the bonus floats up as a +N next to the counter", !!S.$(".pts-float") && /^\+\d+$/.test(S.$(".pts-float").textContent));
   check("second question shows no section chip either", S.$$(".section-tag").length===0);
   check("still in the answering state on question 2", body.classList.contains("answering"));
 

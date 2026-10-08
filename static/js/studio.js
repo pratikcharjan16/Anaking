@@ -4151,11 +4151,11 @@
       '<div class="st-field"><label>Embedded variables <span class="st-opt">names captured from the survey link, comma separated</span></label><input id="f-embedded" data-set="1" value="' + esc((c.embedded || []).map(function (e2) { return e2.name; }).join(", ")) + '" placeholder="panel, rid">' +
       '<div class="st-meta">A respondent opening <code>/survey/' + esc(cur.slug) + "?panel=A</code> is stored with <code>ev_panel = A</code> and it appears in every export.</div></div></div>" +
       '<label class="st-switch"><input type="checkbox" id="f-randpages" data-set="1"' + (c.randomize_pages ? " checked" : "") + '><i></i>Page Randomizer - respondents see the middle pages in a random order</label>' +
-      '<h4 class="st-h4">Respondent experience <span class="st-opt">gamified feel &amp; voice answers</span></h4>' +
-      '<label class="st-switch"><input type="checkbox" id="f-gamify" data-set="1"' + (c.gamify === false ? "" : " checked") + '><i></i>Gamified feel - progress target, insight points, ranks and confetti (on by default)</label>' +
-      '<div class="st-meta">Voice answering comes with it, free of charge: on browsers that support speech recognition ' +
-      'respondents may say an option (or its number, several joined with \u201cand\u201d) and \u201cnext\u201d. ' +
-      'Tapping always works too - respondents pick their mode on the welcome page.</div>' +
+      '<h4 class="st-h4">Respondent experience <span class="st-opt">gamified feel &amp; answer by voice</span></h4>' +
+      '<label class="st-switch"><input type="checkbox" id="f-gamify" data-set="1"' + (c.gamify === false ? "" : " checked") + '><i></i>Gamified feel - progress ring, insight points, ranks and confetti; the strip stays on top while questions are shown (on by default)</label>' +
+      '<div class="st-meta"><b>Answer by voice (free to deploy).</b> Respondents who pick it on the welcome page say an option (or its number, several joined with \u201cand\u201d) and \u201cnext\u201d. ' +
+      'It runs on the browser\u2019s own speech recognition (Chrome, Edge, Safari), so there is no server key, account or cost. ' +
+      'That browser\u2019s speech service does the recognising (Google\u2019s in Chrome), so check it suits your respondents. Tapping always works too.</div>' +
       '<h4 class="st-h4">Quality flags</h4><div class="st-grid2">' +
       f("f-attq", "Attention-check question id", "", qc.attention_q, "e.g. Q13") +
       f("f-attok", "\u2026correct answer code", "", qc.attention_ok, "e.g. 2") +

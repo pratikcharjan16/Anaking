@@ -86,6 +86,10 @@ async function openSurvey(slug,withVoice){
     !!S.$("#voice-choice") && S.$("#voice-choice").hidden===false);
   check("voice picker defaults to manual", S.$('input[name="voice-pref"]:checked').value==="manual");
   check("mic button is visible in the HUD", !!S.$("#voice-btn") && S.$("#voice-btn").hidden===false);
+  check("welcome names the option 'Answer by voice'",
+    /Answer by voice/.test(S.$('input[name="voice-pref"][value="voice"]').closest("label").textContent));
+  check("the voice option is enabled where speech recognition exists", S.$('input[name="voice-pref"][value="voice"]').disabled===false);
+  check("the voice option explains that it is free", /free/i.test(S.$(".voice-note").textContent));
 
   // pick voice mode and start
   S.$('input[name="voice-pref"][value="voice"]').click();
@@ -123,24 +127,59 @@ async function openSurvey(slug,withVoice){
   check("survey completes", /thank/i.test(S.$("#app").textContent));
   check("completion shows the bull's-eye target", !!S.$(".done-target svg"));
 
-  // ---------- no speech support: everything stays manual ----------
+  // ---------- no speech support: the option stays visible (disabled, with the reason); tapping works ----------
   const S2=await openSurvey(slug,false);
-  check("without speech support the voice picker stays hidden",
-    !!S2.$("#voice-choice") && S2.$("#voice-choice").hidden===true);
+  const vr2=S2.$('input[name="voice-pref"][value="voice"]');
+  check("without speech support the voice option is still listed",
+    !!S2.$("#voice-choice") && S2.$("#voice-choice").hidden===false);
+  check("without speech support the voice option is disabled", !!vr2 && vr2.disabled===true);
+  check("without speech support the option says why", /Not available in this browser/.test(S2.$(".voice-note").textContent));
   check("without speech support the mic button stays hidden", S2.$("#voice-btn").hidden===true);
   S2.$("#start-btn").click(); await sleep(500);
   check("manual flow still starts without speech support", /specialty/i.test(S2.$("#app").textContent));
+
+  // ---------- microphone trouble is reported, never a silent "Listening..." ----------
+  const S5=await openSurvey(slug,true);
+  S5.$('input[name="voice-pref"][value="voice"]').click();
+  S5.$("#start-btn").click(); await sleep(400);
+  const B5=S5.w.document.body;
+  check("voice mode is on, mic reads pressed", B5.classList.contains("voice-on") && S5.$("#voice-btn").getAttribute("aria-pressed")==="true");
+  check("the voice bar carries a Stop button", !!S5.$(".vb-stop"));
+  const startsBefore=FakeSR.last.starts;
+  FakeSR.last.onerror({error:"not-allowed"}); FakeSR.last.onend();     // Chrome reports the block, then ends the session
+  await sleep(150);
+  check("a blocked microphone switches voice off", !B5.classList.contains("voice-on") && S5.$("#voice-btn").getAttribute("aria-pressed")==="false");
+  check("the coach says the microphone is blocked",
+    /Microphone access is blocked/.test(S5.$(".coach-msg").textContent), S5.$(".coach-msg").textContent);
+  check("the voice bar is hidden after a block", S5.$(".voice-bar").hidden===true);
+  check("no restart loop after a block", FakeSR.last.starts===startsBefore, FakeSR.last.starts+" vs "+startsBefore);
+  S5.$("#voice-btn").click(); await sleep(150);
+  check("the mic button turns voice back on", B5.classList.contains("voice-on") && FakeSR.last.starts===startsBefore+1);
+  S5.$(".vb-stop").click(); await sleep(150);
+  check("Stop switches voice off and hides the bar", !B5.classList.contains("voice-on") && S5.$(".voice-bar").hidden===true);
+  check("Stop says taps still work", /Voice answering is off/.test(S5.$(".coach-msg").textContent));
+
+  // ---------- a silent microphone (sessions end without any audio) gives up with a message ----------
+  const S6=await openSurvey(slug,true);
+  S6.$('input[name="voice-pref"][value="voice"]').click();
+  S6.$("#start-btn").click(); await sleep(300);
+  for (let i=0;i<3;i++) FakeSR.last.onend();                          // three sessions that never hear audio
+  check("a silent microphone switches voice off after a few empty sessions", !S6.w.document.body.classList.contains("voice-on"));
+  check("the coach says the microphone cannot be heard",
+    /Can\u2019t hear the microphone/.test(S6.$(".coach-msg").textContent), S6.$(".coach-msg").textContent);
 
   // ---------- gamification switch ----------
   const slugFlat=await makeStudy("Voice Test Flat",false);
   const S3=await openSurvey(slugFlat,true);
   S3.$("#start-btn").click(); await sleep(500);
   check("gamify=false hides the HUD (points ring)", S3.$("#hud").hidden===true);
+  check("gamify=false leaves the body un-gamified", !S3.w.document.body.classList.contains("gamified"));
   check("progress bar itself stays with gamify off", !!S3.$("#progress-wrap"));
   const slugGame=await makeStudy("Voice Test Game");
   const S4=await openSurvey(slugGame,true);
   S4.$("#start-btn").click(); await sleep(500);
   check("gamify default keeps the HUD", S4.$("#hud").hidden===false);
+  check("gamify default marks the body gamified (strip stays on top while answering)", S4.w.document.body.classList.contains("gamified"));
 
   await req("POST","/api/studio/delete",JSON.stringify({slug:slug}));
   await req("POST","/api/studio/delete",JSON.stringify({slug:slugFlat}));
