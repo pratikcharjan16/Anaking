@@ -72,6 +72,9 @@ def answers_for(is_test=False, q13=2):
         elif t == "rating_grid":
             a[qid] = {r["code"]: q["scale"]["min"] + (i % (q["scale"]["max"] - q["scale"]["min"] + 1))
                       for i, r in enumerate(q["rows"])}
+        elif t == "rating_scale":
+            a[qid] = {r["code"]: q["scale"]["min"] + (i % (q["scale"]["max"] - q["scale"]["min"] + 1))
+                      for i, r in enumerate(q["rows"])}
         elif t == "semantic_diff":
             a[qid] = {r["code"]: 4 + (i % 3) for i, r in enumerate(q["rows"])}
         elif t == "sum_to_100":

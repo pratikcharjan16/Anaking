@@ -330,7 +330,7 @@
     numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
     open_text: "text", loop: "text",
     rank: "rank",
-    rating_grid: "grid", semantic_diff: "grid", emoji_grid: "grid",
+    rating_grid: "grid", rating_scale: "grid", semantic_diff: "grid", emoji_grid: "grid",
     heatmap: "grid", concept_test: "grid",
     sum_to_100: "alloc", numeric_matrix: "numrows"
   };
@@ -722,7 +722,7 @@
         case "numeric": case "slider": a._ = Math.round(((q.min || 0) + (q.max || 100)) / 2); break;
         case "open_text": a._ = "(sample answer to " + q.id + ")"; break;
         case "rank": a.order = (q.rows || []).map(function (r) { return r.code; }); break;
-        case "rating_grid": case "semantic_diff": case "emoji_grid":
+        case "rating_grid": case "rating_scale": case "semantic_diff": case "emoji_grid":
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
         case "sum_to_100":
           (q.rows || []).forEach(function (r, k, arr) { a[r.code] = k === 0 ? 100 - 10 * (arr.length - 1) : 10; }); break;

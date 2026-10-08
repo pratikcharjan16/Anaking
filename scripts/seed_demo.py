@@ -63,6 +63,9 @@ def make_answers(style):
             else:
                 a[qid] = {r["code"]: random.randint(q["scale"]["min"], q["scale"]["max"])
                           for r in q["rows"]}
+        elif t == "rating_scale":
+            a[qid] = {r["code"]: random.randint(q["scale"]["min"], q["scale"]["max"])
+                      for r in q["rows"]}
         elif t == "semantic_diff":
             a[qid] = {r["code"]: random.randint(q["scale"]["min"], q["scale"]["max"])
                       for r in q["rows"]}

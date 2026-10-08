@@ -80,7 +80,7 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                                          else "Detractor")
             except (ValueError, TypeError):
                 out[qid + "_segment"] = ""
-        elif t in ("rating_grid", "semantic_diff", "emoji_grid", "sum_to_100"):
+        elif t in ("rating_grid", "rating_scale", "semantic_diff", "emoji_grid", "sum_to_100"):
             for r in q["rows"]:
                 out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
         elif t == "heatmap":
@@ -321,6 +321,16 @@ def build_sheets(records: list, scope: str, cfg: dict):
                                 "option" + (" - TERMINATES" if o.get("terminate") else "")
                                 + (" - EXCLUSIVE" if o.get("exclusive") else "")
                                 + (" - pinned" if o.get("pin") else "")])
+        elif q["type"] == "rating_scale":
+            sc = q.get("scale") or {}
+            scale = f"{sc.get('min', 1)}-{sc.get('max', 5)}"
+            labels = [sc.get("min_label"), sc.get("mid_label"), sc.get("max_label")]
+            labels = [x for x in labels if x]
+            if labels:
+                scale += " (" + " / ".join(labels) + ")"
+            for r in q["rows"]:
+                dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
+                                scale])
         elif q["type"] in ("rating_grid", "semantic_diff", "sum_to_100", "emoji_grid"):
             scale = (f"{q['scale']['min']}-{q['scale']['max']}" if "scale" in q
                      else "0-100, rows sum to 100")
@@ -406,7 +416,7 @@ def analysis_for(records: list, cfg: dict) -> dict:
 
     for q in cfg.get("questions", []):
         t = q["type"]
-        if t in ("rating_grid", "semantic_diff", "emoji_grid"):
+        if t in ("rating_grid", "rating_scale", "semantic_diff", "emoji_grid"):
             rows = []
             for r in q["rows"]:
                 rows.append({"label": r["label"],

@@ -143,6 +143,7 @@ def extract_strings(cfg: dict) -> list[dict]:
         _put(out, f"q:{qid}:comment_label", (q.get("comments") or {}).get("label"), "question", qid)
         sc_ = q.get("scale") or {}
         _put(out, f"q:{qid}:min_label", sc_.get("min_label"), "scale", qid)
+        _put(out, f"q:{qid}:mid_label", sc_.get("mid_label"), "scale", qid)
         _put(out, f"q:{qid}:max_label", sc_.get("max_label"), "scale", qid)
         for pt in sc_.get("points", []) or []:
             _put(out, f"q:{qid}:pt:{pt.get('v')}", pt.get("label"), "scale", qid)
@@ -194,9 +195,10 @@ def _set(cfg: dict, key: str, value: str) -> bool:
             return False
         if field in ("stem", "stem_html", "help", "placeholder", "vignette",
                      "concept", "concept_html", "body", "body_html", "min_label",
-                     "max_label", "before_label", "after_label"):
-            if field in ("min_label", "max_label", "before_label", "after_label"):
-                if field in ("min_label", "max_label"):
+                     "mid_label", "max_label", "before_label", "after_label"):
+            if field in ("min_label", "mid_label", "max_label",
+                         "before_label", "after_label"):
+                if field in ("min_label", "mid_label", "max_label"):
                     q.setdefault("scale", {})[field] = value
                 else:
                     q[field] = value

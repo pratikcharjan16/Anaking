@@ -75,6 +75,9 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
       { id: "G4", section: "S1", type: "emoji_grid", stem: "Your gut reaction",
         rows: [{ code: "t", label: "Trust" }, { code: "i", label: "Innovation" }],
         scale: { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE15", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"] } },
+      { id: "R1", section: "S1", type: "rating_scale", stem: "How well does each describe you?",
+        rows: [{ code: "a", label: "Ease of use" }, { code: "b", label: "Trust" }],
+        scale: { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" } },
     ],
     tpp: {}, explainer_scenes: [],
   };
@@ -237,6 +240,21 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     ptsOf(s).length === 5 && /\uD83D\uDE1E/.test(s.$$('input[data-pt="label"]')[0].value),
     JSON.stringify(s.$$('input[data-pt="label"]').map(n => n.value)));
 
+  // ---------------------------------------------------------------- the rating scale
+  await s.open("R1");
+  check("a rating scale keeps its rows but has no column axis of its own",
+    rowsOf(s).length === 2 && ptsOf(s).length === 0 && !s.$("#f-gtitle"),
+    rowsOf(s).length + " rows / " + ptsOf(s).length + " points");
+  check("a rating scale edits its range and its three anchor labels",
+    !!s.$("#f-smin") && !!s.$("#f-smax") && !!s.$("#f-sminl") && !!s.$("#f-smidl") && !!s.$("#f-smaxl"),
+    ["#f-smin", "#f-smax", "#f-sminl", "#f-smidl", "#f-smaxl"].map(x => x + "=" + (s.$(x) ? s.$(x).value : "?")).join(" "));
+  check("the three anchor labels start from the question's own wording",
+    s.$("#f-sminl").value === "Not at all" && s.$("#f-smidl").value === "Neutral" &&
+    s.$("#f-smaxl").value === "Extremely");
+  const mid = s.$("#f-smidl"); mid.value = "Somewhat"; s.fire(mid, "change"); await sleep(260);
+  s.click(s.$('[data-act="it-add"][data-kind="row"]')); await sleep(240);
+  check("a rating scale grows its rows like a grid", rowsOf(s).length === 3, rowsOf(s).length);
+
   // ---------------------------------------------------------------- it all reaches the study
   await sleep(1700);
   const saved = await s.saved();
@@ -260,6 +278,11 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     JSON.stringify(g1.randomize));
   check("a numeric matrix keeps the columns it was given",
     (g2.cols || []).length === 2 && g2.cols[0].label === "This year", JSON.stringify(g2.cols));
+  const r1 = saved.questions.find(q => q.id === "R1");
+  check("a rating scale stores its three anchor labels on the scale",
+    r1 && r1.scale.mid_label === "Somewhat" && r1.scale.min_label === "Not at all" &&
+    r1.scale.max_label === "Extremely" && r1.rows.length === 3,
+    JSON.stringify(r1 && r1.scale) + " rows=" + (r1 && r1.rows.length));
   check("no script errors in the Studio", s.errs.length === 0, s.errs.join(" | "));
   await post("/api/studio/delete", { slug });
 
@@ -330,6 +353,10 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
       { id: "M5", section: "S1", type: "rating_grid", stem: "One comment needed", required: false,
         comments: { mode: "require", label: "Tell us why" },
         rows: [{ code: "x", label: "Overall" }], scale: { min: 1, max: 3 } },
+      { id: "M6", section: "S1", type: "rating_scale", stem: "How well does each describe it?",
+        required: true,
+        rows: [{ code: "a", label: "Ease of use" }, { code: "b", label: "Trust" }],
+        scale: { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" } },
     ],
     tpp: {}, explainer_scenes: [],
   };
@@ -435,7 +462,32 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     const qb = r.$("#app .q-comment .cmt-box");
     qb.value = "Because it matters"; r.fire(qb, "input"); await sleep(200);
     r.next(); await sleep(500);
-    check("and the survey finishes once it is filled in",
+
+    // the rating scale: rows on one scale, labelled at the low end, the middle, the high end
+    check("a rating scale shows its rows each with its own scale",
+      /How well does each describe it/.test(r.$("#app").textContent) &&
+      r.$$("#app .rating-scale .grid-row").length === 2 &&
+      r.$$("#app .rating-scale [role=slider]").length === 2,
+      r.$$("#app .rating-scale .grid-row").length + " rows");
+    check("a rating scale labels the low end, the middle and the high end",
+      !!r.$("#app .rs-ends .rs-end-low") && !!r.$("#app .rs-ends .rs-end-mid") &&
+      !!r.$("#app .rs-ends .rs-end-high") &&
+      /Not at all/.test(r.$("#app .rs-end-low").textContent) &&
+      /Neutral/.test(r.$("#app .rs-end-mid").textContent) &&
+      /Extremely/.test(r.$("#app .rs-end-high").textContent),
+      r.$("#app .rs-ends") && r.$("#app .rs-ends").textContent.replace(/\s+/g, " ").trim());
+    r.next(); await sleep(300);
+    check("a required rating scale waits for every row", /required/i.test(r.$("#err").textContent),
+      r.$("#err").textContent);
+    const scales = r.$$("#app .rating-scale .spectrum");
+    const key = (elm, k) => elm.dispatchEvent(new r.w.KeyboardEvent("keydown", { key: k, bubbles: true, cancelable: true }));
+    key(scales[0], "ArrowRight"); await sleep(160);           // row a: midpoint 3 -> 4
+    key(scales[1], "ArrowLeft"); await sleep(160);            // row b: midpoint 3 -> 2
+    check("rating a row of a rating scale records its value",
+      scales[0].getAttribute("aria-valuenow") === "4" && scales[1].getAttribute("aria-valuenow") === "2",
+      scales.map(x => x.getAttribute("aria-valuenow")).join("/"));
+    r.next(); await sleep(500);
+    check("and the survey finishes once every row is rated",
       /Thank you|End of survey|complete/i.test(r.$("#app").textContent), r.$("#app").textContent.slice(0, 120));
     check("no script errors for the respondent", r.errs.length === 0, r.errs.join(" | "));
   }

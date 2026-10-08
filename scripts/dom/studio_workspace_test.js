@@ -123,7 +123,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
 
   // --- add question via type picker
   $$("[data-act=qadd]")[1].click(); await sleep(20);
-  check("type picker modal opens as the grouped add-item library", !$("#st-modal").hidden && $$(".st-type").length===25 &&
+  check("type picker modal opens as the grouped add-item library", !$("#st-modal").hidden && $$(".st-type").length===26 &&
     /Multiple Choice/.test($("#st-modal").textContent) && /Methodologies/.test($("#st-modal").textContent) &&
     /Page Randomizer/.test($("#st-modal").textContent) && /Embedded Variable/.test($("#st-modal").textContent));
   $$(".st-type").find(b=>b.getAttribute("data-type")==="rating_grid").click(); await sleep(40);

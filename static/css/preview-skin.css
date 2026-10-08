@@ -59,6 +59,11 @@
 .survey-skin .scale button.on{background:var(--accent-2);border-color:var(--accent-2);color:#fff;font-weight:600}
 .survey-skin .scale-ends{display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted);
   padding:7px 14px;background:#f4f7f9;border-top:1px solid var(--line)}
+/* rating scale: three anchor labels - low end, middle, high end */
+.survey-skin .scale-ends.rs-ends{position:relative}
+.survey-skin .rs-end-low{text-align:left;max-width:30%}
+.survey-skin .rs-end-high{text-align:right;max-width:30%;margin-left:auto}
+.survey-skin .rs-end-mid{position:absolute;left:50%;transform:translateX(-50%);text-align:center;max-width:36%}
 .survey-skin .sem-left,.survey-skin .sem-right{font-size:11.5px;color:var(--muted);white-space:nowrap}
 .survey-skin input[type=number],.survey-skin input[type=text],.survey-skin textarea,.survey-skin select{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:7px;font:inherit;color:var(--ink);}
 .survey-skin input:focus,.survey-skin textarea:focus,.survey-skin select:focus{outline:none;border-color:var(--accent-2);

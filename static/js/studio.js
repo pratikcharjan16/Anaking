@@ -66,7 +66,8 @@
     single_select: { name: "Multiple Choice", icon: "\u25C9", desc: "One answer from a list", group: "Questions" },
     multi_select: { name: "Multiple Choice (many)", icon: "\u2611", desc: "Tick all that apply", group: "Questions" },
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
-    rating_grid: { name: "Grid / Rating Scale", icon: "\u25A6", desc: "Rate several items on one scale", group: "Questions" },
+    rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rate several items on one scale", group: "Questions" },
+    rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
     nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
     emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
@@ -101,6 +102,10 @@
     if (type === "open_text") { q.min_words = 3; }
     if (type === "rating_grid") {
       q.scale = { min: 1, max: 7, min_label: "Not at all", max_label: "Extremely" };
+      q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" }];
+    }
+    if (type === "rating_scale") {
+      q.scale = { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" };
       q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" }];
     }
     if (type === "semantic_diff") {
@@ -779,6 +784,7 @@
       case "multi_select":
         return thumbOptions(q);
       case "rating_grid":
+      case "rating_scale":
       case "semantic_diff":
       case "nps":
       case "concept_test":
@@ -1243,7 +1249,7 @@
   };
 
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
-  function hasRows(t) { return ["rating_grid", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
+  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
 
   // ---- matrix / grid questions ----------------------------------------------------------
   // A grid always has a Question title plus two axes.  On a rating grid the columns ARE the
@@ -1526,6 +1532,29 @@
     return html;
   }
 
+  // ---- rating scale questions -----------------------------------------------------------
+  // A rating scale keeps rows like a grid, but its scale carries three anchor labels -
+  // the low end, the middle and the high end - instead of a caption per column.
+  function ratingScaleRangeFields() {
+    var sc = ed.scale || {};
+    return '<div class="st-grid2">' +
+      '<div class="st-field"><label>From</label><input id="f-smin" type="number" value="' + (sc.min != null ? sc.min : 1) + '"></div>' +
+      '<div class="st-field"><label>To</label><input id="f-smax" type="number" value="' + (sc.max != null ? sc.max : 5) + '"></div></div>' +
+      '<div class="st-grid3">' +
+      '<div class="st-field"><label>Low-End Label</label><input id="f-sminl" value="' + esc(sc.min_label || "") + '" placeholder="e.g. Not at all"></div>' +
+      '<div class="st-field"><label>Mid Label</label><input id="f-smidl" value="' + esc(sc.mid_label || "") + '" placeholder="e.g. Neutral"></div>' +
+      '<div class="st-field"><label>High-End Label</label><input id="f-smaxl" value="' + esc(sc.max_label || "") + '" placeholder="e.g. Extremely"></div></div>' +
+      '<div class="st-hint">The three labels sit under the scale: the Low-End Label under the first point, ' +
+      "the Mid Label under the middle point and the High-End Label under the last one. All three are optional.</div>";
+  }
+  function ratingScaleBlock() {
+    var html = '<h4 class="st-h4">Scale</h4>' + ratingScaleRangeFields();
+    html += '<h4 class="st-h4">Rows <span class="st-h4-n">' + (ed.rows || []).length + "</span></h4>" +
+      itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true,
+        ph: "Row / statement", labelHead: "Row" });
+    return html;
+  }
+
   function card(id, title, hint, body, collapsed) {
     return '<details class="st-ecard" id="card-' + id + '"' + (collapsed ? "" : " open") + '><summary><span>' + title + "</span>" +
       (hint ? '<small>' + hint + "</small>" : "") + "</summary><div class=\"st-ecard-body\">" + body + "</div></details>";
@@ -1640,9 +1669,9 @@
     if (/don't you|obviously|clearly|best|excellent/.test(lower)) out.push({key:"leading", level:"warn", text:"Potentially leading language could bias the answer.", fix:"Make wording neutral"});
     if ((ed.type === "single_select" || ed.type === "multi_select") && (!ed.options || ed.options.length < 2)) out.push({key:"options", level:"error", text:"Add at least two answer options.", fix:"Add starter options"});
     if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
-    if (isGrid(ed.type)) {
+    if (isGrid(ed.type) || ed.type === "rating_scale") {
       if (!(ed.rows || []).length) out.push({ key: "gridrows", level: "error",
-        text: "This grid has no rows yet.", fix: "Add starter rows" });
+        text: (ed.type === "rating_scale" ? "This rating scale" : "This grid") + " has no rows yet.", fix: "Add starter rows" });
       if (hasColAxis(ed.type) && !(ed.cols || []).length) out.push({ key: "gridcols", level: "error",
         text: "This grid has no columns yet.", fix: "Add starter columns" });
     }
@@ -1916,6 +1945,7 @@
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
     if (isGrid(t)) html += gridBlock();
+    else if (t === "rating_scale") html += ratingScaleBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
       html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
@@ -2772,10 +2802,11 @@
       setOrDel(ed.style, "font", val("f-font")); setOrDel(ed.style, "size", val("f-size")); setOrDel(ed.style, "align", val("f-align"));
       if (!Object.keys(ed.style).length) delete ed.style;
     }
-    if (t === "rating_grid" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
+    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
       if (val("f-smin") !== undefined) {
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
+        if (t === "rating_scale") setOrDel(ed.scale, "mid_label", val("f-smidl"));
       }
     }
     // the scale points follow the From / To boxes: the list is rebuilt from the new range

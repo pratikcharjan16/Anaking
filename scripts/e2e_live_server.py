@@ -69,6 +69,9 @@ def build_answers(profile):
                       for r in q["rows"]}
             if profile.get("straightline") and qid == "Q7":
                 a[qid] = {r["code"]: 7 for r in q["rows"]}
+        elif t == "rating_scale":
+            a[qid] = {r["code"]: random.randint(q["scale"]["min"], q["scale"]["max"])
+                      for r in q["rows"]}
         elif t == "semantic_diff":
             a[qid] = {r["code"]: random.randint(q["scale"]["min"], q["scale"]["max"]) for r in q["rows"]}
         elif t == "sum_to_100":

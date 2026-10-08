@@ -792,7 +792,7 @@
     switch (q.type) {
       case "single_select": case "numeric": case "slider": case "open_text":
         return a._ !== undefined && a._ !== "";
-      case "rating_grid": case "semantic_diff":
+      case "rating_grid": case "semantic_diff": case "rating_scale":
         return q.rows.every(function (r) { return a[r.code] !== undefined; });
       case "sum_to_100":
         return q.rows.some(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
@@ -1330,6 +1330,31 @@
     return wrap;
   }
 
+  // A rating scale: rows rated on one scale, labelled at the low end, the middle and the
+  // high end.  The three anchor labels sit under the scale once, below all the rows.
+  function renderRatingScale(q) {
+    var wrap = el("div", "grid rating-scale");
+    var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
+    var max = sc.max != null ? Number(sc.max) : 5;
+    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+      var row = el("div", "grid-row");
+      row.appendChild(itemLabelNode(r, "rlabel"));
+      var cells = el("div", "grid-cells");
+      cells.appendChild(renderScale(min, max, getAns(q.id, r.code), function (v) {
+        setAns(q.id, r.code, v);
+        hideErr(); ansChanged(); checkPattern(q, wrap);
+      }, null));
+      row.appendChild(cells);
+      wrap.appendChild(row);
+    });
+    var ends = el("div", "scale-ends rs-ends");
+    ends.appendChild(el("span", "rs-end-low", pipeText(sc.min_label) || String(min)));
+    if (sc.mid_label) ends.appendChild(el("span", "rs-end-mid", pipeText(sc.mid_label)));
+    ends.appendChild(el("span", "rs-end-high", pipeText(sc.max_label) || String(max)));
+    wrap.appendChild(ends);
+    return wrap;
+  }
+
   // An emoji grid: the same shape as a rating grid, but each scale point is a face to tap.
 
   function renderEmojiGrid(q) {
@@ -1750,6 +1775,7 @@
       case "text_block": body = renderTextBlock(q); break;
       case "rating_grid": body = renderGrid(q, false); break;
       case "semantic_diff": body = renderGrid(q, true); break;
+      case "rating_scale": body = renderRatingScale(q); break;
       case "sum_to_100": body = renderSum100(q); break;
       case "rank": body = renderRank(q); break;
       case "numeric": {
