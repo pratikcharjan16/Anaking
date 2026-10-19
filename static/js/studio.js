@@ -4503,6 +4503,20 @@
         var cfg = JSON.parse(JSON.stringify(s.cfg)); cfg.title = s.title + " (copy)"; createStudy(cfg);
       });
     }
+    if (act === "brand-home") {
+      e.preventDefault();
+      if (cur.slug) {
+        flushSave(function () {
+          cur.slug = null;
+          history.replaceState(null, "", "/studio/");
+          loadList();
+        });
+      } else {
+        history.replaceState(null, "", "/studio/");
+        loadList();
+      }
+      return;
+    }
     if (act === "home-filter") { homeFilter = b.getAttribute("data-f"); renderHome(); }
     if (act === "open") openEditor(slug);
     if (act === "back") { flushSave(function () { history.replaceState(null, "", location.pathname + location.search); loadList(); }); }
