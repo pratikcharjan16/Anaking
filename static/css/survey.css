@@ -715,25 +715,19 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .nm-td-na,.nm-th-na{text-align:center}
 .nm-input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .nm-cmtrow{border-top:1px solid var(--line);padding:6px 10px;background:#fcfdfe}
-/* Text Grid – April/May/June column blocks (Saving/Invest, Rent, Food…) */
+/* Text Grid – column-major: 3 cols × 2 rows = 3 side-by-side columns each with 2 inputs */
 .text-grid{margin-top:10px}
-.tg-table{border:none;overflow:hidden;background:transparent;display:flex;flex-direction:column;gap:0}
-.tg-tr{display:grid;grid-template-columns:var(--tg-cols);align-items:stretch;gap:0}
-.tg-th{padding:8px 10px;display:flex;justify-content:center;align-items:center;text-align:center;font-size:13px;font-weight:700;color:var(--ink);background:transparent;gap:6px}
-.tg-corner{background:transparent}
-.tg-th img{max-width:50px;max-height:36px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
-.tg-th span{max-width:100%;word-break:break-word}
-/* header columns: April/May/June – alternating gray */
-.tg-head .tg-th:nth-child(2), .tg-head .tg-th:nth-child(4), .tg-head .tg-th:nth-child(6){background:#eef1f3}
-.tg-head .tg-th:nth-child(3), .tg-head .tg-th:nth-child(5), .tg-head .tg-th:nth-child(7){background:#fff}
-/* row labels left: Saving/Invest etc. – no bg, right-aligned with icon */
-.tg-th.tg-rowlabel{justify-content:flex-end;background:transparent !important;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink);text-align:right}
-.tg-td{padding:6px 10px;display:flex;flex-direction:column;gap:5px;min-height:46px}
-/* column blocks: alternate column bg */
-.tg-tr .tg-td:nth-child(2), .tg-tr .tg-td:nth-child(4), .tg-tr .tg-td:nth-child(6){background:#eef1f3}
-.tg-tr .tg-td:nth-child(3), .tg-tr .tg-td:nth-child(5), .tg-tr .tg-td:nth-child(7){background:#fff}
-.tg-td textarea.tg-input, .tg-td input.tg-input{width:100%;min-height:40px;resize:vertical;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;line-height:1.4;flex:1;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.tg-td textarea.tg-input:focus, .tg-td input.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
+.tg-table{display:flex;gap:12px;align-items:stretch;overflow-x:auto;padding-bottom:4px}
+.tg-col{flex:1 1 0;min-width:160px;background:#eef1f3;border-radius:10px;padding:10px 10px 12px;display:flex;flex-direction:column;gap:10px}
+.tg-col:nth-child(even){background:#fff;border:1px solid var(--line)}
+.tg-col-head{padding:6px 4px;display:flex;justify-content:center;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink);text-align:center}
+.tg-col-head img{max-width:50px;max-height:36px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
+.tg-col-head span{font-weight:700}
+.tg-col-row{display:flex;flex-direction:column;gap:6px}
+.tg-rowlabel-sm{font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px}
+.tg-rowlabel-sm img{width:18px;height:18px;border-radius:4px;object-fit:cover}
+.tg-col-row textarea.tg-input{width:100%;min-height:38px;max-height:90px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;line-height:1.3;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tg-col-row textarea.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
 .tg-voice-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
 .tg-voice-btn:hover{background:var(--soft);border-color:var(--accent2)}
 .tg-voice-btn.recording{background:#b3261e;color:#fff;border-color:#b3261e;animation:recPulse 1.2s ease-in-out infinite}

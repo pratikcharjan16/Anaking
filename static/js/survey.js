@@ -1908,30 +1908,30 @@
       return wrap;
     }
     var tbl = el("div", "tg-table");
-    tbl.style.setProperty("--tg-cols", "minmax(150px,1.5fr) repeat(" + cols.length + ", minmax(200px,1fr))");
-    var head = el("div", "tg-tr tg-head");
-    head.appendChild(el("div", "tg-th tg-corner", pipeText(g.row_label || "")));
-    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "tg-th")); });
-    tbl.appendChild(head);
-    rows.forEach(function (r) {
-      var row = el("div", "tg-tr");
-      row.appendChild(itemLabelNode(r, "tg-th tg-rowlabel"));
-      cols.forEach(function (c) {
-        var cell = el("div", "tg-td");
+    // column-major: 3 columns side-by-side, each holds 2 rows vertically
+    cols.forEach(function (c, ci) {
+      var colBox = el("div", "tg-col");
+      var head = itemLabelNode(c, "tg-col-head");
+      colBox.appendChild(head);
+      rows.forEach(function (r) {
         var key = r.code + "_" + c.code;
+        var rowWrap = el("div", "tg-col-row");
+        // row label inside column (Saving/Invest, Rent…)
+        var lab = itemLabelNode(r, "tg-rowlabel-sm");
+        rowWrap.appendChild(lab);
         var ta = el("textarea", "tg-input");
         ta.placeholder = q.placeholder || "Type here…";
-        ta.rows = 2;
+        ta.rows = 1;
         ta.value = getAns(q.id, key) || "";
         ta.addEventListener("input", function () {
           setAns(q.id, key, ta.value);
           hideErr(); ansChanged();
         });
-        cell.appendChild(ta);
+        rowWrap.appendChild(ta);
         try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
-        row.appendChild(cell);
+        colBox.appendChild(rowWrap);
       });
-      tbl.appendChild(row);
+      tbl.appendChild(colBox);
     });
     wrap.appendChild(tbl);
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
