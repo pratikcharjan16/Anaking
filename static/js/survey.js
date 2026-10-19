@@ -783,7 +783,7 @@
       highlightActiveVoiceRow(voiceField);
       if (fields[voiceField]) fields[voiceField].focus();
       var rLabel = rows[voiceField] ? (rows[voiceField].label || ("Row " + (voiceField + 1))) : ("Field " + (voiceField + 1));
-      showVoiceBar("Row " + (fromIdx + 1) + " saved. Ready for Row " + (voiceField + 1) + " (" + rLabel + "). Say rating.");
+      showVoiceBar("Saved \u2713 Now on Row " + (voiceField + 1) + " — \u201C" + rLabel + "\u201D — say 1\u20135, or \u2018row " + (voiceField + 1) + " is 4\u2019.");
       coachSay("Ready for Row " + (voiceField + 1) + ": " + rLabel, "info");
     } else {
       showVoiceBar("All rows rated! Say \u201Cnext\u201D to proceed, or say a row number to change.");
@@ -794,9 +794,12 @@
   function labelVoiceControls() {
     Array.prototype.forEach.call(document.querySelectorAll('.voice-control-tag'), function (n) { n.remove(); });
     if (!voiceOn) return;
+    // Numbers on-screen were confusing — keep DOM for fallback but hide visually via CSS.
+    // Only highlight the active row for multi-field/ rating questions.
     voiceControls().forEach(function (n, i) {
       var badge = el("span", "voice-control-tag", String(i + 1));
       badge.setAttribute("aria-hidden", "true");
+      badge.style.display = "none";
       if (n.matches("button, [role=button], [role=slider], .alt-card, .optout-card")) n.appendChild(badge);
       else n.parentNode.insertBefore(badge, n);
     });
@@ -824,7 +827,7 @@
     };
   }
   function voiceSetValue(field, value) {
-    if (!field) { showVoiceBar("Say control followed by its badge number."); return; }
+    if (!field) { showVoiceBar("Tap the field, or say its name, then say the value."); return; }
     if (/^(checkbox|radio)$/.test(field.type) || field.tagName === "BUTTON" || field.getAttribute("role") === "button" || field.matches(".alt-card, .optout-card")) {
       field.click(); labelVoiceControls(); return;
     }
@@ -832,10 +835,10 @@
     if (field.getAttribute("role") === "slider") {
       var rating = window.BeaconVoice.parseNumber(value);
       if (rating === null || !Number.isInteger(rating) || rating < Number(field.getAttribute("aria-valuemin")) || rating > Number(field.getAttribute("aria-valuemax"))) {
-        showVoiceBar("Say a whole number within the displayed scale."); return;
+        showVoiceBar("Say a number shown under the scale (e.g. 1\u20135). Tap the row to change it highlight."); return;
       }
       field.dispatchEvent(new CustomEvent("voice-value", {detail:rating}));
-      showVoiceBar("Rating entered. Say next field or next."); return;
+      showVoiceBar("Rated \u2713 Say the next row\u2019s number (1\u20135), or \u2018next\u2019 to continue."); return;
     }
     if (/^(number|range)$/.test(field.type)) {
       value = window.BeaconVoice.parseNumber(value);
@@ -881,7 +884,7 @@
     }
     var live = voiceBar.querySelector(".vb-live");
     var heard = voiceBar.querySelector(".vb-heard");
-    live.textContent = msg || "Listening · Say an answer, next / back, or control [badge] [value]. Say next field for multi-part answers.";
+    live.textContent = msg || "Listening — say an option name or number, \u2018next\u2019 to continue, \u2018back\u2019 to go back. For scales, just say the number for the highlighted row.";
     heard.textContent = "";
     voiceBar.classList.add("listening");
     voiceBar.hidden = false;
@@ -928,7 +931,7 @@
           fields[voiceField].focus();
           var curQ = steps[cur] && steps[cur].q;
           var curRowLabel = (curQ && curQ.rows && curQ.rows[voiceField]) ? curQ.rows[voiceField].label : ("Field " + (voiceField + 1));
-          showVoiceBar("Row " + (voiceField + 1) + " (" + curRowLabel + ") selected. Say its rating.");
+          showVoiceBar("On Row " + (voiceField + 1) + " — \u201C" + curRowLabel + "\u201D — say 1\u20135.");
         }
       }
       else if (a.act === "value") {
@@ -956,7 +959,7 @@
         voiceField = Math.max(0, Math.min(fields.length - 1, voiceField + a.direction));
         highlightActiveVoiceRow(voiceField);
         if (fields[voiceField]) fields[voiceField].focus();
-        showVoiceBar("Field " + (voiceField + 1) + " selected. Say its value.");
+        showVoiceBar("On field " + (voiceField + 1) + " — say its value, or \u2018next\u2019.");
       }
       else if (a.act === "next") {
         if (spoken) coachSay("Next question coming up\u2026", "info");
@@ -1026,7 +1029,7 @@
       voice.start();                                   // may report a failure straight away
       if (voiceOn) {
         showVoiceBar();
-        coachSay("Voice mode on — say numbers or text, option names, or control followed by a badge number. Say next field for multi-part answers, and next to continue.", "info");
+        coachSay("Voice mode on — just say an option name or number. For scales, say the number for the highlighted row, e.g. \u201Cfour\u201D or \u201Crow 2 is 5\u201D. Say \u201Cnext\u201D when ready.", "info");
       }
     } else {
       voice.stop();
@@ -1850,6 +1853,11 @@
     if (sc.mid_label) ends.appendChild(el("span", "rs-end-mid", pipeText(sc.mid_label)));
     ends.appendChild(el("span", "rs-end-high", pipeText(sc.max_label) || String(max)));
     wrap.appendChild(ends);
+    // Voice hint — only visible when Answer by Voice is on, makes rating effortless
+    try {
+      var vh = el("div", "voice-rating-hint", "🎙 Voice: say <b>" + min + "–" + max + "</b> for the highlighted row. Try “<b>four</b>”, “<b>row 2 is 4</b>” or tap a row to move it.");
+      wrap.insertBefore(vh, wrap.firstChild);
+    } catch(e) {}
     return wrap;
   }
 
@@ -2063,6 +2071,10 @@
         });
         wrap.appendChild(row);
       });
+      try {
+        var vh2 = el("div", "voice-rating-hint", "🎙 Voice: say a number for the highlighted gauge, e.g. “<b>" + min + "–" + max + "</b>”, or “<b>row 2 is 75</b>”.");
+        wrap.insertBefore(vh2, wrap.firstChild);
+      } catch(e2) {}
       return wrap;
     }
 
