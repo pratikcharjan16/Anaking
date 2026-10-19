@@ -925,7 +925,7 @@
     sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("");
   }
   function selectQuestion(qi) {
-    if (qi !== sel) scrTest = {};          // the screening tester starts clean per question
+    if (qi !== sel) { scrTest = {}; ctInnerQi = null; }
     sel = qi;
     if (migrateLegacyGrid(cur.cfg.questions[qi])) markChanged();
     // the outline may be showing rows or thumbnails - mark the selection in whichever is up
@@ -1304,6 +1304,7 @@
 
   // ------------------------------------------------------------ question editor pane
   var ed = null;           // live reference to cur.cfg.questions[sel]
+  var ctInnerQi = null;    // when editing a question inside Concept Test: index in ed.concept_questions
   var OPS = [["selected", "has selected"], ["not_selected", "has not selected"],
     ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
     ["eq", "equals"], ["ne", "does not equal"], ["gt", "is greater than"], ["gte", "is at least"], ["lt", "is less than"], ["lte", "is at most"],
@@ -1834,6 +1835,44 @@
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
     ed = sel >= 0 ? cur.cfg.questions[sel] : null;
+    if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
+      var parentQ = ed;
+      var innerQ = parentQ.concept_questions && parentQ.concept_questions[ctInnerQi];
+      if (innerQ) {
+        ed = innerQ;
+        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
+        var ti = tinfo(ed.type);
+        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="ct-inner-back" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(ctInnerQi+1)+' of '+parentQ.concept_questions.length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentQ.concept_execution||'Concept Test')+')</span><span class="st-count">'+(ctInnerQi+1)+'/'+parentQ.concept_questions.length+'</span></div>';
+        host.innerHTML =
+          backHead +
+          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
+          '<div class="st-ehead">' +
+            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
+            '<div class="st-ehead-main"><div class="st-ehead-row">' +
+              '<div class="st-ehead-idcol">' +
+                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
+                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
+              '</div>' +
+              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
+              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
+              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
+            '</div></div>' +
+            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="ct-inner-dup" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="ct-inner-del" title="Delete">✕</button></div>' +
+          '</div>' +
+          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
+          edStrip() +
+          (edTab==="screen" ? "" : scrLineHtml()) +
+          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
+           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
+           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
+             card("q","Question","What respondents read", qCard()) +
+             card("answers",answersTitle(),"", answersCard()) +
+             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
+             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
+             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
+        renderPreview(); return;
+      } else { ctInnerQi=null; ed = parentQ; }
+    }
     if (!ed) {
       host.innerHTML = '<div class="st-editor-empty"><div class="st-editor-empty-ic">\u270E</div><h3>' +
         (cur.cfg.questions.length ? "Pick a question on the left to edit it" : "This study has no questions yet") +
@@ -2425,15 +2464,29 @@
   }
   function conceptQuestionRow(qq, qi){
     var icon = tinfo(qq.type).icon || "\u2261";
-    var h = '<div class="st-ct-q" data-cq="' + qi + '"><span class="st-grip">\u283F</span><span class="st-ct-q-ic">' + icon + '</span>';
-    h += '<input data-cq="stem" data-qi="' + qi + '" value="' + esc(qq.stem||"") + '" placeholder="Question stem" style="flex:1;font-weight:600">';
-    h += '<select data-cq="type" data-qi="' + qi + '" style="width:160px">' + ["single_select","multi_select","open_text","numeric","rating_scale","rating_grid","semantic_diff","date","rank","slider","sum_to_100","nps","emoji_grid","heatmap","gauge_meter","numeric_matrix","delta"].map(function(t){ var ti=tinfo(t); return '<option value="' + t + '"' + (qq.type===t ? " selected" : "") + '>' + esc(ti.name) + '</option>'; }).join("") + '</select>';
-    h += '<span class="st-item-tools"><button class="st-ibtn" data-act="ct-q-dup" data-qi="' + qi + '" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="' + qi + '" title="Delete">\u2715</button></span></div>';
-    if(qq.type==="single_select"||qq.type==="multi_select"){
-      var opts = qq.options||[{code:1,label:"Option 1"},{code:2,label:"Option 2"}];
-      h += '<div class="st-ct-q-opts">' + opts.map(function(o,oi){ return '<div class="st-ct-opt"><input data-cq="opt_code" data-qi="' + qi + '" data-oi="' + oi + '" value="' + esc(o.code) + '" style="width:50px"><input data-cq="opt_label" data-qi="' + qi + '" data-oi="' + oi + '" value="' + esc(o.label) + '" style="flex:1"><button class="st-ibtn danger" data-act="ct-opt-del" data-qi="' + qi + '" data-oi="' + oi + '">\u2715</button></div>'; }).join("") + '<button class="st-btn sm" data-act="ct-opt-add" data-qi="' + qi + '" style="margin-top:4px">+ Add option</button></div>';
-    }
+    var tname = (tinfo(qq.type).name || qq.type);
+    var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
+    var reqTxt = qq.required!==false ? "Required" : "Optional";
+    var h = '<div class="st-ct-q" data-qi="'+qi+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;margin-bottom:6px">';
+    h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
+    h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
+    h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="ct-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="ct-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '</div>';
     return h;
+  }
+  function openCtTypePicker(){
+    var html = '<div class="st-modal-head"><strong>Add a question to Concept Test</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+      '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
+    GROUPS.forEach(function(g){
+      html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
+      TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
+        var i = TYPE_INFO[t];
+        html += '<button class="st-type" data-act="ct-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+      });
+      html += '</div>';
+    });
+    openModal(html, "st-typepick");
   }
 
   function answersCard() {
@@ -3501,7 +3554,28 @@
     if (!ed) { host.innerHTML = ""; if (note) note.textContent = "Select a question to preview it."; return; }
     var useSample = document.getElementById("prev-sample");
     var answers = (!useSample || useSample.checked) ? Q.sampleAnswers(cur.cfg.questions, ed.id) : {};
-    var res = window.BeaconSurveyPreview.render(host, ed, { answers: answers, questions: cur.cfg.questions, sections: cur.cfg.sections }, prevSeed);
+    // when editing a question inside Concept Test, preview it as respondent sees: Concept + Question on one screen
+    var previewQ = ed;
+    if (ctInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="concept_test") {
+      var parentP = cur.cfg.questions[sel];
+      var conc = (parentP.concepts && parentP.concepts[0]) || {label: parentP.concepts && parentP.concepts[ctInnerQi] ? parentP.concepts[ctInnerQi].label : "Concept", text:"", text_html:"", media:null};
+      try {
+        var synthP = JSON.parse(JSON.stringify(ed));
+        synthP._concept_parent = parentP.id;
+        synthP._concept_label = conc.label;
+        synthP._concept_text = conc.text;
+        synthP._concept_text_html = conc.text_html;
+        synthP._concept_media = conc.media;
+        synthP._concept_duration = conc.duration;
+        synthP._concept_allow_replay = conc.allow_replay;
+        synthP._concept_description_html = parentP.concept_description_html;
+        synthP._concept_show_desc_first_only = parentP.concept_show_desc_first_only;
+        synthP._concept_execution = parentP.concept_execution;
+        // keep original id for preview routing but add concept context
+        previewQ = synthP;
+      } catch(e) { previewQ = ed; }
+    }
+    var res = window.BeaconSurveyPreview.render(host, previewQ, { answers: answers, questions: cur.cfg.questions, sections: cur.cfg.sections }, prevSeed);
     var visible = Q.showIf(ed, { answers: answers, questions: cur.cfg.questions });
     var bits = [];
     if (!visible) bits.push("<b>Hidden</b> for these sample answers - respondents matching them would skip it.");
@@ -4313,7 +4387,13 @@
     if (act === "ct-edit-text") { syncFromForm(); var ei = Number(b.getAttribute("data-i")); askText("Concept text", "Text shown with the concept (supports rich formatting via toolbar)", (ed.concepts[ei]&&ed.concepts[ei].text)||"", function(txt){ var c=ed.concepts[ei]; c.text=txt; c.text_html=Q.sanitize(esc(txt)); rerenderCard("answers"); changed(); }); return; }
     if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
     if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
-    if (act === "ct-q-add") { syncFromForm(); ed.concept_questions = ed.concept_questions||[]; var qid2 = ed.id+"_CQ"+(ed.concept_questions.length+1); ed.concept_questions.push({id:qid2, type:"open_text", stem:"New question about {concept}", required:false}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-add") { openCtTypePicker(); return; }
+    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
+      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
+    if (act === "ct-q-edit") { var qei = Number(b.getAttribute("data-qi")); var p = cur.cfg.questions[sel]; if(p && p.type==="concept_test" && p.concept_questions[qei]){ syncFromForm(); ctInnerQi = qei; renderEditorPane(); } return; }
+    if (act === "ct-inner-back") { syncFromForm(); ctInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "ct-inner-dup") { var pp = cur.cfg.questions[sel]; if(!pp) return; syncFromForm(); var curQi = ctInnerQi; var copyI = JSON.parse(JSON.stringify(pp.concept_questions[curQi])); copyI.id = pp.id+"_CQ"+(pp.concept_questions.length+1); copyI.stem = (copyI.stem||"")+" (copy)"; pp.concept_questions.splice(curQi+1,0,copyI); ctInnerQi = curQi+1; renderEditorPane(); changed(); return; }
+    if (act === "ct-inner-del") { var pp2 = cur.cfg.questions[sel]; if(!pp2) return; syncFromForm(); pp2.concept_questions.splice(ctInnerQi,1); ctInnerQi = null; renderEditorPane(); changed(); return; }
     if (act === "ct-q-del") { syncFromForm(); var qdi = Number(b.getAttribute("data-qi")); ed.concept_questions.splice(qdi,1); rerenderCard("answers"); changed(); return; }
     if (act === "ct-q-dup") { syncFromForm(); var qdup2 = Number(b.getAttribute("data-qi")); var copy2 = JSON.parse(JSON.stringify(ed.concept_questions[qdup2])); copy2.id = ed.id+"_CQ"+(ed.concept_questions.length+1); copy2.stem=(copy2.stem||"")+" (copy)"; ed.concept_questions.splice(qdup2+1,0,copy2); rerenderCard("answers"); changed(); return; }
     if (act === "ct-opt-add") { syncFromForm(); var qoi = Number(b.getAttribute("data-qi")); var qqq = ed.concept_questions[qoi]; qqq.options=qqq.options||[]; qqq.options.push({code:qqq.options.length+1, label:"Option "+(qqq.options.length+1)}); rerenderCard("answers"); changed(); return; }
