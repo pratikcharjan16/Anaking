@@ -2273,9 +2273,130 @@
       '<div class="st-hint">Pinned ' + what + ' keep their position - use it for "Other", "None" or "Don\'t know". The order each respondent saw is exported as <code>' + esc(ed.id) + "_order_shown</code>.</div></div>";
   }
 
-  // ---- card: logic -------------------------------------------------------------------
-  // Show IF has its own On / Off switch: the conditions are kept when it is off.
+  // ---- helpers for Show IF --------------------------------------------------------
+  // Dropdown of all options + numeric range: the value field adapts to the question
+  // type and the chosen operator.  Choices use a dropdown (or chips for multi),
+  // numbers use number box(es), grids use row/column pickers + number(s).
   function sifOn() { var s = ed && ed.show_if; return !s || s.off !== true; }
+  function sifOpsFor(q) {
+    if (!q) return OPS;
+    if (typeof Q !== "undefined" && Q.opsFor) {
+      try {
+        var ops = Q.opsFor(q);
+        if (ops && ops.length) return ops.map(function(o){ return [o.op, o.label]; });
+      } catch(e) {}
+    }
+    return OPS;
+  }
+  function sifDefault(q, op) {
+    if (!q) return "";
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(op) : "text";
+    if (kind === "none") return undefined;
+    if (kind === "codes") { var o = (q.options || q.rows || q.items || [])[0]; return o ? String(o.code) : ""; }
+    if (kind === "count") return 1;
+    if (kind === "text") return "";
+    if (kind === "between") return (q.min !== undefined ? q.min : 0) + "-" + (q.max !== undefined ? q.max : 100);
+    var row = (q.rows || q.items || [])[0], code = row ? String(row.code) : "";
+    if (kind === "rowvalue") return code + "=" + (q.scale ? q.scale.max : 0);
+    if (kind === "rowcode") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "");
+    if (kind === "cellnum") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") + "=" + (q.min !== undefined ? q.min : 0);
+    if (kind === "cellrange") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") + "=" + (q.min !== undefined ? q.min : 0) + "-" + (q.max !== undefined ? q.max : 100);
+    if (kind === "ranktop") return code + "=1";
+    if (kind === "rowsum") return "=0";
+    return q.min !== undefined ? q.min : 0;
+  }
+  function sifValueField(r, i) {
+    var q = null;
+    for (var qi = 0; qi < cur.cfg.questions.length; qi++) if (cur.cfg.questions[qi].id === r.q) q = cur.cfg.questions[qi];
+    if (!q) return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(r.op) : "text";
+    if (kind === "none") return '<span class="st-sif-empty">no value needed</span>';
+    if (kind === "codes") {
+      var list = (q.options || q.rows || q.items || []);
+      if (!list.length) return '<span class="st-meta">no options yet</span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      if (r.op === "selected" || r.op === "not_selected" || r.op === "eq" || r.op === "ne") {
+        return '<select data-rule="value" data-ri="' + i + '">' + list.map(function(o){
+          return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + '>' + esc(o.label) + '</option>';
+        }).join("") + '</select>';
+      }
+      var codes = (typeof Q !== "undefined" && Q.codeList) ? Q.codeList(r.value) : String(r.value || "").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var html = '<div class="st-scr-chips">' + list.map(function(o){
+        var on = codes.indexOf(String(o.code)) >= 0;
+        return '<button type="button" class="st-chip' + (on ? " on" : "") + '" data-act="sif-code" data-ri="' + i + '" data-code="' + esc(o.code) + '">' + (on ? "&#10003; " : "+ ") + esc(o.label) + '</button>';
+      }).join("") + '</div>';
+      html += '<input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(codes.join(",")) + '">';
+      return html;
+    }
+    if (kind === "count" || kind === "number") {
+      var ph = kind === "count" ? "count" : "number";
+      var val = r.value == null ? "" : r.value;
+      var numHtml = '<input data-rule="value" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(val) + '" placeholder="' + ph + '">';
+      return '<span class="st-scr-numwrap">' + numHtml + '</span>';
+    }
+    if (kind === "between") {
+      var p = String(r.value || "0-100").split("-");
+      var lo = p[0] || "", hi = p[1] || "";
+      return '<span class="st-scr-pair"><input data-rule="valueLo" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(lo) + '" placeholder="min">' +
+        '<em>and</em><input data-rule="valueHi" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(hi) + '" placeholder="max"></span>';
+    }
+    if (kind === "text") {
+      return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="text to find">';
+    }
+    if (kind === "rowvalue" || kind === "ranktop") {
+      var rows = (q.rows || q.items || []);
+      if (!rows.length) return '<span class="st-meta">no rows yet</span>';
+      var parts = String(r.value || "").split("=");
+      var want = parts[0] || String(rows[0].code), numv = parts[1] || "";
+      var isTop = kind === "ranktop";
+      var pts = [];
+      if (isTop) { for (var n = 1; n <= rows.length; n++) pts.push(n); }
+      else if (q.scale) { for (var v = q.scale.min; v <= q.scale.max; v++) pts.push(v); }
+      var rowSel = '<select data-rule="row" data-ri="' + i + '">' + rows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === want ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select>';
+      if (pts.length) {
+        return '<span class="st-scr-pair">' + rowSel + '<em>=</em><select data-rule="col" data-ri="' + i + '">' + pts.map(function(v){
+          return '<option value="' + esc(v) + '"' + (String(v) === numv ? " selected" : "") + '>' + esc(v) + '</option>';
+        }).join("") + '</select></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      }
+      return '<span class="st-scr-pair">' + rowSel + '<em>=</em><input data-rule="value" data-ri="' + i + '" type="number" value="' + esc(numv) + '" placeholder="value"></span>';
+    }
+    if (kind === "rowcode") {
+      var grows = (q.rows || q.items || []), gcols = q.cols || [];
+      if (!grows.length || !gcols.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var gparts = String(r.value || "").split("=");
+      var gwant = gparts[0] || String(grows[0].code), gcol = gparts[1] || String(gcols[0].code);
+      var word = {cell_is: "is", cell_not: "is not", cell_includes: "includes", cell_lacks: "does not include"}[r.op] || "is";
+      return '<span class="st-scr-pair"><select data-rule="row" data-ri="' + i + '">' + grows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === gwant ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select><em>' + word + '</em><select data-rule="col" data-ri="' + i + '">' + gcols.map(function(c){
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === gcol ? " selected" : "") + '>' + esc(c.label) + '</option>';
+      }).join("") + '</select></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+    }
+    if (kind === "cellnum" || kind === "cellrange") {
+      var nrows = (q.rows || q.items || []), ncolz = q.cols || [];
+      if (!nrows.length || !ncolz.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var nparts = String(r.value || "").split("=");
+      var nwantR = nparts[0] || String(nrows[0].code), nwantC = nparts[1] || String(ncolz[0].code), ntail = nparts.slice(2).join("=");
+      var nword = {cell_gte: "is at least", cell_lte: "is at most", cell_gt: "is more than", cell_lt: "is less than", cell_eq: "is", cell_ne: "is not", cell_between: "is between"}[r.op] || "is";
+      var base = '<span class="st-scr-pair"><select data-rule="row" data-ri="' + i + '">' + nrows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === nwantR ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select><em>\u00D7</em><select data-rule="col" data-ri="' + i + '">' + ncolz.map(function(c){
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === nwantC ? " selected" : "") + '>' + esc(c.label) + '</option>';
+      }).join("") + '</select><em>' + nword + '</em>';
+      if (kind === "cellrange") {
+        var nband = String(ntail || "0-100").split("-");
+        return base + '<input data-rule="valueLo" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(nband[0] || "") + '" placeholder="min"><em>and</em><input data-rule="valueHi" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(nband[1] || "") + '" placeholder="max"></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      }
+      return base + '<input data-rule="value" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(ntail || "") + '" placeholder="number"></span>';
+    }
+    if (q.options && q.options.length) {
+      return '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select>';
+    }
+    return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+  }
   function logicCard() {
     var c = cur.cfg, sif = ed.show_if || { match: "all", rules: [] };
     var others = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
@@ -2289,43 +2410,20 @@
         ? (rules.length ? "This question is shown only to the respondents who match." : "No conditions yet - everybody sees this question.")
         : (rules.length ? "Shown to everybody - the conditions below are kept but never applied." : "Switched off - everybody sees this question.")) +
       "</span></div>";
-    html += '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
+    html += '<div class="st-logic-guide"><span>\u2726</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
       '<div class="st-logic-intro">' + (rules.length
       ? 'Show this question <b>only when</b> <select id="f-sif-match"><option value="all"' + (sif.match !== "any" ? " selected" : "") + '>all</option><option value="any"' + (sif.match === "any" ? " selected" : "") + '>any</option></select> of these are true:'
       : "<b>Always shown.</b> Add a condition to show it only to some respondents - e.g. only those who chose \u201COncology\u201D in Q1.") + "</div>";
     if (!on && rules.length) html += '<div class="st-scr-off">Show IF is switched off - the conditions below are parked, not deleted.</div>';
     html += '<div id="f-rules">' + rules.map(function (r, i) {
-      var q = others.filter(function (x) { return x.id === r.q; })[0];
-      var valField;
-      if (q && q.options && ["selected", "not_selected", "eq", "ne"].indexOf(r.op) >= 0) {
-        valField = '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function (o) {
-          return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select>";
-      } else if (q && (q.cols || []).length && ["cell_is", "cell_not", "cell_includes", "cell_lacks"].indexOf(r.op) >= 0) {
-        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
-          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
-            var v = rr.code + "=" + cc.code;
-            return '<option value="' + esc(v) + '"' + (v === String(r.value) ? " selected" : "") + ">" +
-              esc(String(rr.label || rr.code) + " \u2192 " + String(cc.label || cc.code)) + "</option>";
-          }).join("") + "</optgroup>";
-        }).join("") + "</select>";
-      } else if (q && q.type === "numeric_matrix" && (q.cols || []).length &&
-                 ["cell_gte", "cell_lte", "cell_gt", "cell_lt", "cell_eq", "cell_ne", "cell_between"].indexOf(r.op) >= 0) {
-        var nvp = String(r.value == null ? "" : r.value).split("=");
-        var nvc = nvp[0] + "=" + (nvp[1] || ""), nvn = nvp.slice(2).join("=");
-        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
-          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
-            var v = rr.code + "=" + cc.code;
-            return '<option value="' + esc(v) + '"' + (v === nvc ? " selected" : "") + ">" +
-              esc(String(rr.label || rr.code) + " \u00D7 " + String(cc.label || cc.code)) + "</option>";
-          }).join("") + "</optgroup>";
-        }).join("") + '</select><input data-rule="cellnum" data-ri="' + i + '" type="number" class="st-scr-cellnum" value="' +
-          esc(nvn) + '" placeholder="number">';
-      } else if (r.op === "answered" || r.op === "not_answered") valField = "<span></span>";
-      else valField = '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+      var q = others.filter(function (x) { return x.id === r.q; })[0] || (r.q === ed.id ? ed : null);
+      var avail = sifOpsFor(q);
+      if (q && !avail.some(function(o){ return o[0] === r.op; })) r.op = avail[0] ? avail[0][0] : r.op;
+      var valField = sifValueField(r, i);
       return '<div class="st-rule"><span class="st-rule-no">' + (i ? (sif.match === "any" ? "or" : "and") : "when") + "</span>" +
         '<select data-rule="q" data-ri="' + i + '">' + others.map(function (x) {
           return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " \u00B7 " + String(x.stem).slice(0, 48)) + (c.questions.indexOf(x) > idx ? " (comes later)" : "") + "</option>"; }).join("") + "</select>" +
-        '<select data-rule="op" data-ri="' + i + '">' + OPS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
+        '<select data-rule="op" data-ri="' + i + '">' + avail.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>" +
         valField + '<button class="st-ibtn danger" data-act="rule-del" data-ri="' + i + '" title="Remove condition">\u2715</button></div>';
     }).join("") + "</div>";
     html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") + '" data-act="rule-add"' + (others.length ? "" : " disabled") + ">+ Add condition</button>" +
@@ -3117,13 +3215,43 @@
     if (t === "rank" && val("f-rankcount") !== undefined) setOrDel(ed, "rank_count", num("f-rankcount"));
     if (t === "maxdiff" && val("f-rounds") !== undefined) ed.rounds = String(val("f-rounds")).split("\n").filter(function (l) { return l.trim(); }).map(function (l) { return { items: l.split(",").map(function (x) { return x.trim(); }).filter(Boolean) }; });
     if (t === "choice_task" && val("f-vignette") !== undefined) ed.vignette = val("f-vignette");
-    // logic
+    // logic - Show IF: dropdown of options + numeric range handling
     if (document.getElementById("f-rules")) {
       var rules = [];
-        $$("#f-rules .st-rule").forEach(function (row) {
-        var r = {};
-        $$("[data-rule]", row).forEach(function (n) { r[n.getAttribute("data-rule")] = n.value; });
-        if (r.cellnum !== undefined) { r.value = (r.value || "") + "=" + r.cellnum; delete r.cellnum; }
+      $$("#f-rules .st-rule").forEach(function (row) {
+        var qid = (row.querySelector('[data-rule="q"]') || {}).value || "";
+        var op = (row.querySelector('[data-rule="op"]') || {}).value || "";
+        if (!qid || !op) return;
+        var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(op) : "text";
+        var get = function(name){ var n = row.querySelector('[data-rule="'+name+'"]'); return n ? n.value : ""; };
+        var hed = row.querySelector('[data-rule="value"]');
+        var rawHidden = hed ? hed.value : "";
+        var value;
+        if (kind === "none") value = undefined;
+        else if (kind === "codes") value = get("value");
+        else if (kind === "between") value = get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowvalue" || kind === "ranktop") {
+          var rv = get("row"), cv = get("col") || get("value");
+          if (rv && cv !== "") value = rv + "=" + cv;
+          else value = rawHidden || (rv + "=" + (cv || "0"));
+        }
+        else if (kind === "rowcode") value = get("row") + "=" + get("col");
+        else if (kind === "cellnum") value = get("row") + "=" + get("col") + "=" + get("value");
+        else if (kind === "cellrange") value = get("row") + "=" + get("col") + "=" + get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowrange") value = get("row") + "=" + get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowsum") {
+          var held = String(get("value") || rawHidden || "");
+          value = (held.split("=")[0] || "") + "=" + get("valueSum");
+          if (!value || value === "=") value = rawHidden;
+        }
+        else if (kind === "count" || kind === "number") value = Number(get("value") || 0);
+        else if (kind === "text") value = get("value");
+        else {
+          if (get("cellnum") !== "" && get("value") !== "") value = get("value") + "=" + get("cellnum");
+          else value = rawHidden || get("value") || "";
+        }
+        var r = { q: qid, op: op };
+        if (value !== undefined) r.value = value;
         if (r.q && r.op) rules.push(r);
       });
       var sifNode = document.getElementById("f-sif-on");
@@ -3502,11 +3630,28 @@
       var q0 = others[0]; if (!q0) return;
       var firstRule = !((ed.show_if && ed.show_if.rules) || []).length;
       ed.show_if = ed.show_if || { match: "all", rules: [] };
-      if (firstRule) delete ed.show_if.off;          // the first condition switches Show IF on: nothing is parked yet
-      ed.show_if.rules.push({ q: q0.id, op: q0.options ? "selected" : "answered", value: q0.options ? q0.options[0].code : "" });
+      if (firstRule) delete ed.show_if.off;
+      var ops0 = sifOpsFor(q0);
+      var op0 = ops0.length ? ops0[0][0] : (q0.options ? "selected" : "answered");
+      var val0 = sifDefault(q0, op0);
+      var nr = { q: q0.id, op: op0 };
+      if (val0 !== undefined) nr.value = val0;
+      ed.show_if.rules.push(nr);
       rerenderCard("logic"); changed(); return;
     }
     if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length && ed.show_if.off !== true) delete ed.show_if; rerenderCard("logic"); changed(); return; }
+    if (act === "sif-code") {
+      syncFromForm();
+      var riSif = Number(b.getAttribute("data-ri")), codeSif = String(b.getAttribute("data-code"));
+      var ruleSif = ed.show_if && ed.show_if.rules && ed.show_if.rules[riSif];
+      if (ruleSif) {
+        var listSif = (typeof Q !== "undefined" && Q.codeList) ? Q.codeList(ruleSif.value) : String(ruleSif.value || "").split(",").map(function(s){return s.trim();}).filter(Boolean);
+        var atSif = listSif.indexOf(codeSif);
+        if (atSif >= 0) listSif.splice(atSif, 1); else listSif.push(codeSif);
+        ruleSif.value = listSif.join(",");
+      }
+      rerenderCard("logic"); changed(); return;
+    }
 
     // ---- screening builder -------------------------------------------------------------
     if (act === "scr-add") {
@@ -3756,7 +3901,30 @@
     if (t.id === "f-id") { applyId(t); return; }
     if (t.id === "f-type") { if (t.value !== ed.type) convertType(t.value); return; }
     if (t.id === "f-section") { changed(); renderOutline(); return; }
-    if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op" || t.id === "f-sif-match") { syncFromForm(); rerenderCard("logic"); changed(); return; }
+    if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op" || t.id === "f-sif-match") {
+      var isSifQ = t.getAttribute("data-rule") === "q", sifRi = Number(t.getAttribute("data-ri"));
+      var beforeOp = (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) ? ed.show_if.rules[sifRi].op : null;
+      var beforeVal = (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) ? ed.show_if.rules[sifRi].value : undefined;
+      syncFromForm();
+      if (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) {
+        var qn = null;
+        for (var qi2 = 0; qi2 < cur.cfg.questions.length; qi2++) if (cur.cfg.questions[qi2].id === ed.show_if.rules[sifRi].q) qn = cur.cfg.questions[qi2];
+        if (!qn) qn = ed;
+        if (isSifQ) {
+          var opsN2 = sifOpsFor(qn);
+          ed.show_if.rules[sifRi] = { q: qn.id, op: opsN2.length ? opsN2[0][0] : "answered", value: sifDefault(qn, opsN2.length ? opsN2[0][0] : "answered") };
+          if (ed.show_if.rules[sifRi].value === undefined) delete ed.show_if.rules[sifRi].value;
+        } else if (beforeOp && (beforeOp !== ed.show_if.rules[sifRi].op)) {
+          var newKind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(ed.show_if.rules[sifRi].op) : "";
+          var oldKind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(beforeOp) : "";
+          if (newKind !== oldKind || !scrValueFits(beforeVal, newKind)) {
+            var nv = sifDefault(qn, ed.show_if.rules[sifRi].op);
+            if (nv !== undefined) ed.show_if.rules[sifRi].value = nv; else delete ed.show_if.rules[sifRi].value;
+          }
+        }
+      }
+      rerenderCard("logic"); changed(); return;
+    }
     // screening: switching the question or the condition rebuilds the value control
     if (t.getAttribute("data-sf") === "q" || t.getAttribute("data-sf") === "op") {
       var isQ = t.getAttribute("data-sf") === "q", ri3 = Number(t.getAttribute("data-ri"));
