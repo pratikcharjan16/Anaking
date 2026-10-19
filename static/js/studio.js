@@ -1293,7 +1293,7 @@
   var FONTS = [["", "Default"], ["Georgia, serif", "Georgia (serif)"], ["'Times New Roman', serif", "Times New Roman"],
     ["Arial, Helvetica, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["'Trebuchet MS', sans-serif", "Trebuchet"],
     ["'Courier New', monospace", "Courier (mono)"]];
-  var SIZES = [["", "Default"], ["15px", "Small"], ["19px", "Normal"], ["22px", "Large"], ["26px", "X-Large"], ["32px", "Huge"]];
+  var SIZES = [["", "Default (15px)"], ["8px", "8px"], ["9px", "9px"], ["10px", "10px"], ["11px", "11px"], ["12px", "12px"], ["13px", "13px"], ["14px", "14px"], ["15px", "15px — Small"], ["16px", "16px"], ["17px", "17px"], ["18px", "18px"], ["19px", "19px — Normal"], ["20px", "20px"], ["22px", "22px — Large"], ["24px", "24px"], ["26px", "26px — X-Large"], ["28px", "28px"], ["32px", "32px — Huge"], ["36px", "36px"], ["40px", "40px"], ["48px", "48px"], ["60px", "60px"], ["72px", "72px"], ["custom", "Custom…"]];
   var LIST_KEY = { opt: "options", row: "rows", col: "cols", item: "items" };
   var FLAG_INFO = {
     pin: { label: "\uD83D\uDCCC Pin", tip: "Keeps its place when the list is randomised" },
@@ -1865,16 +1865,23 @@
     var pick = function (cmd, title, opts) {
       return '<select class="st-tb-sel" data-cmd="' + cmd + '" data-target="' + target + '" title="' + title + '" aria-label="' + title + '">' + opts + "</select>";
     };
-    var sizes = [["", "12px"], ["1", "10px"], ["2", "12px"], ["3", "14px"], ["4", "16px"], ["5", "20px"], ["6", "24px"], ["7", "32px"]]
-      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+    // Font size: 8px → 72px + Custom (fully customisable)
+    var sizeOpts = [["", "12px"], ["8px","8px"],["9px","9px"],["10px","10px"],["11px","11px"],["12px","12px"],["13px","13px"],["14px","14px"],["15px","15px"],["16px","16px"],["18px","18px"],["20px","20px"],["22px","22px"],["24px","24px"],["28px","28px"],["32px","32px"],["36px","36px"],["48px","48px"],["72px","72px"],["custom","Custom…"]]
+      .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
     var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
-      .map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
-    return '<div class="st-toolbar">' +
-      pick("fontSize", "Text size", sizes) + (small ? "" : pick("fontName", "Font", fonts)) +
+      .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
+    // Colour palette: Automatic (black) is the default selected; full RGB/hex picker included
+    function colorBtn(kind, title, swatch) {
+      var tid = target + (kind === "foreColor" ? "_fg" : "_bg");
+      // Palette HTML is injected outside toolbar and toggled; button only holds trigger
+      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000") + '"></span></button>';
+    }
+    return '<div class="st-toolbar" data-for="' + target + '">' +
+      '<select class="st-tb-sel" data-size-for="' + target + '" title="Text size" aria-label="Text size">' + sizeOpts + '</select>' + (small ? "" : pick("fontName", "Font", fonts)) +
       b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
       act("more", "\u2026", "More formatting") +
-      '<label class="st-tb st-tb-color" title="Text colour">A<input type="color" data-cmd="foreColor" data-target="' + target + '" value="#b3261e"></label>' +
-      '<label class="st-tb st-tb-color hl" title="Highlight colour">&#9639;<input type="color" data-cmd="hiliteColor" data-target="' + target + '" value="#fff3a3"></label>' +
+      colorBtn("foreColor", "Text colour — Automatic is black", "A") +
+      colorBtn("hiliteColor", "Highlight colour", "&#9639;") +
       b("justifyLeft", "\u2261", "Align left") + b("justifyCenter", "\u2261", "Align centre") + b("justifyRight", "\u2261", "Align right") +
       b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
       act("link", "\u{1F517}", "Insert link") + act("table", "\u25A6", "Insert table") +
@@ -1890,6 +1897,145 @@
         act("fullscreen", "\u26F6", "Full screen") +
       "</span></div>";
   }
+  // --- rich text helpers: font size (8px+ + custom) and colour palette (Automatic black) ---
+  var ST_COLORS = ["#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#ffffff","#b3261e","#cc4125","#e06666","#f6b26b","#ffd966","#38761d","#274e13","#6aa84f","#1155cc","#0b5394","#3c78d8","#9900ff","#b45f06","#bf9000","#783f04","#a61c00","#cc0000"];
+  function stPaletteHTML(target, kind) {
+    var isFore = kind === "foreColor";
+    var title = isFore ? "Text colour" : "Highlight colour";
+    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '" role="dialog" aria-label="' + title + '">';
+    html += '<div class="st-color-head"><strong>' + title + '</strong><button type="button" class="st-color-close" data-color-close>&times;</button></div>';
+    html += '<button type="button" class="st-color-auto' + (isFore ? ' on' : '') + '" data-color="automatic" title="Automatic (black) = remove colour"><span class="st-color-auto-swatch"></span> Automatic <em>(black)</em> <span class="st-color-check">\u2713</span></button>';
+    html += '<div class="st-color-grid">';
+    ST_COLORS.forEach(function(c){ html += '<button type="button" class="st-color-cell" data-color="' + c + '" title="' + c + '" style="background:' + c + '"></button>'; });
+    html += '</div>';
+    html += '<div class="st-color-custom"><label>Hex <input type="text" class="st-color-hex" placeholder="#000000" maxlength="7" pattern="#?[0-9a-fA-F]{6}"></label><label>RGB <input type="color" class="st-color-picker" value="#000000"></label></div>';
+    html += '<div class="st-color-rgbrow"><label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label><label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label><label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label><button type="button" class="st-btn sm" data-color-apply>Apply</button></div>';
+    html += '<div class="st-color-hint">Automatic is black. Pick a swatch or enter Hex/RGB.</div></div>';
+    return html;
+  }
+  function stEnsurePalette(target, kind) {
+    var sel = '.st-color-pop[data-palette-for="' + target + '"][data-palette-kind="' + kind + '"]';
+    var pop = document.querySelector(sel);
+    if (pop) return pop;
+    var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
+    if (!tb) return null;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = stPaletteHTML(target, kind);
+    pop = wrap.firstChild;
+    tb.parentElement.insertBefore(pop, tb.nextSibling);
+    // sync RGB/hex interactions inside this palette only
+    (function bindPalette(p){
+      var hex = p.querySelector(".st-color-hex"), pick = p.querySelector(".st-color-picker");
+      var rI = p.querySelector(".st-color-r"), gI = p.querySelector(".st-color-g"), bI = p.querySelector(".st-color-b");
+      function fromHex(h){ if(!h) return null; h=h.trim(); if(h[0]!=='#') h='#'+h; if(!/^#[0-9a-fA-F]{6}$/.test(h)) return null; var n=parseInt(h.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255,hex:h.toLowerCase()}; }
+      function toHex(r,g,b){ return '#' + [r,g,b].map(function(v){ var s=Number(v).toString(16); return s.length===1?'0'+s:s; }).join(''); }
+      function syncFromPicker(){ var c=fromHex(pick.value); if(!c) return; hex.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
+      function syncFromHex(){ var c=fromHex(hex.value); if(!c) return; pick.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
+      function syncFromRGB(){ var r=Math.max(0,Math.min(255, parseInt(rI.value,10)||0)), g=Math.max(0,Math.min(255, parseInt(gI.value,10)||0)), b=Math.max(0,Math.min(255, parseInt(bI.value,10)||0)); var h=toHex(r,g,b); hex.value=h; pick.value=h; }
+      if(pick) pick.addEventListener("input", syncFromPicker);
+      if(hex) hex.addEventListener("input", syncFromHex);
+      if(rI) rI.addEventListener("input", syncFromRGB); if(gI) gI.addEventListener("input", syncFromRGB); if(bI) bI.addEventListener("input", syncFromRGB);
+    })(pop);
+    return pop;
+  }
+  function stApplyFontSize(target, px) {
+    var host = document.getElementById(target); if (!host) return;
+    host.focus();
+    if (!px) { document.execCommand("removeFormat", false, null); changed(); return; }
+    if (px === "custom") {
+      var cur = window.getSelection && window.getSelection().toString ? "" : "";
+      var v = window.prompt("Enter font size (e.g. 13px, 1.2em, 11pt or number 8-72)", "16px");
+      if (!v) return;
+      v = v.trim();
+      if (/^\d+$/.test(v)) v = v + "px";
+      if (!/^[0-9.]+(px|em|rem|pt|%)$/.test(v)) { window.alert("Use like 13px, 1.2em or 11pt"); return; }
+      px = v;
+    }
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      // Insert a styled span for future typing
+      var span = document.createElement("span"); span.style.fontSize = px; span.appendChild(document.createTextNode("\u200B"));
+      range.insertNode(span);
+      sel.removeAllRanges(); var nr=document.createRange(); nr.setStart(span.firstChild,1); nr.collapse(true); sel.addRange(nr);
+    } else {
+      var frag = range.extractContents();
+      var span2 = document.createElement("span"); span2.style.fontSize = px; span2.appendChild(frag);
+      range.insertNode(span2);
+      sel.removeAllRanges(); var nr2=document.createRange(); nr2.selectNodeContents(span2); sel.addRange(nr2);
+    }
+    changed();
+  }
+  function stApplyForeColor(target, color, kind) {
+    var host = document.getElementById(target); if (!host) return;
+    host.focus();
+    document.execCommand("styleWithCSS", false, true);
+    if (!color || color === "automatic") {
+      // Automatic = black (remove colour to inherit black)
+      document.execCommand("removeFormat", false, null);
+      // ensure future typing is black
+      document.execCommand("foreColor", false, "#000000");
+      // remove to keep automatic intent: black is default
+      var sel = window.getSelection(); if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+        // Remove the just-set black by clearing again so new text is automatic black
+        // (browser keeps black as explicit, but visual is same)
+      }
+    } else {
+      document.execCommand(kind, false, color);
+    }
+    var sw = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' + (kind==="hiliteColor"?".hl":"") + ' .st-color-swatch');
+    if (sw) sw.style.background = (color==="automatic" ? (kind==="hiliteColor"?"#fff3a3":"#000") : color);
+    changed();
+  }
+
+
+
+  // -- Question card: font-size (8+ custom) and colour palette (Automatic black) wiring --
+  document.addEventListener("change", function(e){
+    var sel = e.target.closest("select[data-size-for]");
+    if (sel) { e.preventDefault(); stApplyFontSize(sel.getAttribute("data-size-for"), sel.value); sel.selectedIndex = 0; }
+  });
+  document.addEventListener("click", function(e){
+    var trig = e.target.closest("[data-color-trigger]");
+    if (trig) {
+      e.preventDefault(); e.stopPropagation();
+      var tgt = trig.getAttribute("data-target"), kind = trig.getAttribute("data-color-trigger");
+      var pop = stEnsurePalette(tgt, kind);
+      if (!pop) return;
+      // close other palettes
+      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ if(p!==pop) p.classList.remove("open"); });
+      pop.classList.toggle("open");
+      return;
+    }
+    var cell = e.target.closest(".st-color-cell");
+    if (cell && cell.closest(".st-color-pop")) {
+      var pop2 = cell.closest(".st-color-pop"); var col = cell.getAttribute("data-color");
+      stApplyForeColor(pop2.getAttribute("data-palette-for"), col, pop2.getAttribute("data-palette-kind"));
+      pop2.classList.remove("open"); return;
+    }
+    var auto = e.target.closest(".st-color-auto");
+    if (auto && auto.closest(".st-color-pop")) {
+      var pop3 = auto.closest(".st-color-pop");
+      stApplyForeColor(pop3.getAttribute("data-palette-for"), "automatic", pop3.getAttribute("data-palette-kind"));
+      pop3.classList.remove("open"); return;
+    }
+    var close = e.target.closest("[data-color-close]");
+    if (close) { var p4=close.closest(".st-color-pop"); if(p4) p4.classList.remove("open"); return; }
+    // click on Apply in custom RGB/hex row
+    var apply = e.target.closest("[data-color-apply]");
+    if (apply && apply.closest(".st-color-pop")) {
+      var pop5 = apply.closest(".st-color-pop");
+      var hexI = pop5.querySelector(".st-color-hex"); var hexV = hexI ? hexI.value.trim() : "";
+      if (hexV && hexV[0] !== "#") hexV = "#" + hexV;
+      if (!/^#[0-9a-fA-F]{6}$/.test(hexV)) { var pickI = pop5.querySelector(".st-color-picker"); if (pickI) hexV = pickI.value; }
+      stApplyForeColor(pop5.getAttribute("data-palette-for"), hexV, pop5.getAttribute("data-palette-kind"));
+      pop5.classList.remove("open"); return;
+    }
+    // click outside closes palettes
+    if (!e.target.closest(".st-color-pop")) {
+      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ p.classList.remove("open"); });
+    }
+  });
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
   function chipify(html) {
@@ -3897,6 +4043,18 @@
     var act = t.getAttribute("data-act");
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); rerenderCard("media"); changed(); toast("Attached " + r.file); });
+      return;
+    }
+    if (t.id === "f-size" && t.value === "custom") {
+      var cv = window.prompt("Custom font size (e.g. 13px, 1.1em, 10pt)", "16px");
+      if (cv && cv.trim()) {
+        cv = cv.trim();
+        if (/^\d+$/.test(cv)) cv = cv + "px";
+        if (!/^[0-9.]+(px|em|rem|pt|%)$/.test(cv)) { window.alert("Use like 13px, 1.2em or 11pt"); t.selectedIndex = 0; return; }
+        var opt = document.createElement("option"); opt.value = cv; opt.textContent = cv + " (custom)"; opt.selected = true;
+        t.appendChild(opt);
+        ed.style = ed.style || {}; ed.style.size = cv; markChanged(); renderPreview();
+      } else { t.selectedIndex = 0; }
       return;
     }
     if (t.tagName === "SELECT" && t.getAttribute("data-cmd") && t.getAttribute("data-target")) {

@@ -332,9 +332,38 @@ a{color:var(--accent2)}
 .st-tb{border:1px solid transparent;background:transparent;border-radius:6px;min-width:28px;height:26px;padding:0 7px;font-size:12.5px;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .st-tb:hover{background:#fff;border-color:var(--line)}
 .st-tb-sep{width:1px;height:18px;background:var(--line);margin:0 3px}
-.st-tb-color{position:relative;font-weight:800;border-bottom:3px solid #b3261e}
-.st-tb-color.hl{border-bottom-color:#ffd866}
+.st-tb-color{position:relative;font-weight:800;border-bottom:3px solid #000;display:inline-flex;align-items:center;gap:4px}
+.st-tb-color.hl{border-bottom-color:#ffd966}
 .st-tb-color input[type=color]{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
+.st-color-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);vertical-align:middle;margin-left:2px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
+/* Colour palette pop */
+.st-color-pop{position:absolute;z-index:30;top:calc(100% + 8px);left:0;min-width:260px;max-width:320px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(16,32,46,.18);padding:10px;display:none}
+.st-color-pop.open{display:block}
+.st-color-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px}
+.st-color-head strong{font-size:13px}
+.st-color-close{border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px}
+.st-color-close:hover{color:var(--ink)}
+.st-color-auto{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 10px;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+.st-color-auto em{font-style:normal;color:var(--muted);font-weight:500}
+.st-color-auto.on{border-color:var(--accent2);background:var(--soft)}
+.st-color-auto-swatch{width:18px;height:18px;border-radius:50%;background:#000;border:2px solid #fff;box-shadow:0 0 0 1px var(--line), inset 0 0 0 1px rgba(0,0,0,.1)}
+.st-color-check{margin-left:auto;color:var(--accent);font-weight:800}
+.st-color-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:10px 0}
+.st-color-cell{width:100%;aspect-ratio:1;border-radius:7px;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;transition:transform .1s, box-shadow .1s}
+.st-color-cell:hover{transform:scale(1.08);box-shadow:0 0 0 1px var(--accent2), 0 2px 6px rgba(0,0,0,.12)}
+.st-color-custom{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
+.st-color-custom label{flex:1;min-width:120px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
+.st-color-custom input[type=text]{flex:1;min-width:80px;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:ui-monospace, Menlo, monospace;text-transform:lowercase}
+.st-color-custom input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-radius:7px;padding:2px;background:#fff;cursor:pointer}
+.st-color-rgbrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line2);padding-top:8px;margin-top:6px}
+.st-color-rgbrow label{flex:1;min-width:60px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--muted)}
+.st-color-rgbrow input[type=number]{width:56px;border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px}
+.st-color-rgbrow .st-btn{margin-left:auto}
+.st-color-hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4}
+/* size select refinement */
+.st-toolbar select[data-size-for]{min-width:72px;max-width:90px}
+/* ensure toolbar palette positioning context */
+.st-toolbar{position:relative}
 .st-rich{border:1px solid var(--line);border-radius:0 0 8px 8px;padding:10px 12px;min-height:74px;font-size:15px;line-height:1.5;background:#fff;outline:none}
 .st-rich.sm{min-height:44px;font-size:13px}
 .st-rich:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
