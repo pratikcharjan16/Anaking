@@ -120,12 +120,27 @@ def summarize(records, cfg, segment=None, segment_value=None):
         row = {'id': qid, 'title': plain(q.get('stem_html') or q.get('stem') or qid), 'type': q['type'],
                'base': len(vals), 'missing_or_not_shown': len(complete) - len(vals), 'small_base': len(vals) < 30,
                'options': [], 'mean': None}
-        if q.get('type') in ('numeric', 'slider', 'nps'):
+        if q.get('type') in ('numeric', 'slider', 'nps', 'gauge_meter') and not q.get('rows'):
             ns = [numeric(v) for v in vals]
             ns = [v for v in ns if v is not None]
             row['base'] = len(ns)
             row['mean'] = round(statistics.mean(ns), 3) if ns else None
             row['median'] = statistics.median(ns) if ns else None
+            if q.get('type') == 'gauge_meter':
+                row['min'] = q.get('min', 0)
+                row['max'] = q.get('max', 100)
+                row['unit'] = q.get('unit', '%')
+                row['target'] = q.get('target', 75)
+                rng = (row['max'] - row['min']) or 100
+                z_low = sum(1 for x in ns if (x - row['min']) / rng < 0.4)
+                z_mid = sum(1 for x in ns if 0.4 <= (x - row['min']) / rng < 0.7)
+                z_high = sum(1 for x in ns if (x - row['min']) / rng >= 0.7)
+                tot = len(ns) or 1
+                row['zones'] = [
+                    {'label': q.get('min_label', 'Low'), 'count': z_low, 'pct': round(100 * z_low / tot, 1)},
+                    {'label': q.get('mid_label', 'Moderate'), 'count': z_mid, 'pct': round(100 * z_mid / tot, 1)},
+                    {'label': q.get('max_label', 'High'), 'count': z_high, 'pct': round(100 * z_high / tot, 1)}
+                ]
         if q.get('type') in ('single_select', 'multi_select'):
             for o in q.get('options', []):
                 n = sum(str(o['code']) in [str(x) for x in (v if isinstance(v, list) else [v])] for v in vals)

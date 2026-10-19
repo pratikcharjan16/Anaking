@@ -68,6 +68,7 @@
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
     rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
+    gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
     nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
     emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
@@ -109,6 +110,10 @@
     if (type === "rating_scale") {
       q.scale = { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" };
       q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" }];
+    }
+    if (type === "gauge_meter") {
+      q.min = 0; q.max = 100; q.step = 1; q.unit = "%"; q.target = 75;
+      q.min_label = "Poor"; q.mid_label = "Moderate"; q.max_label = "Excellent";
     }
     if (type === "semantic_diff") {
       q.scale = { min: 1, max: 7 };
@@ -1649,6 +1654,35 @@
     return html;
   }
 
+  function gaugeMeterBlock() {
+    var sc = ed.scale || {};
+    var mi = ed.min != null ? ed.min : (sc.min != null ? sc.min : 0);
+    var ma = ed.max != null ? ed.max : (sc.max != null ? sc.max : 100);
+    var st = ed.step != null ? ed.step : 1;
+    var un = ed.unit != null ? ed.unit : "%";
+    var tg = ed.target != null ? ed.target : 75;
+    var minl = ed.min_label || sc.min_label || "Poor";
+    var midl = ed.mid_label || sc.mid_label || "Moderate";
+    var maxl = ed.max_label || sc.max_label || "Excellent";
+
+    var html = '<h4 class="st-h4">Gauge dial settings</h4>' +
+      '<div class="st-grid4">' +
+      '<div class="st-field"><label>Minimum</label><input id="f-gmin" type="number" value="' + mi + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-gmax" type="number" value="' + ma + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-gstep" type="number" value="' + st + '"></div>' +
+      '<div class="st-field"><label>Unit suffix</label><input id="f-gunit" value="' + esc(un) + '" placeholder="e.g. %"></div></div>' +
+      '<div class="st-grid2">' +
+      '<div class="st-field"><label>Target threshold marker</label><input id="f-gtarget" type="number" value="' + tg + '"></div></div>' +
+      '<h4 class="st-h4">Anchor labels</h4>' +
+      '<div class="st-grid3">' +
+      '<div class="st-field"><label>Low-End Label</label><input id="f-gminl" value="' + esc(minl) + '"></div>' +
+      '<div class="st-field"><label>Mid Label</label><input id="f-gmidl" value="' + esc(midl) + '"></div>' +
+      '<div class="st-field"><label>High-End Label</label><input id="f-gmaxl" value="' + esc(maxl) + '"></div></div>' +
+      '<h4 class="st-h4">Rows / Items <span class="st-opt">optional: leave empty for a single gauge</span></h4>' +
+      itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, ph: "Item to rate on gauge", labelHead: "Item" });
+    return html;
+  }
+
   function card(id, title, hint, body, collapsed) {
     return '<details class="st-ecard" id="card-' + id + '"' + (collapsed ? "" : " open") + '><summary><span>' + title + "</span>" +
       (hint ? '<small>' + hint + "</small>" : "") + "</summary><div class=\"st-ecard-body\">" + body + "</div></details>";
@@ -2040,6 +2074,7 @@
     }
     if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
+    else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
       html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
@@ -2996,6 +3031,18 @@
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
         if (t === "rating_scale") setOrDel(ed.scale, "mid_label", val("f-smidl"));
+      }
+    }
+    if (t === "gauge_meter") {
+      if (val("f-gmin") !== undefined) {
+        ed.min = num("f-gmin") != null ? num("f-gmin") : 0;
+        ed.max = num("f-gmax") != null ? num("f-gmax") : 100;
+        ed.step = num("f-gstep") != null ? num("f-gstep") : 1;
+        setOrDel(ed, "unit", val("f-gunit"));
+        if (num("f-gtarget") != null) ed.target = num("f-gtarget");
+        setOrDel(ed, "min_label", val("f-gminl"));
+        setOrDel(ed, "mid_label", val("f-gmidl"));
+        setOrDel(ed, "max_label", val("f-gmaxl"));
       }
     }
     // the scale points follow the From / To boxes: the list is rebuilt from the new range
@@ -4305,6 +4352,19 @@
             }).join("") + "</table>";
         });
         if (a.nps) html += '<div class="st-note">NPS segments: Promoter ' + a.nps.segments.Promoter + ", Passive " + a.nps.segments.Passive + ", Detractor " + a.nps.segments.Detractor + "</div>";
+        (a.gauges || []).forEach(function (g) {
+          html += "<h4>Gauge " + esc(g.id) + " - " + esc(g.stem) + "</h4>";
+          if (g.rows) {
+            html += '<table class="st-tbl"><tr><th>Item</th><th style="width:200px">Mean</th><th></th></tr>' +
+              g.rows.map(function (row) {
+                var m = row.mean == null ? 0 : row.mean;
+                return "<tr><td>" + esc(row.label) + "</td><td>" + (row.mean == null ? "\u2013" : m) + '</td><td><div class="st-meter"><i style="width:' + Math.min(100, m) + '%"></i></div></td></tr>';
+              }).join("") + "</table>";
+          } else {
+            var gm = g.mean == null ? "\u2013" : g.mean;
+            html += '<p>Average: <b>' + gm + ' ' + esc(g.unit || '%') + '</b></p>';
+          }
+        });
         a.maxdiff.forEach(function (m) {
           html += "<h4>MaxDiff " + esc(m.id) + " (best minus worst)</h4>" +
             '<table class="st-tbl"><tr><th>Code</th><th>Best</th><th>Worst</th><th>B-W</th></tr>' +

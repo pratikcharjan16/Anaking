@@ -97,6 +97,93 @@
     if (/^(back|previous|go back|backwards|last question)$/.test(t)) return [{ act: "back" }];
     if (/^(clear|reset|clear selection|start over|clear my answers)$/.test(t)) return [{ act: "clear" }];
 
+    // ---- Multi-field / Rating Scale / Gauge Meter voice handling ----
+    var isRatingScale = ctx.type === "rating_scale" || (ctx.rows && ctx.rows.length > 0 && ctx.inputType === "number");
+    var hasMultiFields = isRatingScale || (ctx.fieldsCount && ctx.fieldsCount > 1 && ctx.inputType === "number");
+
+    if (hasMultiFields) {
+      // 1. Explicit row selection without value: "row 2", "second row", "select row 3", "field 2"
+      var rowNav = t.match(/^(?:go to |select |focus )?(?:(?:row|field|item)\s*(\d+|first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)|(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s*(?:row|field|item)?)$/i);
+      if (rowNav) {
+        var rawNav = rowNav[1] || rowNav[2];
+        var rIdx = ORD[rawNav] !== undefined ? ORD[rawNav] - 1 : parseNumber(rawNav) - 1;
+        if (!isNaN(rIdx) && rIdx >= 0) return [{ act: "fieldSelect", index: rIdx }];
+      }
+
+      // 2. Explicit row-assigned ratings: e.g. "row 1 four, row 2 five" or "row 1 is 4 and row 2 is 5" or "item 1 5" or "first row 4"
+      var clauses = text.split(/\band\b|\bthen\b|,|;/i).map(function (s) { return s.trim(); }).filter(Boolean);
+      var rowActs = [];
+      var allClausesMatched = clauses.length > 0;
+
+      clauses.forEach(function (clause) {
+        var cm = clause.match(/^(?:(?:row|field|item|statement|number)\s*(\d+|[a-z]+)|(first|second|third|fourth|fifth|sixth|seventh|eighth|ninth|tenth)\s*(?:row|field|item|statement|number)?)\s*(?:is|to|equals|gets|rating|value)?\s*(.+)$/i);
+        if (cm) {
+          var rawIdx = (cm[1] || cm[2]).toLowerCase();
+          var idx = ORD[rawIdx] !== undefined ? ORD[rawIdx] - 1 : parseNumber(rawIdx) - 1;
+          var val = parseNumber(cm[3]);
+          if (!isNaN(idx) && idx >= 0 && val !== null) {
+            rowActs.push({ act: "fieldValue", index: idx, value: val });
+            return;
+          }
+        }
+        var shortCm = clause.match(/^(\d+)\s*(?:is|to|equals|gets)\s*(.+)$/i);
+        if (shortCm) {
+          var sIdx = parseNumber(shortCm[1]) - 1;
+          var sVal = parseNumber(shortCm[2]);
+          if (!isNaN(sIdx) && sIdx >= 0 && sVal !== null) {
+            rowActs.push({ act: "fieldValue", index: sIdx, value: sVal });
+            return;
+          }
+        }
+        // Match against row labels: e.g. "Ease of use 4" or "Quality is 5"
+        if (ctx.rows && ctx.rows.length) {
+          var matchedRow = null, matchedVal = null;
+          ctx.rows.forEach(function (r, rIndex) {
+            var rNorm = norm(r.label);
+            var clNorm = norm(clause);
+            if (rNorm && clNorm.indexOf(rNorm) === 0) {
+              var remainder = clNorm.slice(rNorm.length).replace(/^(?:is|to|equals|gets|rating|score)\s*/, "").trim();
+              var num = parseNumber(remainder);
+              if (num !== null) { matchedRow = rIndex; matchedVal = num; }
+            }
+          });
+          if (matchedRow !== null) {
+            rowActs.push({ act: "fieldValue", index: matchedRow, value: matchedVal });
+            return;
+          }
+        }
+        allClausesMatched = false;
+      });
+
+      if (rowActs.length && allClausesMatched) {
+        return rowActs;
+      }
+
+      // 3. Multiple sequential numbers in one breath: e.g. "4 and 5" or "4, 5, 3" or "four, five, three"
+      if (clauses.length > 1) {
+        var seqVals = [];
+        var allNum = true;
+        clauses.forEach(function (c) {
+          var n = parseNumber(c);
+          if (n !== null) seqVals.push(n);
+          else allNum = false;
+        });
+        if (allNum && seqVals.length > 1) {
+          var startIdx = 0;
+          return seqVals.map(function (v, i) {
+            return { act: "fieldValue", index: startIdx + i, value: v };
+          });
+        }
+      }
+
+      // 4. Single rating number for current active field: e.g. "4" or "four" or "score 4" or "rate 4"
+      var cleanRating = t.replace(/^(?:rate|score|give|value|it is|it s|is)\s+/, "");
+      var singleVal = parseNumber(cleanRating);
+      if (singleVal !== null) {
+        return [{ act: "fieldValue", index: ctx.activeFieldIndex || 0, value: singleVal, autoAdvance: true }];
+      }
+    }
+
     if (ctx.inputType) {
       var value = /^(number|range)$/.test(ctx.inputType) ? parseNumber(text) : String(text).trim();
       return value === null ? [{act:"unknown", text:text}] : [{act:"value", value:value}];

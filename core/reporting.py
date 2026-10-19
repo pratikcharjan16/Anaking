@@ -95,9 +95,11 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                     if v not in ("", None):
                         out[f"{qid}_{r['code']}_text"] = (
                             col_labels.get(str(v), str(v)) if str(v) != "NA" else "NA")
-        elif t in ("rating_grid", "rating_scale", "semantic_diff", "emoji_grid", "sum_to_100"):
+        elif t in ("rating_grid", "rating_scale", "semantic_diff", "emoji_grid", "sum_to_100") or (t == "gauge_meter" and q.get("rows")):
             for r in q["rows"]:
                 out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
+        elif t == "gauge_meter":
+            out[qid] = a.get("_", "")
         elif t == "heatmap":
             for r in q["rows"]:
                 for c in (q.get("cols") or []):
@@ -353,6 +355,21 @@ def build_sheets(records: list, scope: str, cfg: dict):
             for r in q["rows"]:
                 dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
                                 scale])
+        elif q["type"] == "gauge_meter":
+            sc = q.get("scale") or {}
+            mi = q.get("min", sc.get("min", 0))
+            ma = q.get("max", sc.get("max", 100))
+            un = f" {q.get('unit')}" if q.get("unit") else ""
+            labels = [q.get("min_label") or sc.get("min_label"),
+                      q.get("mid_label") or sc.get("mid_label"),
+                      q.get("max_label") or sc.get("max_label")]
+            labels = [x for x in labels if x]
+            scale = f"{mi}-{ma}{un}" + (f" ({' / '.join(labels)})" if labels else "")
+            if q.get("rows"):
+                for r in q["rows"]:
+                    dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"], scale])
+            else:
+                dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "gauge meter", scale])
         elif q["type"] in ("rating_grid", "semantic_diff", "sum_to_100", "emoji_grid"):
             scale = (f"{q['scale']['min']}-{q['scale']['max']}" if "scale" in q
                      else "0-100, rows sum to 100")
@@ -487,6 +504,23 @@ def analysis_for(records: list, cfg: dict) -> dict:
             tot = sum(seg.values()) or 1
             out["nps"] = {"id": q["id"], "segments": seg,
                           "score": round(100 * (seg["Promoter"] - seg["Detractor"]) / tot)}
+        elif t == "gauge_meter":
+            if q.get("rows"):
+                rows = []
+                for r in q["rows"]:
+                    rows.append({"label": r["label"],
+                                 "mean": mean([rec["answers"].get(q["id"], {}).get(r["code"])
+                                               for rec in complete])})
+                out.setdefault("gauges", []).append({
+                    "id": q["id"], "stem": q["stem"][:60], "rows": rows,
+                    "min": q.get("min", 0), "max": q.get("max", 100), "unit": q.get("unit", "%")
+                })
+            else:
+                vals = [rec["answers"].get(q["id"], {}).get("_") for rec in complete]
+                out.setdefault("gauges", []).append({
+                    "id": q["id"], "stem": q["stem"][:60], "mean": mean(vals),
+                    "min": q.get("min", 0), "max": q.get("max", 100), "unit": q.get("unit", "%")
+                })
         elif t == "maxdiff":
             best, worst = {}, {}
             for rec in complete:

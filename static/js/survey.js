@@ -716,6 +716,81 @@
     return voiceControls().filter(function (n) { return n.getAttribute("role") === "slider" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" ||
       (n.tagName === "INPUT" && !/^(radio|checkbox|button|submit|file)$/.test(n.type)); });
   }
+  function highlightActiveVoiceRow(idx) {
+    var rows = document.querySelectorAll('#app .grid-row, #app .gauge-row');
+    rows.forEach(function (r, i) {
+      var isActive = (i === idx) && voiceOn;
+      r.classList.toggle("voice-active-row", isActive);
+      var mic = r.querySelector(".voice-row-mic");
+      if (isActive) {
+        if (!mic) {
+          var rl = r.querySelector(".rlabel, .gauge-label");
+          if (rl) {
+            mic = el("span", "voice-row-mic", "\uD83C\uDF99\uFE0F");
+            mic.title = "Listening for this row";
+            rl.appendChild(mic);
+          }
+        }
+      } else if (mic) {
+        mic.remove();
+      }
+    });
+  }
+
+  function animateRowHit(field, val) {
+    if (!field) return;
+    var row = field.closest(".grid-row, .gauge-row, .num-row, .rank-item");
+    if (row) {
+      row.classList.remove("row-rated-pop");
+      void row.offsetWidth;
+      row.classList.add("row-rated-pop");
+      var badge = row.querySelector(".voice-row-status");
+      if (!badge) {
+        var labelEl = row.querySelector(".rlabel, .gauge-label");
+        if (labelEl) {
+          badge = el("span", "voice-row-status");
+          labelEl.appendChild(badge);
+        }
+      }
+      if (badge) {
+        badge.textContent = " \u2713 " + (val !== undefined ? val : "");
+        badge.classList.remove("pop");
+        void badge.offsetWidth;
+        badge.classList.add("pop");
+      }
+    }
+  }
+
+  function advanceVoiceField(fromIdx) {
+    var fields = voiceFields();
+    if (fields.length <= 1) return;
+    var q = steps[cur] && steps[cur].q;
+    var rows = (q && q.rows) || [];
+    var nextIdx = -1;
+    for (var i = fromIdx + 1; i < fields.length; i++) {
+      var rCode = rows[i] ? rows[i].code : null;
+      if (!rCode || getAns(q.id, rCode) === undefined) { nextIdx = i; break; }
+    }
+    if (nextIdx === -1) {
+      for (var j = 0; j < fromIdx; j++) {
+        var rCode = rows[j] ? rows[j].code : null;
+        if (!rCode || getAns(q.id, rCode) === undefined) { nextIdx = j; break; }
+      }
+    }
+    if (nextIdx !== -1) {
+      voiceField = nextIdx;
+      voiceExplicitField = true;
+      highlightActiveVoiceRow(voiceField);
+      if (fields[voiceField]) fields[voiceField].focus();
+      var rLabel = rows[voiceField] ? (rows[voiceField].label || ("Row " + (voiceField + 1))) : ("Field " + (voiceField + 1));
+      showVoiceBar("Row " + (fromIdx + 1) + " saved. Ready for Row " + (voiceField + 1) + " (" + rLabel + "). Say rating.");
+      coachSay("Ready for Row " + (voiceField + 1) + ": " + rLabel, "info");
+    } else {
+      showVoiceBar("All rows rated! Say \u201Cnext\u201D to proceed, or say a row number to change.");
+      coachSay("All rows completed! Say \u201Cnext\u201D to continue.", "info");
+    }
+  }
+
   function labelVoiceControls() {
     Array.prototype.forEach.call(document.querySelectorAll('.voice-control-tag'), function (n) { n.remove(); });
     if (!voiceOn) return;
@@ -725,6 +800,7 @@
       if (n.matches("button, [role=button], [role=slider], .alt-card, .optout-card")) n.appendChild(badge);
       else n.parentNode.insertBefore(badge, n);
     });
+    highlightActiveVoiceRow(voiceField);
   }
   function voiceCtx() {
     var q = steps[cur] && steps[cur].q, fields = voiceFields();
@@ -733,8 +809,19 @@
     var options = Array.prototype.map.call(document.querySelectorAll('#app .opt[data-code]'), function (n) {
       return {code: n.dataset.code, label: (n.querySelector("label") || n).textContent.trim(), exclusive: (q.options || []).some(function (o) { return String(o.code) === n.dataset.code && o.exclusive; })};
     });
-    return {options: options, multi: q && q.type === "multi_select", type: q && q.type,
-      inputType: (!options.length || voiceExplicitField) && field ? (field.getAttribute("role") === "slider" ? "number" : field.type || "text") : null};
+    var rows = (q && q.rows) ? q.rows.map(function (r, i) {
+      return { index: i, code: r.code, label: (r.label || "").trim() };
+    }) : [];
+    return {
+      options: options,
+      multi: q && q.type === "multi_select",
+      type: q && q.type,
+      activeFieldIndex: voiceField,
+      fieldsCount: fields.length,
+      rows: rows,
+      scale: q && (q.scale || (q.min != null && q.max != null ? { min: q.min, max: q.max } : null)),
+      inputType: (!options.length || voiceExplicitField) && field ? (field.getAttribute("role") === "slider" ? "number" : field.type || "text") : null
+    };
   }
   function voiceSetValue(field, value) {
     if (!field) { showVoiceBar("Say control followed by its badge number."); return; }
@@ -820,12 +907,54 @@
     var picked = 0, spoken = false;
     acts.forEach(function (a) {
       if (a.act === "stop") { setVoice(false); }
-      else if (a.act === "value") { voiceSetValue(voiceFields()[voiceField] || voiceFields()[0], a.value); }
-      else if (a.act === "control") { voiceSetValue(voiceControls()[a.index - 1], a.value); }
+      else if (a.act === "fieldValue") {
+        var fields = voiceFields();
+        var fIdx = a.index != null ? a.index : voiceField;
+        if (fields[fIdx]) {
+          voiceSetValue(fields[fIdx], a.value);
+          animateRowHit(fields[fIdx], a.value);
+          if (a.autoAdvance) {
+            advanceVoiceField(fIdx);
+          }
+        }
+      }
+      else if (a.act === "fieldSelect") {
+        var fields = voiceFields();
+        var sIdx = Math.max(0, Math.min(fields.length - 1, a.index));
+        if (fields[sIdx]) {
+          voiceField = sIdx;
+          voiceExplicitField = true;
+          highlightActiveVoiceRow(voiceField);
+          fields[voiceField].focus();
+          var curQ = steps[cur] && steps[cur].q;
+          var curRowLabel = (curQ && curQ.rows && curQ.rows[voiceField]) ? curQ.rows[voiceField].label : ("Field " + (voiceField + 1));
+          showVoiceBar("Row " + (voiceField + 1) + " (" + curRowLabel + ") selected. Say its rating.");
+        }
+      }
+      else if (a.act === "value") {
+        var fields = voiceFields();
+        var targetField = fields[voiceField] || fields[0];
+        if (targetField) {
+          voiceSetValue(targetField, a.value);
+          animateRowHit(targetField, a.value);
+          var curQ = steps[cur] && steps[cur].q;
+          if (curQ && (curQ.type === "rating_scale" || curQ.type === "gauge_meter" || curQ.type === "numeric_matrix")) {
+            advanceVoiceField(voiceField);
+          }
+        }
+      }
+      else if (a.act === "control") {
+        var ctrl = voiceControls()[a.index - 1];
+        if (ctrl) {
+          voiceSetValue(ctrl, a.value);
+          animateRowHit(ctrl, a.value);
+        }
+      }
       else if (a.act === "fieldMove") {
         var fields = voiceFields();
         voiceExplicitField = true;
         voiceField = Math.max(0, Math.min(fields.length - 1, voiceField + a.direction));
+        highlightActiveVoiceRow(voiceField);
         if (fields[voiceField]) fields[voiceField].focus();
         showVoiceBar("Field " + (voiceField + 1) + " selected. Say its value.");
       }
@@ -1044,6 +1173,14 @@
           if (Array.isArray(v)) return v.length > 0;   // a multi-select grid row needs one tick
           return v !== undefined && v !== "";
         });
+      case "gauge_meter":
+        if (q.rows && q.rows.length) {
+          return q.rows.every(function (r) {
+            var v = a[r.code];
+            return v !== undefined && v !== "";
+          });
+        }
+        return a._ !== undefined && a._ !== "";
       case "sum_to_100":
         return q.rows.some(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       case "multi_select":
@@ -1691,8 +1828,9 @@
     var wrap = el("div", "grid rating-scale");
     var sc = q.scale || {}, min = sc.min != null ? Number(sc.min) : 1;
     var max = sc.max != null ? Number(sc.max) : 5;
-    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+    orderedList(q.rows || [], q, "rows").forEach(function (r, rIndex) {
       var row = el("div", "grid-row");
+      row.dataset.rowIndex = String(rIndex);
       row.appendChild(itemLabelNode(r, "rlabel"));
       var cells = el("div", "grid-cells");
       cells.appendChild(renderScale(min, max, getAns(q.id, r.code), function (v) {
@@ -1700,6 +1838,11 @@
         hideErr(); ansChanged(); checkPattern(q, wrap);
       }, null));
       row.appendChild(cells);
+      row.addEventListener("pointerdown", function () {
+        voiceField = rIndex;
+        voiceExplicitField = true;
+        highlightActiveVoiceRow(voiceField);
+      });
       wrap.appendChild(row);
     });
     var ends = el("div", "scale-ends rs-ends");
@@ -1708,6 +1851,227 @@
     ends.appendChild(el("span", "rs-end-high", pipeText(sc.max_label) || String(max)));
     wrap.appendChild(ends);
     return wrap;
+  }
+
+  // ============================================================ Gauge Meter Question Type
+  function renderGaugeComponent(min, max, step, unit, target, val, minLabel, midLabel, maxLabel, onPick) {
+    var box = el("div", "gauge-box");
+    box.setAttribute("role", "slider");
+    box.tabIndex = 0;
+    box.setAttribute("aria-valuemin", String(min));
+    box.setAttribute("aria-valuemax", String(max));
+    if (val !== undefined && val !== "") box.setAttribute("aria-valuenow", String(val));
+
+    var cx = 130, cy = 130, r = 95;
+    function valueToAngle(v) {
+      var frac = max === min ? 0.5 : Math.max(0, Math.min(1, (v - min) / (max - min)));
+      return 180 + frac * 180;
+    }
+    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
+      var angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+      return {
+        x: centerX + (radius * Math.cos(angleInRadians)),
+        y: centerY + (radius * Math.sin(angleInRadians))
+      };
+    }
+    function describeArc(x, y, radius, startAngle, endAngle) {
+      var start = polarToCartesian(x, y, radius, endAngle);
+      var end = polarToCartesian(x, y, radius, startAngle);
+      var arcSweep = endAngle - startAngle <= 180 ? "0" : "1";
+      return ["M", start.x, start.y, "A", radius, radius, 0, arcSweep, 0, end.x, end.y].join(" ");
+    }
+
+    var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+    svg.setAttribute("class", "gauge-svg");
+    svg.setAttribute("viewBox", "0 0 260 155");
+
+    // Track background
+    var bgArc = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    bgArc.setAttribute("d", describeArc(cx, cy, r, 180, 360));
+    bgArc.setAttribute("fill", "none");
+    bgArc.setAttribute("stroke", "#e2e8f0");
+    bgArc.setAttribute("stroke-width", "16");
+    bgArc.setAttribute("stroke-linecap", "round");
+    svg.appendChild(bgArc);
+
+    // Zone 1: Low (180deg to 250deg)
+    var z1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    z1.setAttribute("d", describeArc(cx, cy, r, 182, 250));
+    z1.setAttribute("fill", "none");
+    z1.setAttribute("stroke", "#ef4444");
+    z1.setAttribute("stroke-width", "14");
+    z1.setAttribute("opacity", "0.85");
+    svg.appendChild(z1);
+
+    // Zone 2: Mid (254deg to 304deg)
+    var z2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    z2.setAttribute("d", describeArc(cx, cy, r, 254, 304));
+    z2.setAttribute("fill", "none");
+    z2.setAttribute("stroke", "#f59e0b");
+    z2.setAttribute("stroke-width", "14");
+    z2.setAttribute("opacity", "0.85");
+    svg.appendChild(z2);
+
+    // Zone 3: High (308deg to 358deg)
+    var z3 = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    z3.setAttribute("d", describeArc(cx, cy, r, 308, 358));
+    z3.setAttribute("fill", "none");
+    z3.setAttribute("stroke", "#10b981");
+    z3.setAttribute("stroke-width", "14");
+    z3.setAttribute("opacity", "0.85");
+    svg.appendChild(z3);
+
+    // Target marker
+    if (target != null && target >= min && target <= max) {
+      var tAngle = valueToAngle(target);
+      var pt1 = polarToCartesian(cx, cy, r - 12, tAngle);
+      var pt2 = polarToCartesian(cx, cy, r + 12, tAngle);
+      var tLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      tLine.setAttribute("x1", String(pt1.x)); tLine.setAttribute("y1", String(pt1.y));
+      tLine.setAttribute("x2", String(pt2.x)); tLine.setAttribute("y2", String(pt2.y));
+      tLine.setAttribute("stroke", "#0f2b48"); tLine.setAttribute("stroke-width", "3");
+      svg.appendChild(tLine);
+    }
+
+    // Needle group
+    var needleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
+    needleGroup.setAttribute("class", "gauge-needle");
+    var curVal = val !== undefined && val !== "" ? Number(val) : Math.round((min + max) / 2);
+    needleGroup.style.transform = "rotate(" + (valueToAngle(curVal) - 90) + "deg)";
+
+    var needle = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
+    needle.setAttribute("class", "gauge-needle-poly");
+    needle.setAttribute("points", (cx - 4) + "," + cy + " " + (cx + 4) + "," + cy + " " + cx + "," + (cy - r + 14));
+    needleGroup.appendChild(needle);
+
+    var pivot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    pivot.setAttribute("cx", String(cx)); pivot.setAttribute("cy", String(cy));
+    pivot.setAttribute("r", "10"); pivot.setAttribute("fill", "#0f2b48");
+    needleGroup.appendChild(pivot);
+    var pivotDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+    pivotDot.setAttribute("cx", String(cx)); pivotDot.setAttribute("cy", String(cy));
+    pivotDot.setAttribute("r", "3.5"); pivotDot.setAttribute("fill", "#ffffff");
+    needleGroup.appendChild(pivotDot);
+
+    svg.appendChild(needleGroup);
+    box.appendChild(svg);
+
+    // Readout & status pill
+    var readout = el("div", "gauge-readout");
+    var valEl = el("strong", "gauge-val", val !== undefined && val !== "" ? String(val) : "\u2013");
+    var unitEl = el("span", "gauge-unit", unit || "");
+    readout.appendChild(valEl); readout.appendChild(unitEl);
+    box.appendChild(readout);
+
+    function getZone(v) {
+      var frac = max === min ? 0.5 : (v - min) / (max - min);
+      if (frac < 0.4) return { cls: "low", text: minLabel || "Low" };
+      if (frac < 0.7) return { cls: "mid", text: midLabel || "Moderate" };
+      return { cls: "high", text: maxLabel || "High" };
+    }
+    var zInfo = getZone(curVal);
+    var pill = el("div", "gauge-zone-pill " + zInfo.cls, zInfo.text);
+    box.appendChild(pill);
+
+    var ends = el("div", "gauge-ends");
+    ends.appendChild(el("span", "g-min", (minLabel || String(min))));
+    ends.appendChild(el("span", "g-mid", (midLabel || String(Math.round((min + max) / 2)))));
+    ends.appendChild(el("span", "g-max", (maxLabel || String(max))));
+    box.appendChild(ends);
+
+    function place(nv, commit) {
+      nv = Math.max(min, Math.min(max, Math.round(nv / step) * step));
+      curVal = nv;
+      needleGroup.style.transform = "rotate(" + (valueToAngle(nv) - 90) + "deg)";
+      valEl.textContent = String(nv);
+      box.setAttribute("aria-valuenow", String(nv));
+      var zi = getZone(nv);
+      pill.className = "gauge-zone-pill " + zi.cls;
+      pill.textContent = zi.text;
+      if (commit) onPick(nv);
+    }
+
+    box.addEventListener("voice-value", function (e) { place(e.detail, true); });
+
+    function fromPointerEvent(ev) {
+      var rect = svg.getBoundingClientRect();
+      var svgX = ev.clientX - rect.left;
+      var svgY = ev.clientY - rect.top;
+      var scaleX = 260 / (rect.width || 260);
+      var scaleY = 155 / (rect.height || 155);
+      var px = svgX * scaleX;
+      var py = svgY * scaleY;
+      var dx = px - cx;
+      var dy = cy - py;
+      var rad = Math.atan2(dy, dx);
+      var deg = rad * 180 / Math.PI;
+      if (deg < 0) { deg = dx >= 0 ? 0 : 180; }
+      var frac = 1 - (deg / 180);
+      return min + frac * (max - min);
+    }
+
+    svg.addEventListener("pointerdown", function (ev) {
+      ev.preventDefault();
+      try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
+      place(fromPointerEvent(ev), true);
+      var move = function (e2) { place(fromPointerEvent(e2), true); };
+      var up = function () {
+        svg.removeEventListener("pointermove", move);
+        svg.removeEventListener("pointerup", up);
+        svg.removeEventListener("pointercancel", up);
+      };
+      svg.addEventListener("pointermove", move);
+      svg.addEventListener("pointerup", up);
+      svg.addEventListener("pointercancel", up);
+    });
+
+    box.addEventListener("keydown", function (ev) {
+      var v0 = curVal === undefined ? Math.round((min + max) / 2) : curVal;
+      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); place(Math.max(min, v0 - step), true); }
+      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); place(Math.min(max, v0 + step), true); }
+    });
+
+    return box;
+  }
+
+  function renderGaugeMeter(q) {
+    var min = q.min != null ? Number(q.min) : 0;
+    var max = q.max != null ? Number(q.max) : 100;
+    var step = q.step != null ? Number(q.step) : 1;
+    var unit = q.unit != null ? String(q.unit) : "%";
+    var target = q.target != null ? Number(q.target) : null;
+    var minLabel = pipeText(q.min_label || (q.scale && q.scale.min_label) || "Low");
+    var midLabel = pipeText(q.mid_label || (q.scale && q.scale.mid_label) || "Moderate");
+    var maxLabel = pipeText(q.max_label || (q.scale && q.scale.max_label) || "High");
+
+    if (q.rows && q.rows.length) {
+      var wrap = el("div", "grid gauge-grid");
+      orderedList(q.rows || [], q, "rows").forEach(function (r, rIndex) {
+        var row = el("div", "grid-row gauge-row");
+        row.dataset.rowIndex = String(rIndex);
+        row.appendChild(itemLabelNode(r, "rlabel"));
+        var cells = el("div", "grid-cells");
+        cells.appendChild(renderGaugeComponent(min, max, step, unit, target, getAns(q.id, r.code), minLabel, midLabel, maxLabel, function (v) {
+          setAns(q.id, r.code, v);
+          hideErr(); ansChanged();
+        }));
+        row.appendChild(cells);
+        row.addEventListener("pointerdown", function () {
+          voiceField = rIndex;
+          voiceExplicitField = true;
+          highlightActiveVoiceRow(voiceField);
+        });
+        wrap.appendChild(row);
+      });
+      return wrap;
+    }
+
+    var singleWrap = el("div", "single-gauge-wrap");
+    singleWrap.appendChild(renderGaugeComponent(min, max, step, unit, target, getAns(q.id, "_"), minLabel, midLabel, maxLabel, function (v) {
+      setAns(q.id, "_", v);
+      hideErr(); ansChanged();
+    }));
+    return singleWrap;
   }
 
   // An emoji grid: the same shape as a rating grid, but each scale point is a face to tap.
@@ -2160,6 +2524,7 @@
       case "rating_grid": body = renderGrid(q, false); break;
       case "semantic_diff": body = renderGrid(q, true); break;
       case "rating_scale": body = renderRatingScale(q); break;
+      case "gauge_meter": body = renderGaugeMeter(q); break;
       case "sum_to_100": body = renderSum100(q); break;
       case "rank": body = renderRank(q); break;
       case "numeric": {

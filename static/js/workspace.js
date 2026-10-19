@@ -3,8 +3,10 @@
   'use strict';
   const $ = s => document.querySelector(s), main = $('#main');
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const plain = v => String(v || '').replace(/<[^>]+>/g, '').trim();
   const enc = encodeURIComponent;
   let projects = [], caps = {}, current = null, filter = 'all', query = '', sequence = 0, activeTab = 'overview';
+  let currentAnalysisParams = '&scope=real', latestAnalysisData = null;
   const tabs = {overview:'Overview',checks:'Design checks',review:'Review',versions:'Versions',validation:'Data Validation',analysis:'Analyze',coding:'Verbatims',settings:'Settings'};
   const editable = () => ['owner','editor'].includes(caps.role);
   const owner = () => caps.role === 'owner';
@@ -89,9 +91,183 @@
     return '<section class="panel"><h2>Research settings</h2><form id="settings-form"><label>Research brief<textarea name="research_brief" rows="4">'+esc(c.research_brief||'')+'</textarea></label><div class="form-grid"><label>Research contact<input name="research_contact" value="'+esc(c.research_contact||'')+'" placeholder="Research team contact details"></label><label>Completion target (monitoring only)<input name="quota_target" type="number" min="0" max="10000000" value="'+esc(c.quota_target||0)+'"></label></div><label>Privacy notice<textarea name="privacy_notice" rows="4">'+esc(c.privacy_notice||'')+'</textarea></label><label>Consent statement<textarea name="consent_statement" rows="2">'+esc(c.consent_statement||'I agree to take part in this research.')+'</textarea></label><label class="inline-check"><input name="require_consent" type="checkbox" '+(c.require_consent?'checked':'')+'> Require affirmative consent before answering</label><label class="inline-check"><input name="gamify" type="checkbox" '+(c.gamify!==false?'checked':'')+'> Enable optional gamification</label>'+notice('Research settings apply to the draft. A version-published survey changes only after review and republication.')+(editable()?'<button class="primary">Save settings</button>':'<p>Your role has read-only access.</p>')+'<p class="form-error" role="alert"></p></form></section>';
   }
   function analysisShell() {
-    const qs=(current.cfg.questions||[]).filter(q=>q.type==='single_select');
-    return '<section class="panel"><div class="panel-head"><h2>Evidence, with context</h2>'+(dataRole()?'<a id="report-download" href="'+endpoint('export','&scope=real')+'">Download report JSON ↓</a>':'')+'</div><form id="analysis-form" class="toolbar"><label>Data scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option><option value="all">All responses</option></select></label><label>Segment question<select name="segment"><option value="">No segment filter</option>'+selectOptions(qs)+'</select></label><label>Answer code<input name="value" placeholder="e.g. 1" aria-label="Segment answer code"></label><button>Apply filters</button></form><p>Advanced weighting, significance testing and model-based conjoint forecasts are not released. These views are descriptive only. Invalidated responses are excluded. Review all users and decisions in Data Validation.</p></section><div id="analysis-results" aria-live="polite">Loading results…</div><section class="panel"><h2>Cross-tabulate two questions</h2><form id="cross-form" class="toolbar"><label>Rows<select name="x" required>'+selectOptions(qs)+'</select></label><label>Columns<select name="y" required>'+selectOptions(qs)+'</select></label><button '+(qs.length?'':'disabled')+'>Build cross-tab</button></form><div id="cross-results" aria-live="polite"></div></section>';
+    const qs=(current.cfg.questions||[]).filter(q=>q.type==='single_select'||q.type==='multi_select');
+    return '<section class="panel">' +
+      '<div class="panel-head">' +
+        '<h2>Dynamic Research Dashboard</h2>' +
+        '<div class="export-toolbar">' +
+          '<span class="live-pill"><span class="live-dot"></span> Live survey data linked</span>' +
+          (dataRole() ? '<button type="button" class="btn primary" id="btn-dl-full-ppt">Download full report (PPT) ↓</button>' +
+                        '<button type="button" class="btn" id="btn-dl-custom-ppt">Customize PPT download ⚙ ↓</button>' +
+                        '<a id="report-download" class="btn ghost" href="'+endpoint('export','&scope=real')+'">Download JSON ↓</a>' : '') +
+        '</div>' +
+      '</div>' +
+      '<form id="analysis-form" class="toolbar">' +
+        '<label>Data scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option><option value="all">All responses</option></select></label>' +
+        '<label>Define data cut<select name="cut_q"><option value="">No data cut (Total)</option>'+selectOptions(qs)+'</select></label>' +
+        '<label class="inline-check" style="align-self:center;margin-top:14px"><input type="checkbox" name="show_sig" checked> Statistical significance</label>' +
+        '<label>Confidence level<select name="alpha"><option value="0.05">95% confidence (p &lt; 0.05)</option><option value="0.01">99% confidence (p &lt; 0.01)</option><option value="0.10">90% confidence (p &lt; 0.10)</option></select></label>' +
+        '<button class="primary">Apply data cut &amp; filters</button>' +
+        '<button type="button" class="btn ghost" id="btn-refresh-analysis">↻ Live refresh</button>' +
+      '</form>' +
+      '<p class="section-kicker">Interactive visualizations, dynamic legends, data labels, and statistical significance testing (two-proportion z-tests and Welch’s t-tests). Download full or customized question decks in editable PowerPoint format.</p>' +
+    '</section>' +
+    '<div id="analysis-results" aria-live="polite">Loading results…</div>' +
+    '<section class="panel"><h2>Cross-tabulate two questions</h2><form id="cross-form" class="toolbar"><label>Rows<select name="x" required>'+selectOptions(qs)+'</select></label><label>Columns<select name="y" required>'+selectOptions(qs)+'</select></label><button '+(qs.length?'':'disabled')+'>Build cross-tab</button></form><div id="cross-results" aria-live="polite"></div></section>';
   }
+
+  function renderQuestionVisual(q, isCut, cut) {
+    var t = q.type;
+    // 1. Single Select & Multi Select
+    if ((t === 'single_select' || t === 'multi_select') && q.options && q.options.length) {
+      var html = '<div class="chart-box">';
+      html += '<div class="chart-title">Response Distribution (%)</div>';
+      if (isCut) {
+        html += '<div class="chart-legend">' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span><b>' + esc(cut.segA_label) + '</b> (n=' + cut.segA_n + ')</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span><b>' + esc(cut.segB_label) + '</b> (n=' + cut.segB_n + ')</span>' +
+          '<span class="legend-item"><span class="sig-star">★</span> Statistically significant difference (p &lt; ' + (cut.alpha || 0.05) + ')</span>' +
+        '</div>';
+        html += q.options.map(function (o) {
+          var sig = o.sig_test && o.sig_test.significant;
+          var sigStar = sig ? '<span class="sig-star" title="Significant difference: p=' + o.sig_test.p_value + '">★</span><span class="sig-badge">Sig (p=' + o.sig_test.p_value + ')</span>' : '';
+          var pA = o.segA_pct || 0, pB = o.segB_pct || 0;
+          return '<div class="chart-bar-row">' +
+            '<span class="chart-bar-label" title="' + esc(o.label) + '">' + esc(o.label) + '</span>' +
+            '<div class="chart-bar-track-wrap">' +
+              '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + Math.max(0, Math.min(100, pA)) + '%"></div></div>' +
+              '<div class="chart-bar-track"><div class="chart-bar-fill seg-b" style="width:' + Math.max(0, Math.min(100, pB)) + '%"></div></div>' +
+            '</div>' +
+            '<div class="chart-bar-val"><span><b>' + pA + '%</b> (' + (o.segA_count || 0) + ')</span> / <span style="color:#b45309"><b>' + pB + '%</b> (' + (o.segB_count || 0) + ')</span>' + sigStar + '</div>' +
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div class="chart-legend"><span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span>Share of total respondents (%)</span></div>';
+        html += q.options.map(function (o) {
+          var pct = o.pct || 0;
+          return '<div class="chart-bar-row">' +
+            '<span class="chart-bar-label" title="' + esc(o.label) + '">' + esc(o.label) + '</span>' +
+            '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + Math.max(0, Math.min(100, pct)) + '%"></div></div>' +
+            '<div class="chart-bar-val"><b>' + pct + '%</b> <small style="color:#64748b">(n=' + o.count + ')</small></div>' +
+          '</div>';
+        }).join('');
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // 2. Rating Scale / Grids / Multi-row Gauge Meter
+    if ((t === 'rating_scale' || t === 'rating_grid' || t === 'semantic_diff' || t === 'numeric_matrix' || (t === 'gauge_meter' && q.rows)) && q.rows && q.rows.length) {
+      var sMin = q.scale_min != null ? q.scale_min : 1;
+      var sMax = q.scale_max != null ? q.scale_max : 5;
+      var sRange = (sMax - sMin) || 1;
+      var html = '<div class="chart-box">';
+      html += '<div class="chart-title">Mean Rating Score Comparison (Scale ' + sMin + ' - ' + sMax + ')</div>';
+      if (isCut) {
+        html += '<div class="chart-legend">' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span><b>' + esc(cut.segA_label) + '</b> Mean</span>' +
+          '<span class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span><b>' + esc(cut.segB_label) + '</b> Mean</span>' +
+          '<span class="legend-item"><span class="sig-star">★</span> Welch’s t-test p &lt; ' + (cut.alpha || 0.05) + '</span>' +
+        '</div>';
+        html += q.rows.map(function (r) {
+          var mA = r.segA_mean != null ? r.segA_mean : 0;
+          var mB = r.segB_mean != null ? r.segB_mean : 0;
+          var pctA = Math.max(0, Math.min(100, ((mA - sMin) / sRange) * 100));
+          var pctB = Math.max(0, Math.min(100, ((mB - sMin) / sRange) * 100));
+          var sig = r.sig_test && r.sig_test.significant;
+          var sigStar = sig ? '<span class="sig-star">★</span><span class="sig-badge">Sig (p=' + r.sig_test.p_value + ')</span>' : '';
+          return '<div class="chart-bar-row">' +
+            '<span class="chart-bar-label" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
+            '<div class="chart-bar-track-wrap">' +
+              '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pctA + '%"></div></div>' +
+              '<div class="chart-bar-track"><div class="chart-bar-fill seg-b" style="width:' + pctB + '%"></div></div>' +
+            '</div>' +
+            '<div class="chart-bar-val"><span><b>' + (r.segA_mean != null ? r.segA_mean : '—') + '</b></span> / <span style="color:#b45309"><b>' + (r.segB_mean != null ? r.segB_mean : '—') + '</b></span>' + sigStar + '</div>' +
+          '</div>';
+        }).join('');
+      } else {
+        html += '<div class="chart-legend"><span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span>Mean score on ' + sMin + ' to ' + sMax + ' scale</span>' +
+          (q.min_label ? '<span class="legend-item">Low: <i>' + esc(q.min_label) + '</i></span>' : '') +
+          (q.max_label ? '<span class="legend-item">High: <i>' + esc(q.max_label) + '</i></span>' : '') +
+        '</div>';
+        html += q.rows.map(function (r) {
+          var m = r.mean != null ? r.mean : 0;
+          var pct = Math.max(0, Math.min(100, ((m - sMin) / sRange) * 100));
+          return '<div class="chart-bar-row">' +
+            '<span class="chart-bar-label" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
+            '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct + '%"></div></div>' +
+            '<div class="chart-bar-val"><b>' + (r.mean != null ? r.mean : '—') + '</b> <small style="color:#64748b">(n=' + r.base + ')</small></div>' +
+          '</div>';
+        }).join('');
+      }
+      html += '</div>';
+      return html;
+    }
+
+    // 3. Single Gauge Meter Visual
+    if (t === 'gauge_meter' && !q.rows) {
+      var m = q.mean != null ? q.mean : (q.min || 0);
+      var gMin = q.min != null ? q.min : 0;
+      var gMax = q.max != null ? q.max : 100;
+      var frac = gMax === gMin ? 0.5 : Math.max(0, Math.min(1, (m - gMin) / (gMax - gMin)));
+      var angle = 180 + frac * 180;
+      var rot = angle - 90;
+      var zones = q.zones || [];
+
+      var html = '<div class="chart-box">';
+      html += '<div class="chart-title">Gauge Meter Performance Dashboard</div>';
+      html += '<div class="dashboard-gauge-card">' +
+        '<svg class="dash-gauge-svg" viewBox="0 0 240 140">' +
+          '<path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>' +
+          '<path d="M 27 120 A 95 95 0 0 1 103 36" fill="none" stroke="#ef4444" stroke-width="14" opacity="0.85"/>' +
+          '<path d="M 106 34 A 95 95 0 0 1 154 39" fill="none" stroke="#f59e0b" stroke-width="14" opacity="0.85"/>' +
+          '<path d="M 157 41 A 95 95 0 0 1 213 120" fill="none" stroke="#10b981" stroke-width="14" opacity="0.85"/>' +
+          '<g style="transform-origin:120px 120px;transform:rotate(' + rot + 'deg);transition:transform 0.4s ease">' +
+            '<polygon points="116,120 124,120 120,38" fill="#0f2b48"/>' +
+            '<circle cx="120" cy="120" r="9" fill="#0f2b48"/>' +
+            '<circle cx="120" cy="120" r="3" fill="#ffffff"/>' +
+          '</g>' +
+        '</svg>' +
+        '<div class="dash-gauge-readout"><strong class="dash-gauge-val">' + (q.mean != null ? q.mean : '—') + '</strong><span class="dash-gauge-unit">' + esc(q.unit || '%') + '</span></div>' +
+        (q.target != null ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">Target benchmark: <b>' + q.target + esc(q.unit || '%') + '</b></div>' : '') +
+        '<div class="dash-zones-strip">' +
+          zones.map(function(z) {
+            return '<span class="dash-zone-tag ' + (z.cls || 'low') + '"><b>' + esc(z.label) + ':</b> ' + z.pct + '% (n=' + z.count + ')</span>';
+          }).join('') +
+        '</div>' +
+      '</div></div>';
+      return html;
+    }
+
+    // 4. NPS Visual
+    if (t === 'nps') {
+      return '<div class="chart-box">' +
+        '<div class="chart-title">NPS Distribution</div>' +
+        '<p>Mean recommendation rating: <strong>' + (q.mean != null ? q.mean : '—') + '</strong> · Median: ' + (q.median != null ? q.median : '—') + '</p>' +
+      '</div>';
+    }
+
+    // 5. Heatmap Visual
+    if (t === 'heatmap' && q.heatmap) {
+      return heatmapView(q.heatmap);
+    }
+
+    // 6. Numeric / Slider
+    if ((t === 'numeric' || t === 'slider' || t === 'delta') && q.mean !== null) {
+      return '<div class="chart-box">' +
+        '<div class="chart-title">Statistical Summary</div>' +
+        '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin:8px 0">' +
+          '<div><b>Mean:</b> ' + q.mean + '</div>' +
+          '<div><b>Median:</b> ' + (q.median != null ? q.median : '—') + '</div>' +
+          (q.std_dev != null ? '<div><b>Std Dev:</b> ' + q.std_dev + '</div>' : '') +
+          (q.min_val != null && q.max_val != null ? '<div><b>Range:</b> ' + q.min_val + ' to ' + q.max_val + '</div>' : '') +
+        '</div>' +
+      '</div>';
+    }
+
+    return '<p>Detailed response data available via PowerPoint and raw exports.</p>';
+  }
+
   function heatmapView(h) {
     return '<p>'+esc(h.note)+'</p><div class="table-scroll" tabindex="0" role="region" aria-label="Heatmap results"><table class="results-heatmap"><thead><tr><th scope="col">Row / column</th>'+h.cols.map(c=>'<th scope="col">'+esc(c.label)+'</th>').join('')+'</tr></thead><tbody>'+h.rows.map(r=>'<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(c=>{
       const cell=h.cells.find(x=>x.row_code===r.code&&x.col_code===c.code), mean=cell?cell.mean:null;
@@ -99,15 +275,58 @@
       return '<td style="background:'+color+';color:#153d4c"><strong>'+(mean==null?'—':esc(mean))+'</strong><small>n = '+(cell?cell.base:0)+'</small></td>';
     }).join('')+'</tr>').join('')+'</tbody></table></div>';
   }
+
   async function loadAnalysis(params='&scope=real') {
-    const slug=current.slug, node=$('#analysis-results');
+    currentAnalysisParams = params;
+    const slug = current.slug, node = $('#analysis-results');
     try {
-      const d=await api(endpoint('analysis',params)); if(!node.isConnected||current.slug!==slug)return;
-      node.innerHTML='<div class="metric-grid">'+metric('Started',d.started,d.scope+' scope')+metric('Completed',d.complete,d.completion_pct+'% of starts')+metric('Median duration',d.median_minutes==null?'—':d.median_minutes+' min','Completed respondents')+metric('Screened out',d.screened,'Not included in answer bases')+'</div>'+notice(d.note)+
-        (d.quota_target?notice('Completion target: '+d.complete+' / '+d.quota_target+'. Monitoring only; this does not enforce a quota.'):'')+
-        (d.questions.length?d.questions.map(q=>'<section class="panel result-card"><h2>'+esc(q.id+' · '+q.title)+'</h2><div class="result-meta">Answered base: '+q.base+' · Missing/not shown: '+q.missing_or_not_shown+' '+(q.small_base?'<span class="pill small-base">Small base — interpret cautiously</span>':'')+'</div>'+(q.mean!==null?'<p>Mean <strong>'+q.mean+'</strong> · Median '+q.median+'</p>':'')+q.options.map(o=>'<div class="bar-row"><span>'+esc(o.label)+'</span><div class="bar-track" aria-hidden="true"><span style="width:'+Math.max(0,Math.min(100,o.pct||0))+'%"></span></div><b>'+o.count+' · '+(o.pct==null?'—':o.pct+'%')+'</b></div>').join('')+(q.heatmap?heatmapView(q.heatmap):'')+(q.rows?'<div class="table-scroll"><table><thead><tr><th scope="col">Row</th><th scope="col">Answered base</th><th scope="col">Mean (numeric)</th></tr></thead><tbody>'+q.rows.map(r=>'<tr><td>'+esc(r.label)+'</td><td>'+r.base+'</td><td>'+esc(r.mean==null?'—':r.mean)+'</td></tr>').join('')+'</tbody></table></div>':'')+(!q.options.length&&q.mean===null&&!q.rows&&!q.heatmap?'<p>No chart for this answer type. Use the response export or Verbatims tab.</p>':'')+'</section>').join(''):empty('No questions yet','Add questions in Studio.'));
-      const download=$('#report-download');if(download)download.href=endpoint('export',params);
-    }catch(e){if(node.isConnected)node.innerHTML=notice(e.message,'danger');}
+      const d = await api(endpoint('analysis', params));
+      if (!node.isConnected || current.slug !== slug) return;
+      latestAnalysisData = d;
+      const isCut = d.data_cut && d.data_cut.active;
+      const cut = d.data_cut || {};
+
+      let html = '<div class="metric-grid">' +
+        metric('Started', d.started, d.scope + ' scope') +
+        metric('Completed', d.complete, d.completion_pct + '% of starts') +
+        metric('Median duration', d.median_minutes == null ? '—' : d.median_minutes + ' min', 'Completed respondents') +
+        metric('Screened out', d.screened, 'Not included in answer bases') +
+      '</div>' + notice(d.note);
+
+      if (isCut) {
+        html += '<div class="notice" style="background:#f0f9ff;border-color:#bae6fd;color:#0369a1">' +
+          '<strong>Data Cut Active:</strong> Comparing <b>' + esc(cut.segA_label) + '</b> (n=' + cut.segA_n + ') vs <b>' +
+          esc(cut.segB_label) + '</b> (n=' + cut.segB_n + ') with statistical significance tested at <b>' + cut.conf_pct + '% confidence</b>. Significant differences flagged with ★.' +
+        '</div>';
+      }
+
+      if (d.quota_target) {
+        html += notice('Completion target: ' + d.complete + ' / ' + d.quota_target + '. Monitoring only; this does not enforce a quota.');
+      }
+
+      if (d.questions && d.questions.length) {
+        html += d.questions.map(function (q) {
+          return '<section class="panel result-card" id="qcard-' + esc(q.id) + '">' +
+            '<h2>' + esc(q.id + ' · ' + q.title) + '</h2>' +
+            '<div class="result-meta">Answered base: ' + q.base + ' · Missing/not shown: ' + q.missing_or_not_shown + ' ' + (q.small_base ? '<span class="pill small-base">Small base — interpret cautiously</span>' : '') + '</div>' +
+            '<div class="insight-banner"><span class="insight-badge">✦ KEY INSIGHT</span><p class="insight-text">' + esc(q.insight || ('Answered base: ' + q.base)) + '</p></div>' +
+            renderQuestionVisual(q, isCut, cut) +
+            '<div class="card-footer-actions">' +
+              '<span>Format: <b>' + esc((q.type || '').replace('_', ' ')) + '</b></span>' +
+              (dataRole() ? '<button type="button" class="btn sm ghost btn-dl-single-ppt" data-qid="' + esc(q.id) + '">Download slide (PPT) ↓</button>' : '') +
+            '</div>' +
+          '</section>';
+        }).join('');
+      } else {
+        html += empty('No questions yet', 'Add questions in Studio.');
+      }
+
+      node.innerHTML = html;
+      const download = $('#report-download');
+      if (download) download.href = endpoint('export', params);
+    } catch (e) {
+      if (node.isConnected) node.innerHTML = notice(e.message, 'danger');
+    }
   }
   function codingShell() { return '<section class="panel"><h2>Listen to the words behind the numbers.</h2><form id="coding-filter" class="toolbar"><label>Scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option></select></label><label>Suggested code keywords<input name="terms" placeholder="price, quality, access"></label><button>Find matches</button></form></section><div id="coding-results" aria-live="polite">Loading verbatims…</div>'; }
   async function loadCoding(params='&scope=real') {
@@ -148,6 +367,49 @@
     if(b.dataset.review){b.disabled=true;try{await api('/api/workspace/review',{slug:current.slug,state:b.dataset.review,digest:current.digest});toast('Review recorded.');await route();}catch(x){toast(x.message);b.disabled=false;}return;}
     if(b.dataset.revision){b.disabled=true;try{const r=await api(endpoint('revision','&revision='+enc(b.dataset.revision)));$('#revision-content').innerHTML=notice('Fields different from the current draft: '+(r.changed_fields.join(', ')||'none'))+'<details><summary>View saved configuration</summary><pre>'+esc(JSON.stringify(r.cfg,null,2))+'</pre></details>'+(owner()?'<button class="danger section-spaced" data-restore="'+r.revision+'">Restore this version as a draft</button>':'');open('revision-dialog');}catch(x){toast(x.message);}finally{b.disabled=false;}return;}
     if(b.dataset.restore){if(!confirm('Restore this saved draft? Your current draft is retained in history.'))return;b.disabled=true;try{await api('/api/workspace/restore',{slug:current.slug,revision:Number(b.dataset.restore)});close(b);toast('Draft restored. Published version unchanged.');await route();}catch(x){toast(x.message);b.disabled=false;}}
+    if (b.id === 'btn-dl-full-ppt') {
+      window.location.href = endpoint('export_ppt', currentAnalysisParams);
+      return;
+    }
+    if (b.id === 'btn-dl-custom-ppt') {
+      const qs = (current.cfg.questions || []);
+      const listNode = $('#ppt-question-list');
+      if (listNode) {
+        listNode.innerHTML = qs.map(q => {
+          return '<div class="ppt-q-item"><label><input type="checkbox" name="ppt_q" value="' + esc(q.id) + '" checked> <b>' + esc(q.id) + '</b> - ' + esc(plain(q.stem_html || q.stem || q.id).slice(0, 75)) + '</label></div>';
+        }).join('') || '<p>No questions found in this study.</p>';
+      }
+      open('ppt-dialog');
+      return;
+    }
+    if (b.id === 'ppt-select-all') {
+      const boxes = document.querySelectorAll('#ppt-question-list input[name="ppt_q"]');
+      boxes.forEach(cb => { cb.checked = true; });
+      return;
+    }
+    if (b.id === 'ppt-deselect-all') {
+      const boxes = document.querySelectorAll('#ppt-question-list input[name="ppt_q"]');
+      boxes.forEach(cb => { cb.checked = false; });
+      return;
+    }
+    if (b.id === 'ppt-start-download') {
+      const checked = Array.from(document.querySelectorAll('#ppt-question-list input[name="ppt_q"]:checked')).map(cb => cb.value);
+      if (!checked.length) { alert('Please select at least one question to include in the PowerPoint deck.'); return; }
+      close(b);
+      const qsParam = '&questions=' + enc(checked.join(','));
+      window.location.href = endpoint('export_ppt', currentAnalysisParams + qsParam);
+      return;
+    }
+    if (b.classList.contains('btn-dl-single-ppt')) {
+      const qid = b.dataset.qid;
+      window.location.href = endpoint('export_ppt', currentAnalysisParams + '&q=' + enc(qid));
+      return;
+    }
+    if (b.id === 'btn-refresh-analysis') {
+      await loadAnalysis(currentAnalysisParams);
+      toast('Live analysis refreshed from survey database.');
+      return;
+    }
   });
   document.addEventListener('input',e=>{if(e.target.id==='project-search'){query=e.target.value;drawCards();}});
   $('#model-choice').addEventListener('change',e=>{$('#model-consent').hidden=!e.target.checked;});

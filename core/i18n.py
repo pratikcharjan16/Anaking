@@ -142,9 +142,9 @@ def extract_strings(cfg: dict) -> list[dict]:
         _put(out, f"q:{qid}:na_label", (q.get("na") or {}).get("label"), "axis", qid)
         _put(out, f"q:{qid}:comment_label", (q.get("comments") or {}).get("label"), "question", qid)
         sc_ = q.get("scale") or {}
-        _put(out, f"q:{qid}:min_label", sc_.get("min_label"), "scale", qid)
-        _put(out, f"q:{qid}:mid_label", sc_.get("mid_label"), "scale", qid)
-        _put(out, f"q:{qid}:max_label", sc_.get("max_label"), "scale", qid)
+        _put(out, f"q:{qid}:min_label", sc_.get("min_label") or q.get("min_label"), "scale", qid)
+        _put(out, f"q:{qid}:mid_label", sc_.get("mid_label") or q.get("mid_label"), "scale", qid)
+        _put(out, f"q:{qid}:max_label", sc_.get("max_label") or q.get("max_label"), "scale", qid)
         for pt in sc_.get("points", []) or []:
             _put(out, f"q:{qid}:pt:{pt.get('v')}", pt.get("label"), "scale", qid)
         for i, fl in enumerate(sc_.get("face_labels", []) or []):
