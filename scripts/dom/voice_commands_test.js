@@ -33,6 +33,13 @@ function parserChecks(){
   check("parser: 'back' and 'clear'", run("back")==="back" && run("clear")==="clear");
   check("parser: out-of-range number is unknown", B.parseCommand("option 9",ctx)[0].act==="unknown");
   check("parser: gibberish is unknown", B.parseCommand("blorp",ctx)[0].act==="unknown");
+  check("numeric negatives and decimals survive parsing", B.parseCommand("-12.5", {inputType:"number"})[0].value === -12.5);
+  check("spoken compound numbers", B.parseNumber("one hundred and twenty five") === 125);
+  check("spoken decimals", B.parseNumber("minus three point five") === -3.5);
+  check("invalid numbers do not become zero", B.parseNumber("banana") === null);
+  check("text preserves punctuation", B.parseCommand("Hello, world!", {inputType:"text"})[0].value === "Hello, world!");
+  check("dictate escapes navigation words", B.parseCommand("dictate next", {inputType:"text"})[0].value === "next");
+  check("control command preserves numeric value", B.parseCommand("control two minus 3.5", {})[0].value === "minus 3.5");
   check("parser: unsupported flag when no SpeechRecognition", B.supported()===false);
 }
 
@@ -188,6 +195,48 @@ async function openSurvey(slug,withVoice,seed){
   const R3=await openSurvey(slugBack,true,storageOf(R2));                // came back after answering
   check("a returning visitor mid-survey resumes at the next question, not the welcome",
     !R3.$("#start-btn") && /therapies/i.test(R3.$("#app").textContent), R3.$("#app").textContent.slice(0,80));
+
+  // Numeric, multi-field, slider, date and text answers must use the same handlers as typing.
+  const cfgVoice = {sections:[{id:"S",title:"Voice fields"}], questions:[
+    {id:"N",section:"S",type:"numeric",stem:"Number",min:-50,max:200,required:true},
+    {id:"M",section:"S",type:"numeric_matrix",stem:"Matrix",rows:[{code:"a",label:"A"},{code:"b",label:"B"}],required:true},
+    {id:"G",section:"S",type:"rating_scale",stem:"Rating",rows:[{code:"a",label:"Rate A"}],scale:{min:1,max:5},required:true},
+    {id:"R",section:"S",type:"rank",stem:"Ranking",rows:[{code:"a",label:"A"},{code:"b",label:"B"}]},
+    {id:"D",section:"S",type:"date",stem:"Date",required:true},
+    {id:"SL",section:"S",type:"slider",stem:"Slider",min:0,max:100,required:true},
+    {id:"T",section:"S",type:"open_text",stem:"Text",required:true}
+  ],qc:{min_seconds:0}};
+  const vf = JSON.parse((await req("POST","/api/studio/save",JSON.stringify({title:"Voice fields",cfg:cfgVoice}))).body).slug;
+  await req("POST","/api/studio/status",JSON.stringify({slug:vf,status:"live"}));
+  const V = await openSurvey(vf,true);
+  V.$('input[name="voice-pref"][value="voice"]').click(); V.$("#start-btn").click(); await sleep(500);
+  say("forty two");
+  check("numeric voice writes the input", V.$('#app input[type="number"]').value === "42");
+  say("three hundred");
+  check("out of range voice keeps the previous answer", V.$('#app input[type="number"]').value === "42");
+  say("next"); await sleep(150);
+  check("numeric answer passes validation", /Matrix/.test(V.$("#app").textContent));
+  say("ten"); say("next field"); say("twenty");
+  check("voice fills every numeric matrix field", V.$$('#app input[type="number"]').map(n=>n.value).join(',') === "10,20");
+  say("next"); await sleep(150);
+  const badge = V.$('#app [role="slider"] .voice-control-tag');
+  if (!badge) throw new Error("Rating control has no voice badge");
+  say("control " + badge.textContent + " 4"); say("next"); await sleep(150);
+  check("voice badge answers a rating and passes validation", !!V.$('#app .rank-list'));
+  const down = V.$('#app .rank-item .arrows button:last-child');
+  say("control " + down.querySelector('.voice-control-tag').textContent);
+  check("voice badge reorders ranking", V.$('#app .rank-item .rank-label').textContent === "B");
+  say("next"); await sleep(150); say("2026-10-19");
+  check("date voice keeps ISO separators", V.$('#app input[type="date"]').value === "2026-10-19");
+  say("next"); await sleep(150); say("seventy five");
+  check("slider voice sets the value", V.$('#app input[type="range"]').value === "75");
+  say("next"); await sleep(150); say("dictate next");
+  check("text voice accepts reserved words via dictate", V.$('#app textarea').value === "next");
+  say("I prefer this answer.");
+  check("voice text correction replaces answer", V.$('#app textarea').value === "I prefer this answer.");
+  say("clear");
+  check("voice clear resets text", V.$('#app textarea').value === "");
+  await req("POST","/api/studio/delete",JSON.stringify({slug:vf}));
 
   // ---------- gamification switch ----------
   const slugFlat=await makeStudy("Voice Test Flat",false);

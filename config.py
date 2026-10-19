@@ -13,6 +13,14 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 
 
 class Config:
+    PRODUCTION = os.environ.get("ANAKING_ENV") == "production"
+    WORKSPACE_ENABLED = os.environ.get("WORKSPACE_ENABLED", "1") == "1"
+    STAFF_AUTH = os.environ.get("STAFF_AUTH", "1" if PRODUCTION else "0") == "1"
+    SESSION_COOKIE_HTTPONLY = True
+    SESSION_COOKIE_SAMESITE = "Lax"
+    SESSION_COOKIE_SECURE = PRODUCTION
+    LOCAL_AI_URL = os.environ.get("LOCAL_AI_URL", "")
+    LOCAL_AI_MODEL = os.environ.get("LOCAL_AI_MODEL", "")
     SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
 
     # SQLite database holding studies, respondents and answers.

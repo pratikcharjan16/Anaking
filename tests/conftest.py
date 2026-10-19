@@ -12,6 +12,7 @@ from app import create_app  # noqa: E402
 def app(tmp_path):
     return create_app({
         "TESTING": True,
+        "WORKSPACE_ENABLED": False,  # legacy compatibility; workspace tests explicitly enable it
         "DB_PATH": str(tmp_path / "test.db"),
         "VOICE_DIR": str(tmp_path / "voice"),
         "NARRATION_DIR": str(tmp_path / "narration"),

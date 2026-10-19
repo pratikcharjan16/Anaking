@@ -397,7 +397,7 @@
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
       '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button>' +
       '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
-      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with an AI guide</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
+      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with guided templates</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
@@ -640,7 +640,7 @@
           (t[2] !== "" ? '<span class="st-count">' + t[2] + "</span>" : "") + "</button>";
       }).join("") + "</nav>" +
       '<div id="st-panel" class="st-panel-host"></div>' +
-      '<button class="st-ai-fab" data-act="ai-guide"><span>✦</span><b>Ask research agent</b><small>Guidance throughout your build</small></button>';
+      '<button class="st-ai-fab" data-act="ai-guide"><span>✦</span><b>Research guidance</b><small>Guidance throughout your build</small></button>';
     root.innerHTML = html;
     renderSaveState();
     renderTab();
@@ -983,9 +983,10 @@
       });
   }
   function saveTranslations() {
+    if (translationBusy) { toast("Wait for translation to finish before saving."); return; }
     var out2 = {};
     $$("#st-modal [data-tr], #lang-tr-host [data-tr]").forEach(function (n) { out2[n.getAttribute("data-tr")] = n.value; });
-    api("/api/studio/translate", { slug: cur.slug, lang: langPanel.lang, strings: out2 }).then(function (r) {
+    api("/api/studio/translate", Object.assign(translationEdits(), {strings: out2})).then(function (r) {
       if (r.error) { toast("Save failed: " + r.error); return; }
       toast("Saved - " + r.coverage.translated + " of " + r.coverage.total + " respondent strings translated");
       syncTranslationsFromServer(function () {
@@ -999,31 +1000,62 @@
       });
     });
   }
+  var translationBusy = false;
+  function translationEdits() {
+    var strings = {};
+    $$("#lang-tr-host [data-tr]").forEach(function (n) { strings[n.dataset.tr] = n.value; });
+    return {slug: cur.slug, lang: langPanel.lang, strings: strings,
+      excluded: (langPanel.data && langPanel.data.excluded) || []};
+  }
   function aiTranslate(b) {
-    var lg = b.getAttribute("data-lang") || langPanel.lang;
-    if (!lg) return;
-    var aiSlug = cur.slug;
+    if (translationBusy) return;
+    // Always edit the child, never write a table on the parent accidentally.
     if (!cur.cfg.parent) {
-      var m = ((langPanel.children || []).filter(function (x) { return x.language === lg; })[0] || {});
-      aiSlug = m.slug || cur.slug;
+      var child = (langPanel.children || []).filter(function (x) { return x.language === b.dataset.lang; })[0];
+      if (child) openEditor(child.slug);
+      else toast("Create a child survey first.");
+      return;
     }
-    b.disabled = true; b.textContent = "Translating\u2026";
+    translationBusy = true;
+    b.disabled = true;
+    $$("#lang-tr-host input, #lang-tr-host textarea").forEach(function (n) { n.disabled = true; });
+    var slug = cur.slug, lg = langPanel.lang, result = document.getElementById("translation-progress");
+    var completed = 0, success = 0, failures = [];
+    function report(total, finished) {
+      if (!result) return;
+      result.innerHTML = '<progress max="' + Math.max(total, 1) + '" value="' + completed + '"></progress><p>' +
+        (finished ? "Finished" : "Translating") + ': ' + completed + '/' + total + ' processed · ' + success +
+        ' succeeded · ' + failures.length + ' failed</p>' + failures.map(function (x) { return '<div>' + esc(x) + '</div>'; }).join("");
+    }
     flushSave(function () {
-      api("/api/studio/autotranslate", { slug: aiSlug, lang: lg }).then(function (r) {
-        if (r.error) { toast("AI translate failed: " + r.error); refreshLangViews(); return; }
-        var nf = Object.keys(r.failed || {}).length;
-        if (!r.translated && nf) toast("Machine translation could not be reached right now - " + nf + " string(s) left for manual translation below.");
-        else toast("AI translated " + r.translated + " string(s)" + (nf ? " \u00B7 " + nf + " could not be translated - finish them by hand" : ""));
-        syncTranslationsFromServer(function () {
-          if (cur.cfg.parent) {
-            api("/api/studio/strings?study=" + encodeURIComponent(cur.slug)).then(function (d) {
-              langPanel.data = d;
-              var host = document.getElementById("lang-tr-host");
-              if (host) host.innerHTML = trTableHtml();
-            });
-          } else refreshLangViews();
-        });
-      });
+      api("/api/studio/translate", translationEdits()).then(function (saved) {
+        if (saved.error) throw new Error(saved.error);
+        return api("/api/studio/strings?study=" + encodeURIComponent(slug));
+      }).then(async function (d) {
+        var keys = (d.strings || []).filter(function (x) {
+          return (d.excluded || []).indexOf(x.key) < 0 && !(d.translations[x.key] || "").trim();
+        }).map(function (x) { return x.key; });
+        report(keys.length, false);
+        for (var i = 0; i < keys.length; i++) {
+          try {
+            var r = await api("/api/studio/autotranslate", {slug: slug, lang: lg, keys: [keys[i]]});
+            if (r.error) throw new Error(r.error);
+            success += r.translated || 0;
+            Object.keys(r.failed || {}).forEach(function (k) { failures.push(k + ": " + r.failed[k]); });
+          } catch (e) { failures.push(keys[i] + ": " + e.message); }
+          completed++; report(keys.length, false);
+        }
+        report(keys.length, true);
+        if (cur && cur.slug === slug) {
+          var fresh = await api("/api/studio/study?slug=" + encodeURIComponent(slug));
+          cur.cfg = fresh.cfg;
+          langPanel.data = await api("/api/studio/strings?study=" + encodeURIComponent(slug));
+          var host = document.getElementById("lang-tr-host");
+          if (host) host.innerHTML = trTableHtml();
+        }
+      }).catch(function (e) {
+        if (result) result.textContent = "Translation failed: " + e.message;
+      }).finally(function () { translationBusy = false; b.disabled = false; $$("#lang-tr-host input, #lang-tr-host textarea").forEach(function (n) { n.disabled = false; }); });
     });
   }
   function syncTranslationsFromServer(then) {
@@ -1052,15 +1084,22 @@
     var rows = "";
     (d.strings || []).forEach(function (x) {
       var tv = tbl[x.key] || "";
+      var enabled = (d.excluded || []).indexOf(x.key) < 0;
       if (langPanel.onlyMissing && tv.trim()) return;
       if (langPanel.q && (x.text + " " + x.key + " " + tv).toLowerCase().indexOf(langPanel.q.toLowerCase()) < 0) return;
-      rows += '<div class="st-tr-row"><span class="st-tr-ctx" title="' + esc(x.key) + '">' + contextLabel(x) + "</span>" +
+      rows += '<div class="st-tr-row"><span class="st-tr-ctx" title="' + esc(x.key) + '">' + '<label><input type="checkbox" data-tr-enable="' + esc(x.key) + '" ' + (enabled ? 'checked' : '') + '> Translate</label> ' + contextLabel(x) + "</span>" +
         '<span class="st-tr-src">' + esc(x.text) + "</span>" +
         '<textarea data-tr="' + esc(x.key) + '" rows="2" placeholder="Translation\u2026">' + esc(tv) + "</textarea></div>";
     });
     if (!rows) rows = '<div class="st-tr-row"><span></span><span class="st-meta">No strings match.</span><span></span></div>';
     return '<div class="st-tr-row st-tr-head"><span>Context</span><span>' + esc(d.default_language) + " (parent \u00B7 source)</span><span>" + esc(langPanel.lang) + "</span></div>" + rows;
   }
+  document.addEventListener("change", function (e) {
+    if (!e.target.matches("[data-tr-enable]")) return;
+    var d = langPanel.data, key = e.target.dataset.trEnable;
+    d.excluded = (d.excluded || []).filter(function (k) { return k !== key; });
+    if (!e.target.checked) d.excluded.push(key);
+  });
   function childCoverage(child) {
     var d = langPanel.data, tbl = (child.translations || {})[child.language] || {};
     var total = (d.strings || []).length;
@@ -1172,9 +1211,9 @@
       '<input id="lang-search" placeholder="Search text\u2026" value="">' +
       '<label class="st-inline"><input type="checkbox" id="lang-missing"> missing only</label>' +
       '<span class="st-lang-grow"></span>' +
-      '<button class="st-btn sm" data-act="lang-ai">AI-translate missing</button>' +
+      '<button class="st-btn sm" data-act="lang-ai">Translate selected missing</button>' +
       '<button class="st-btn sm on" data-act="lang-save">Save translations</button></div>' +
-      '<div class="st-tr-table" id="lang-tr-host"><div class="st-meta">Loading strings\u2026</div></div></div>' +
+      '<div id="translation-progress" role="status" aria-live="polite"></div><p>Select which question text, options and labels to translate. Unchecked items use the original text. Save to apply; existing translations are preserved.</p><div class="st-tr-table" id="lang-tr-host"><div class="st-meta">Loading strings\u2026</div></div></div>' +
       "</div></div></div>";
     renderSaveState();
     api("/api/studio/strings?study=" + encodeURIComponent(cur.slug)).then(function (d) {
@@ -1748,7 +1787,7 @@
   }
   function questionCheckHtml() {
     var issues = questionIssues(), bad = issues.filter(function(x){return x.level !== 'ok';}).length;
-    return '<div class="st-qcheck ' + (bad ? 'has-issues' : 'is-ok') + '"><div class="st-qcheck-head"><span>✦</span><b>AI design check</b><em>' + (bad ? bad + ' suggestion' + (bad === 1 ? '' : 's') : 'Looks good') + '</em><button class="st-btn sm" data-act="q-ai-help">Ask agent</button></div>' + issues.map(function(x){return '<div class="st-qissue ' + x.level + '"><i>' + (x.level === 'ok' ? '✓' : x.level === 'error' ? '!' : '△') + '</i><span>' + esc(x.text) + '</span>' + (x.fix ? '<button data-act="q-fix" data-fix="' + x.key + '">' + esc(x.fix) + '</button>' : '') + '</div>';}).join('') + '<small>Nothing is changed without your approval.</small></div>';
+    return '<div class="st-qcheck ' + (bad ? 'has-issues' : 'is-ok') + '"><div class="st-qcheck-head"><span>✦</span><b>Automated design check</b><em>' + (bad ? bad + ' suggestion' + (bad === 1 ? '' : 's') : 'Looks good') + '</em><button class="st-btn sm" data-act="q-ai-help">Ask agent</button></div>' + issues.map(function(x){return '<div class="st-qissue ' + x.level + '"><i>' + (x.level === 'ok' ? '✓' : x.level === 'error' ? '!' : '△') + '</i><span>' + esc(x.text) + '</span>' + (x.fix ? '<button data-act="q-fix" data-fix="' + x.key + '">' + esc(x.fix) + '</button>' : '') + '</div>';}).join('') + '<small>Nothing is changed without your approval.</small></div>';
   }
   function refreshQuestionCheck() { var h = document.getElementById('st-qcheck'); if (h) h.innerHTML = questionCheckHtml(); }
   function applyQuestionFix(key) {
@@ -4274,8 +4313,13 @@
             }).join("") + "</table>";
         });
         a.heatmap.forEach(function (h) {
-          html += "<h4>Heat map " + esc(h.id) + "</h4><table class=\"st-tbl\"><tr><th>Cell</th><th>Mean intensity (0-3)</th></tr>" +
-            h.cells.map(function (c) { return "<tr><td>" + esc(c.row) + " \u00D7 " + esc(c.col) + "</td><td>" + (c.mean == null ? "\u2013" : c.mean) + "</td></tr>"; }).join("") + "</table>";
+          html += "<h4>Heat map " + esc(h.id) + "</h4><p>" + esc(h.note) + '</p><div style="overflow-x:auto" tabindex="0" role="region" aria-label="Heatmap results"><table class="st-tbl"><thead><tr><th scope="col">Row / column</th>' +
+            h.cols.map(function(c){return '<th scope="col">'+esc(c.label)+'</th>';}).join('')+'</tr></thead><tbody>'+
+            h.rows.map(function(r){return '<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(function(c){
+              var cell=h.cells.find(function(x){return x.row_code===r.code&&x.col_code===c.code;}), m=cell?cell.mean:null;
+              var color=m==null?'#f5f6f4':m<1.5?'#e8f4fa':m<2.5?'#bfe3f2':'#7fc4e0';
+              return '<td style="min-width:90px;text-align:center;color:#153d4c;background:'+color+'"><b>'+(m==null?'—':esc(m))+'</b><br><small>n = '+(cell?cell.base:0)+'</small></td>';
+            }).join('')+'</tr>';}).join('')+'</tbody></table></div>';
         });
         if (a.choice_share) {
           html += "<h4>Conjoint: share of choices when level shown</h4><table class=\"st-tbl\"><tr><th>Attribute</th><th>Level</th><th>Choice share</th></tr>" +
@@ -4290,8 +4334,8 @@
   function openNewStudy() {
     var cards = [
       ["scratch", "＋", "Build from scratch", "Start with a clean, flexible questionnaire."],
-      ["prompt", "✦", "Describe the business need", "Give AI a prompt or rough objectives; it will propose a questionnaire."],
-      ["agent", "◈", "Design with AI agent", "Work step by step with a research copilot from objectives to programming."],
+      ["prompt", "✦", "Describe the business need", "Use a brief to create an editable starter template."],
+      ["agent", "◈", "Design with AI agent", "Start from guided research templates; review every question."],
       ["upload", "⇧", "Upload a document", "Import a brief, sales document or existing questionnaire (DOCX, TXT, MD, CSV)."]
     ];
     openModal('<div class="st-modal-head"><strong>Create a new study</strong><span class="st-meta">Choose a starting point. Everything remains editable.</span><button class="ex-close" data-act="modal-close">&times;</button></div>' +
@@ -4303,7 +4347,7 @@
     var source = mode === "scratch" ? '' : '<label class="st-field"><span>' + (mode === "upload" ? 'Source document' : 'Objectives or business need') + '</span>' +
       (mode === "upload" ? '<div class="st-drop"><input id="ns-file" type="file" accept=".docx,.txt,.md,.csv"><b>Choose a DOCX, TXT, MD or CSV</b><small id="ns-file-state">Maximum 8 MB</small></div><textarea id="ns-objectives" hidden></textarea>' :
        '<textarea id="ns-objectives" rows="7" placeholder="Example: Understand why sales declined, assess unmet needs, test three concepts and identify purchase drivers…"></textarea>') + '</label>';
-    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">AI suggestions are a starting point—not a locked template.</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
+    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">Guided templates are a starting point, not model-generated research.</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
       '<div class="st-form-2"><label class="st-field"><span>Study title</span><input id="ns-title" value="New research study" autofocus></label><label class="st-field"><span>Study group <em>optional</em></span><input id="ns-group" placeholder="e.g. Brand tracking 2027"></label></div>' +
       '<label class="st-field"><span>Parent study ID <em>optional</em></span><input id="ns-parent" placeholder="e.g. STU-000014"><small>Create a child wave or related survey under a parent.</small></label>' + source +
       (mode === "agent" ? '<div class="st-agent-note">◈ The research agent will stay available in Studio to guide objectives, sample, question wording, logic and quality checks.</div>' : '') +

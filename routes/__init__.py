@@ -14,7 +14,13 @@ from .home import bp as home_bp
 from .studio import bp as studio_bp
 from .survey import bp as survey_bp
 
-ALL_BLUEPRINTS = (home_bp, survey_bp, studio_bp, admin_bp)
+from .access import bp as access_bp
+
+from .workspace import bp as workspace_bp
+
+from .data_validation import bp as validation_bp
+
+ALL_BLUEPRINTS = (validation_bp, workspace_bp, access_bp, home_bp, survey_bp, studio_bp, admin_bp)
 
 
 def register_routes(app) -> None:

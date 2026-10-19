@@ -15,6 +15,7 @@ API (used by static/js/survey.js)
 
 from __future__ import annotations
 
+import json
 import base64
 import os
 import re
@@ -29,7 +30,9 @@ from core.i18n import (LANG_BY_CODE, apply_language, default_language, extract_s
 from core.qc import qc_flags
 from core.seed import load_task_map
 from core.survey_spec import TERMINATE_TEXT
-from models import Respondent, Study, StudyError
+from models import Respondent, Study, StudyError, get_db, now
+from core.governance import survey_config, response_cfg
+from core.research import fingerprint, readiness
 
 from .helpers import json_body
 
@@ -108,29 +111,27 @@ def spec(slug="beacon"):
     study = Study.get(slug)
     if not study:
         return jsonify({"error": "unknown study"}), 404
-    # Child studies are translations of their parent: questions always come from the
-    # parent (so parent edits flow into every child) and the child contributes only its
-    # language + translation table.  ?lang= on a parent merges that language's child.
-    if study.is_child():
-        parent = study.parent_study()
-        if not parent:
-            return jsonify({"error": "parent study missing"}), 404
-        home, base = parent, parent.cfg
-        lang = study.cfg.get("language") or default_language(base)
-        table = (study.cfg.get("translations") or {}).get(lang) or {}
-        merged_src = dict(base)
-        merged_src["translations"] = {lang: table}
-    else:
-        home, base = study, study.cfg
-        lang = request.args.get("lang") or default_language(base)
-        merged_src = base
-    # respondent-visible strings merged over the default language; team-facing strings
-    # and the QC engine always use the default
+    preview = request.args.get('preview') == '1'
+    resp = Respondent.by_session(request.args.get('sid'))
+    if resp and resp.study_id != study.id:
+        abort(403, 'Session belongs to another study.')
+    if current_app.config['STAFF_AUTH'] and not study.effective_live() and not resp and not preview:
+        abort(403, 'Study is not live.')
+    merged_src = response_cfg(resp, survey_config(study, resp.is_test, request.args.get('lang'))) if resp else survey_config(study, preview, request.args.get('lang'))
+    base = merged_src
+    home = study.parent_study() if study.is_child() else study
+    lang = merged_src.get('_selected_language') or (study.cfg.get('language') if study.is_child() else request.args.get('lang')) or default_language(base)
     cfg = apply_language(merged_src, lang)
     conj = cfg.get("conjoint")
     if conj and isinstance(conj.get("tasks"), list):
         conj = dict(conj, tasks={str(i + 1): t for i, t in enumerate(conj["tasks"])})
     return jsonify({
+        "survey_version": fingerprint(merged_src),
+        "privacy_notice": cfg.get("privacy_notice", ""),
+        "research_contact": cfg.get("research_contact", ""),
+        "consent_statement": cfg.get("consent_statement", "I agree to take part in this research."),
+        "require_consent": bool(cfg.get("require_consent")),
+        "estimated_minutes": readiness(cfg)['estimated_minutes'],
         "sections": cfg.get("sections", []),
         "questions": cfg.get("questions", []),
         "conjoint": conj,
@@ -168,7 +169,7 @@ def start():
     study = Study.get(slug)
     if not study:
         return jsonify({"error": "unknown study"}), 404
-    if not study.effective_live():
+    if not study.effective_live() and not body.get("is_test"):
         if study.status == "paused":
             return jsonify({"error": "This study is paused - the research team has stopped new "
                                      "responses for now. Please try again later.",
@@ -177,18 +178,24 @@ def start():
     lang = str(body.get("language") or "")[:12]
     if lang and not valid_language(lang):
         lang = ""
-    wanted = [e.get("name") for e in study.cfg.get("embedded", []) or [] if e.get("name")]
+    cfg = survey_config(study, bool(body.get('is_test')), lang)
+    if body.get('survey_version') and body['survey_version'] != fingerprint(cfg):
+        return jsonify(error='The survey changed before you started. Reload to use the current version.'), 409
+    wanted = [e.get("name") for e in cfg.get("embedded", []) or [] if e.get("name")]
     sent = body.get("embedded") if isinstance(body.get("embedded"), dict) else {}
     embedded = {k: str(v)[:200] for k, v in sent.items() if k in wanted}
+    invite_token = str(sent.get('rid') or '')[:200]
+    if invite_token and get_db().execute('SELECT 1 FROM invites WHERE study_slug=? AND token=? LIMIT 1', (slug, invite_token)).fetchone():
+        embedded['rid'] = invite_token
     resp = Respondent.create(study, bool(body.get("is_test")),
-                             request.headers.get("User-Agent", ""), lang, embedded)
-    design = study.cfg.get("conjoint")
+                             request.headers.get("User-Agent", ""), lang, embedded, snapshot=cfg)
+    design = cfg.get("conjoint")
     task_map = load_task_map() if slug == "beacon" else None
     assignment = (assignment_for(resp.code, design, task_map) if design
                   else {"task_order": [], "alt_positions": {}})
     resp.set_assignment(assignment["task_order"], assignment["alt_positions"])
     return jsonify({"session_id": resp.session_id, "respondent_code": resp.code,
-                    "is_test": resp.is_test, "study": slug,
+                    "is_test": resp.is_test, "study": slug, "survey_version": fingerprint(cfg),
                     "task_order": assignment["task_order"],
                     "alt_positions": assignment["alt_positions"],
                     "from_prebuilt_map": resp.code in (task_map or {})})
@@ -220,6 +227,7 @@ def save():
     resp = Respondent.by_session(body.get("session_id"))
     if resp is None:
         return jsonify({"error": "unknown session"}), 400
+    require_consent(resp)
     return jsonify({"ok": True, "status": resp.persist(body)})
 
 
@@ -229,10 +237,11 @@ def submit():
     resp = Respondent.by_session(body.get("session_id"))
     if resp is None:
         return jsonify({"error": "unknown session"}), 400
+    require_consent(resp)
     resp.persist(body)
     seconds = float(body.get("elapsed_seconds") or 0)
     resp.complete(seconds)
-    cfg = Study.get_by_id(resp.study_id).cfg
+    cfg = response_cfg(resp, Study.get_by_id(resp.study_id).cfg)
     return jsonify({"ok": True, "respondent_code": resp.code,
                     **qc_flags(resp.answers(), seconds, cfg)})
 
@@ -284,9 +293,32 @@ def voice():
     resp = Respondent.by_session(body.get("session_id"))
     if resp is None:
         return jsonify({"error": "unknown session"}), 400
+    require_consent(resp)
     voice_dir = current_app.config["VOICE_DIR"]
     os.makedirs(voice_dir, exist_ok=True)
     fname = resp.voice_filename(qid, ext)
     with open(os.path.join(voice_dir, fname), "wb") as f:
         f.write(raw)
     return jsonify({"ok": True, "file": fname})
+
+
+def require_consent(resp):
+    row = get_db().execute('SELECT cfg,consent_at FROM response_versions WHERE respondent_id=?', (resp.id,)).fetchone()
+    if row and json.loads(row['cfg']).get('require_consent') and not row['consent_at']:
+        abort(403, 'Consent is required before submitting answers.')
+
+
+@bp.post('/api/consent')
+def consent():
+    body = json_body()
+    resp = Respondent.by_session(body.get('session_id'))
+    if not resp:
+        abort(400, 'Unknown session.')
+    if body.get('accepted') is not True:
+        abort(400, 'An affirmative consent choice is required.')
+    cfg = response_cfg(resp, {})
+    db = get_db()
+    with db:
+        db.execute("UPDATE response_versions SET consent=?,consent_at=? WHERE respondent_id=? AND consent_at=''",
+                   (json.dumps({'statement': cfg.get('consent_statement', ''), 'privacy_notice': cfg.get('privacy_notice', ''), 'version': fingerprint(cfg)}), now(), resp.id))
+    return jsonify(ok=True)

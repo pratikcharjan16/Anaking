@@ -34,7 +34,7 @@ from config import CONFIGS, DATA_DIR, UPLOAD_DIR, Config
 from core.seed import seed_beacon
 from routes import register_routes
 
-__version__ = "3.3.0"
+__version__ = "3.4.0"
 
 
 class RegexConverter(BaseConverter):
@@ -60,6 +60,12 @@ def create_app(config: str | type | dict | None = None) -> Flask:
         app.config.update(config)
     elif config is not None:
         app.config.from_object(config)
+    if app.config["PRODUCTION"] and (not app.config["STAFF_AUTH"] or app.config["SECRET_KEY"] == "change-me-in-production"):
+        raise RuntimeError("Production requires STAFF_AUTH=1 and a strong SECRET_KEY.")
+    if app.config["WORKSPACE_ENABLED"] and not os.path.isfile(os.path.join(app.static_folder, "js", "workspace.js")):
+        raise RuntimeError("Workspace is incomplete. Leave WORKSPACE_ENABLED=0 until workspace.js is installed and tested.")
+    from core.security import init_security
+    init_security(app)
     app.url_map.converters["regex"] = RegexConverter
     # behind a reverse proxy / hosted preview: trust X-Forwarded-* so redirects and
     # generated URLs know the real scheme and host

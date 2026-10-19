@@ -374,3 +374,46 @@ node scripts/dom/screening_survey_test.js        # respondent screening: ends on
 `study_design/` holds the field-ready questionnaire (`BEACON_survey_questionnaire.md`
 / `.docx`), `conjoint_design.py` (regenerates `data/design/`), a sample Excel export, and
 a detailed README on the instrument, screener logic and export format.
+
+### Selective translation and voice answering
+
+In Studio, open a translation child and select **Translate** beside each source
+string (question, option, row, or label). Unchecked strings render the live parent
+wording; their saved translation is retained if re-enabled. **Save translations**
+applies manual edits and selections. **Translate selected missing** saves those
+edits first, then translates one missing string at a time. The progress panel
+reports processed/succeeded/failed counts and individual provider errors. Run it
+again to retry failures; successful or manual translations are not overwritten.
+Rich-text option and row labels are translated as HTML, not their hidden plain-text
+fallbacks. Parent links with `?lang=` also use the corresponding child's table.
+Machine translation requires outbound access to `translate.googleapis.com` on the
+application server. When unavailable, errors are shown and manual editing remains
+available; no translation provider key is needed by the existing service.
+
+Respondents can choose **Answer by voice** before starting. Voice remains active
+across questions until stopped or microphone access fails. Examples:
+
+- Numeric/slider: “forty two”, “minus three point five”, or “42”. Field limits apply.
+- Text: speak the answer; “dictate next” enters the word “next” instead of navigating.
+- Options: say a label, “option two”, or multiple labels joined with “and”.
+- Complex questions: numbered badges identify controls. Say “control 4” to click
+  a choice/rank arrow, or “control 4 25” to set a field or rating. “Control 4” on a
+  field focuses it; say the value afterward. “Next field” / “previous field” move
+  between matrix, rating, allocation, and other multi-part fields.
+- Date: an ISO date (`2026-10-19`) or an English date such as “October 19 2026”.
+- “Next”, “back”, “clear”, and “stop listening” navigate, reset, or stop voice mode.
+
+Command words and spoken-number parsing are English. Recognition uses the survey
+language through the browser Web Speech API, requires microphone permission and
+browser support, and may depend on the browser's online speech service. Manual
+input remains available. Automated tests simulate recognition; real microphone
+accuracy and external translation availability must also be checked in deployment.
+
+### Updated research workspace (3.4 preview)
+
+Open `/` or `/workspace/` for the new project dashboard and research workflow.
+Studio now shares the visual identity and has outline/preview layout controls.
+See [the workspace release checkpoint](docs/workspace-release.md) for working
+features, validation performed, configuration, and explicitly pending work.
+The legacy landing page remains available at `/?legacy=1`; set
+`WORKSPACE_ENABLED=0` to use it as the default during a rollback.

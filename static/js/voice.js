@@ -27,6 +27,35 @@
       .replace(/[^\w\u00C0-\uFFFF]+/g, " ").replace(/\s+/g, " ").trim();
   }
 
+  // Keep signs and decimal points: normalising these as option labels loses values.
+  function parseNumber(text) {
+    var t = String(text).toLowerCase().trim().replace(/,/g, "").replace(/percent|%/g, "").trim();
+    if (/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)$/.test(t)) return Number(t);
+    var sign = 1;
+    t = t.replace(/^(minus|negative) /, function () { sign = -1; return ""; });
+    if (/^(?:\d+(?:\.\d*)?|\.\d+)$/.test(t)) return sign * Number(t);
+    var parts = t.split(/ point | dot /), total = 0, group = 0;
+    var tens = {thirty:30, forty:40, fifty:50, sixty:60, seventy:70, eighty:80, ninety:90};
+    var words = parts[0].replace(/-/g, " ").split(/\s+/);
+    for (var i = 0; i < words.length; i++) {
+      var w = words[i];
+      if (w === "and") continue;
+      if (NUM[w] !== undefined) group += NUM[w];
+      else if (tens[w]) group += tens[w];
+      else if (w === "hundred") group = (group || 1) * 100;
+      else if (w === "thousand" || w === "million") { total += (group || 1) * (w === "million" ? 1000000 : 1000); group = 0; }
+      else return null;
+    }
+    var value = total + group;
+    if (parts.length > 2) return null;
+    if (parts.length === 2) {
+      var digits = parts[1].split(/\s+/).map(function (w) { return NUM[w] !== undefined && NUM[w] < 10 ? NUM[w] : w; }).join("");
+      if (!/^\d+$/.test(digits)) return null;
+      value += Number("0." + digits);
+    }
+    return sign * value;
+  }
+
   function matchOption(phrase, opts) {
     var p = norm(phrase);
     if (!p || !opts || !opts.length) return null;
@@ -57,12 +86,21 @@
     ctx = ctx || {};
     var t = norm(text);
     if (!t) return [];
+    if (/^dictate /i.test(text)) return [{act: "value", value: text.slice(8)}];
+    if (/^(stop listening|voice off)$/.test(t)) return [{act: "stop"}];
+    if (/^(next field|previous field)$/.test(t)) return [{act: "fieldMove", direction: t === "next field" ? 1 : -1}];
+    var control = String(text).match(/^(?:field|control|click) (\d+|[a-z]+)(?: (?:is |equals |to )?(.+))?$/i);
+    if (control) return [{act: "control", index: parseNumber(control[1]), value: control[2]}];
     // "the second one" -> "second": drop conversational padding around picks
     t = t.replace(/^the /, "").replace(/ (one|option)s?$/, "");
     if (/^(next|continue|proceed|go on|carry on|submit|done|finish|ok next|next question)$/.test(t)) return [{ act: "next" }];
     if (/^(back|previous|go back|backwards|last question)$/.test(t)) return [{ act: "back" }];
     if (/^(clear|reset|clear selection|start over|clear my answers)$/.test(t)) return [{ act: "clear" }];
 
+    if (ctx.inputType) {
+      var value = /^(number|range)$/.test(ctx.inputType) ? parseNumber(text) : String(text).trim();
+      return value === null ? [{act:"unknown", text:text}] : [{act:"value", value:value}];
+    }
     var opts = ctx.options || [], acts = [], m;
     function pickN(n) {
       if (n >= 1 && n <= opts.length) acts.push({ act: "pick", code: opts[n - 1].code });
@@ -161,5 +199,5 @@
     };
   }
 
-  window.BeaconVoice = { supported: supported, create: create, parseCommand: parseCommand, norm: norm };
+  window.BeaconVoice = { supported: supported, create: create, parseCommand: parseCommand, norm: norm, parseNumber: parseNumber };
 })();

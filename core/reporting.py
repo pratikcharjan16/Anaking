@@ -11,6 +11,7 @@ from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
 from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
 from . import screening
+from .heatmap import summarize_heatmap
 
 
 def _verbatim_qs(cfg: dict) -> list:
@@ -101,7 +102,7 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             for r in q["rows"]:
                 for c in (q.get("cols") or []):
                     out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
-                        r["code"] + "_" + c["code"], "")
+                        str(r["code"]) + "_" + str(c["code"]), "")
         elif t == "multi_select":
             out[qid] = ";".join(str(c) for c in sorted(a.get("codes", []), key=str))
             out[qid + "_text"] = "; ".join(
@@ -121,7 +122,7 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             for r in q["rows"]:
                 if nm_cols:                      # a table: one number per row x column
                     for c in nm_cols:
-                        out[f"{qid}_{r['code']}_{c['code']}"] = a.get(r["code"] + "_" + c["code"], "")
+                        out[f"{qid}_{r['code']}_{c['code']}"] = a.get(str(r["code"]) + "_" + str(c["code"]), "")
                 else:
                     out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
         elif t == "delta":
@@ -363,7 +364,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 for c in q["cols"]:
                     dd_rows.append([q["id"], q["section"], q["type"], stem,
                                     f"{r['code']}_{c['code']}", f"{r['label']} x {c['label']}",
-                                    "0-3 heat intensity"])
+                                    "1=weak, 2=moderate, 3=strong; blank/0=unselected"])
         elif q["type"] == "maxdiff":
             for i, rnd in enumerate(q.get("rounds", []), 1):
                 dd_rows.append([q["id"], q["section"], q["type"], stem, f"R{i}",
@@ -446,7 +447,8 @@ def analysis_for(records: list, cfg: dict) -> dict:
            "choice_share": None}
 
     def mean(vals):
-        vals = [float(v) for v in vals if v not in (None, "")]
+        from core.research import numeric
+        vals = [n for v in vals if (n := numeric(v)) is not None]
         return round(sum(vals) / len(vals), 2) if vals else None
 
     for q in cfg.get("questions", []):
@@ -502,14 +504,7 @@ def analysis_for(records: list, cfg: dict) -> dict:
                                                "bw": best.get(c, 0) - worst.get(c, 0)}
                                               for c in codes]})
         elif t == "heatmap":
-            cells = []
-            for r in q["rows"]:
-                for c in q["cols"]:
-                    cells.append({"row": r["label"], "col": c["label"],
-                                  "mean": mean([rec["answers"].get(q["id"], {})
-                                                .get(r["code"] + "_" + c["code"])
-                                                for rec in complete])})
-            out["heatmap"].append({"id": q["id"], "cells": cells})
+            out["heatmap"].append(summarize_heatmap(complete, q))
     design = cfg.get("conjoint")
     if design and complete:
         uq = next((q for q in cfg["questions"] if q["type"] == "choice_task"), None)
