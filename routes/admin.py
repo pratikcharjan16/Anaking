@@ -24,12 +24,13 @@ from flask import (Blueprint, Response, current_app, jsonify, render_template, r
                    send_from_directory)
 
 from core import xlsx_export
+from core.research import numeric
 from core.ai_detect import VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings, duplicate_verbatims
 from core.qc import free_text, qc_flags, score_free_text
 from core.reporting import build_sheets
 from models import Respondent, Study, StudyError
 
-from .helpers import attachment, error, records, scope_arg, stamp, study_arg
+from .helpers import attachment, error, records, scope_arg, stamp, study_arg, safe_csv_cell
 
 bp = Blueprint("admin", __name__)
 
@@ -92,9 +93,9 @@ def data():
         settings[s] = settings.get(s, 0) + 1
     metrics = cfg.get("metrics") or {}
     intent_q, pct_q = metrics.get("intent_q"), metrics.get("pct_q")
-    intent = [float(r["answers"].get(intent_q, {}).get("_") or 0) for r in complete] \
+    intent = [v for r in complete if (v := numeric(r["answers"].get(intent_q, {}).get("_"))) is not None] \
         if intent_q else []
-    pct = [float(r["answers"].get(pct_q, {}).get("_") or 0) for r in complete] if pct_q else []
+    pct = [v for r in complete if (v := numeric(r["answers"].get(pct_q, {}).get("_"))) is not None] if pct_q else []
     return jsonify({
         "study": slug, "scope": scope,
         "generated": time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime()) + " UTC",
@@ -102,6 +103,7 @@ def data():
                    "screened_out": len(screened), "in_progress": len(in_prog)},
         "quota": {"census_division": divisions, "practice_setting": settings},
         "headlines": {
+            "intent_answered_base": len(intent), "eligible_answered_base": len(pct),
             "top2box_intent_pct": round(100 * sum(1 for v in intent if v >= 4) / len(intent), 1)
             if intent else None,
             "mean_pct_eligible": round(sum(pct) / len(pct), 1) if pct else None,
@@ -189,7 +191,7 @@ def reset():
 @bp.get("/admin/export.xlsx")
 def export_xlsx():
     slug, scope = study_arg(), scope_arg()
-    sheets = build_sheets(records(slug, scope), scope, Study.cfg_of(slug))
+    sheets = build_sheets(records(slug, scope, include_invalid=request.args.get("include_invalid") == "1"), scope, Study.cfg_of(slug))
     data, backend = xlsx_export.build_workbook(sheets)
     return attachment(
         data, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -199,7 +201,7 @@ def export_xlsx():
 @bp.get("/admin/export.csv")
 def export_csv():
     slug, scope = study_arg(), scope_arg()
-    flat = [r["flat"] for r in records(slug, scope)]
+    flat = [r["flat"] for r in records(slug, scope, include_invalid=request.args.get("include_invalid") == "1")]
     if not flat:
         return Response("respondent_code\n", mimetype="text/csv")
     cols = list(flat[0].keys())
@@ -210,7 +212,7 @@ def export_csv():
     buf = io.StringIO()
     w = csv.DictWriter(buf, fieldnames=cols, extrasaction="ignore")
     w.writeheader()
-    w.writerows(flat)
+    w.writerows({k: safe_csv_cell(v) for k,v in f.items()} for f in flat)
     return attachment(buf.getvalue().encode(), "text/csv; charset=utf-8",
                       f"{slug}_responses_{scope}_{stamp()}.csv")
 
@@ -218,7 +220,7 @@ def export_csv():
 @bp.get("/admin/export.json")
 def export_json():
     slug, scope = study_arg(), scope_arg()
-    out = [{k: v for k, v in r.items() if k != "flat"} for r in records(slug, scope)]
+    out = [{k: v for k, v in r.items() if k != "flat"} for r in records(slug, scope, include_invalid=request.args.get("include_invalid") == "1")]
     return attachment(json.dumps(out, indent=2).encode(), "application/json; charset=utf-8",
                       f"{slug}_responses_{scope}_{stamp()}.json")
 

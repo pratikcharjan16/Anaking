@@ -18,7 +18,10 @@ bp = Blueprint("home", __name__)
 
 @bp.get("/")
 def index():
-    return render_template("home.html", studies=Study.list_with_counts())
+    if current_app.config["WORKSPACE_ENABLED"] and request.args.get("legacy") != "1":
+        return render_template("workspace.html")
+    from core.security import allowed
+    return render_template("home.html", studies=[s for s in Study.list_with_counts() if allowed(s["slug"])])
 
 
 @bp.get("/test")

@@ -44,9 +44,14 @@
   };
 
   function loadSpecLang(lang) {
+    if (SESSION && lang !== (SPEC.render_language || SPEC.default_language)) {
+      store('session_id'); store('answers'); store('cur');
+      location.href = location.pathname + '?lang=' + encodeURIComponent(lang);
+      return Promise.resolve();
+    }
     LANG = lang;
     try { store("lang", lang); } catch (e) {}
-    return fetch("/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(lang))
+    return fetch("/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(lang) + (IS_TEST ? "&preview=1" : ""))
       .then(function (r) { return r.json(); })
       .then(function (spec) {
         SPEC = spec;
@@ -107,7 +112,7 @@
     var out = {};
     try {
       var ps = new URLSearchParams(location.search);
-      (SPEC.embedded || []).forEach(function (n) {
+      Array.from(new Set((SPEC.embedded || []).concat(["rid"]))).forEach(function (n) {
         var v = ps.get(n);
         if (v !== null) out[n] = v;
       });
@@ -700,11 +705,78 @@
     return !PREVIEW && window.BeaconVoice && window.BeaconVoice.supported();
   }
 
-  // Options of the question currently on screen (options the voice picks from).
+  var voiceField = 0, voiceExplicitField = false;
+  function voiceControls() {
+    return Array.prototype.filter.call(document.querySelectorAll('#app input, #app textarea, #app select, #app button, #app [role="button"], #app .alt-card, #app .optout-card, #app [role="slider"]'), function (n) {
+      return !n.matches(".sp-thumb") && !n.disabled && n.type !== "hidden" && !n.closest('.nav, [hidden], .recorder') &&
+        getComputedStyle(n).display !== "none" && getComputedStyle(n).visibility !== "hidden";
+    });
+  }
+  function voiceFields() {
+    return voiceControls().filter(function (n) { return n.getAttribute("role") === "slider" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" ||
+      (n.tagName === "INPUT" && !/^(radio|checkbox|button|submit|file)$/.test(n.type)); });
+  }
+  function labelVoiceControls() {
+    Array.prototype.forEach.call(document.querySelectorAll('.voice-control-tag'), function (n) { n.remove(); });
+    if (!voiceOn) return;
+    voiceControls().forEach(function (n, i) {
+      var badge = el("span", "voice-control-tag", String(i + 1));
+      badge.setAttribute("aria-hidden", "true");
+      if (n.matches("button, [role=button], [role=slider], .alt-card, .optout-card")) n.appendChild(badge);
+      else n.parentNode.insertBefore(badge, n);
+    });
+  }
   function voiceCtx() {
-    var q = steps[cur] && steps[cur].q;
-    if (!q || !q.options) return { options: [], multi: false, type: (q && q.type) || "" };
-    return { options: q.options, multi: q.type === "multi_select", type: q.type };
+    var q = steps[cur] && steps[cur].q, fields = voiceFields();
+    var field = fields[Math.min(voiceField, fields.length - 1)];
+    // Picks follow the displayed order, including randomized/piped choices.
+    var options = Array.prototype.map.call(document.querySelectorAll('#app .opt[data-code]'), function (n) {
+      return {code: n.dataset.code, label: (n.querySelector("label") || n).textContent.trim(), exclusive: (q.options || []).some(function (o) { return String(o.code) === n.dataset.code && o.exclusive; })};
+    });
+    return {options: options, multi: q && q.type === "multi_select", type: q && q.type,
+      inputType: (!options.length || voiceExplicitField) && field ? (field.getAttribute("role") === "slider" ? "number" : field.type || "text") : null};
+  }
+  function voiceSetValue(field, value) {
+    if (!field) { showVoiceBar("Say control followed by its badge number."); return; }
+    if (/^(checkbox|radio)$/.test(field.type) || field.tagName === "BUTTON" || field.getAttribute("role") === "button" || field.matches(".alt-card, .optout-card")) {
+      field.click(); labelVoiceControls(); return;
+    }
+    if (value === undefined) { field.focus(); voiceField = voiceFields().indexOf(field); voiceExplicitField = true; showVoiceBar("Field selected. Say its value."); return; }
+    if (field.getAttribute("role") === "slider") {
+      var rating = window.BeaconVoice.parseNumber(value);
+      if (rating === null || !Number.isInteger(rating) || rating < Number(field.getAttribute("aria-valuemin")) || rating > Number(field.getAttribute("aria-valuemax"))) {
+        showVoiceBar("Say a whole number within the displayed scale."); return;
+      }
+      field.dispatchEvent(new CustomEvent("voice-value", {detail:rating}));
+      showVoiceBar("Rating entered. Say next field or next."); return;
+    }
+    if (/^(number|range)$/.test(field.type)) {
+      value = window.BeaconVoice.parseNumber(value);
+      if (value === null || (field.min !== "" && value < Number(field.min)) || (field.max !== "" && value > Number(field.max))) {
+        showVoiceBar("Number not accepted. Use the displayed minimum and maximum."); return;
+      }
+    }
+    if (field.tagName === "SELECT") {
+      var option = Array.prototype.find.call(field.options, function (o) { return o.text.toLowerCase() === String(value).toLowerCase() || o.value === String(value); });
+      if (!option) { showVoiceBar("Say a listed choice for this field."); return; }
+      value = option.value;
+    }
+    if (field.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
+      // Accept unambiguous spoken English dates as well as ISO; never guess numeric day/month order.
+      var spokenDate = String(value).replace(/(\d+)(st|nd|rd|th)\b/gi, "$1");
+      if (/january|february|march|april|may|june|july|august|september|october|november|december/i.test(spokenDate) && /\b\d{4}\b/.test(spokenDate)) {
+        var parsed = new Date(spokenDate);
+        if (!isNaN(parsed.getTime())) value = parsed.getFullYear() + "-" + String(parsed.getMonth() + 1).padStart(2, "0") + "-" + String(parsed.getDate()).padStart(2, "0");
+      }
+    }
+    var previous = field.value;
+    field.value = String(value);
+    if (!field.value || !field.checkValidity()) {
+      field.value = previous; showVoiceBar("Value not accepted. For dates, use YYYY-MM-DD; check the field limits."); return;
+    }
+    field.dispatchEvent(new Event("input", {bubbles:true}));
+    field.dispatchEvent(new Event("change", {bubbles:true}));
+    showVoiceBar("Answer entered. Say next field, next, or another value to correct it.");
   }
 
   function showVoiceBar(msg) {
@@ -722,7 +794,7 @@
     }
     var live = voiceBar.querySelector(".vb-live");
     var heard = voiceBar.querySelector(".vb-heard");
-    live.textContent = msg || "Listening\u2026 say an option or \u201Cnext\u201D";
+    live.textContent = msg || "Listening · Say an answer, next / back, or control [badge] [value]. Say next field for multi-part answers.";
     heard.textContent = "";
     voiceBar.classList.add("listening");
     voiceBar.hidden = false;
@@ -743,14 +815,26 @@
     if (!text || !voiceOn) return;
     voiceTranscript(text);
     var ctx = voiceCtx();
+    showVoiceBar(); voiceTranscript(text);
     var acts = window.BeaconVoice.parseCommand(text, ctx);
     var picked = 0, spoken = false;
     acts.forEach(function (a) {
-      if (a.act === "next") {
+      if (a.act === "stop") { setVoice(false); }
+      else if (a.act === "value") { voiceSetValue(voiceFields()[voiceField] || voiceFields()[0], a.value); }
+      else if (a.act === "control") { voiceSetValue(voiceControls()[a.index - 1], a.value); }
+      else if (a.act === "fieldMove") {
+        var fields = voiceFields();
+        voiceExplicitField = true;
+        voiceField = Math.max(0, Math.min(fields.length - 1, voiceField + a.direction));
+        if (fields[voiceField]) fields[voiceField].focus();
+        showVoiceBar("Field " + (voiceField + 1) + " selected. Say its value.");
+      }
+      else if (a.act === "next") {
         if (spoken) coachSay("Next question coming up\u2026", "info");
-        next();
+        var forward = document.querySelector("#app .nav .primary");
+        if (forward) forward.click(); else next();
       } else if (a.act === "back") {
-        go(cur - 1);
+        var pv = nextVisible(cur, -1); if (pv >= 0) go(pv);
       } else if (a.act === "clear") {
         voiceClear();
         coachSay("Selections cleared.", "info");
@@ -770,13 +854,14 @@
       }
     });
     if (picked) coachSay(picked === 1 ? "Locked in." : "Locked in " + picked + " answers.", "info");
-    showVoiceBar(); // settle the bar back to listening state for the next utterance
+    labelVoiceControls();
   }
 
   function voiceClear() {
-    Array.prototype.forEach.call(document.querySelectorAll("#app .opt input[type='checkbox']"), function (i) {
-      if (i.checked) i.closest(".opt").click();
-    });
+    var q = steps[cur] && steps[cur].q;
+    if (!q) return;
+    answers[q.id] = {};
+    go(cur);
   }
 
   // What a respondent hears when voice answering stops by itself: the microphone is blocked or
@@ -812,7 +897,7 @@
       voice.start();                                   // may report a failure straight away
       if (voiceOn) {
         showVoiceBar();
-        coachSay("Voice mode on \u2014 say an option or its number, then \u201Cnext\u201D. Press <b>Stop</b> below to switch it off.", "info");
+        coachSay("Voice mode on — say numbers or text, option names, or control followed by a badge number. Say next field for multi-part answers, and next to continue.", "info");
       }
     } else {
       voice.stop();
@@ -820,6 +905,7 @@
     }
     if (btn) { btn.classList.toggle("on", voiceOn); btn.setAttribute("aria-pressed", voiceOn ? "true" : "false"); }
     document.body.classList.toggle("voice-on", voiceOn);
+    labelVoiceControls();
   }
 
   // ============================================================ explainer
@@ -981,9 +1067,11 @@
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
-      case "heatmap":                                   // every cell is optional, one is enough
-        return Object.keys(a).some(function (k) {
-          return k.charAt(0) !== "_" && k.slice(0, 2) !== "c_" && a[k] !== "" && a[k] !== undefined;
+      case "heatmap": // Only configured cells with a selected intensity count.
+        return (q.rows || []).some(function (r) {
+          return (q.cols || []).some(function (c) {
+            return [1, 2, 3].indexOf(Number(a[r.code + "_" + c.code])) >= 0;
+          });
         });
       case "loop":
         return (q.items || []).length > 0 && (q.items || []).every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
@@ -1242,6 +1330,7 @@
     box.appendChild(track);
 
     var cur = val;
+    box.addEventListener("voice-value", function (e) { place(e.detail, true); });
     function place(nv, commit) {
       cur = nv;
       thumb.style.left = pct(nv) + "%";
@@ -1675,7 +1764,16 @@
     var g = q.grid || {};
     var cols = orderedList(q.cols || [], q, "cols");
     if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (!(q.rows || []).length || !cols.length) {
+      wrap.appendChild(el("p", "hm-legend", "This heatmap needs at least one row and one column. Please contact the survey owner."));
+      return wrap;
+    }
+    var scroll = el("div", "hm-scroll");
+    scroll.tabIndex = 0;
+    scroll.setAttribute("role", "region");
+    scroll.setAttribute("aria-label", "Heatmap — scroll horizontally to reach all columns");
     var tbl = el("div", "hm-table");
+    tbl.style.minWidth = (140 + cols.length * 90) + "px";
     tbl.style.setProperty("--hm-cols", "minmax(120px,1.5fr) repeat(" + cols.length + ", minmax(74px,1fr))");
     var head = el("div", "hm-tr hm-head");
     head.appendChild(el("div", "hm-th hm-corner", pipeText(g.row_label || "")));
@@ -1686,20 +1784,39 @@
       row.appendChild(itemLabelNode(r, "hm-th hm-rowlabel"));
       cols.forEach(function (c) {
         var key = r.code + "_" + c.code;
-        var lvl = Number((answers[q.id] || {})[key] || 0);
+        var lvl = Number((answers[q.id] || {})[key]);
+        if ([1, 2, 3].indexOf(lvl) < 0) lvl = 0;
         var cell = el("button", "hm-cell");
         cell.type = "button";
-        cell.dataset.lvl = String(lvl);
-        cell.title = pipeText(r.label) + " \\u00D7 " + pipeText(c.label);
-        cell.setAttribute("aria-label", cell.title);
-        var mark = el("span", "hm-mark", lvl ? String(lvl) : "");
+        var rowName = itemLabelNode(r, "").textContent;
+        var colName = itemLabelNode(c, "").textContent;
+        var mark = el("span", "hm-mark");
         cell.appendChild(mark);
-        cell.addEventListener("click", function () {
-          var next = (Number(cell.dataset.lvl || 0) + 1) % 4;      // tap cycles 0 -> 1 -> 2 -> 3 -> 0
-          cell.dataset.lvl = String(next);
-          mark.textContent = next ? String(next) : "";
-          setAns(q.id, key, next || "");
+        function paint(value) {
+          cell.dataset.lvl = String(value);
+          mark.textContent = value ? String(value) : "—";
+          cell.title = rowName + " × " + colName + ": " + ["Not selected", "1 — Weak", "2 — Moderate", "3 — Strong"][value];
+          cell.setAttribute("aria-label", cell.title + ". Activate to cycle; keys 1–3 to set, Delete to clear.");
+          cell.setAttribute("aria-pressed", value ? "true" : "false");
+        }
+        function select(value) {
+          paint(value);
+          // Explicit blank is a tombstone: an upsert must replace any previously saved value.
+          if (!answers[q.id]) answers[q.id] = {};
+          answers[q.id][key] = value || "";
           hideErr(); ansChanged();
+          if (!PREVIEW && SESSION && SESSION.session_id) {
+            store("answers", answers);
+            save();
+          }
+        }
+        paint(lvl);
+        cell.addEventListener("click", function () {
+          select((Number(cell.dataset.lvl || 0) + 1) % 4);
+        });
+        cell.addEventListener("keydown", function (event) {
+          if (/^[1-3]$/.test(event.key)) { event.preventDefault(); select(Number(event.key)); }
+          else if (["0", "Delete", "Backspace"].indexOf(event.key) >= 0) { event.preventDefault(); select(0); }
         });
         row.appendChild(cell);
       });
@@ -1710,9 +1827,10 @@
         tbl.appendChild(crow);
       }
     });
-    wrap.appendChild(tbl);
+    scroll.appendChild(tbl);
+    wrap.appendChild(scroll);
     wrap.appendChild(el("div", "hm-legend",
-      "Tap a cell once for weak, twice for moderate, three times for strong \\u00B7 tap again to clear."));
+      "Tap a cell to cycle: 1 Weak → 2 Moderate → 3 Strong → clear. Keyboard: 1–3 to set, Delete to clear. Scroll sideways for more columns. Unselected cells are not zero ratings."));
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }
@@ -2321,6 +2439,7 @@
       var err = el("div", "err"); err.id = "err";
       app.appendChild(err);
     }
+    voiceField = 0; voiceExplicitField = false; labelVoiceControls();
     window.scrollTo({ top: 0, behavior: "smooth" });
   }
 
@@ -2331,15 +2450,15 @@
     if (!dt || !ORIG[q.id]) return q;
     var c = JSON.parse(JSON.stringify(q));
     function g(k) { return dt["q:" + q.id + ":" + k]; }
-    ["stem_html", "help_html", "placeholder", "vignette", "concept", "concept_html",
+    ["stem", "stem_html", "help", "help_html", "placeholder", "vignette", "concept", "concept_html",
      "body", "body_html", "before_label", "after_label"].forEach(function (k) {
       var t = g(k);
       if (t !== undefined) c[k] = t;
     });
     if (g("stem_html")) c.stem = (window.BeaconQ ? window.BeaconQ.stripTags(g("stem_html")) : g("stem_html"));
-    (c.options || []).forEach(function (o) { var t = g("opt:" + o.code); if (t !== undefined) o.label = t; });
-    (c.rows || []).forEach(function (r) { var t = g("row:" + r.code); if (t !== undefined) r.label = t; });
-    (c.cols || []).forEach(function (r) { var t = g("col:" + r.code); if (t !== undefined) r.label = t; });
+    (c.options || []).forEach(function (o) { var t = g("opt:" + o.code); if (t !== undefined) o[o.label_html ? "label_html" : "label"] = t; });
+    (c.rows || []).forEach(function (r) { var t = g("row:" + r.code); if (t !== undefined) r[r.label_html ? "label_html" : "label"] = t; });
+    (c.cols || []).forEach(function (r) { var t = g("col:" + r.code); if (t !== undefined) r[r.label_html ? "label_html" : "label"] = t; });
     (c.items || []).forEach(function (it) { var t = g("loopitem:" + it.code); if (t !== undefined) it.label = t; });
     if (c.scale) {
       ["min_label", "max_label"].forEach(function (k) { var t = g(k); if (t !== undefined) c.scale[k] = t; });
@@ -2392,7 +2511,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap')(q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}
@@ -2706,6 +2825,7 @@
       nav.appendChild(back);
       nav.appendChild(done);
       card.appendChild(nav);
+      voiceField = 0; voiceExplicitField = false; labelVoiceControls();
     }
   }
 
@@ -2719,7 +2839,15 @@
       if (extra) for (var k in extra) body[k] = extra[k];
       fetch("/api/save", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
-      }).then(function () { if (cb) cb(); }).catch(function () { if (cb) cb(); });
+      }).then(function (r) {
+        if (!r.ok) throw new Error('Save failed');
+        var status = document.getElementById('survey-save-status'); if (status) status.textContent = 'Answers saved';
+        if (cb) cb();
+      }).catch(function () {
+        var status = document.getElementById('survey-save-status'); if (status) status.textContent = 'Not saved — check your connection. Your answers remain in this browser.';
+        store('answers', answers); store('cur', cur);
+        coachSay('Could not save. Check your connection and try Next or Submit again.', 'warn');
+      });
     }, 40);
   }
 
@@ -2744,7 +2872,7 @@
   }
 
   function loadSpec() {
-    fetch("/api/spec/" + STUDY.slug + (LANG ? "?lang=" + encodeURIComponent(LANG) : "")).then(function (r) { return r.json(); }).then(function (spec) {
+    fetch("/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(LANG) + (IS_TEST ? "&preview=1" : "") + (recall("session_id") ? "&sid=" + encodeURIComponent(recall("session_id")) : "")).then(function (r) { return r.json(); }).then(function (spec) {
       SPEC = spec;
       CONJOINT = spec.conjoint;
       NARR = spec.narration;
@@ -2789,7 +2917,7 @@
       resume.then(function (prog) {
         if (prog.exists && prog.status === "complete") {
           ["session_id", "answers", "cur"].forEach(function (k) { store(k); });
-          return startFresh();
+          location.reload(); return;
         }
         if (prog.exists) {
           SESSION = { session_id: savedSid, respondent_code: prog.respondent_code,
@@ -2832,7 +2960,7 @@
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_test: IS_TEST, study: STUDY.slug,
                              language: SPEC.render_language || LANG || "",
-                             embedded: readEmbedded() })
+                             embedded: readEmbedded(), survey_version: SPEC.survey_version })
     }).then(function (r) { return r.json(); }).then(function (s) {
       if (s && s.paused) { showPaused(); return; }
       if (!s || !s.session_id) {
@@ -2915,8 +3043,24 @@
     });
     setInterval(function () { store("answers", answers); store("cur", cur); }, 8000);
 
+    var privacy = document.getElementById('study-privacy');
+    if (privacy) {
+      privacy.innerHTML = '<p>Estimated time: ' + escHtml(SPEC.estimated_minutes || '—') + ' minutes.</p>' +
+        (SPEC.privacy_notice ? '<p>' + escHtml(SPEC.privacy_notice) + '</p>' : '') +
+        (SPEC.research_contact ? '<p>Research contact: ' + escHtml(SPEC.research_contact) + '</p>' : '') +
+        (SPEC.require_consent ? '<label class="survey-consent"><input id="consent-choice" type="checkbox"> ' + escHtml(SPEC.consent_statement) + '</label>' : '');
+    }
     if (waitForClick) {
-      $("#start-btn").addEventListener("click", function () {
+      if (!steps.length) { $('#start-btn').disabled = true; $('#start-btn').textContent = 'No questions yet — add questions in Studio'; return; }
+      $("#start-btn").addEventListener("click", async function () {
+        if (SPEC.require_consent) {
+          if (!$('#consent-choice') || !$('#consent-choice').checked) { coachSay('Please read the notice and confirm your consent before continuing.', 'warn'); return; }
+          this.disabled = true;
+          try {
+            var consentResponse = await fetch('/api/consent', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({session_id:SESSION.session_id,accepted:true})});
+            if (!consentResponse.ok) throw new Error('Consent could not be saved');
+          } catch(e) { this.disabled = false; coachSay('Could not record consent. Check your connection and try again.', 'warn'); return; }
+        }
         var pref = document.querySelector('input[name="audio-pref"]:checked');
         audioPref = pref ? pref.value : "manual";
         store("audio_pref", audioPref); setSound(audioPref !== "off");

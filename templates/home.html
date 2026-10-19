@@ -6,6 +6,8 @@
 <title>PROJECT BEACON — Research platform</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=260921a">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921a">
+{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="/static/js/security.js"></script>{% endif %}
 </head>
 <body>
 <header class="topbar">

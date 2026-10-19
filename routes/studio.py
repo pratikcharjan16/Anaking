@@ -67,7 +67,8 @@ def page():
 
 @bp.get("/api/studio/list")
 def list_studies():
-    return jsonify(Study.list_with_counts())
+    from core.security import allowed
+    return jsonify([s for s in Study.list_with_counts() if allowed(s["slug"])])
 
 
 @bp.get("/api/studio/study")
@@ -440,10 +441,12 @@ def strings():
     strings = extract_strings(base)
     table = (study.cfg.get("translations") or {}).get(lang) or {}
     merged = dict(base)
+    merged["translation_excluded"] = study.cfg.get("translation_excluded", {})
     if lang:
         merged["translations"] = {lang: table}
     return jsonify({"strings": strings, "default_language": default_language(base),
                     "language": lang, "translations": table,
+                    "excluded": (study.cfg.get("translation_excluded") or {}).get(lang, []),
                     "parent": study.cfg.get("parent") or "",
                     "coverage": coverage(merged, lang) if lang else None,
                     "languages": sorted((study.cfg.get("translations") or {}).keys())})
@@ -487,6 +490,7 @@ def _merged_for(study, lang: str) -> dict:
     study = Study.get(study.slug) or study          # re-read: translations may have saved
     base = _base_of(study)
     merged = dict(base)
+    merged["translation_excluded"] = study.cfg.get("translation_excluded", {})
     merged["translations"] = {lang: (study.cfg.get("translations") or {}).get(lang) or {}}
     return merged
 
@@ -520,7 +524,18 @@ def translate():
         return jsonify({"error": "unknown study"}), 404
     if not valid_language(lang) or lang == default_language(_base_of(study)):
         return jsonify({"error": "bad language"}), 400
-    _save_translations(slug, lang, body.get("strings") or {})
+    values = body.get("strings") or {}
+    excluded = body.get("excluded")
+    if not isinstance(values, dict) or any(not isinstance(v, str) for v in values.values()):
+        return jsonify({"error": "strings must contain text values"}), 400
+    if excluded is not None:
+        if not isinstance(excluded, list) or any(not isinstance(k, str) for k in excluded):
+            return jsonify({"error": "excluded must be a list of keys"}), 400
+        cfg = study.cfg
+        known = {x["key"] for x in extract_strings(_base_of(study))}
+        cfg.setdefault("translation_excluded", {})[lang] = [k for k in excluded if k in known]
+        Study.save({"slug": slug, "title": study.title, "cfg": cfg})
+    _save_translations(slug, lang, values)
     return jsonify({"ok": True, "coverage": coverage(_merged_for(study, lang), lang)})
 
 
@@ -543,15 +558,18 @@ def autotranslate():
         return jsonify({"error": "bad language"}), 400
     table = (cfg.get("translations") or {}).get(lang) or {}
     want = body.get("keys")
+    if want is not None and (not isinstance(want, list) or any(not isinstance(k, str) for k in want)):
+        return jsonify({"error": "keys must be a list"}), 400
+    excluded = (cfg.get("translation_excluded") or {}).get(lang, [])
     strings, failed, done = {}, {}, 0
     for x in extract_strings(_base_of(study)):
-        if want is not None and x["key"] not in want:
+        if x["key"] in excluded or (want is not None and x["key"] not in want):
             continue
         if (table.get(x["key"]) or "").strip():
             continue
-        html = x["key"].endswith("_html")
+        html = x["key"].endswith("_html") or bool(re.search(r"<[^>]+>", x["text"]))
         try:
-            strings[x["key"]] = translate_string(x["text"], lang, src.split("-")[0],
+            strings[x["key"]] = translate_string(x["text"], lang, src,
                                                  html=html)
             done += 1
         except TranslationError as e:

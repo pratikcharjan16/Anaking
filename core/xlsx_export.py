@@ -154,13 +154,17 @@ def _openpyxl_bytes(sheets) -> bytes:
             continue
         for c_i, value in enumerate(rows[0], start=1):
             cell = ws.cell(row=1, column=c_i, value=value)
+            if isinstance(value, str):
+                cell.data_type = 's'
             cell.fill, cell.font = fill, font
             cell.alignment = Alignment(vertical="center", wrap_text=True)
         for r_i, row in enumerate(rows[1:], start=2):
             for c_i, value in enumerate(row, start=1):
                 if value == "":
                     value = None
-                ws.cell(row=r_i, column=c_i, value=value)
+                cell = ws.cell(row=r_i, column=c_i, value=value)
+                if isinstance(value, str):
+                    cell.data_type = 's'
         for c_i in range(1, len(rows[0]) + 1):
             w = (widths[c_i - 1] if widths and c_i - 1 < len(widths) else None)
             if w is None:

@@ -361,3 +361,39 @@ def test_spec_exposes_new_flow_objects(client):
     assert spec["randomize_pages"] is False
     types = {q["type"] for q in spec["questions"]}
     assert {"date", "numeric_matrix", "delta", "concept_test", "loop", "text_block"} <= types
+
+
+def test_child_translation_selection_rich_labels_and_parent_language(client, monkeypatch):
+    import copy
+    cfg = copy.deepcopy(GLOBAL_CFG)
+    cfg["questions"][1]["options"][0]["label_html"] = "<b>Rich option</b>"
+    _save(client, cfg, slug="selective", title="Selective")
+    client.post("/api/studio/globalize", json={"slug": "selective", "lang": "es"})
+    calls = []
+    def fake(text, target, source, html=False):
+        calls.append((text, html))
+        if text == "Why?":
+            raise TranslationError("provider offline")
+        return "translated " + text
+    monkeypatch.setattr("routes.studio.translate_string", fake)
+    slug = "selective--es"
+    client.post("/api/studio/translate", json={"slug": slug, "lang": "es",
+        "strings": {"q:Q1:stem": "Manual"}, "excluded": ["q:Q1:opt:2"]})
+    result = client.post("/api/studio/autotranslate", json={"slug": slug, "lang": "es"}).get_json()
+    assert result["translated"] > 0
+    assert result["failed"] == {"q:Q2:stem": "provider offline"}
+    assert ("<b>Rich option</b>", True) in calls
+    assert not any(text == "Option B" for text, _ in calls)
+    for path in ("/api/spec/" + slug, "/api/spec/selective?lang=es"):
+        q = client.get(path).get_json()["questions"][1]
+        assert q["stem"] == "Manual"
+        assert q["options"][0]["label_html"] == "translated <b>Rich option</b>"
+        assert q["options"][1]["label"] == "Option B"
+    # Excluding an already translated question restores source without deleting the translation.
+    client.post("/api/studio/translate", json={"slug": slug, "lang": "es",
+        "excluded": ["q:Q1:stem"]})
+    assert client.get("/api/spec/" + slug).get_json()["questions"][1]["stem"] == "Pick one"
+    d = client.get("/api/studio/strings?study=" + slug).get_json()
+    assert d["translations"]["q:Q1:stem"] == "Manual"
+    assert d["excluded"] == ["q:Q1:stem"]
+    assert client.post("/api/studio/autotranslate", json={"slug": slug, "lang": "es", "keys": "bad"}).status_code == 400
