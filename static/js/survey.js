@@ -610,6 +610,97 @@
     return row;
   }
 
+  // ---- Text Grid voice: per-textbox real-time transcript (applies to every text entry)
+  function attachVoiceTranscript(textarea, qId, ansKey) {
+    if (!textarea || textarea._voiceAttached) return;
+    if (!(window.BeaconVoice && window.BeaconVoice.supported && window.BeaconVoice.supported())) {
+      // fallback: check native webkitSpeechRecognition
+      if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) return;
+    }
+    textarea._voiceAttached = true;
+    var wrap = textarea.parentNode;
+    // avoid duplicate if already has button
+    if (wrap && wrap.querySelector && wrap.querySelector('.tg-voice-btn[data-for="'+ansKey+'"]')) return;
+    var btn = el("button", "tg-voice-btn", '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate');
+    btn.type = "button";
+    btn.setAttribute("data-for", ansKey);
+    btn.title = "Click to dictate – transcript appears live in this box";
+    var rec = null, isRec = false, baseText = "", finalTxt = "";
+    btn.addEventListener("click", function () {
+      if (isRec) { try { if (rec) rec.stop(); } catch(e){} return; }
+      baseText = textarea.value || "";
+      finalTxt = "";
+      btn.classList.add("recording");
+      btn.innerHTML = '<span class="g-ico">\u23F9</span> Stop';
+      textarea.setAttribute("data-ph", textarea.placeholder || "");
+      textarea.placeholder = "Listening… speak clearly";
+      textarea.focus();
+      var handlers = {
+        onFinal: function (txt) {
+          if (!txt) return;
+          finalTxt = finalTxt ? finalTxt + " " + txt : txt;
+          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt : finalTxt;
+          textarea.value = full;
+          // trigger save
+          var ev = new Event("input", {bubbles:true});
+          textarea.dispatchEvent(ev);
+        },
+        onInterim: function (txt) {
+          if (!txt) return;
+          var interim = txt;
+          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt + " " + interim : finalTxt + " " + interim;
+          textarea.value = full.trim();
+        },
+        onState: function (state, code) {
+          if (state === "off" || state === "error") {
+            isRec = false;
+            btn.classList.remove("recording");
+            btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate';
+            textarea.placeholder = textarea.getAttribute("data-ph") || "Type here…";
+            // ensure final is saved
+            if (finalTxt || baseText !== textarea.value) {
+              var ev2 = new Event("input", {bubbles:true});
+              textarea.dispatchEvent(ev2);
+            }
+          } else if (state === "listening") {
+            isRec = true;
+          }
+        }
+      };
+      try {
+        rec = window.BeaconVoice.create(handlers);
+      } catch(e) { rec = null; }
+      if (rec) rec.start();
+      else {
+        // fallback direct SpeechRecognition if BeaconVoice unavailable
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { btn.classList.remove("recording"); btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate'; return; }
+        var sr = new SR();
+        sr.lang = (document.documentElement && document.documentElement.lang) || navigator.language || "en-US";
+        sr.interimResults = true;
+        sr.continuous = true;
+        sr.maxAlternatives = 1;
+        isRec = true;
+        sr.onresult = function (e) {
+          var fin="", inter="";
+          for (var i=e.resultIndex;i<e.results.length;i++) {
+            if (e.results[i].isFinal) fin += e.results[i][0].transcript + " ";
+            else inter += e.results[i][0].transcript + " ";
+          }
+          if (fin) handlers.onFinal(fin.trim());
+          if (inter) handlers.onInterim(inter.trim());
+        };
+        sr.onerror = function(e){ handlers.onState("error", e.error); };
+        sr.onend = function(){ if(isRec) try{ sr.start(); }catch(e){} else handlers.onState("off"); };
+        rec = { start:function(){ try{ sr.start(); handlers.onState("listening"); }catch(e){} }, stop:function(){ isRec=false; try{ sr.stop(); }catch(e){} handlers.onState("off"); } };
+        rec.start();
+      }
+    });
+    // insert after textarea
+    if (textarea.nextSibling) textarea.parentNode.insertBefore(btn, textarea.nextSibling);
+    else textarea.parentNode.appendChild(btn);
+  }
+
   // ============================================================ gamification
   var RANKS = [[0, "Observer"], [100, "Clinical Explorer"], [250, "Evidence Analyst"],
                [400, "Insight Strategist"], [600, "KOL Partner"]];
@@ -1372,6 +1463,18 @@
         }
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       }
+      case "text_grid": {
+        var tgc = q.cols || [];
+        if (tgc.length) {
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            return tgc.every(function (c) {
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v).trim() !== "";
+            });
+          });
+        }
+        return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && String(a[r.code]).trim() !== ""; });
+      }
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
@@ -1792,6 +1895,45 @@
       });
       wrap.appendChild(tbl);
     }
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  function renderTextGrid(q) {
+    var wrap = el("div", "text-grid");
+    var g = q.grid || {}, cols = orderedList(q.cols || [], q, "cols"), rows = orderedList(q.rows || [], q, "rows");
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (!rows.length || !cols.length) {
+      wrap.appendChild(el("div", "st-note", "Add at least one row and one column."));
+      return wrap;
+    }
+    var tbl = el("div", "tg-table");
+    tbl.style.setProperty("--tg-cols", "minmax(150px,1.6fr) repeat(" + cols.length + ", minmax(180px,1fr))");
+    var head = el("div", "tg-tr tg-head");
+    head.appendChild(el("div", "tg-th tg-corner", pipeText(g.row_label || "")));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "tg-th")); });
+    tbl.appendChild(head);
+    rows.forEach(function (r) {
+      var row = el("div", "tg-tr");
+      row.appendChild(itemLabelNode(r, "tg-th tg-rowlabel"));
+      cols.forEach(function (c) {
+        var cell = el("div", "tg-td");
+        var key = r.code + "_" + c.code;
+        var ta = el("textarea", "tg-input");
+        ta.placeholder = q.placeholder || "Type here...";
+        ta.rows = 2;
+        ta.value = getAns(q.id, key) || "";
+        ta.addEventListener("input", function () {
+          setAns(q.id, key, ta.value);
+          hideErr(); ansChanged();
+        });
+        // also handle focus to ensure voice bar knows active field
+        cell.appendChild(ta);
+        try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
+        row.appendChild(cell);
+      });
+      tbl.appendChild(row);
+    });
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }
@@ -2929,12 +3071,14 @@
         var aiBox = el("div", "ai-actions");
         body = el("div");
         body.appendChild(ta);
+        try { attachVoiceTranscript(ta, q.id, "_"); } catch(e) {}
         body.appendChild(chip);
         body.appendChild(aiBox);
         body.appendChild(recorderFor(q));
         wireTextWatch(q, ta, chip, aiBox);
         break;
       }
+      case "text_grid": { body = renderTextGrid(q); break; }
     }
     return body;
   }

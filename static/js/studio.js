@@ -67,6 +67,7 @@
     multi_select: { name: "Multiple Choice (many)", icon: "\u2611", desc: "Tick all that apply", group: "Questions" },
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
     rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
+    text_grid: { name: "Text Grid", icon: "\u229E", desc: "Rows \u00D7 columns of text boxes – flexible, images on rows & columns, voice to text", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
@@ -146,6 +147,10 @@
       q.min = 0; q.max = 100;
       q.rows = [{ code: "a", label: "First row" }, { code: "b", label: "Second row" }];
       q.cols = [{ code: "c1", label: "Column one" }, { code: "c2", label: "Column two" }];
+    }
+    if (type === "text_grid") {
+      q.rows = [{ code: "r1", label: "Row 1" }, { code: "r2", label: "Row 2" }];
+      q.cols = [{ code: "c1", label: "Column 1" }, { code: "c2", label: "Column 2" }];
     }
     if (type === "delta") { q.min = 0; q.max = 100; q.before_label = "Before"; q.after_label = "After"; }
     if (type === "concept_test") {
@@ -1336,9 +1341,9 @@
   // scale points (1..7, each with a label of its own); on a heat map and a numeric matrix
   // they are a second list.  Both axes are edited the same way: add, label, format, attach
   // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
-  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix"];
+  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix", "text_grid"];
   var SCALE_TYPES = ["semantic_diff", "emoji_grid"];   // columns = scale points
-  var AXIS_TYPES = ["rating_grid", "numeric_matrix"];       // columns = a second list
+  var AXIS_TYPES = ["rating_grid", "numeric_matrix", "text_grid"];       // columns = a second list
   var RZ_MODES = [
     ["none", "Fixed", "Everyone sees the list as written"],
     ["shuffle", "Shuffle", "A fresh random order for every respondent"],
@@ -1708,6 +1713,16 @@
 
   function gridBlock() {
     var t = ed.type, html = "";
+    if (t === "text_grid") {
+      html += gridHeadFields();
+      html += '<div class="st-hint" style="margin-bottom:10px">Each cell is a free-text box. Add rows and columns below — both support custom names and images. The grid is fully flexible (1 to 12 per axis).</div>';
+      html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + (ed.cols || []).length + '</span></h4>' +
+        itemTable("col", ed.cols || [], { noun: "column", flags: ["pin"], media: true, ph: "Column name", labelHead: "Column" });
+      html += '<h4 class="st-h4">Rows <span class="st-h4-n">' + (ed.rows || []).length + '</span></h4>' +
+        itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, ph: "Row label", labelHead: "Row" });
+      html += '<div class="st-item-actions"><button class="st-btn sm" data-act="mtx-swap">⇄ Swap rows and columns</button><span class="st-meta">Swap rows ↔ columns</span></div>';
+      return html;
+    }
     if (t === "rating_grid") html += gridSelectField();
     html += gridHeadFields();
     if (hasScale(t)) {
