@@ -715,19 +715,19 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .nm-td-na,.nm-th-na{text-align:center}
 .nm-input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .nm-cmtrow{border-top:1px solid var(--line);padding:6px 10px;background:#fcfdfe}
-/* Text Grid – column-major: 3 cols × 2 rows = 3 side-by-side columns each with 2 inputs */
+/* Text Grid – rows left once, columns across: Column 1/2 headers, Row 1/2 labels left */
 .text-grid{margin-top:10px}
-.tg-table{display:flex;gap:12px;align-items:stretch;overflow-x:auto;padding-bottom:4px}
-.tg-col{flex:1 1 0;min-width:160px;background:#eef1f3;border-radius:10px;padding:10px 10px 12px;display:flex;flex-direction:column;gap:10px}
-.tg-col:nth-child(even){background:#fff;border:1px solid var(--line)}
-.tg-col-head{padding:6px 4px;display:flex;justify-content:center;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink);text-align:center}
-.tg-col-head img{max-width:50px;max-height:36px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
-.tg-col-head span{font-weight:700}
-.tg-col-row{display:flex;flex-direction:column;gap:6px}
-.tg-rowlabel-sm{font-size:12px;font-weight:600;color:var(--ink);display:flex;align-items:center;gap:6px}
-.tg-rowlabel-sm img{width:18px;height:18px;border-radius:4px;object-fit:cover}
-.tg-col-row textarea.tg-input{width:100%;min-height:38px;max-height:90px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;line-height:1.3;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-.tg-col-row textarea.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
+.tg-table{display:flex;flex-direction:column;gap:8px}
+.tg-tr{display:grid;grid-template-columns:var(--tg-cols);gap:12px;align-items:start}
+.tg-th{padding:6px 8px;display:flex;align-items:center;gap:6px;font-size:13px;font-weight:700;color:var(--ink)}
+.tg-corner{background:transparent}
+.tg-th.tg-col-head{justify-content:center;text-align:center;background:#f4f6f8;border-radius:8px;padding:10px 8px}
+.tg-th.tg-col-head img{max-width:50px;max-height:36px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
+.tg-th.tg-rowlabel{justify-content:flex-start;background:transparent;padding:14px 8px 0 0;font-size:13px;font-weight:600;text-align:left}
+.tg-td{padding:0;display:flex;flex-direction:column;gap:6px;background:#f4f6f8;border-radius:10px;padding:10px}
+.tg-td:nth-child(even){background:#fff;border:1px solid var(--line)}
+.tg-td textarea.tg-input{width:100%;min-height:40px;resize:vertical;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tg-td textarea.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
 .tg-voice-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
 .tg-voice-btn:hover{background:var(--soft);border-color:var(--accent2)}
 .tg-voice-btn.recording{background:#b3261e;color:#fff;border-color:#b3261e;animation:recPulse 1.2s ease-in-out infinite}

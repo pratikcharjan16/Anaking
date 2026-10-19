@@ -1904,21 +1904,21 @@
     var g = q.grid || {}, cols = orderedList(q.cols || [], q, "cols"), rows = orderedList(q.rows || [], q, "rows");
     if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
     if (!rows.length || !cols.length) {
-      wrap.appendChild(el("div", "st-note", "Add at least one row and one column – 3 cols × 2 rows = 6 text boxes."));
+      wrap.appendChild(el("div", "st-note", "Add at least one row and one column – 2 cols × 2 rows = 4 text boxes."));
       return wrap;
     }
     var tbl = el("div", "tg-table");
-    // column-major: 3 columns side-by-side, each holds 2 rows vertically
-    cols.forEach(function (c, ci) {
-      var colBox = el("div", "tg-col");
-      var head = itemLabelNode(c, "tg-col-head");
-      colBox.appendChild(head);
-      rows.forEach(function (r) {
+    tbl.style.setProperty("--tg-cols", "140px repeat(" + cols.length + ", 1fr)");
+    var head = el("div", "tg-tr tg-head");
+    head.appendChild(el("div", "tg-th tg-corner", ""));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "tg-th tg-col-head")); });
+    tbl.appendChild(head);
+    rows.forEach(function (r) {
+      var row = el("div", "tg-tr");
+      row.appendChild(itemLabelNode(r, "tg-th tg-rowlabel"));
+      cols.forEach(function (c) {
+        var cell = el("div", "tg-td");
         var key = r.code + "_" + c.code;
-        var rowWrap = el("div", "tg-col-row");
-        // row label inside column (Saving/Invest, Rent…)
-        var lab = itemLabelNode(r, "tg-rowlabel-sm");
-        rowWrap.appendChild(lab);
         var ta = el("textarea", "tg-input");
         ta.placeholder = q.placeholder || "Type here…";
         ta.rows = 1;
@@ -1927,11 +1927,11 @@
           setAns(q.id, key, ta.value);
           hideErr(); ansChanged();
         });
-        rowWrap.appendChild(ta);
+        cell.appendChild(ta);
         try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
-        colBox.appendChild(rowWrap);
+        row.appendChild(cell);
       });
-      tbl.appendChild(colBox);
+      tbl.appendChild(row);
     });
     wrap.appendChild(tbl);
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
