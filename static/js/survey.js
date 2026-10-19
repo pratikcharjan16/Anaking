@@ -1160,6 +1160,46 @@
     }
     return items;
   }
+  function conceptListFor(q){
+    var concepts = (q.concepts || []).slice();
+    if(!concepts.length && q.concept_concepts) concepts = (q.concept_concepts||[]).slice();
+    var enabled = q.concept_concepts_per_enabled;
+    if(enabled===undefined) enabled = q.concepts_per_enabled;
+    var per = q.concept_concepts_per;
+    if(per===undefined) per = q.concepts_per;
+    if(enabled && per){
+      var lim = Number(per);
+      // if randomize, shuffle first then slice to get random subset
+      if(q.concept_randomize){
+        var seed = (SESSION && SESSION.session_id) || "preview";
+        if(window.BeaconQ && window.BeaconQ.order){
+          var wrapped = concepts.map(function(c){ return {code: c.id||c.label, label: c.label, _c: c}; });
+          var ordered = window.BeaconQ.order(wrapped, {id: q.id, randomize: "shuffle"}, seed);
+          concepts = ordered.map(function(o){ return o._c; });
+        } else {
+          var h = 2166136261; for(var i=0;i<seed.length;i++){ h ^= seed.charCodeAt(i); h = (h*16777619)>>>0; }
+          var st = h||1; function rnd(){ st ^= st<<13; st ^= st>>>17; st ^= st<<5; st>>>=0; return st/4294967296; }
+          for(var j=concepts.length-1;j>0;j--){ var k=Math.floor(rnd()*(j+1)); var t=concepts[j]; concepts[j]=concepts[k]; concepts[k]=t; }
+        }
+        if(lim>0 && lim < concepts.length) concepts = concepts.slice(0, lim);
+      } else {
+        if(lim>0 && lim < concepts.length) concepts = concepts.slice(0, lim);
+        // then randomize if enabled? already handled
+      }
+    } else if(q.concept_randomize){
+      var seed2 = (SESSION && SESSION.session_id) || "preview";
+      if(window.BeaconQ && window.BeaconQ.order){
+        var wrapped2 = concepts.map(function(c){ return {code: c.id||c.label, label: c.label, _c: c}; });
+        var ordered2 = window.BeaconQ.order(wrapped2, {id: q.id, randomize: "shuffle"}, seed2);
+        concepts = ordered2.map(function(o){ return o._c; });
+      } else {
+        var h2 = 2166136261; for(var i2=0;i2<seed2.length;i2++){ h2 ^= seed2.charCodeAt(i2); h2 = (h2*16777619)>>>0; }
+        var st2 = h2||1; function rnd2(){ st2 ^= st2<<13; st2 ^= st2>>>17; st2 ^= st2<<5; st2>>>=0; return st2/4294967296; }
+        for(var j2=concepts.length-1;j2>0;j2--){ var k2=Math.floor(rnd2()*(j2+1)); var t2=concepts[j2]; concepts[j2]=concepts[k2]; concepts[k2]=t2; }
+      }
+    }
+    return concepts;
+  }
   function buildSteps() {
     steps = [];
     var list = SPEC.questions.slice();
@@ -1209,6 +1249,60 @@
           }
         } else {
           var q3 = JSON.parse(JSON.stringify(q)); q3._loop_items = items; steps.push({ kind: "q", q: q3 });
+        }
+      } else if (q.type === "concept_test") {
+        var concepts = conceptListFor(q);
+        var cqs = (q.concept_questions && q.concept_questions.length) ? q.concept_questions.slice() : [];
+        // legacy fallback: if no new structure, treat as single question
+        if(!concepts.length && !cqs.length){
+          steps.push({ kind: "q", q: q });
+        } else if(concepts.length && cqs.length){
+          concepts.forEach(function(concept){
+            cqs.forEach(function(cq){
+              var synth = JSON.parse(JSON.stringify(cq));
+              synth.id = q.id + "_" + concept.id + "_" + (cq.id || cq.type);
+              synth._concept_parent = q.id;
+              synth._concept_id = concept.id;
+              synth._concept_label = concept.label;
+              synth._concept_text = concept.text;
+              synth._concept_text_html = concept.text_html;
+              synth._concept_media = concept.media;
+              synth._concept_duration = concept.duration;
+              synth._concept_allow_replay = concept.allow_replay;
+              synth._concept_description_html = q.concept_description_html;
+              synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
+              synth._concept_execution = q.concept_execution;
+              synth.section = q.section;
+              if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label).replace(/\{item\}/g, concept.label);
+              if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+              if(synth.required===undefined) synth.required = false;
+              steps.push({ kind: "q", q: synth });
+            });
+          });
+        } else if(concepts.length){
+          concepts.forEach(function(concept){
+            var synth2 = JSON.parse(JSON.stringify(q));
+            synth2.id = q.id + "_" + concept.id;
+            synth2._concept_parent = q.id;
+            synth2._concept_id = concept.id;
+            synth2._concept_label = concept.label;
+            synth2._concept_text = concept.text;
+            synth2._concept_text_html = concept.text_html;
+            synth2._concept_media = concept.media;
+            synth2._concept_duration = concept.duration;
+            synth2._concept_allow_replay = concept.allow_replay;
+            synth2.type = "text_block";
+            synth2.body_html = "<div class='concept-media'>" + (concept.media&&concept.media.src ? "<img src='"+concept.media.src+"' style='max-width:100%'>" : "") + "</div><h3>"+concept.label+"</h3><p>"+(concept.text_html||concept.text||"")+"</p>";
+            synth2.section = q.section;
+            steps.push({ kind: "q", q: synth2 });
+          });
+        } else {
+          cqs.forEach(function(cq){
+            var synth3 = JSON.parse(JSON.stringify(cq));
+            synth3._concept_parent = q.id;
+            synth3.section = q.section;
+            steps.push({ kind: "q", q: synth3 });
+          });
         }
       } else {
         steps.push({ kind: "q", q: q });
@@ -1739,6 +1833,42 @@
 
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
+    // new structure: concepts + concept_questions
+    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
+      var clist = conceptListFor(q);
+      var cqs = q.concept_questions || [];
+      var total = clist.length * cqs.length;
+      var limTxt = q.concept_concepts_per_enabled ? " limited to "+q.concept_concepts_per : "";
+      var randTxt = q.concept_randomize ? " \u00B7 randomized per respondent" : "";
+      wrap.appendChild(el("div","st-note","This concept test repeats "+cqs.length+" question(s) for each of "+clist.length+" concept(s) ("+total+" steps)"+limTxt+randTxt+". Each concept repeats the survey below."));
+      if(q.concept_execution) wrap.appendChild(el("div","st-note","EXECUTIONS: "+pipeText(q.concept_execution)));
+      if(q.concept_description_html){
+        var d = el("div","concept-desc-preview");
+        if(window.BeaconQ) window.BeaconQ.richInto(d, q.concept_description_html, logicCtx(), "…");
+        else d.textContent = pipeText(q.concept_description_html);
+        d.style.border="1px dashed #ccc"; d.style.padding="8px"; d.style.margin="6px 0"; d.style.borderRadius="6px";
+        wrap.appendChild(d);
+      }
+      clist.forEach(function(c, ci){
+        var prow = el("div","loop-row");
+        prow.style.border="1px solid #e0e0e0"; prow.style.borderRadius="6px"; prow.style.padding="8px"; prow.style.margin="4px 0";
+        var head = el("div","loop-label", (ci+1)+". "+(c.label||"Concept")+" ("+(c.duration||"no limit")+(c.allow_replay?" \u00B7 replay":"")+")");
+        prow.appendChild(head);
+        if(c.text) prow.appendChild(el("div","st-note", c.text));
+        if(c.media && c.media.src) prow.appendChild(el("div","st-note","Media: "+c.media.src));
+        wrap.appendChild(prow);
+      });
+      cqs.forEach(function(cq, idx){
+        var prow2 = el("div","loop-row");
+        prow2.appendChild(el("div","loop-label", (idx+1)+". ["+cq.type+"] "+(cq.stem||"").replace("{concept}", clist[0]?clist[0].label:"concept")));
+        if(cq.type==="single_select"||cq.type==="multi_select"){
+          var olist = el("div","st-note"); olist.textContent = (cq.options||[]).map(function(o){return o.label;}).join(" \u00B7 "); prow2.appendChild(olist);
+        }
+        wrap.appendChild(prow2);
+      });
+      if(cqs.length && clist.length) wrap.appendChild(el("div","st-note","Flow: "+clist.map(function(c){return c.label;}).join(" \u2192 ")+" each \u00D7 "+cqs.length+" questions"));
+      return wrap;
+    }
     if (q.concept_html && window.BeaconQ) {
       var c = el("div", "concept-html");
       window.BeaconQ.richInto(c, q.concept_html, logicCtx(), q.concept || "\u2026");
@@ -2702,6 +2832,46 @@
       ctx.textContent = "For " + (q._loop_label || q._loop_item) + " \u2014 " + q._loop_parent;
       ctx.title = "Loop from " + q._loop_parent + " for item " + q._loop_item;
       card.appendChild(ctx);
+    }
+    if (q._concept_parent) {
+      var cctx = el("div", "concept-ctx");
+      var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
+      if(exec) cctx.appendChild(exec);
+      var ch = el("div","concept-header");
+      var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
+      ch.appendChild(clabel);
+      if(q._concept_media && q._concept_media.src){
+        ch.appendChild(renderMedia(q._concept_media, "concept-media"));
+      }
+      if(q._concept_text_html || q._concept_text){
+        var cbody = el("div","concept-body");
+        if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
+        else cbody.textContent = pipeText(q._concept_text);
+        ch.appendChild(cbody);
+      }
+      cctx.appendChild(ch);
+      if(q._concept_duration && q._concept_duration !== "no-limit" && q._concept_duration !== "no limit"){
+        var dur = el("div","concept-duration"); dur.textContent = "Viewing time: "+q._concept_duration + (q._concept_allow_replay ? " \u00B7 replay allowed" : ""); cctx.appendChild(dur);
+      } else if(q._concept_allow_replay){
+        var dur2 = el("div","concept-duration"); dur2.textContent = "Replay allowed"; cctx.appendChild(dur2);
+      }
+      // description per spec: Show description before first concept only -> only on first concept's first question
+      // For now we show if available; first-only handled by checking if concept is first in list (via index) - but we approximate by always showing if not first-only flag
+      if(q._concept_description_html){
+        var showDesc = true;
+        if(q._concept_show_desc_first_only){
+          // Only show for first concept (we don't have index, so show if concept is first? fallback to not showing for others via checking session progress)
+          // Simple heuristic: if this is not the first concept encountered in steps, hide description.
+          // We'll determine by comparing current step index's concept ordering.
+          var firstConceptId = null;
+          try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
+          if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
+        }
+        if(showDesc){
+          var desc = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(desc, q._concept_description_html, logicCtx(), "…"); else desc.textContent = pipeText(q._concept_description_html); cctx.appendChild(desc);
+        }
+      }
+      card.appendChild(cctx);
     }
 
     if (q.comprehension) {

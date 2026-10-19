@@ -152,6 +152,24 @@
       q.concept = "Describe the concept here.";
       q.scale = { min: 1, max: 7, min_label: "Strongly disagree", max_label: "Strongly agree" };
       q.rows = [{ code: "a", label: "It is easy to understand" }, { code: "b", label: "It is relevant to me" }];
+      q.concept_execution = "";
+      q.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
+      q.concept_show_desc_first_only = true;
+      q.concept_concepts_per_enabled = true;
+      q.concept_concepts_per = 3;
+      q.concept_randomize = false;
+      q.concepts = [
+        { id: q.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
+        { id: q.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
+        { id: q.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
+      ];
+      q.concept_questions = [
+        { id: q.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: true, placeholder: "Type your answer" },
+        { id: q.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient — KEY DIAGNOSTIC", required: true, options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
+        { id: q.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
+        { id: q.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
+        { id: q.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
+      ];
     }
     if (type === "loop") {
       q.child = "open_text"; q.prompt_template = "{label}"; q.text_rows = 2;
@@ -2358,6 +2376,69 @@
     return h;
   }
 
+  function conceptTestBlock(){
+    if(!ed.concepts) ed.concepts = [
+      { id: ed.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
+      { id: ed.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
+      { id: ed.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
+    ];
+    if(ed.concept_concepts_per===undefined) ed.concept_concepts_per = 3;
+    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = true;
+    if(ed.concept_randomize===undefined) ed.concept_randomize = false;
+    if(ed.concept_execution===undefined) ed.concept_execution = "";
+    if(ed.concept_description_html===undefined) ed.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
+    if(ed.concept_show_desc_first_only===undefined) ed.concept_show_desc_first_only = true;
+    if(!ed.concept_questions) ed.concept_questions = [
+      { id: ed.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: false },
+      { id: ed.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient \u2014 KEY DIAGNOSTIC", options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
+      { id: ed.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
+      { id: ed.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
+      { id: ed.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
+    ];
+    var html = '<div class="st-ct-wrap">';
+    html += '<div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="EXECUTIONS"></div>';
+    html += '<div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div>';
+    html += '<div class="st-row" style="justify-content:flex-end;margin-top:6px"><label class="st-switch"><input type="checkbox" id="f-ct-showfirst"' + (ed.concept_show_desc_first_only!==false ? " checked" : "") + '><i></i>Show description before first concept only</label></div></div>';
+    html += '<div class="st-ct-concepts-head"><span>Concepts</span><span class="st-ct-concepts-tools"><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></span></div>';
+    html += '<div class="st-ct-concepts">';
+    ed.concepts.forEach(function(c,i){
+      var durOpts = ["no-limit","5 sec","10 sec","15 sec","20 sec","25 sec","30 sec","1 min"];
+      var durMap = {"no-limit":"no-limit","5s":"5 sec","5 sec":"5 sec","10s":"10 sec","10 sec":"10 sec","15s":"15 sec","15 sec":"15 sec","20s":"20 sec","20 sec":"20 sec","25s":"25 sec","25 sec":"25 sec","30s":"30 sec","30 sec":"30 sec","1 min":"1 min"};
+      var curDur = durMap[c.duration] || c.duration || "5 sec";
+      html += '<div class="st-ct-concept" data-ct-i="' + i + '"><span class="st-grip" draggable="true">\u283F</span>';
+      html += '<input data-ct="label" data-i="' + i + '" value="' + esc(c.label) + '" placeholder="EXECUTION A" style="width:140px;font-weight:700">';
+      html += '<button class="st-ibtn" data-act="ct-media" data-i="' + i + '" title="Attach">&#128206;</button>';
+      if(c.media && c.media.src) html += '<span class="st-thumb"><img src="' + esc(c.media.src) + '" alt=""><button class="st-x" data-act="ct-media-del" data-i="' + i + '">&times;</button></span>';
+      html += '<span class="st-ct-text">' + esc((c.text||"").slice(0,18)) + '... <a href="#" data-act="ct-edit-text" data-i="' + i + '" style="color:#b3261e;font-weight:700">Change text</a></span>';
+      html += '<select data-ct="duration" data-i="' + i + '">' + durOpts.map(function(d){ return '<option value="' + d + '"' + (curDur===d ? " selected" : "") + '>' + d + '</option>'; }).join("") + '</select>';
+      html += '<label class="st-switch"><input type="checkbox" data-ct="allow_replay" data-i="' + i + '"' + (c.allow_replay ? " checked" : "") + '><i></i>Allow replay</label>';
+      html += '<a href="#" class="st-link" data-act="ct-preview" data-i="' + i + '" style="color:#12789e">Preview</a>';
+      html += '<button class="st-ibtn danger" data-act="ct-del" data-i="' + i + '" title="Delete">\u2715</button></div>';
+    });
+    html += '</div>';
+    html += '<button class="st-btn sm" data-act="ct-add" style="background:#e53935;color:#fff;border-color:#e53935;margin-top:6px">+ Add Concept</button>';
+    html += '<div class="st-ct-sep"><span>Concept Test Survey</span></div>';
+    html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    ed.concept_questions.forEach(function(qq, qi){
+      html += conceptQuestionRow(qq, qi);
+    });
+    html += '</div><button class="st-btn ghost wide" data-act="ct-q-add" style="margin-top:10px">+ Add Item</button></div>';
+    html += '</div>';
+    return html;
+  }
+  function conceptQuestionRow(qq, qi){
+    var icon = tinfo(qq.type).icon || "\u2261";
+    var h = '<div class="st-ct-q" data-cq="' + qi + '"><span class="st-grip">\u283F</span><span class="st-ct-q-ic">' + icon + '</span>';
+    h += '<input data-cq="stem" data-qi="' + qi + '" value="' + esc(qq.stem||"") + '" placeholder="Question stem" style="flex:1;font-weight:600">';
+    h += '<select data-cq="type" data-qi="' + qi + '" style="width:160px">' + ["single_select","multi_select","open_text","numeric","rating_scale","rating_grid","semantic_diff","date","rank","slider","sum_to_100","nps","emoji_grid","heatmap","gauge_meter","numeric_matrix","delta"].map(function(t){ var ti=tinfo(t); return '<option value="' + t + '"' + (qq.type===t ? " selected" : "") + '>' + esc(ti.name) + '</option>'; }).join("") + '</select>';
+    h += '<span class="st-item-tools"><button class="st-ibtn" data-act="ct-q-dup" data-qi="' + qi + '" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="' + qi + '" title="Delete">\u2715</button></span></div>';
+    if(qq.type==="single_select"||qq.type==="multi_select"){
+      var opts = qq.options||[{code:1,label:"Option 1"},{code:2,label:"Option 2"}];
+      h += '<div class="st-ct-q-opts">' + opts.map(function(o,oi){ return '<div class="st-ct-opt"><input data-cq="opt_code" data-qi="' + qi + '" data-oi="' + oi + '" value="' + esc(o.code) + '" style="width:50px"><input data-cq="opt_label" data-qi="' + qi + '" data-oi="' + oi + '" value="' + esc(o.label) + '" style="flex:1"><button class="st-ibtn danger" data-act="ct-opt-del" data-qi="' + qi + '" data-oi="' + oi + '">\u2715</button></div>'; }).join("") + '<button class="st-btn sm" data-act="ct-opt-add" data-qi="' + qi + '" style="margin-top:4px">+ Add option</button></div>';
+    }
+    return h;
+  }
+
   function answersCard() {
     var t = ed.type, html = "";
     if (hasOptions(t)) {
@@ -2371,6 +2452,10 @@
     else if (t === "rating_scale") html += ratingScaleBlock();
     else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
+    if (t === "concept_test") {
+      html += conceptTestBlock();
+      return html;
+    }
     if (t === "loop") {
       html += loopBlock();
     }
@@ -3573,7 +3658,49 @@
       setOrDel(ed, "ai_action", qaa);
       if (qaa === "off") ed.ai_check = false; else delete ed.ai_check;
     }
-    if (t === "concept_test" && val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
+    if (t === "concept_test") {
+      setOrDel(ed, "concept_execution", val("f-ct-exec"));
+      var cd = document.getElementById("f-ct-desc");
+      if (cd) { var hh = unchip(Q.sanitize(cd.innerHTML)); ed.concept_description_html = hh; if(Q.stripTags(hh)) ed.concept_description = Q.stripTags(hh); else delete ed.concept_description; }
+      setOrDel(ed, "concept_show_desc_first_only", chk("f-ct-showfirst"));
+      setOrDel(ed, "concept_concepts_per_enabled", chk("f-ct-cper-on"));
+      setOrDel(ed, "concept_concepts_per", num("f-ct-cper"));
+      if (ed.concepts) {
+        ed.concepts.forEach(function(c, i){
+          var labEl = document.querySelector('[data-ct="label"][data-i="'+i+'"]');
+          if(labEl) c.label = labEl.value;
+          var durEl = document.querySelector('[data-ct="duration"][data-i="'+i+'"]');
+          if(durEl) c.duration = durEl.value;
+          var replayEl = document.querySelector('[data-ct="allow_replay"][data-i="'+i+'"]');
+          if(replayEl) c.allow_replay = replayEl.checked;
+          var textInput = document.querySelector('[data-ct="text_input"][data-i="'+i+'"]');
+          if(textInput) { c.text = textInput.value; c.text_html = Q.sanitize(esc(textInput.value)); }
+        });
+      }
+      if (ed.concept_questions) {
+        ed.concept_questions.forEach(function(qq, qi){
+          var stemEl = document.querySelector('[data-cq="stem"][data-qi="'+qi+'"]');
+          if(stemEl) qq.stem = stemEl.value;
+          var typeEl = document.querySelector('[data-cq="type"][data-qi="'+qi+'"]');
+          if(typeEl) qq.type = typeEl.value;
+          if(qq.type==="single_select"||qq.type==="multi_select"){
+            var optCodes = document.querySelectorAll('[data-cq="opt_code"][data-qi="'+qi+'"]');
+            var optLabels = document.querySelectorAll('[data-cq="opt_label"][data-qi="'+qi+'"]');
+            if(optCodes.length){
+              var newOpts=[];
+              optCodes.forEach(function(cEl, oi){
+                var lEl = optLabels[oi];
+                var code = cEl.value.trim(); if(!code) code = oi+1;
+                var lab = lEl ? lEl.value : "";
+                newOpts.push({code: isNaN(Number(code))?code:Number(code), label: lab});
+              });
+              qq.options = newOpts;
+            }
+          }
+        });
+      }
+      if (val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
+    }
     if (t === "numeric_matrix" || t === "delta") {
       if (val("f-nmin") !== undefined) { setOrDel(ed, "min", num("f-nmin")); setOrDel(ed, "max", num("f-nmax")); setOrDel(ed, "step", num("f-nstep")); }
     }
@@ -4182,6 +4309,18 @@
     if (act === "loop-opt-add") { syncFromForm(); var lqIdx = Number(b.getAttribute("data-lq")); var lq = ed.loop_questions[lqIdx]; lq.options = lq.options || []; lq.options.push({code: lq.options.length+1, label:"Option "+(lq.options.length+1)}); rerenderCard("answers"); changed(); return; }
     if (act === "loop-opt-del") { syncFromForm(); var lqIdx2 = Number(b.getAttribute("data-lq")), oi = Number(b.getAttribute("data-oi")); ed.loop_questions[lqIdx2].options.splice(oi,1); rerenderCard("answers"); changed(); return; }
     if (act === "loop-tab-logic") { syncFromForm(); var logicCard = document.getElementById("card-logic"); if(logicCard) { logicCard.open = true; logicCard.scrollIntoView({behavior:"smooth"}); } else { toast("Conditional logic is on the Logic card below"); } return; }
+    if (act === "ct-add") { syncFromForm(); ed.concepts = ed.concepts||[]; var nid = ed.id+"_C"+(ed.concepts.length+1); ed.concepts.push({id:nid, label:"EXECUTION "+String.fromCharCode(65+ed.concepts.length), text:"New concept text", text_html:"New concept text", duration:"5 sec", allow_replay:true, media:null}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-del") { syncFromForm(); var ci = Number(b.getAttribute("data-i")); ed.concepts.splice(ci,1); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-media-del") { syncFromForm(); var cmi = Number(b.getAttribute("data-i")); if(ed.concepts[cmi]) delete ed.concepts[cmi].media; rerenderCard("answers"); changed(); return; }
+    if (act === "ct-media") { var cidx = Number(b.getAttribute("data-i")); var inp = document.createElement("input"); inp.type="file"; inp.accept="image/*,video/*,audio/*"; inp.onchange=function(){ if(inp.files&&inp.files[0]) uploadMedia(inp.files[0], function(r){ syncFromForm(); ed.concepts[cidx].media = {src:r.src, kind:r.kind, external:false}; rerenderCard("answers"); changed(); toast("Attached "+r.file); }); }; inp.click(); return; }
+    if (act === "ct-edit-text") { syncFromForm(); var ei = Number(b.getAttribute("data-i")); askText("Concept text", "Text shown with the concept (supports rich formatting via toolbar)", (ed.concepts[ei]&&ed.concepts[ei].text)||"", function(txt){ var c=ed.concepts[ei]; c.text=txt; c.text_html=Q.sanitize(esc(txt)); rerenderCard("answers"); changed(); }); return; }
+    if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
+    if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-add") { syncFromForm(); ed.concept_questions = ed.concept_questions||[]; var qid2 = ed.id+"_CQ"+(ed.concept_questions.length+1); ed.concept_questions.push({id:qid2, type:"open_text", stem:"New question about {concept}", required:false}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-del") { syncFromForm(); var qdi = Number(b.getAttribute("data-qi")); ed.concept_questions.splice(qdi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-dup") { syncFromForm(); var qdup2 = Number(b.getAttribute("data-qi")); var copy2 = JSON.parse(JSON.stringify(ed.concept_questions[qdup2])); copy2.id = ed.id+"_CQ"+(ed.concept_questions.length+1); copy2.stem=(copy2.stem||"")+" (copy)"; ed.concept_questions.splice(qdup2+1,0,copy2); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-opt-add") { syncFromForm(); var qoi = Number(b.getAttribute("data-qi")); var qqq = ed.concept_questions[qoi]; qqq.options=qqq.options||[]; qqq.options.push({code:qqq.options.length+1, label:"Option "+(qqq.options.length+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-opt-del") { syncFromForm(); var qoi2 = Number(b.getAttribute("data-qi")), oi2 = Number(b.getAttribute("data-oi")); ed.concept_questions[qoi2].options.splice(oi2,1); rerenderCard("answers"); changed(); return; }
     if (act === "raw-apply") {
       try {
         var parsed = JSON.parse(val("f-raw"));
@@ -4459,6 +4598,8 @@
     }
     if (t.id && t.id.indexOf("f-loop")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-loop-k")) { syncFromForm(); if(t.getAttribute("data-loop-k")==="type") rerenderCard("answers"); changed(); return; }
+    if (t.id && t.id.indexOf("f-ct")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && (t.getAttribute("data-ct") || t.getAttribute("data-cq"))) { syncFromForm(); if(t.getAttribute("data-cq")==="type") rerenderCard("answers"); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }

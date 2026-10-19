@@ -150,11 +150,97 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             except (KeyError, TypeError, ValueError):
                 out[qid + "_delta"] = ""
         elif t == "concept_test":
-            for r in q["rows"]:
+            # legacy rows/cols
+            for r in q.get("rows") or []:
                 out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
+            # new concept_test: each concept x question is synthetic id parent_concept_qid
+            concepts = q.get("concepts") or []
+            cqs = q.get("concept_questions") or []
+            if concepts and cqs:
+                for c in concepts:
+                    for cq in cqs:
+                        sid = f"{qid}_{c.get('id')}_{cq.get('id')}"
+                        sa = answers.get(sid, {})
+                        if not sa:
+                            continue
+                        # flatten based on cq type
+                        ct = cq.get("type")
+                        if ct in ("single_select","numeric","slider","nps","rating_scale","gauge_meter"):
+                            out[sid] = sa.get("_","")
+                            if ct=="single_select":
+                                opt = next((o for o in cq.get("options",[]) if str(o["code"])==str(sa.get("_"))), None)
+                                if opt: out[sid+"_text"]=opt["label"]
+                        elif ct=="open_text":
+                            out[sid]=sa.get("_","")
+                        elif ct in ("multi_select",):
+                            out[sid]=";".join(str(c) for c in sorted(sa.get("codes",[]), key=str))
+                        elif ct in ("rating_grid","rating_scale","semantic_diff","sum_to_100") or (ct=="gauge_meter" and cq.get("rows")):
+                            for r in cq.get("rows") or []:
+                                out[f"{sid}_{r['code']}"]=sa.get(r["code"],"")
+                        elif ct=="loop":
+                            pass
+                        else:
+                            # fallback: store raw _ or whole dict
+                            if "_" in sa: out[sid]=sa.get("_","")
+                            else:
+                                for kk, vv in sa.items():
+                                    if not kk.startswith("_"): out[f"{sid}_{kk}"]=vv
+                # also handle synthetic keys that may include randomize/limit subset not in cfg iteration (e.g., per respondent subset)
+                # include any extra answer keys starting with qid+"_"
+                for ak, av in answers.items():
+                    if ak.startswith(qid+"_") and ak not in out:
+                        if isinstance(av, dict):
+                            if "_" in av: out[ak]=av.get("_","")
+                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
+                            else:
+                                for kk, vv in av.items():
+                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
+                        else:
+                            out[ak]=av
+            else:
+                # if only one side present, still include synthetic keys
+                for ak, av in answers.items():
+                    if ak.startswith(qid+"_") and ak not in out:
+                        if isinstance(av, dict):
+                            if "_" in av: out[ak]=av.get("_","")
+                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
+                            else:
+                                for kk, vv in av.items():
+                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
+                        else: out[ak]=av
         elif t == "loop":
             for it in q.get("items", []) or []:
                 out[f"{qid}_{it['code']}"] = a.get(it["code"], "")
+            # new loop with loop_questions: synthetic ids
+            lqs = q.get("loop_questions") or []
+            items = q.get("items") or []
+            if lqs and items:
+                for it in items:
+                    for lq in lqs:
+                        sid = f"{qid}_{it.get('code')}_{lq.get('id')}"
+                        sa = answers.get(sid, {})
+                        if not sa: continue
+                        ct = lq.get("type")
+                        if ct in ("single_select","numeric","slider"):
+                            out[sid]=sa.get("_","")
+                        elif ct=="open_text":
+                            out[sid]=sa.get("_","")
+                        elif ct=="multi_select":
+                            out[sid]=";".join(str(c) for c in sa.get("codes",[]))
+                        elif ct in ("rating_grid","rating_scale"):
+                            for r in lq.get("rows") or []:
+                                out[f"{sid}_{r['code']}"]=sa.get(r["code"],"")
+                        else:
+                            if "_" in sa: out[sid]=sa.get("_","")
+                for ak, av in answers.items():
+                    if ak.startswith(qid+"_") and ak not in out:
+                        if isinstance(av, dict):
+                            if "_" in av: out[ak]=av.get("_","")
+                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
+                            else:
+                                for kk, vv in av.items():
+                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
+                        else: out[ak]=av
         elif t == "text_block":
             pass
         elif t == "choice_task":
@@ -439,9 +525,16 @@ def build_sheets(records: list, scope: str, cfg: dict):
                             "before/after/delta", "two values and their difference",
                             f"{q.get('min', -100)}-{q.get('max', 100)}"])
         elif q["type"] == "concept_test":
-            for r in q["rows"]:
+            # legacy rows
+            for r in q.get("rows", []) or []:
                 dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
                                 f"{q['scale']['min']}-{q['scale']['max']}" if "scale" in q else ""] )
+            # new concepts + concept_questions
+            for c in q.get("concepts", []) or []:
+                dd_rows.append([q["id"], q.get("section",""), q["type"], stem, c.get("id"), c.get("label"), "concept "+(c.get("duration") or "") + (" replay" if c.get("allow_replay") else "")])
+            for cq in q.get("concept_questions", []) or []:
+                for c in q.get("concepts", []) or []:
+                    dd_rows.append([q["id"], q.get("section",""), q["type"]+" question", cq.get("stem","")[:80], f"{c.get('id')}_{cq.get('id')}", f"{c.get('label')} · {cq.get('type')} {cq.get('stem','')[:40]}", f"per concept {cq.get('type')}"])
         elif q["type"] == "loop":
             for it in q.get("items", []) or []:
                 dd_rows.append([q["id"], q["section"], q["type"], stem, it["code"], it["label"],

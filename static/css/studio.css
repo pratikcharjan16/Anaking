@@ -839,3 +839,36 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-loop-opt{ display:flex; gap:6px; align-items:center }
 .st-loop-opt input{ border:1px solid var(--line); border-radius:7px; padding:5px 8px; font-size:12.5px; background:#fff }
 .st-loop-q-meta{ margin-top:8px; padding-left:26px }
+/* ---------- Concept Test (snip-matched) ---------- */
+.st-ct-wrap{ background:#f5f7f8; border:1px solid #dfe6ec; border-radius:12px; padding:10px; margin:6px 0 10px }
+.st-ct-head{ display:flex; justify-content:space-between; align-items:center; padding:6px 8px 8px; font-weight:800; color:var(--accent); font-size:14px }
+.st-ct-head i{ font-style:normal; color:var(--faint); margin-right:6px }
+.st-ct-card{ background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.06); padding:12px }
+.st-ct-card .st-field label{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.05em }
+.st-ct-row{ display:flex; gap:10px; align-items:center; flex-wrap:wrap }
+.st-ct-row label{ min-width:140px }
+.st-ct-concepts{ border:1px solid var(--line2); border-radius:10px; padding:10px; margin:10px 0; background:var(--soft2) }
+.st-ct-concepts-head{ display:flex; align-items:center; justify-content:space-between; gap:8px; flex-wrap:wrap; margin-bottom:8px }
+.st-ct-concepts-head strong{ font-size:13px; color:var(--ink) }
+.st-ct-tools{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+.st-ct-concept{ display:grid; grid-template-columns:20px 1fr auto auto auto 28px; gap:6px 8px; align-items:center; padding:8px 10px; border:1px solid var(--line2); border-radius:8px; background:#fff; margin-bottom:6px }
+.st-ct-concept .st-grip{ font-size:14px }
+.st-ct-label{ display:flex; align-items:center; gap:6px; min-width:0 }
+.st-ct-label input{ flex:1; border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:12.5px; background:#fff; min-width:0 }
+.st-ct-text{ font-size:12px; color:var(--muted); white-space:nowrap; overflow:hidden; text-overflow:ellipsis }
+.st-ct-media{ display:flex; gap:4px; align-items:center }
+.st-ct-duration select{ border:1px solid var(--line); border-radius:7px; padding:5px 7px; font-size:12px; background:#fff }
+.st-ct-add{ background:#e53935 !important; color:#fff !important; border-color:#e53935 !important }
+.st-ct-add:hover{ background:#c62828 !important; border-color:#c62828 !important }
+.st-ct-rand{ background:#e53935 !important; color:#fff !important; border-color:#e53935 !important; border-radius:7px; padding:6px 12px; font-weight:800; font-size:12px }
+.st-ct-sep{ text-align:center; font-weight:800; font-size:12.5px; color:var(--accent); background:#e8f2f7; border:1px solid #c8e0db; border-radius:8px; padding:8px; margin:12px 0 }
+.st-ct-qs{ border:1px solid var(--line); border-radius:8px; padding:10px; margin:10px 0; background:#fff }
+.st-ct-qs-head{ display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:13px; margin-bottom:8px; color:var(--ink) }
+.st-ct-q{ border:1px solid var(--line2); border-radius:9px; padding:8px; margin-bottom:8px; background:var(--soft2) }
+.st-ct-q-head{ display:flex; gap:6px; align-items:center; flex-wrap:wrap }
+.st-ct-q-head select{ border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:12.5px; background:#fff; min-width:140px }
+.st-ct-q-head input[data-cq=\"stem\"]{ flex:1; min-width:180px; border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:13px; background:#fff }
+.st-ct-q-opts{ margin-top:8px; padding-left:26px; display:flex; flex-direction:column; gap:5px }
+.st-ct-opt{ display:flex; gap:6px; align-items:center }
+.st-ct-opt input{ border:1px solid var(--line); border-radius:7px; padding:5px 8px; font-size:12.5px; background:#fff; flex:1 }
+.st-ct-q-meta{ margin-top:8px; padding-left:26px }
