@@ -2826,8 +2826,19 @@
     var hideNum = q.hide_number===true || !!q._concept_parent || q.type==="concept_test";
     if (!hideNum) h.appendChild(el("span", "qnum", q.id + ". "));
     var body = el("span", "stem-text");
-    if (q.stem_html && window.BeaconQ) window.BeaconQ.richInto(body, q.stem_html, logicCtx(), "…");
-    else body.textContent = pipeText(q.stem);
+    // for Concept Test, also strip leading "Q1:" style number from the human text so only the question content shows
+    if (q.stem_html && window.BeaconQ) {
+      var html = q.stem_html;
+      if(q._concept_parent){
+        // strip a leading Q-number from rich html by converting to text first, but keep markup: simple regex on html string
+        html = html.replace(/^\s*Q\s*\d+\s*[:.]\s*/i, "");
+      }
+      window.BeaconQ.richInto(body, html, logicCtx(), "…");
+    } else {
+      var txt = pipeText(q.stem);
+      if(q._concept_parent) txt = txt.replace(/^\s*Q\s*\d+\s*[:.]\s*/i, "");
+      body.textContent = txt;
+    }
     h.appendChild(body);
     if (q.style) {
       var st = q.style;
