@@ -6,3 +6,114 @@
 .appnav-link:hover{background:rgba(255,255,255,.16);opacity:1}
 .appnav-link.on{background:#fff;color:#0b4f6c;opacity:1}
 @media (max-width:640px){.appnav-link{padding:5px 8px;font-size:12px}}
+
+/* ---------- Anaking Global Brand Lockup & Live Animated Logo ---------- */
+.anaking-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  line-height: 1.2;
+}
+.anaking-brand-lockup:hover {
+  transform: translateY(-1px);
+}
+.anaking-svg-logo {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 217, 245, 0.22), 0 2px 6px rgba(15, 23, 42, 0.25);
+  transition: transform 0.3s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.3s ease;
+}
+.anaking-brand-lockup:hover .anaking-svg-logo {
+  transform: scale(1.06) rotate(-1deg);
+  box-shadow: 0 6px 20px rgba(0, 217, 245, 0.4), 0 0 16px rgba(0, 245, 160, 0.3);
+}
+
+.ak-crown-group {
+  animation: akFloat 3.2s ease-in-out infinite alternate;
+  transform-origin: 22px 22px;
+}
+@keyframes akFloat {
+  0% { transform: translateY(0px) scale(1); }
+  100% { transform: translateY(-1.2px) scale(1.025); }
+}
+
+.ak-particle {
+  animation: akOrbit 4.5s linear infinite;
+  transform-origin: 22px 22px;
+}
+@keyframes akOrbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+.anaking-brand-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.anaking-brand-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.brand-anaking {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.4px;
+  color: #ffffff;
+}
+.topbar .brand-anaking {
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffffff 0%, #a5f3fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.brand-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+.live-pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #00f5a0;
+  box-shadow: 0 0 6px #00f5a0;
+  animation: liveDotPulse 1.8s ease-in-out infinite;
+}
+@keyframes liveDotPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.4); opacity: 1; box-shadow: 0 0 10px #00f5a0; }
+}
+
+.anaking-tagline {
+  font-size: 10.5px;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.82);
+  letter-spacing: -0.1px;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tagline-spark {
+  color: #00f5a0;
+  font-size: 9px;
+  display: inline-block;
+  animation: sparkTwinkle 2.5s ease-in-out infinite alternate;
+}

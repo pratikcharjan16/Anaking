@@ -68,6 +68,7 @@
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
     rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
+    gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
     nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
     emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
@@ -109,6 +110,10 @@
     if (type === "rating_scale") {
       q.scale = { min: 1, max: 5, min_label: "Not at all", mid_label: "Neutral", max_label: "Extremely" };
       q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" }];
+    }
+    if (type === "gauge_meter") {
+      q.min = 0; q.max = 100; q.step = 1; q.unit = "%"; q.target = 75;
+      q.min_label = "Poor"; q.mid_label = "Moderate"; q.max_label = "Excellent";
     }
     if (type === "semantic_diff") {
       q.scale = { min: 1, max: 7 };
@@ -395,8 +400,7 @@
       '<div class="st-hero"><div><h1>Your studies</h1><p>Draft questions, preview exactly what respondents see, then launch. ' +
       tops.length + " stud" + (tops.length === 1 ? "y" : "ies") + (live ? " \u00B7 " + live + " live" : "") +
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
-      '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button>' +
-      '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
+      '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button></div></div>' +
       '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with guided templates</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
@@ -1649,6 +1653,35 @@
     return html;
   }
 
+  function gaugeMeterBlock() {
+    var sc = ed.scale || {};
+    var mi = ed.min != null ? ed.min : (sc.min != null ? sc.min : 0);
+    var ma = ed.max != null ? ed.max : (sc.max != null ? sc.max : 100);
+    var st = ed.step != null ? ed.step : 1;
+    var un = ed.unit != null ? ed.unit : "%";
+    var tg = ed.target != null ? ed.target : 75;
+    var minl = ed.min_label || sc.min_label || "Poor";
+    var midl = ed.mid_label || sc.mid_label || "Moderate";
+    var maxl = ed.max_label || sc.max_label || "Excellent";
+
+    var html = '<h4 class="st-h4">Gauge dial settings</h4>' +
+      '<div class="st-grid4">' +
+      '<div class="st-field"><label>Minimum</label><input id="f-gmin" type="number" value="' + mi + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-gmax" type="number" value="' + ma + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-gstep" type="number" value="' + st + '"></div>' +
+      '<div class="st-field"><label>Unit suffix</label><input id="f-gunit" value="' + esc(un) + '" placeholder="e.g. %"></div></div>' +
+      '<div class="st-grid2">' +
+      '<div class="st-field"><label>Target threshold marker</label><input id="f-gtarget" type="number" value="' + tg + '"></div></div>' +
+      '<h4 class="st-h4">Anchor labels</h4>' +
+      '<div class="st-grid3">' +
+      '<div class="st-field"><label>Low-End Label</label><input id="f-gminl" value="' + esc(minl) + '"></div>' +
+      '<div class="st-field"><label>Mid Label</label><input id="f-gmidl" value="' + esc(midl) + '"></div>' +
+      '<div class="st-field"><label>High-End Label</label><input id="f-gmaxl" value="' + esc(maxl) + '"></div></div>' +
+      '<h4 class="st-h4">Rows / Items <span class="st-opt">optional: leave empty for a single gauge</span></h4>' +
+      itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, ph: "Item to rate on gauge", labelHead: "Item" });
+    return html;
+  }
+
   function card(id, title, hint, body, collapsed) {
     return '<details class="st-ecard" id="card-' + id + '"' + (collapsed ? "" : " open") + '><summary><span>' + title + "</span>" +
       (hint ? '<small>' + hint + "</small>" : "") + "</summary><div class=\"st-ecard-body\">" + body + "</div></details>";
@@ -2040,6 +2073,7 @@
     }
     if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
+    else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
       html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
@@ -2996,6 +3030,18 @@
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
         if (t === "rating_scale") setOrDel(ed.scale, "mid_label", val("f-smidl"));
+      }
+    }
+    if (t === "gauge_meter") {
+      if (val("f-gmin") !== undefined) {
+        ed.min = num("f-gmin") != null ? num("f-gmin") : 0;
+        ed.max = num("f-gmax") != null ? num("f-gmax") : 100;
+        ed.step = num("f-gstep") != null ? num("f-gstep") : 1;
+        setOrDel(ed, "unit", val("f-gunit"));
+        if (num("f-gtarget") != null) ed.target = num("f-gtarget");
+        setOrDel(ed, "min_label", val("f-gminl"));
+        setOrDel(ed, "mid_label", val("f-gmidl"));
+        setOrDel(ed, "max_label", val("f-gmaxl"));
       }
     }
     // the scale points follow the From / To boxes: the list is rebuilt from the new range
@@ -4289,43 +4335,76 @@
     function kpi(v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; }
   }
   function analysisTab(p) {
-    fetch("/api/studio/analysis?study=" + encodeURIComponent(cur.slug), { credentials: "same-origin" })
+    var scope = p._curScope || "all";
+    fetch("/api/studio/analysis?study=" + encodeURIComponent(cur.slug) + "&scope=" + scope, { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (a) {
-        var html = '<div class="st-page-head"><h2>Analysis</h2><p>Quick aggregates over completed responses.</p></div><div class="st-kpis">' +
-          '<div class="st-kpi"><strong>' + a.n_complete + "/" + a.n_started + "</strong><span>completed</span></div>" +
-          '<div class="st-kpi"><strong>' + a.mean_minutes + "</strong><span>mean minutes</span></div>" +
-          (a.nps ? '<div class="st-kpi"><strong>' + a.nps.score + "</strong><span>NPS</span></div>" : "") + "</div>";
-        a.ratings.forEach(function (r) {
-          html += "<h4>" + esc(r.id) + " - " + esc(r.stem) + "</h4>" +
-            '<table class="st-tbl"><tr><th>Item</th><th style="width:200px">Mean</th><th></th></tr>' +
-            r.rows.map(function (row) {
-              var m = row.mean == null ? 0 : row.mean;
-              return "<tr><td>" + esc(row.label) + "</td><td>" + (row.mean == null ? "\u2013" : m) + '</td><td><div class="st-meter"><i style="width:' + Math.min(100, m * 14) + '%"></i></div></td></tr>';
-            }).join("") + "</table>";
-        });
-        if (a.nps) html += '<div class="st-note">NPS segments: Promoter ' + a.nps.segments.Promoter + ", Passive " + a.nps.segments.Passive + ", Detractor " + a.nps.segments.Detractor + "</div>";
-        a.maxdiff.forEach(function (m) {
-          html += "<h4>MaxDiff " + esc(m.id) + " (best minus worst)</h4>" +
-            '<table class="st-tbl"><tr><th>Code</th><th>Best</th><th>Worst</th><th>B-W</th></tr>' +
-            m.scores.sort(function (x, y) { return y.bw - x.bw; }).map(function (s) {
-              return "<tr><td>" + esc(s.code) + "</td><td>" + s.best + "</td><td>" + s.worst + "</td><td><strong>" + s.bw + "</strong></td></tr>";
-            }).join("") + "</table>";
-        });
-        a.heatmap.forEach(function (h) {
-          html += "<h4>Heat map " + esc(h.id) + "</h4><p>" + esc(h.note) + '</p><div style="overflow-x:auto" tabindex="0" role="region" aria-label="Heatmap results"><table class="st-tbl"><thead><tr><th scope="col">Row / column</th>' +
-            h.cols.map(function(c){return '<th scope="col">'+esc(c.label)+'</th>';}).join('')+'</tr></thead><tbody>'+
-            h.rows.map(function(r){return '<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(function(c){
-              var cell=h.cells.find(function(x){return x.row_code===r.code&&x.col_code===c.code;}), m=cell?cell.mean:null;
-              var color=m==null?'#f5f6f4':m<1.5?'#e8f4fa':m<2.5?'#bfe3f2':'#7fc4e0';
-              return '<td style="min-width:90px;text-align:center;color:#153d4c;background:'+color+'"><b>'+(m==null?'—':esc(m))+'</b><br><small>n = '+(cell?cell.base:0)+'</small></td>';
-            }).join('')+'</tr>';}).join('')+'</tbody></table></div>';
-        });
+        window.__currentAnalysisData = a;
+        var html = '<div class="st-page-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">' +
+          '<div><h2>Analysis</h2><p>Interactive visuals &amp; data-driven insights linked to live data.</p></div>' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">Scope: ' +
+              '<select class="st-scope-sel" style="padding:4px 8px;border-radius:6px;border:1px solid #cbd5e1;font-size:12px">' +
+                '<option value="all"' + (scope === "all" ? " selected" : "") + '>All data (' + (a.total_n || 0) + ')</option>' +
+                '<option value="real"' + (scope === "real" ? " selected" : "") + '>Real only (' + (a.real_n || 0) + ')</option>' +
+                '<option value="test"' + (scope === "test" ? " selected" : "") + '>Test only (' + (a.test_n || 0) + ')</option>' +
+              '</select>' +
+            '</label>' +
+            '<a class="st-btn on sm" href="/api/workspace/export_ppt?study=' + encodeURIComponent(cur.slug) + '&scope=' + scope + '">Download PPT deck ↓</a>' +
+          '</div>' +
+        '</div>';
+
+        if (scope === "real" && (a.complete === 0 || a.n_complete === 0) && (a.test_n > 0 || a.total_n > 0)) {
+          html += '<div class="scope-switch-banner" style="margin-bottom:12px">' +
+            '<span>Currently viewing <b>Real Responses (0 completed)</b>. This project has <b>' + (a.test_n || a.total_n) + ' test/preview responses</b> available.</span>' +
+            '<button type="button" class="st-btn sm st-scope-all-btn">Switch to All Data →</button>' +
+          '</div>';
+        }
+
+        var compN = a.complete != null ? a.complete : (a.n_complete || 0);
+        var startN = a.started != null ? a.started : (a.n_started || 0);
+        var dur = a.median_minutes != null ? a.median_minutes : (a.mean_minutes || '—');
+
+        html += '<div class="st-kpis">' +
+          '<div class="st-kpi"><strong>' + compN + '/' + startN + '</strong><span>completed</span></div>' +
+          '<div class="st-kpi"><strong>' + dur + '</strong><span>minutes</span></div>' +
+          (a.nps && a.nps.score != null ? '<div class="st-kpi"><strong>' + (a.nps.score > 0 ? '+' : '') + a.nps.score + '</strong><span>NPS</span></div>' : '') +
+        '</div>';
+
+        if (a.questions && a.questions.length && window.AnakingCharts) {
+          html += a.questions.map(function (q) {
+            return window.AnakingCharts.renderQuestionCard(q, false, {});
+          }).join('');
+        } else if (a.questions && a.questions.length) {
+          a.questions.forEach(function (q) {
+            html += '<div class="panel result-card"><h4>' + esc(q.id) + ' - ' + esc(q.title) + '</h4><p>Base: ' + q.base + '</p></div>';
+          });
+        } else {
+          html += '<p style="padding:20px;color:#64748b">No questions or responses yet.</p>';
+        }
+
+        // Legacy choice share if present
         if (a.choice_share) {
           html += "<h4>Conjoint: share of choices when level shown</h4><table class=\"st-tbl\"><tr><th>Attribute</th><th>Level</th><th>Choice share</th></tr>" +
             a.choice_share.map(function (s) { return "<tr><td>" + esc(s.attr) + "</td><td>" + esc(s.level) + "</td><td>" + s.share + "%</td></tr>"; }).join("") + "</table>";
         }
-        p.innerHTML = html || "<p>No responses yet.</p>";
+
+        p.innerHTML = html;
+
+        var sel = p.querySelector(".st-scope-sel");
+        if (sel) {
+          sel.addEventListener("change", function () {
+            p._curScope = sel.value;
+            analysisTab(p);
+          });
+        }
+        var allBtn = p.querySelector(".st-scope-all-btn");
+        if (allBtn) {
+          allBtn.addEventListener("click", function () {
+            p._curScope = "all";
+            analysisTab(p);
+          });
+        }
       });
   }
 
@@ -4423,6 +4502,20 @@
         if (s.error) { toast("PROJECT BEACON template not found"); return; }
         var cfg = JSON.parse(JSON.stringify(s.cfg)); cfg.title = s.title + " (copy)"; createStudy(cfg);
       });
+    }
+    if (act === "brand-home") {
+      e.preventDefault();
+      if (cur.slug) {
+        flushSave(function () {
+          cur.slug = null;
+          history.replaceState(null, "", "/studio/");
+          loadList();
+        });
+      } else {
+        history.replaceState(null, "", "/studio/");
+        loadList();
+      }
+      return;
     }
     if (act === "home-filter") { homeFilter = b.getAttribute("data-f"); renderHome(); }
     if (act === "open") openEditor(slug);

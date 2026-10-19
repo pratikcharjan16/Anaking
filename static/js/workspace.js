@@ -3,8 +3,10 @@
   'use strict';
   const $ = s => document.querySelector(s), main = $('#main');
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+  const plain = v => String(v || '').replace(/<[^>]+>/g, '').trim();
   const enc = encodeURIComponent;
   let projects = [], caps = {}, current = null, filter = 'all', query = '', sequence = 0, activeTab = 'overview';
+  let currentAnalysisParams = '&scope=real', latestAnalysisData = null;
   const tabs = {overview:'Overview',checks:'Design checks',review:'Review',versions:'Versions',validation:'Data Validation',analysis:'Analyze',coding:'Verbatims',settings:'Settings'};
   const editable = () => ['owner','editor'].includes(caps.role);
   const owner = () => caps.role === 'owner';
@@ -89,25 +91,90 @@
     return '<section class="panel"><h2>Research settings</h2><form id="settings-form"><label>Research brief<textarea name="research_brief" rows="4">'+esc(c.research_brief||'')+'</textarea></label><div class="form-grid"><label>Research contact<input name="research_contact" value="'+esc(c.research_contact||'')+'" placeholder="Research team contact details"></label><label>Completion target (monitoring only)<input name="quota_target" type="number" min="0" max="10000000" value="'+esc(c.quota_target||0)+'"></label></div><label>Privacy notice<textarea name="privacy_notice" rows="4">'+esc(c.privacy_notice||'')+'</textarea></label><label>Consent statement<textarea name="consent_statement" rows="2">'+esc(c.consent_statement||'I agree to take part in this research.')+'</textarea></label><label class="inline-check"><input name="require_consent" type="checkbox" '+(c.require_consent?'checked':'')+'> Require affirmative consent before answering</label><label class="inline-check"><input name="gamify" type="checkbox" '+(c.gamify!==false?'checked':'')+'> Enable optional gamification</label>'+notice('Research settings apply to the draft. A version-published survey changes only after review and republication.')+(editable()?'<button class="primary">Save settings</button>':'<p>Your role has read-only access.</p>')+'<p class="form-error" role="alert"></p></form></section>';
   }
   function analysisShell() {
-    const qs=(current.cfg.questions||[]).filter(q=>q.type==='single_select');
-    return '<section class="panel"><div class="panel-head"><h2>Evidence, with context</h2>'+(dataRole()?'<a id="report-download" href="'+endpoint('export','&scope=real')+'">Download report JSON ↓</a>':'')+'</div><form id="analysis-form" class="toolbar"><label>Data scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option><option value="all">All responses</option></select></label><label>Segment question<select name="segment"><option value="">No segment filter</option>'+selectOptions(qs)+'</select></label><label>Answer code<input name="value" placeholder="e.g. 1" aria-label="Segment answer code"></label><button>Apply filters</button></form><p>Advanced weighting, significance testing and model-based conjoint forecasts are not released. These views are descriptive only. Invalidated responses are excluded. Review all users and decisions in Data Validation.</p></section><div id="analysis-results" aria-live="polite">Loading results…</div><section class="panel"><h2>Cross-tabulate two questions</h2><form id="cross-form" class="toolbar"><label>Rows<select name="x" required>'+selectOptions(qs)+'</select></label><label>Columns<select name="y" required>'+selectOptions(qs)+'</select></label><button '+(qs.length?'':'disabled')+'>Build cross-tab</button></form><div id="cross-results" aria-live="polite"></div></section>';
+    const qs=(current.cfg.questions||[]).filter(q=>q.type==='single_select'||q.type==='multi_select');
+    return '<section class="panel">' +
+      '<div class="panel-head">' +
+        '<h2>Dynamic Research Dashboard</h2>' +
+        '<div class="export-toolbar">' +
+          '<span class="live-pill"><span class="live-dot"></span> Live survey data linked</span>' +
+          (dataRole() ? '<button type="button" class="btn primary" id="btn-dl-full-ppt">Download full report (PPT) ↓</button>' +
+                        '<button type="button" class="btn" id="btn-dl-custom-ppt">Customize PPT download ⚙ ↓</button>' +
+                        '<a id="report-download" class="btn ghost" href="'+endpoint('export','&scope=real')+'">Download JSON ↓</a>' : '') +
+        '</div>' +
+      '</div>' +
+      '<form id="analysis-form" class="toolbar">' +
+        '<label>Data scope<select name="scope"><option value="real">Real responses</option><option value="all">All responses</option><option value="test">Test responses</option></select></label>' +
+        '<label>Define data cut<select name="cut_q"><option value="">No data cut (Total)</option>'+selectOptions(qs)+'</select></label>' +
+        '<label class="inline-check" style="align-self:center;margin-top:14px"><input type="checkbox" name="show_sig" checked> Statistical significance</label>' +
+        '<label>Confidence level<select name="alpha"><option value="0.05">95% confidence (p &lt; 0.05)</option><option value="0.01">99% confidence (p &lt; 0.01)</option><option value="0.10">90% confidence (p &lt; 0.10)</option></select></label>' +
+        '<button class="primary">Apply data cut &amp; filters</button>' +
+        '<button type="button" class="btn ghost" id="btn-refresh-analysis">↻ Live refresh</button>' +
+      '</form>' +
+      '<p class="section-kicker">Interactive visualizations, multiple chart types (Bar, Column, Donut, Radar, Likert Stack, Scorecard), dynamic legends, data labels, and statistical significance testing. Download full or customized question decks in editable PowerPoint format.</p>' +
+    '</section>' +
+    '<div id="analysis-results" aria-live="polite">Loading results…</div>' +
+    '<section class="panel"><h2>Cross-tabulate two questions</h2><form id="cross-form" class="toolbar"><label>Rows<select name="x" required>'+selectOptions(qs)+'</select></label><label>Columns<select name="y" required>'+selectOptions(qs)+'</select></label><button '+(qs.length?'':'disabled')+'>Build cross-tab</button></form><div id="cross-results" aria-live="polite"></div></section>';
   }
-  function heatmapView(h) {
-    return '<p>'+esc(h.note)+'</p><div class="table-scroll" tabindex="0" role="region" aria-label="Heatmap results"><table class="results-heatmap"><thead><tr><th scope="col">Row / column</th>'+h.cols.map(c=>'<th scope="col">'+esc(c.label)+'</th>').join('')+'</tr></thead><tbody>'+h.rows.map(r=>'<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(c=>{
-      const cell=h.cells.find(x=>x.row_code===r.code&&x.col_code===c.code), mean=cell?cell.mean:null;
-      const color=mean==null?'#f5f6f4':mean<1.5?'#e8f4fa':mean<2.5?'#bfe3f2':'#7fc4e0';
-      return '<td style="background:'+color+';color:#153d4c"><strong>'+(mean==null?'—':esc(mean))+'</strong><small>n = '+(cell?cell.base:0)+'</small></td>';
-    }).join('')+'</tr>').join('')+'</tbody></table></div>';
-  }
+
   async function loadAnalysis(params='&scope=real') {
-    const slug=current.slug, node=$('#analysis-results');
+    currentAnalysisParams = params;
+    const slug = current.slug, node = $('#analysis-results');
     try {
-      const d=await api(endpoint('analysis',params)); if(!node.isConnected||current.slug!==slug)return;
-      node.innerHTML='<div class="metric-grid">'+metric('Started',d.started,d.scope+' scope')+metric('Completed',d.complete,d.completion_pct+'% of starts')+metric('Median duration',d.median_minutes==null?'—':d.median_minutes+' min','Completed respondents')+metric('Screened out',d.screened,'Not included in answer bases')+'</div>'+notice(d.note)+
-        (d.quota_target?notice('Completion target: '+d.complete+' / '+d.quota_target+'. Monitoring only; this does not enforce a quota.'):'')+
-        (d.questions.length?d.questions.map(q=>'<section class="panel result-card"><h2>'+esc(q.id+' · '+q.title)+'</h2><div class="result-meta">Answered base: '+q.base+' · Missing/not shown: '+q.missing_or_not_shown+' '+(q.small_base?'<span class="pill small-base">Small base — interpret cautiously</span>':'')+'</div>'+(q.mean!==null?'<p>Mean <strong>'+q.mean+'</strong> · Median '+q.median+'</p>':'')+q.options.map(o=>'<div class="bar-row"><span>'+esc(o.label)+'</span><div class="bar-track" aria-hidden="true"><span style="width:'+Math.max(0,Math.min(100,o.pct||0))+'%"></span></div><b>'+o.count+' · '+(o.pct==null?'—':o.pct+'%')+'</b></div>').join('')+(q.heatmap?heatmapView(q.heatmap):'')+(q.rows?'<div class="table-scroll"><table><thead><tr><th scope="col">Row</th><th scope="col">Answered base</th><th scope="col">Mean (numeric)</th></tr></thead><tbody>'+q.rows.map(r=>'<tr><td>'+esc(r.label)+'</td><td>'+r.base+'</td><td>'+esc(r.mean==null?'—':r.mean)+'</td></tr>').join('')+'</tbody></table></div>':'')+(!q.options.length&&q.mean===null&&!q.rows&&!q.heatmap?'<p>No chart for this answer type. Use the response export or Verbatims tab.</p>':'')+'</section>').join(''):empty('No questions yet','Add questions in Studio.'));
-      const download=$('#report-download');if(download)download.href=endpoint('export',params);
-    }catch(e){if(node.isConnected)node.innerHTML=notice(e.message,'danger');}
+      const d = await api(endpoint('analysis', params));
+      if (!node.isConnected || current.slug !== slug) return;
+      latestAnalysisData = d;
+      window.__currentAnalysisData = d;
+      const isCut = d.data_cut && d.data_cut.active;
+      const cut = d.data_cut || {};
+
+      let html = '';
+
+      // Check if viewing real with 0 responses while test responses exist
+      if (d.scope === 'real' && d.complete === 0 && ((d.test_n || 0) > 0 || (d.total_n || 0) > 0)) {
+        html += '<div class="scope-switch-banner">' +
+          '<span>Currently viewing <b>Real Responses (0 completed)</b>. This project has <b>' + (d.test_n || d.total_n) + ' test/preview responses</b> available.</span>' +
+          '<button type="button" class="btn sm" id="btn-switch-scope-all">Switch to All Data →</button>' +
+        '</div>';
+      }
+
+      html += '<div class="metric-grid">' +
+        metric('Started', d.started, d.scope + ' scope') +
+        metric('Completed', d.complete, d.completion_pct + '% of starts') +
+        metric('Median duration', d.median_minutes == null ? '—' : d.median_minutes + ' min', 'Completed respondents') +
+        metric('Screened out', d.screened, 'Not included in answer bases') +
+      '</div>' + notice(d.note);
+
+      if (isCut) {
+        html += '<div class="notice" style="background:#f0f9ff;border-color:#bae6fd;color:#0369a1">' +
+          '<strong>Data Cut Active:</strong> Comparing <b>' + esc(cut.segA_label) + '</b> (n=' + cut.segA_n + ') vs <b>' +
+          esc(cut.segB_label) + '</b> (n=' + cut.segB_n + ') with statistical significance tested at <b>' + cut.conf_pct + '% confidence</b>. Significant differences flagged with ★.' +
+        '</div>';
+      }
+
+      if (d.quota_target) {
+        html += notice('Completion target: ' + d.complete + ' / ' + d.quota_target + '. Monitoring only; this does not enforce a quota.');
+      }
+
+      if (d.questions && d.questions.length) {
+        html += d.questions.map(function (q) {
+          if (window.AnakingCharts && window.AnakingCharts.renderQuestionCard) {
+            return window.AnakingCharts.renderQuestionCard(q, isCut, cut);
+          }
+          return '<section class="panel result-card" id="qcard-' + esc(q.id) + '">' +
+            '<h2>' + esc(q.id + ' · ' + q.title) + '</h2>' +
+            '<div class="result-meta">Answered base: ' + q.base + '</div>' +
+          '</section>';
+        }).join('');
+      } else {
+        html += empty('No questions yet', 'Add questions in Studio.');
+      }
+
+      node.innerHTML = html;
+      const download = $('#report-download');
+      if (download) download.href = endpoint('export', params);
+    } catch (e) {
+      if (node.isConnected) node.innerHTML = notice(e.message, 'danger');
+    }
   }
   function codingShell() { return '<section class="panel"><h2>Listen to the words behind the numbers.</h2><form id="coding-filter" class="toolbar"><label>Scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option></select></label><label>Suggested code keywords<input name="terms" placeholder="price, quality, access"></label><button>Find matches</button></form></section><div id="coding-results" aria-live="polite">Loading verbatims…</div>'; }
   async function loadCoding(params='&scope=real') {
@@ -148,6 +215,55 @@
     if(b.dataset.review){b.disabled=true;try{await api('/api/workspace/review',{slug:current.slug,state:b.dataset.review,digest:current.digest});toast('Review recorded.');await route();}catch(x){toast(x.message);b.disabled=false;}return;}
     if(b.dataset.revision){b.disabled=true;try{const r=await api(endpoint('revision','&revision='+enc(b.dataset.revision)));$('#revision-content').innerHTML=notice('Fields different from the current draft: '+(r.changed_fields.join(', ')||'none'))+'<details><summary>View saved configuration</summary><pre>'+esc(JSON.stringify(r.cfg,null,2))+'</pre></details>'+(owner()?'<button class="danger section-spaced" data-restore="'+r.revision+'">Restore this version as a draft</button>':'');open('revision-dialog');}catch(x){toast(x.message);}finally{b.disabled=false;}return;}
     if(b.dataset.restore){if(!confirm('Restore this saved draft? Your current draft is retained in history.'))return;b.disabled=true;try{await api('/api/workspace/restore',{slug:current.slug,revision:Number(b.dataset.restore)});close(b);toast('Draft restored. Published version unchanged.');await route();}catch(x){toast(x.message);b.disabled=false;}}
+    if (b.id === 'btn-dl-full-ppt') {
+      window.location.href = endpoint('export_ppt', currentAnalysisParams);
+      return;
+    }
+    if (b.id === 'btn-dl-custom-ppt') {
+      const qs = (current.cfg.questions || []);
+      const listNode = $('#ppt-question-list');
+      if (listNode) {
+        listNode.innerHTML = qs.map(q => {
+          return '<div class="ppt-q-item"><label><input type="checkbox" name="ppt_q" value="' + esc(q.id) + '" checked> <b>' + esc(q.id) + '</b> - ' + esc(plain(q.stem_html || q.stem || q.id).slice(0, 75)) + '</label></div>';
+        }).join('') || '<p>No questions found in this study.</p>';
+      }
+      open('ppt-dialog');
+      return;
+    }
+    if (b.id === 'ppt-select-all') {
+      const boxes = document.querySelectorAll('#ppt-question-list input[name="ppt_q"]');
+      boxes.forEach(cb => { cb.checked = true; });
+      return;
+    }
+    if (b.id === 'ppt-deselect-all') {
+      const boxes = document.querySelectorAll('#ppt-question-list input[name="ppt_q"]');
+      boxes.forEach(cb => { cb.checked = false; });
+      return;
+    }
+    if (b.id === 'ppt-start-download') {
+      const checked = Array.from(document.querySelectorAll('#ppt-question-list input[name="ppt_q"]:checked')).map(cb => cb.value);
+      if (!checked.length) { alert('Please select at least one question to include in the PowerPoint deck.'); return; }
+      close(b);
+      const qsParam = '&questions=' + enc(checked.join(','));
+      window.location.href = endpoint('export_ppt', currentAnalysisParams + qsParam);
+      return;
+    }
+    if (b.classList.contains('btn-dl-single-ppt')) {
+      const qid = b.dataset.qid;
+      window.location.href = endpoint('export_ppt', currentAnalysisParams + '&q=' + enc(qid));
+      return;
+    }
+    if (b.id === 'btn-switch-scope-all') {
+      const scopeSel = $('#analysis-form select[name="scope"]');
+      if (scopeSel) scopeSel.value = 'all';
+      await loadAnalysis('&scope=all');
+      return;
+    }
+    if (b.id === 'btn-refresh-analysis') {
+      await loadAnalysis(currentAnalysisParams);
+      toast('Live analysis refreshed from survey database.');
+      return;
+    }
   });
   document.addEventListener('input',e=>{if(e.target.id==='project-search'){query=e.target.value;drawCards();}});
   $('#model-choice').addEventListener('change',e=>{$('#model-consent').hidden=!e.target.checked;});

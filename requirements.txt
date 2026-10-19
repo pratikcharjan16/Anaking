@@ -1,3 +1,5 @@
 Flask>=3.0
 openpyxl>=3.1
 mutagen>=1.47
+python-pptx>=1.0
+scipy>=1.11

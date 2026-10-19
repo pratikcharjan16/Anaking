@@ -173,13 +173,38 @@ def scoped_records(s):
     return records(s.slug, scope)
 
 
+from core.datacut import analyze_with_datacut
+from core.ppt_export import build_ppt_report
+
+
 @bp.get('/api/workspace/analysis')
 def analysis():
     s = study()
-    data = scoped_records(s)
-    result = summarize(data, base(s), request.args.get('segment'), request.args.get('value'))
+    real_recs = records(s.slug, 'real')
+    test_recs = records(s.slug, 'test')
+    all_recs = records(s.slug, 'all')
+
+    req_scope = request.args.get('scope')
+    if req_scope in ('real', 'test', 'all'):
+        scope = req_scope
+    else:
+        scope = 'real' if real_recs else ('all' if test_recs else 'real')
+
+    data = records(s.slug, scope)
+    cut_q = request.args.get('cut_q')
+    cut_v1 = request.args.get('cut_v1')
+    cut_v2 = request.args.get('cut_v2')
+    alpha = float(request.args.get('alpha', 0.05))
+    result = analyze_with_datacut(data, base(s), cut_q_id=cut_q, cut_v1=cut_v1, cut_v2=cut_v2, alpha=alpha)
+    # Also support legacy segment parameter if cut_q was not passed
+    if request.args.get('segment') and not cut_q:
+        legacy_res = summarize(data, base(s), request.args.get('segment'), request.args.get('value'))
+        result['questions'] = legacy_res['questions']
     result['quota_target'] = base(s).get('quota_target', 0)
-    result['scope'] = request.args.get('scope', 'real')
+    result['scope'] = scope
+    result['real_n'] = sum(1 for r in real_recs if r.get('status') == 'complete')
+    result['test_n'] = sum(1 for r in test_recs if r.get('status') == 'complete')
+    result['total_n'] = sum(1 for r in all_recs if r.get('status') == 'complete')
     result['definition_digest'] = fingerprint(base(s))
     versions = sorted({r.get('survey_version', 'legacy') for r in data})
     result['response_versions'] = versions
@@ -195,6 +220,39 @@ def cross():
         return jsonify(crosstab(scoped_records(s), base(s), request.args.get('x'), request.args.get('y')))
     except ValueError as e:
         abort(400, str(e))
+
+
+@bp.get('/api/workspace/export_ppt')
+def export_ppt():
+    s = study()
+    if current_app.config['STAFF_AUTH'] and g.staff['role'] not in ('owner', 'editor', 'analyst'):
+        abort(403)
+    data = scoped_records(s)
+    cut_q = request.args.get('cut_q')
+    cut_v1 = request.args.get('cut_v1')
+    cut_v2 = request.args.get('cut_v2')
+    alpha = float(request.args.get('alpha', 0.05))
+    analysis_data = analyze_with_datacut(data, base(s), cut_q_id=cut_q, cut_v1=cut_v1, cut_v2=cut_v2, alpha=alpha)
+
+    single_q = request.args.get('q')
+    multi_qs = request.args.get('questions')
+    q_list = None
+    if single_q:
+        q_list = [single_q]
+    elif multi_qs:
+        q_list = [x.strip() for x in multi_qs.split(',') if x.strip()]
+
+    ppt_bytes = build_ppt_report(s.title, analysis_data, questions_to_include=q_list, scope=request.args.get('scope', 'real'))
+    fn = f"{s.slug}-report"
+    if single_q:
+        fn += f"-{single_q}"
+    fn += ".pptx"
+    audit('Exported PowerPoint presentation', s.slug)
+    return Response(
+        ppt_bytes,
+        mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        headers={"Content-Disposition": f'attachment; filename="{fn}"'}
+    )
 
 
 @bp.get('/api/workspace/export')
