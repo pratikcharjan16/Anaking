@@ -784,3 +784,25 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-mtx-na{display:flex;flex-wrap:wrap;gap:10px 16px;align-items:center}
 .st-mtx-na .st-meta{flex:1 1 260px}
 .st-narrow{max-width:130px}
+
+/* ---- heatmap (image click map) ---- */
+.st-hm{ display:flex;flex-direction:column;gap:2px }
+.st-hm .st-field{ margin-bottom:10px }
+.st-hm .hm-center{ text-align:center }
+.st-hm-image-box{ border:1px solid var(--line2); border-radius:10px; background:#fff; padding:12px 14px; margin:6px 0 10px }
+.st-hm-upload-row{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
+.st-link.danger{ color:var(--bad); font-weight:800; text-decoration:none; border:0; background:transparent; cursor:pointer }
+.st-link.danger:hover{ text-decoration:underline }
+.st-tb-hm{ display:flex; align-items:center; gap:6px; font-size:10px; color:var(--muted) }
+.st-tb-hm img{ width:32px; height:20px; object-fit:cover; border-radius:3px; border:1px solid var(--line) }
+.st-tb-hm-ph{ font-style:italic; color:var(--faint) }
+.st-hm-reactions{ display:flex; flex-direction:column; gap:8px; margin:6px 0 }
+.st-hm-reaction{ border:1px solid var(--line2); border-radius:10px; background:var(--soft2); padding:8px 10px }
+.st-hm-reaction-head{ display:flex; align-items:center; gap:8px }
+.st-hm-reaction-head input{ flex:1; border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:13px; background:#fff }
+.st-hm-reaction-head .st-seq{ font-weight:800; color:var(--muted) }
+.st-hm-toggles{ display:flex; gap:16px; flex-wrap:wrap; margin-top:6px; padding-left:28px }
+.st-hm-toggles .st-switch{ font-size:11.5px }
+.st-hm-add{ background:#fff; color:var(--bad) !important; border-color:#f1d3d0 !important }
+.st-hm-add:hover{ background:#fdf0ef }
+.st-hm .st-info{ margin-left:4px }

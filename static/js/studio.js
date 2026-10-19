@@ -798,7 +798,10 @@
       case "concept_test":
         return (q.type === "concept_test" ? thumbRows(q, 2) : "") + thumbScale(q);
       case "heatmap":
-        return thumbRows(q, 2) + thumbScale(q);
+        var hm = q.heatmap || {};
+        if (hm.image_src) return '<div class="st-tb-hm"><img src="' + esc(hm.image_src) + '" alt=""><span>' + esc(hm.image_title || "Heatmap") + ' \u00B7 ' + ((hm.reactions||[]).length||0) + ' reactions</span></div>';
+        if ((q.rows||[]).length) return thumbRows(q, 2) + thumbScale(q);
+        return '<div class="st-tb-hm"><span class="st-tb-hm-ph">No image yet</span></div>';
       case "rank":
         return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r, i) {
           return '<span class="st-tb-row"><b>' + (i + 1) + ".</b>" + esc(String(r.label || "").slice(0, 20)) + "</span>";
@@ -1303,16 +1306,16 @@
   };
 
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
-  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
+  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
 
   // ---- matrix / grid questions ----------------------------------------------------------
   // A grid always has a Question title plus two axes.  On a rating grid the columns ARE the
   // scale points (1..7, each with a label of its own); on a heat map and a numeric matrix
   // they are a second list.  Both axes are edited the same way: add, label, format, attach
   // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
-  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"];
+  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix", "concept_test"];
   var SCALE_TYPES = ["semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
-  var AXIS_TYPES = ["rating_grid", "heatmap", "numeric_matrix"];       // columns = a second list
+  var AXIS_TYPES = ["rating_grid", "numeric_matrix"];       // columns = a second list
   var RZ_MODES = [
     ["none", "Fixed", "Everyone sees the list as written"],
     ["shuffle", "Shuffle", "A fresh random order for every respondent"],
@@ -1600,6 +1603,86 @@
       '<option value="multi"' + (sel === "multi" ? " selected" : "") + ">Multi select - several columns per row</option>" +
       "</select></div>";
   }
+
+  // ---- heatmap (image click map) ---------------------------------------------------
+  function heatmapOf() { return (ed && ed.heatmap) || {}; }
+  function ensureHeatmap() {
+    if (!ed) return {};
+    if (!ed.heatmap) ed.heatmap = {};
+    var hm = ed.heatmap;
+    if (!hm.reactions || !hm.reactions.length) {
+      // migrate legacy rows -> reactions if present
+      if ((ed.rows||[]).length && !hm.reactions) {
+        hm.reactions = (ed.rows||[]).map(function(r,i){ return { code: String(r.code||("r"+(i+1))), label: r.label||"Like", onlyOnce:false, allowComments:false, requireComments:false }; });
+      } else {
+        hm.reactions = [{ code: "r1", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }, { code: "r2", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }];
+      }
+    }
+    if (hm.min_clicks == null) hm.min_clicks = 1;
+    if (hm.max_clicks == null) hm.max_clicks = 3;
+    if (hm.instructions == null) hm.instructions = "Click on any area of the image and select your reaction.";
+    return hm;
+  }
+  function heatmapBlock() {
+    var hm = ensureHeatmap();
+    var info = function(t){ return '<span class="st-info" title="' + esc(t) + '">\u24D8</span>'; };
+    var html = '<div class="st-hm">';
+    // Title
+    html += '<div class="st-field"><label>Title or reference to this Heatmap ' + info("Internal name for the heatmap - shown to the research team, never to respondents.") + '</label>' +
+      '<input id="f-heatmap-title" value="' + esc(hm.title||"") + '" placeholder="Title or reference to this Heatmap"></div>';
+    // Description
+    html += '<div class="st-field"><label>Description ' + info("What the respondent reads above the heatmap image.") + '</label>' +
+      richToolbar("f-heatmap-desc") +
+      '<div class="st-rich sm hm-center" id="f-heatmap-desc" contenteditable="true" data-placeholder="We would like to know what you think of the image on the next screen. Please click continue to proceed.">' +
+      chipify(Q.sanitize(hm.description_html||"We would like to know what you think of the image on the next screen. Please click continue to proceed.")) + '</div></div>';
+    // Image block
+    html += '<h4 class="st-h4">Image ' + info("The image respondents will click on to place reactions.") + '</h4>';
+    html += '<div class="st-hm-image-box">';
+    html += '<div class="st-field"><label>Image Title ' + info("Title shown above the image to respondents.") + '</label>' +
+      '<input id="f-heatmap-img-title" value="' + esc(hm.image_title||"") + '" placeholder="Image Title"></div>';
+    html += '<div class="st-field"><label>Image ' + info("Upload the image for the heatmap. JPG, PNG or GIF.") + '</label>';
+    html += '<div class="st-hm-upload-row">';
+    if (hm.image_src) {
+      html += '<span class="st-thumb" title="' + esc(String(hm.image_src).split("/").pop()) + '"><img src="' + esc(hm.image_src) + '" alt=""><button class="st-x" data-act="hm-img-del" title="Remove this image">\u00D7</button></span>';
+      html += '<span class="st-meta">' + esc(String(hm.image_src).split("/").pop()) + '</span>';
+      html += '<label class="st-link danger" style="margin-left:8px;cursor:pointer">\u21BB Replace image<input type="file" accept="image/*" data-act="hm-img" hidden></label>';
+    } else {
+      html += '<label class="st-link danger" style="cursor:pointer"><span style="font-weight:800">\u2191</span> Upload image<input type="file" accept="image/*" data-act="hm-img" hidden></label>';
+      html += '<span class="st-meta" style="margin-left:8px">No image uploaded yet.</span>';
+    }
+    html += '</div></div>';
+    html += '<div class="st-field"><label>Instructions ' + info("Shown directly above the image to explain what to do.") + '</label>' +
+      '<input id="f-heatmap-instructions" value="' + esc(hm.instructions||"") + '" placeholder="Click on any area of the image and select your reaction."></div>';
+    html += '<button class="st-btn sm on" data-act="heatmap-preview">Preview</button>';
+    html += '</div>';
+    // Reactions
+    html += '<h4 class="st-h4">Reactions ' + info("Each reaction is a clickable label respondents can place on the image. Use Only use once to limit each label to a single placement.") + '</h4>';
+    html += '<div class="st-hm-reactions">';
+    (hm.reactions||[]).forEach(function(r, i){
+      html += '<div class="st-hm-reaction" data-ri="' + i + '">';
+      html += '<div class="st-hm-reaction-head">';
+      html += '<span class="st-seq" style="min-width:22px">' + (i+1) + '.</span>';
+      html += '<input data-hm="label" data-i="' + i + '" value="' + esc(r.label||"") + '" placeholder="Like">';
+      html += '<button class="st-ibtn danger" data-act="hm-del" data-i="' + i + '" title="Delete this reaction">\uD83D\uDDD1</button>';
+      html += '</div>';
+      html += '<div class="st-hm-toggles">';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="onlyOnce" data-i="' + i + '"' + (r.onlyOnce ? " checked" : "") + '><i></i>Only use once</label>';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="allowComments" data-i="' + i + '"' + (r.allowComments ? " checked" : "") + '><i></i>Allow comments</label>';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="requireComments" data-i="' + i + '"' + (r.requireComments ? " checked" : "") + '><i></i>Require comments</label>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<button class="st-btn sm on st-hm-add" data-act="hm-add">+ Add Reaction</button>';
+    // Clicks allowed
+    html += '<h4 class="st-h4">Clicks allowed ' + info("Minimum and maximum number of clicks respondents must make on the image.") + '</h4>';
+    html += '<div class="st-grid2"><div class="st-field"><label>Min</label><input id="f-heatmap-min" type="number" min="0" value="' + (hm.min_clicks!=null ? hm.min_clicks : 1) + '"></div>' +
+      '<div class="st-field"><label>Max</label><input id="f-heatmap-max" type="number" min="0" value="' + (hm.max_clicks!=null ? hm.max_clicks : 3) + '"></div></div>';
+    html += '<div class="st-hint">Respondents must place at least Min and at most Max reactions on the image. Unfilled clicks block progress when Min is set.</div>';
+    html += '</div>';
+    return html;
+  }
+
   function gridBlock() {
     var t = ed.type, html = "";
     if (t === "rating_grid") html += gridSelectField();
@@ -1796,6 +1879,13 @@
     if (/don't you|obviously|clearly|best|excellent/.test(lower)) out.push({key:"leading", level:"warn", text:"Potentially leading language could bias the answer.", fix:"Make wording neutral"});
     if ((ed.type === "single_select" || ed.type === "multi_select") && (!ed.options || ed.options.length < 2)) out.push({key:"options", level:"error", text:"Add at least two answer options.", fix:"Add starter options"});
     if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
+    if (ed.type === "heatmap") {
+      var hm = ed.heatmap || {};
+      if (!hm.image_src) out.push({ key: "hmimg", level: "warn", text: "Upload an image for this heatmap - respondents click the image to place reactions.", fix: "Upload image" });
+      if (!(hm.reactions || []).length) out.push({ key: "hmreact", level: "error", text: "Add at least one reaction for the heatmap.", fix: "Add reaction" });
+      var min = hm.min_clicks, max = hm.max_clicks;
+      if (min != null && max != null && Number(min) > Number(max)) out.push({ key: "hmminmax", level: "error", text: "Min clicks cannot be larger than Max clicks.", fix: "Fix clicks" });
+    }
     if (isGrid(ed.type) || ed.type === "rating_scale") {
       if (!(ed.rows || []).length) out.push({ key: "gridrows", level: "error",
         text: (ed.type === "rating_scale" ? "This rating scale" : "This grid") + " has no rows yet.", fix: "Add starter rows" });
@@ -1830,6 +1920,9 @@
     if (key === 'double') { ed.stem = String(ed.stem).replace(/\s+(and|or)\s+.*?(\?|$)/i, '?'); ed.stem_html = esc(ed.stem); }
     if (key === 'leading') { ed.stem = String(ed.stem).replace(/obviously|clearly|excellent|best/gi, '').replace(/don't you/gi, 'do you'); ed.stem_html = esc(ed.stem); }
     if (key === 'options') ed.options = [{code:1,label:'Option one'},{code:2,label:'Option two'},{code:99,label:'Other',other:true,pin:true}];
+    if (key === 'hmimg') { /* user must upload via Image section - no auto fix */ }
+    if (key === 'hmreact') { ensureHeatmap(); if(!(ed.heatmap.reactions||[]).length) ed.heatmap.reactions=[{code:'r1',label:'Like',onlyOnce:false,allowComments:false,requireComments:false}]; }
+    if (key === 'hmminmax') { var hm=ensureHeatmap(); hm.min_clicks=1; hm.max_clicks=3; }
     if (key === 'gridrows') ed.rows = [{code:'a',label:'First row'},{code:'b',label:'Second row'},{code:'c',label:'Third row'}];
     if (key === 'gridcols') ed.cols = [{code:'c1',label:'First column'},{code:'c2',label:'Second column'},{code:'c3',label:'Third column'}];
     if (key === 'emptyopt') (ed.options || []).forEach(function(o,i){if(!String(o.label || '').trim()) o.label='Option ' + (i+1);});
@@ -2217,7 +2310,8 @@
       html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box \u00B7 <b>Screen out</b> ends the survey there and then. Groups of options, counts and conditions on other questions belong on the <b>Screening</b> tab.</div>';
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
-    if (isGrid(t)) html += gridBlock();
+    if (t === "heatmap") html += heatmapBlock();
+    else if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
     else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
@@ -3242,6 +3336,7 @@
 
   // ---- card: media -----------------------------------------------------------------------
   function mediaCard() {
+    if (ed.type === "heatmap") return '<div class="st-note">Image is managed in <b>Content & Settings</b> &gt; Image section above. Upload or replace the heatmap image there.</div>';
     var m = ed.media || {};
     return '<div class="st-media-row">' +
       (m.src ? '<div class="st-media-cur">' + (m.kind === "video" ? '<video src="' + esc(m.src) + '" controls></video>' : '<img src="' + esc(m.src) + '" alt="">') +
@@ -3327,6 +3422,34 @@
       ed.style = ed.style || {};
       setOrDel(ed.style, "font", val("f-font")); setOrDel(ed.style, "size", val("f-size")); setOrDel(ed.style, "align", val("f-align"));
       if (!Object.keys(ed.style).length) delete ed.style;
+    }
+    if (t === "heatmap") {
+      ed.heatmap = ed.heatmap || {};
+      var hm = ed.heatmap;
+      setOrDel(hm, "title", (val("f-heatmap-title")||"").trim());
+      var hmDesc = document.getElementById("f-heatmap-desc");
+      if (hmDesc) { var hh = unchip(Q.sanitize(hmDesc.innerHTML)); if (Q.stripTags(hh)) hm.description_html = hh; else delete hm.description_html; }
+      setOrDel(hm, "image_title", (val("f-heatmap-img-title")||"").trim());
+      setOrDel(hm, "instructions", (val("f-heatmap-instructions")||"").trim());
+      if (val("f-heatmap-min") !== undefined) setOrDel(hm, "min_clicks", num("f-heatmap-min"));
+      if (val("f-heatmap-max") !== undefined) setOrDel(hm, "max_clicks", num("f-heatmap-max"));
+      // reactions
+      var reactNodes = document.querySelectorAll('#st-editor [data-hm="label"]');
+      if (reactNodes.length) {
+        var newReacts = [];
+        reactNodes.forEach(function(n){
+          var idx = Number(n.getAttribute("data-i"));
+          var lab = n.value;
+          var onlyEl = document.querySelector('[data-hm="onlyOnce"][data-i="'+idx+'"]');
+          var allowEl = document.querySelector('[data-hm="allowComments"][data-i="'+idx+'"]');
+          var reqEl = document.querySelector('[data-hm="requireComments"][data-i="'+idx+'"]');
+          var existing = (ed.heatmap.reactions && ed.heatmap.reactions[idx]) || {};
+          newReacts.push({ code: existing.code || ("r"+(idx+1)), label: lab, onlyOnce: onlyEl ? !!onlyEl.checked : false, allowComments: allowEl ? !!allowEl.checked : false, requireComments: reqEl ? !!reqEl.checked : false });
+        });
+        hm.reactions = newReacts;
+      }
+      if (!hm.image_src) delete hm.image_src;
+      if (!Object.keys(hm).length) delete ed.heatmap;
     }
     if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
       if (val("f-smin") !== undefined) {
@@ -3845,6 +3968,10 @@
       rerenderCard("logic"); changed(); return;
     }
     if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length && ed.show_if.off !== true) delete ed.show_if; rerenderCard("logic"); changed(); return; }
+    if (act === "hm-add") { syncFromForm(); var hm=ensureHeatmap(); var n=hm.reactions.length+1; hm.reactions.push({ code: "r"+n, label: "Like", onlyOnce:false, allowComments:false, requireComments:false }); rerenderCard("answers"); changed(); return; }
+    if (act === "hm-del") { syncFromForm(); var hm2=ensureHeatmap(); hm2.reactions.splice(i,1); if (!hm2.reactions.length) hm2.reactions.push({ code: "r1", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }); rerenderCard("answers"); changed(); return; }
+    if (act === "hm-img-del") { syncFromForm(); if (ed.heatmap) delete ed.heatmap.image_src; rerenderCard("answers"); changed(); return; }
+    if (act === "heatmap-preview") { syncFromForm(); var hm3=heatmapOf(); if (!hm3.image_src) { toast("Upload an image first - no preview yet."); return; } openModal('<div class="st-modal-head"><strong>Heatmap preview</strong><span class="st-meta">' + esc(hm3.image_title || "Image preview") + '</span><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="text-align:center;padding:10px"><img src="' + esc(hm3.image_src) + '" style="max-width:100%;max-height:60vh;border:1px solid var(--line);border-radius:8px"><p style="margin:10px 0 0;font-size:13px;color:var(--muted)">' + esc(hm3.instructions || "") + '</p></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
     if (act === "sif-code") {
       syncFromForm();
       var riSif = Number(b.getAttribute("data-ri")), codeSif = String(b.getAttribute("data-code"));
@@ -4041,6 +4168,10 @@
       changed(); return;
     }
     var act = t.getAttribute("data-act");
+    if (act === "hm-img" && t.files && t.files[0]) {
+      uploadMedia(t.files[0], function (r) { syncFromForm(); ed.heatmap = ed.heatmap || {}; ed.heatmap.image_src = r.src; rerenderCard("answers"); changed(); toast("Image attached - " + r.file); });
+      return;
+    }
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); rerenderCard("media"); changed(); toast("Attached " + r.file); });
       return;
@@ -4221,6 +4352,8 @@
       ss.sum.op = t.value;                           // syncScreening reshapes the number
       rerenderCard("screening"); changed(); return;
     }
+    if (t.id && t.id.indexOf("f-heatmap-")===0) { syncFromForm(); markChanged(); renderPreview(); refreshOutlineRow(); return; }
+    if (t.getAttribute && t.getAttribute("data-hm") != null) { syncFromForm(); changed(); return; }
     if (t.id === "f-sif-on") { syncFromForm(); renderEditorPane(); changed(); return; }
     if (t.id === "f-scr-match" || t.id === "f-scr-when") { syncFromForm(); rerenderCard("screening"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-sf") && !t.classList.contains("st-scr-rownum")) {

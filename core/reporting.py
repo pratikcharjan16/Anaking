@@ -101,10 +101,25 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
         elif t == "gauge_meter":
             out[qid] = a.get("_", "")
         elif t == "heatmap":
-            for r in q["rows"]:
-                for c in (q.get("cols") or []):
-                    out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
-                        str(r["code"]) + "_" + str(c["code"]), "")
+            hm = q.get("heatmap") or {}
+            if hm:
+                clicks = a.get("clicks") or []
+                out[qid] = len(clicks)
+                # store clicks as x,y,reaction per click for Excel/CSV
+                out[f"{qid}_clicks"] = ";".join(f"{c.get('x')},{c.get('y')},{c.get('reaction')}" + (f",{c.get('comment')}" if c.get('comment') else "") for c in clicks)
+                for r in hm.get("reactions", []):
+                    code = str(r.get("code"))
+                    cnt = sum(1 for c in clicks if str(c.get("reaction")) == code)
+                    out[f"{qid}_{code}"] = cnt
+                    # comments per reaction
+                    cmts = [c.get("comment") for c in clicks if str(c.get("reaction")) == code and c.get("comment")]
+                    if cmts:
+                        out[f"{qid}_{code}_comments"] = "; ".join(cmts)
+            else:
+                for r in q["rows"]:
+                    for c in (q.get("cols") or []):
+                        out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
+                            str(r["code"]) + "_" + str(c["code"]), "")
         elif t == "multi_select":
             out[qid] = ";".join(str(c) for c in sorted(a.get("codes", []), key=str))
             out[qid + "_text"] = "; ".join(
@@ -377,11 +392,19 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
                                 scale])
         elif q["type"] == "heatmap":
-            for r in q["rows"]:
-                for c in q["cols"]:
+            hm = q.get("heatmap") or {}
+            if hm:
+                for r in hm.get("reactions", []):
                     dd_rows.append([q["id"], q["section"], q["type"], stem,
-                                    f"{r['code']}_{c['code']}", f"{r['label']} x {c['label']}",
-                                    "1=weak, 2=moderate, 3=strong; blank/0=unselected"])
+                                    str(r.get("code")), str(r.get("label")),
+                                    f"clicks: x,y in 0-1, comment if allowed; min {hm.get('min_clicks')} max {hm.get('max_clicks')}"])
+                dd_rows.append([q["id"], q["section"], q["type"], stem, f"{q['id']}_clicks", "all clicks as x,y,reaction,comment joined by ;", "JSON-like"])
+            else:
+                for r in q["rows"]:
+                    for c in q["cols"]:
+                        dd_rows.append([q["id"], q["section"], q["type"], stem,
+                                        f"{r['code']}_{c['code']}", f"{r['label']} x {c['label']}",
+                                        "1=weak, 2=moderate, 3=strong; blank/0=unselected"])
         elif q["type"] == "maxdiff":
             for i, rnd in enumerate(q.get("rounds", []), 1):
                 dd_rows.append([q["id"], q["section"], q["type"], stem, f"R{i}",

@@ -1207,7 +1207,18 @@
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
-      case "heatmap": // Only configured cells with a selected intensity count.
+      case "heatmap":
+        if (q.heatmap && q.heatmap.image_src) {
+          var minH = q.heatmap.min_clicks != null ? Number(q.heatmap.min_clicks) : 0;
+          var maxH = q.heatmap.max_clicks != null ? Number(q.heatmap.max_clicks) : 99;
+          var n = (a && Array.isArray(a.clicks) ? a.clicks.length : 0);
+          if (n < minH || n > maxH) return false;
+          // required comments are enforced per click at entry, but ensure any required reaction that was used has a comment
+          if (q.heatmap.reactions) {
+            for (var ri=0; ri<q.heatmap.reactions.length; ri++) { var rx=q.heatmap.reactions[ri]; if (rx.requireComments) { var used=(a.clicks||[]).some(function(c){ return String(c.reaction)===String(rx.code); }); if (used) { var hasComment=(a.clicks||[]).some(function(c){ return String(c.reaction)===String(rx.code) && c.comment && String(c.comment).trim(); }); if (!hasComment) return false; } } }
+          }
+          return true;
+        }
         return (q.rows || []).some(function (r) {
           return (q.cols || []).some(function (c) {
             return [1, 2, 3].indexOf(Number(a[r.code + "_" + c.code])) >= 0;
@@ -2136,18 +2147,97 @@
   // A heat map: rows x columns, tap a cell to raise how strongly it applies (0 - 3).
 
   function renderHeatmap(q) {
-    var wrap = el("div", "heatmap");
+    // New image-click heatmap (Title/Reference + Description + Image + Reactions + Min/Max)
+    var hm = q.heatmap || null;
+    if (hm && hm.image_src) {
+      var wrap = el("div", "heatmap heatmap-img");
+      if (hm.title) wrap.appendChild(el("div", "hm-title", pipeText(hm.title)));
+      if (hm.description_html) { var desc = el("div", "hm-desc"); desc.innerHTML = hm.description_html; wrap.appendChild(desc); }
+      if (hm.image_title) wrap.appendChild(el("div", "hm-image-title", pipeText(hm.image_title)));
+      if (hm.instructions) wrap.appendChild(el("div", "hm-instructions", pipeText(hm.instructions)));
+      var reactions = hm.reactions || [];
+      var minC = hm.min_clicks != null ? Number(hm.min_clicks) : 0;
+      var maxC = hm.max_clicks != null ? Number(hm.max_clicks) : 99;
+      var ans = answers[q.id] || {};
+      if (!Array.isArray(ans.clicks)) ans.clicks = [];
+      var selected = reactions.length ? reactions[0].code : null;
+      if (ans._selected && reactions.some(function(r){ return String(r.code)===String(ans._selected); })) selected = ans._selected;
+      function saveAns(){ answers[q.id]=ans; if (!PREVIEW && SESSION && SESSION.session_id){ store("answers", answers); save(); } hideErr(); ansChanged(); }
+      var picker = el("div", "hm-reactions-picker");
+      var pickerLabel = el("div", "hm-picker-label", "Select a reaction then click the image:");
+      picker.appendChild(pickerLabel);
+      var pillRow = el("div", "hm-pills");
+      reactions.forEach(function(r){
+        var btn = el("button", "hm-pill" + (String(r.code)===String(selected) ? " on" : ""));
+        btn.type="button";
+        btn.textContent = r.label || r.code;
+        btn.title = (r.onlyOnce ? "Only once. " : "") + (r.allowComments ? "Comment allowed." : "") + (r.requireComments ? "Comment required." : "");
+        btn.addEventListener("click", function(){ selected = r.code; ans._selected = selected; Array.prototype.forEach.call(pillRow.querySelectorAll(".hm-pill"), function(b){ b.classList.remove("on"); }); btn.classList.add("on"); saveAns(); });
+        pillRow.appendChild(btn);
+      });
+      picker.appendChild(pillRow);
+      wrap.appendChild(picker);
+      var canvas = el("div", "hm-canvas");
+      var img = el("img", "hm-image"); img.src = hm.image_src; img.alt = hm.image_title || "Heatmap image"; img.draggable=false;
+      canvas.appendChild(img);
+      var overlay = el("div", "hm-overlay");
+      canvas.appendChild(overlay);
+      function renderMarkers(){
+        overlay.innerHTML="";
+        (ans.clicks||[]).forEach(function(cl, idx){
+          var dot = el("button", "hm-dot");
+          dot.type="button";
+          dot.style.left = (cl.x*100) + "%"; dot.style.top = (cl.y*100) + "%";
+          var rx = reactions.filter(function(r){ return String(r.code)===String(cl.reaction); })[0];
+          dot.textContent = rx ? (rx.label||rx.code).slice(0,2) : "?";
+          dot.title = (rx? rx.label : cl.reaction) + " at " + Math.round(cl.x*100) + "%, " + Math.round(cl.y*100) + "% - click to remove";
+          dot.addEventListener("click", function(ev){ ev.stopPropagation(); ans.clicks.splice(idx,1); renderMarkers(); saveAns(); updateCounter(); });
+          overlay.appendChild(dot);
+        });
+      }
+      var counter = el("div", "hm-counter");
+      function updateCounter(){
+        var n = (ans.clicks||[]).length;
+        counter.textContent = n + " of " + maxC + " clicks" + (minC ? " (min " + minC + ")" : "");
+        counter.className = "hm-counter" + (n < minC ? " warn" : n > maxC ? " bad" : " ok");
+      }
+      canvas.addEventListener("click", function(ev){
+        if (!selected) { showErr("Pick a reaction first, then click the image."); return; }
+        var r = reactions.filter(function(x){ return String(x.code)===String(selected); })[0];
+        if (r && r.onlyOnce && (ans.clicks||[]).some(function(c){ return String(c.reaction)===String(selected); })) { showErr("This reaction can only be used once - pick another or remove the existing mark."); return; }
+        if ((ans.clicks||[]).length >= maxC) { showErr("You have reached the maximum of " + maxC + " clicks. Remove one to add another."); return; }
+        var rect = canvas.getBoundingClientRect();
+        var x = (ev.clientX - rect.left)/rect.width;
+        var y = (ev.clientY - rect.top)/rect.height;
+        x = Math.max(0, Math.min(0.98, x)); y = Math.max(0, Math.min(0.98, y));
+        var entry = { x: Math.round(x*1000)/1000, y: Math.round(y*1000)/1000, reaction: selected };
+        if (r && (r.allowComments || r.requireComments)) {
+          var txt = window.prompt(r.requireComments ? "Add a comment for this reaction (required):" : "Add a comment (optional) - leave blank to skip:");
+          if (r.requireComments && (!txt || !txt.trim())) { showErr("A comment is required for this reaction."); return; }
+          if (txt) entry.comment = txt;
+        }
+        ans.clicks.push(entry); renderMarkers(); updateCounter(); saveAns(); hideErr();
+      });
+      wrap.appendChild(canvas);
+      wrap.appendChild(counter);
+      renderMarkers(); updateCounter();
+      wrap.appendChild(el("div", "hm-legend", "Click the image to place your selected reaction. Need " + minC + " to " + maxC + " marks. Click a mark to remove it." + (reactions.some(function(r){return r.onlyOnce;}) ? " Some reactions can only be used once." : "")));
+      if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+      return wrap;
+    }
+    // Legacy grid heatmap (rows x cols intensity 1-3)
+    var wrap2 = el("div", "heatmap");
     var g = q.grid || {};
     var cols = orderedList(q.cols || [], q, "cols");
-    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (g.title) wrap2.appendChild(el("div", "grid-title", pipeText(g.title)));
     if (!(q.rows || []).length || !cols.length) {
-      wrap.appendChild(el("p", "hm-legend", "This heatmap needs at least one row and one column. Please contact the survey owner."));
-      return wrap;
+      wrap2.appendChild(el("p", "hm-legend", "This heatmap needs at least one row and one column. Please contact the survey owner."));
+      return wrap2;
     }
     var scroll = el("div", "hm-scroll");
     scroll.tabIndex = 0;
     scroll.setAttribute("role", "region");
-    scroll.setAttribute("aria-label", "Heatmap — scroll horizontally to reach all columns");
+    scroll.setAttribute("aria-label", "Heatmap \u2014 scroll horizontally to reach all columns");
     var tbl = el("div", "hm-table");
     tbl.style.minWidth = (140 + cols.length * 90) + "px";
     tbl.style.setProperty("--hm-cols", "minmax(120px,1.5fr) repeat(" + cols.length + ", minmax(74px,1fr))");
@@ -2170,14 +2260,13 @@
         cell.appendChild(mark);
         function paint(value) {
           cell.dataset.lvl = String(value);
-          mark.textContent = value ? String(value) : "—";
-          cell.title = rowName + " × " + colName + ": " + ["Not selected", "1 — Weak", "2 — Moderate", "3 — Strong"][value];
-          cell.setAttribute("aria-label", cell.title + ". Activate to cycle; keys 1–3 to set, Delete to clear.");
+          mark.textContent = value ? String(value) : "\u2014";
+          cell.title = rowName + " \u00D7 " + colName + ": " + ["Not selected", "1 \u2014 Weak", "2 \u2014 Moderate", "3 \u2014 Strong"][value];
+          cell.setAttribute("aria-label", cell.title + ". Activate to cycle; keys 1\u20133 to set, Delete to clear.");
           cell.setAttribute("aria-pressed", value ? "true" : "false");
         }
         function select(value) {
           paint(value);
-          // Explicit blank is a tombstone: an upsert must replace any previously saved value.
           if (!answers[q.id]) answers[q.id] = {};
           answers[q.id][key] = value || "";
           hideErr(); ansChanged();
@@ -2204,12 +2293,13 @@
       }
     });
     scroll.appendChild(tbl);
-    wrap.appendChild(scroll);
-    wrap.appendChild(el("div", "hm-legend",
-      "Tap a cell to cycle: 1 Weak → 2 Moderate → 3 Strong → clear. Keyboard: 1–3 to set, Delete to clear. Scroll sideways for more columns. Unselected cells are not zero ratings."));
-    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
-    return wrap;
+    wrap2.appendChild(scroll);
+    wrap2.appendChild(el("div", "hm-legend",
+      "Tap a cell to cycle: 1 Weak \u2192 2 Moderate \u2192 3 Strong \u2192 clear. Keyboard: 1\u20133 to set, Delete to clear. Scroll sideways for more columns. Unselected cells are not zero ratings."));
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap2.appendChild(questionComment(q));
+    return wrap2;
   }
+
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
 
@@ -2888,7 +2978,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap')(q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap && q.heatmap.image_src){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}

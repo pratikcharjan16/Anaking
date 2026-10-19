@@ -868,6 +868,15 @@
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
         case "loop":
           (q.items || []).forEach(function (it, k) { a[it.code] = q.child === "numeric" ? 5 + k : "(sample " + it.label + ")"; }); break;
+        case "heatmap":
+          var hm=q.heatmap||{};
+          if (hm.image_src && hm.reactions && hm.reactions.length) {
+            a.clicks = [{ x:0.32, y:0.45, reaction: hm.reactions[0].code }];
+            if (hm.reactions.length>1 && (hm.max_clicks||3)>1) a.clicks.push({ x:0.66, y:0.52, reaction: hm.reactions[1].code });
+          } else {
+            (q.rows||[]).forEach(function(r){ (q.cols||[]).forEach(function(c){ a[r.code+"_"+c.code]=1; }); });
+          }
+          break;
         case "text_block": break;
         default: break;
       }

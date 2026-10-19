@@ -618,16 +618,21 @@ Q.append({
 # ======================================================================================
 Q.append({
     "id": "Q23", "section": "E", "type": "heatmap", "required": True,
-    "stem": "Heat map: tap each cell to show how strongly you would want more evidence "
-            "there before prescribing the new therapy.",
-    "help": "Each tap cycles a cell: none > some > strong > critical, then clears again.",
-    "rows": [{"code": a, "label": l} for a, l in MAXDIFF_LABEL.items()],
-    "cols": [
-        {"code": "cte", "label": "Clinical trial evidence"},
-        {"code": "rwe", "label": "Real-world evidence"},
-        {"code": "acc", "label": "Cost & access data"},
-    ],
-    "heat_max": 3,
+    "stem": "Heat map: tap the image where you have a reaction and tell us why.",
+    "help": "Click on any area of the image and select your reaction.",
+    "heatmap": {
+        "title": "Heatmap 1",
+        "description_html": "We would like to know what you think of the image on the next screen. Please click continue to proceed.",
+        "image_title": "Product concept image",
+        "image_src": "",
+        "instructions": "Click on any area of the image and select your reaction.",
+        "reactions": [
+            {"code": "r1", "label": "Like", "onlyOnce": False, "allowComments": False, "requireComments": False},
+            {"code": "r2", "label": "Like", "onlyOnce": False, "allowComments": False, "requireComments": False},
+        ],
+        "min_clicks": 1,
+        "max_clicks": 3,
+    },
 })
 
 # ======================================================================================
