@@ -2397,6 +2397,52 @@
     }
     return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
   }
+
+  function sifSummary(r, q, opLabel) {
+    if (!q) return 'When <b>' + esc(r.q) + '</b> ' + esc(opLabel || r.op) + ' ' + esc(String(r.value == null ? '' : r.value));
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(r.op) : "text";
+    var qName = '<b>' + esc(q.id) + ' \u00B7 ' + esc(String(q.stem || q.title || '').slice(0,70)) + '</b>';
+    var op = opLabel || r.op;
+    if (kind === "none") return qName + ' ' + esc(op);
+    if (kind === "codes") {
+      var list = (q.options || q.rows || q.items || []);
+      var want = String(r.value || "");
+      var labs = want.split(",").map(function(c){ c=c.trim(); var f=list.filter(function(o){return String(o.code)===c;})[0]; return f? esc(f.label): esc(c);}).join(", ");
+      // chip case: show badges
+      if (!labs) labs = esc(want);
+      return qName + ' <em>' + esc(op) + '</em> ' + labs;
+    }
+    if (kind === "number" || kind === "count" || kind === "between" || kind === "text") {
+      return qName + ' <em>' + esc(op) + '</em> <b>' + esc(String(r.value == null ? '' : r.value)) + '</b>';
+    }
+    if (kind === "rowvalue" || kind === "ranktop" || kind === "rowrange") {
+      var pr = String(r.value || "").split("=");
+      var rowCode = pr[0] || "";
+      var tail = pr.slice(1).join("=");
+      var rowLab = (q.rows || q.items || []).filter(function(o){return String(o.code)===rowCode;})[0];
+      var rl = rowLab ? esc(rowLab.label) : esc(rowCode);
+      return qName + ' \u2014 row \u201C' + rl + '\u201D <em>' + esc(op) + '</em> <b>' + esc(tail) + '</b>';
+    }
+    if (kind === "rowcode") {
+      var pc = String(r.value || "").split("=");
+      var rr = pc[0]||"", cc=pc[1]||"";
+      var rL = (q.rows||[]).filter(function(o){return String(o.code)===rr;})[0];
+      var cL = (q.cols||[]).filter(function(o){return String(o.code)===cc;})[0];
+      return qName + ' \u2014 row \u201C' + esc(rL?rL.label:rr) + '\u201D \u00D7 column \u201C' + esc(cL?cL.label:cc) + '\u201D <em>' + esc(op) + '</em>';
+    }
+    if (kind === "cellnum" || kind === "cellrange") {
+      var pt = String(r.value || "").split("=");
+      var rr2 = pt[0]||"", cc2=pt[1]||"", nn=pt.slice(2).join("=");
+      var rL2 = (q.rows||[]).filter(function(o){return String(o.code)===rr2;})[0];
+      var cL2 = (q.cols||[]).filter(function(o){return String(o.code)===cc2;})[0];
+      return qName + ' \u2014 cell \u201C' + esc(rL2?rL2.label:rr2) + ' \u00D7 ' + esc(cL2?cL2.label:cc2) + '\u201D <em>' + esc(op) + '</em> <b>' + esc(nn) + '</b>';
+    }
+    if (kind === "rowsum") {
+      return qName + ' \u2014 sum <em>' + esc(op) + '</em> <b>' + esc(String(r.value||"")) + '</b>';
+    }
+    return qName + ' <em>' + esc(op) + '</em> <b>' + esc(String(r.value == null ? '' : r.value)) + '</b>';
+  }
+
   function logicCard() {
     var c = cur.cfg, sif = ed.show_if || { match: "all", rules: [] };
     var others = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
@@ -2420,11 +2466,24 @@
       var avail = sifOpsFor(q);
       if (q && !avail.some(function(o){ return o[0] === r.op; })) r.op = avail[0] ? avail[0][0] : r.op;
       var valField = sifValueField(r, i);
-      return '<div class="st-rule"><span class="st-rule-no">' + (i ? (sif.match === "any" ? "or" : "and") : "when") + "</span>" +
-        '<select data-rule="q" data-ri="' + i + '">' + others.map(function (x) {
-          return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " \u00B7 " + String(x.stem).slice(0, 48)) + (c.questions.indexOf(x) > idx ? " (comes later)" : "") + "</option>"; }).join("") + "</select>" +
-        '<select data-rule="op" data-ri="' + i + '">' + avail.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select>" +
-        valField + '<button class="st-ibtn danger" data-act="rule-del" data-ri="' + i + '" title="Remove condition">\u2715</button></div>';
+      var badge = i ? (sif.match === "any" ? "OR" : "AND") : "WHEN";
+      var badgeCls = badge.toLowerCase();
+      var opLabel = "";
+      for (var oi = 0; oi < avail.length; oi++) if (avail[oi][0] === r.op) opLabel = avail[oi][1];
+      var summary = sifSummary(r, q, opLabel);
+      return '<div class="st-rule st-sif-rule">' +
+        '<div class="st-sif-head">' +
+          '<span class="st-sif-badge ' + badgeCls + '">' + badge + '</span>' +
+          '<div class="st-sif-qwrap"><label>Question</label><select data-rule="q" data-ri="' + i + '" title="' + esc((q ? q.id + " \u00B7 " + String(q.stem||q.title||"").slice(0,80) : r.q)) + '">' + others.map(function (x) {
+            return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " \u00B7 " + String(x.stem).slice(0, 64)) + (c.questions.indexOf(x) > idx ? " (comes later)" : "") + "</option>"; }).join("") + "</select></div>" +
+          '<button class="st-ibtn danger" data-act="rule-del" data-ri="' + i + '" title="Remove condition">\u2715</button>' +
+        '</div>' +
+        '<div class="st-sif-cond">' +
+          '<div class="st-sif-field"><label>Condition</label><select data-rule="op" data-ri="' + i + '">' + avail.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select></div>" +
+          '<div class="st-sif-field st-sif-value"><label>Value</label>' + valField + '</div>' +
+        '</div>' +
+        '<div class="st-sif-summary"><span class="st-sif-summary-ic">\u2192</span><span>' + summary + '</span></div>' +
+      '</div>';
     }).join("") + "</div>";
     html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") + '" data-act="rule-add"' + (others.length ? "" : " disabled") + ">+ Add condition</button>" +
       (rules.length ? '<label class="st-switch"><input type="checkbox" id="f-sif-negate"' + (sif.negate ? " checked" : "") + "><i></i>Invert - <em>hide</em> when true</label>" : "") +

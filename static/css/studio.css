@@ -462,6 +462,37 @@ a{color:var(--accent2)}
 .st-rule{display:grid;grid-template-columns:46px minmax(150px,1.4fr) minmax(130px,1fr) minmax(100px,1fr) 28px;gap:6px;align-items:center;margin-bottom:6px}
 .st-rule-no{font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);text-align:right}
 .st-rule select,.st-rule input{border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12.5px;width:100%;background:#fff;min-width:0}
+/* ---------- Show IF — clean card layout (overrides grid above only inside #f-rules) ---------- */
+#f-rules{display:flex;flex-direction:column;gap:0}
+#f-rules .st-rule{grid-template-columns:unset;display:flex;flex-direction:column;gap:10px;align-items:stretch;padding:14px 14px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;box-shadow:0 1px 6px rgba(16,35,46,.05)}
+#f-rules .st-rule:hover{border-color:#c9dbe4;box-shadow:0 4px 14px rgba(16,35,46,.08)}
+.st-sif-head{display:flex;align-items:flex-start;gap:10px}
+.st-sif-badge{flex:0 0 auto;min-width:44px;text-align:center;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:999px;padding:5px 10px;line-height:1}
+.st-sif-badge.and{background:#546e7a}
+.st-sif-badge.or{background:#7a5cc8}
+.st-sif-badge.when{background:var(--accent)}
+.st-sif-qwrap{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
+.st-sif-qwrap label,.st-sif-field label{font-size:10.5px;font-weight:800;letter-spacing:.05em;text-transform:uppercase;color:var(--muted);line-height:1}
+.st-sif-qwrap select{width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-size:13px;background:#fff;font-weight:600;color:var(--ink)}
+.st-sif-cond{display:flex;flex-wrap:wrap;gap:12px;align-items:flex-end}
+.st-sif-field{flex:1 1 180px;min-width:160px;display:flex;flex-direction:column;gap:5px}
+.st-sif-field.st-sif-value{flex:2 1 260px;min-width:220px}
+.st-sif-field select,.st-sif-field input,.st-sif-field .st-scr-num{border:1px solid var(--line);border-radius:9px;padding:9px 10px;font-size:13px;background:#fff;width:100%}
+.st-sif-field .st-scr-pair{flex-wrap:wrap}
+.st-sif-field .st-scr-pair select,.st-sif-field .st-scr-pair input{flex:1 1 120px;min-width:110px}
+.st-sif-field .st-scr-chips{gap:6px}
+.st-sif-field .st-chip{padding:6px 12px;font-size:12.5px}
+.st-sif-summary{display:flex;gap:8px;align-items:flex-start;background:var(--soft2);border:1px solid var(--line2);border-radius:9px;padding:9px 12px;font-size:12.5px;line-height:1.45;color:var(--ink)}
+.st-sif-summary b{color:var(--ink)}
+.st-sif-summary-ic{flex:0 0 auto;width:20px;height:20px;border-radius:50%;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:11px;line-height:1}
+.st-logic-intro{font-size:13px;line-height:1.5}
+.st-logic-intro b{color:var(--ink)}
+.st-sif-empty{font-size:12.5px;color:var(--muted);font-style:italic;padding:6px 0}
+.st-sif-num-mini{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.st-sif-num-mini input{width:110px}
+.st-sif-rowcol{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.st-sif-rowcol select{flex:1 1 140px}
+.st-sif-rowcol em{font-style:normal;font-size:12px;color:var(--muted);font-weight:600}
 
 /* media */
 .st-media-row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap;margin-top:12px}
