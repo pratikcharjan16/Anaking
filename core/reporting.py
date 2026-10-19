@@ -74,9 +74,7 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 out[qid + "_voice"] = "recorded"
         elif t == "text_grid":
             for r in q.get("rows", []):
-                for c in q.get("cols", []):
-                    key = f"{r['code']}_{c['code']}"
-                    out[f"{qid}_{key}"] = a.get(key, "")
+                out[f"{qid}_{r['code']}"] = a.get(r['code'], "")
         elif t == "nps":
             raw = a.get("_", "")
             out[qid] = raw
