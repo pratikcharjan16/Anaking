@@ -1208,7 +1208,7 @@
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
       case "heatmap":
-        if (q.heatmap && q.heatmap.image_src) {
+        if (q.heatmap) {
           var minH = q.heatmap.min_clicks != null ? Number(q.heatmap.min_clicks) : 0;
           var maxH = q.heatmap.max_clicks != null ? Number(q.heatmap.max_clicks) : 99;
           var n = (a && Array.isArray(a.clicks) ? a.clicks.length : 0);
@@ -2149,7 +2149,7 @@
   function renderHeatmap(q) {
     // New image-click heatmap (Title/Reference + Description + Image + Reactions + Min/Max)
     var hm = q.heatmap || null;
-    if (hm && hm.image_src) {
+    if (hm) {
       var wrap = el("div", "heatmap heatmap-img");
       if (hm.title) wrap.appendChild(el("div", "hm-title", pipeText(hm.title)));
       if (hm.description_html) { var desc = el("div", "hm-desc"); desc.innerHTML = hm.description_html; wrap.appendChild(desc); }
@@ -2177,8 +2177,15 @@
       });
       picker.appendChild(pillRow);
       wrap.appendChild(picker);
+      if (!hm.image_src) {
+        wrap.appendChild(el("div", "hm-legend", "No image has been uploaded for this heatmap yet. Please contact the survey owner."));
+        if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+        return wrap;
+      }
       var canvas = el("div", "hm-canvas");
       var img = el("img", "hm-image"); img.src = hm.image_src; img.alt = hm.image_title || "Heatmap image"; img.draggable=false;
+      img.addEventListener("error", function(){ canvas.classList.add("hm-error"); showErr("Image failed to load - check the uploaded file."); });
+      img.addEventListener("load", function(){ hideErr(); canvas.classList.remove("hm-error"); });
       canvas.appendChild(img);
       var overlay = el("div", "hm-overlay");
       canvas.appendChild(overlay);
@@ -2207,6 +2214,7 @@
         if (r && r.onlyOnce && (ans.clicks||[]).some(function(c){ return String(c.reaction)===String(selected); })) { showErr("This reaction can only be used once - pick another or remove the existing mark."); return; }
         if ((ans.clicks||[]).length >= maxC) { showErr("You have reached the maximum of " + maxC + " clicks. Remove one to add another."); return; }
         var rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height || rect.width < 5 || rect.height < 5) { showErr("Image is still loading - please wait a moment and try again."); return; }
         var x = (ev.clientX - rect.left)/rect.width;
         var y = (ev.clientY - rect.top)/rect.height;
         x = Math.max(0, Math.min(0.98, x)); y = Math.max(0, Math.min(0.98, y));
@@ -2978,7 +2986,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap && q.heatmap.image_src){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}
