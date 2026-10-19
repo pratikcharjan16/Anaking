@@ -1848,14 +1848,12 @@
       }
       var total = concepts.length * cqs.length;
       var curC = 0, curQ = 0, curIdx = 0;
-      var progress = el("div","st-note");
       var stage = el("div");
       var nav = el("div","nav");
       var prevBtn = el("button","btn","Prev");
       var nextBtn = el("button","btn primary","Next");
       prevBtn.type = "button"; nextBtn.type = "button";
       nav.appendChild(prevBtn); nav.appendChild(nextBtn);
-      wrap.appendChild(progress);
       wrap.appendChild(stage);
       wrap.appendChild(nav);
       function synthFor(cIdx, qIdx){
@@ -1884,8 +1882,6 @@
         return synth;
       }
       function render(){
-        var concept = concepts[curC];
-        progress.textContent = "Preview \u00B7 Concept "+(curC+1)+" of "+concepts.length+" ("+concept.label+") \u00B7 Question "+(curQ+1)+" of "+cqs.length+" \u00B7 Step "+(curIdx+1)+" of "+total;
         stage.innerHTML = "";
         var synth = synthFor(curC, curQ);
         var card = renderQuestion(synth);
@@ -1899,7 +1895,6 @@
       nextBtn.addEventListener("click", function(){
         if(curIdx<total-1){ curIdx++; curQ++; if(curQ>=cqs.length){ curC++; curQ=0; } render(); }
         else {
-          progress.textContent = "Preview complete \u2014 "+total+" steps shown ("+concepts.length+" concepts \u00D7 "+cqs.length+" questions)";
           stage.innerHTML = '<div class="st-note">You have seen all '+total+' screens. In the live survey each screen is one page: Concept '+concepts.map(function(c){return c.label;}).join(", ")+' each shows Q1..Q'+cqs.length+' on separate screens with Next.</div>';
           nav.hidden = true;
         }
