@@ -1258,7 +1258,9 @@
           steps.push({ kind: "q", q: q });
         } else if(concepts.length && cqs.length){
           concepts.forEach(function(concept){
+            var cIdx = concepts.indexOf(concept);
             cqs.forEach(function(cq){
+              var qIdx = cqs.indexOf(cq);
               var synth = JSON.parse(JSON.stringify(cq));
               synth.id = q.id + "_" + concept.id + "_" + (cq.id || cq.type);
               synth._concept_parent = q.id;
@@ -1272,6 +1274,10 @@
               synth._concept_description_html = q.concept_description_html;
               synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
               synth._concept_execution = q.concept_execution;
+              synth._concept_cIdx = cIdx;
+              synth._concept_qIdx = qIdx;
+              synth._concept_is_first_overall = (cIdx===0 && qIdx===0);
+              synth._concept_is_first_for_concept = (qIdx===0);
               synth.section = q.section;
               if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label).replace(/\{item\}/g, concept.label);
               if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
@@ -1868,6 +1874,10 @@
         synth._concept_description_html = q.concept_description_html;
         synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
         synth._concept_execution = q.concept_execution;
+        synth._concept_cIdx = cIdx;
+        synth._concept_qIdx = qIdx;
+        synth._concept_is_first_overall = (cIdx===0 && qIdx===0);
+        synth._concept_is_first_for_concept = (qIdx===0);
         synth.section = q.section;
         if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
         if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
@@ -2923,45 +2933,115 @@
   }
   function renderConceptHeader(q){
     var cctx = el("div", "concept-ctx");
+    // description handling: show per first-only flag using synthetic indices
+    if(q._concept_description_html){
+      var showDesc = true;
+      if(q._concept_show_desc_first_only){
+        // only on first screen of first concept
+        showDesc = !!q._concept_is_first_overall;
+        if(showDesc===false && q._concept_is_first_overall===undefined){
+          // fallback for older synthetics without flags: use steps scan
+          var firstConceptId = null;
+          try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
+          if(!firstConceptId && q._concept_parent){
+            try{ var parentQ=null; for(var pi=0; pi<SPEC.questions.length; pi++){ if(SPEC.questions[pi].id===q._concept_parent){ parentQ=SPEC.questions[pi]; break; } } if(parentQ&&parentQ.concepts&&parentQ.concepts.length) firstConceptId=parentQ.concepts[0].id; }catch(e2){}
+          }
+          if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
+        }
+      } else {
+        // when toggle off: show at start of every concept (first question of each concept)
+        if(q._concept_is_first_for_concept!==undefined) showDesc = !!q._concept_is_first_for_concept;
+        else {
+          // fallback: check if previous step has same concept
+          var idx=-1; try{ for(var si2=0; si2<steps.length; si2++){ if(steps[si2].q.id===q.id){ idx=si2; break; } } }catch(e){}
+          if(idx>0){
+            try{ if(steps[idx-1].q._concept_id===q._concept_id) showDesc=false; }catch(e){}
+          }
+        }
+      }
+      if(showDesc){
+        var desc = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(desc, q._concept_description_html, logicCtx(), "…"); else desc.textContent = pipeText(q._concept_description_html); cctx.appendChild(desc);
+      }
+    }
     var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
     if(exec) cctx.appendChild(exec);
     var ch = el("div","concept-header");
     var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
     ch.appendChild(clabel);
+    // Only attached image/video should show, along with name – no duration text, no text snippet
+    var mediaWrap = null;
     if(q._concept_media && q._concept_media.src){
-      ch.appendChild(renderMedia(q._concept_media, "concept-media"));
-    }
-    if(q._concept_text_html || q._concept_text){
+      mediaWrap = el("div","concept-media-wrap");
+      var mediaEl = renderMedia(q._concept_media, "concept-media");
+      mediaWrap.appendChild(mediaEl);
+      // timer handling
+      var durStr = q._concept_duration || "no-limit";
+      var secs = null;
+      (function(){
+        var d = String(durStr).toLowerCase().trim();
+        if(d==="no-limit"||d==="no limit"||d==="no_limit"||d==="") secs=null;
+        else if(d.indexOf("min")>=0) secs=60;
+        else { var m=d.match(/(\d+)/); secs=m?parseInt(m[1],10):null; }
+      })();
+      if(secs!==null && secs>0){
+        var timerRow = el("div","concept-timer-row");
+        var timerEl = el("span","concept-timer"); timerEl.textContent = secs+"s";
+        var bar = el("div","concept-timer-bar"); var fill = el("div","concept-timer-fill"); bar.appendChild(fill);
+        timerRow.appendChild(timerEl);
+        timerRow.appendChild(bar);
+        if(q._concept_allow_replay){
+          var replayBtn = el("button","btn sm","Replay");
+          replayBtn.type="button";
+          replayBtn.style.marginLeft="8px";
+          timerRow.appendChild(replayBtn);
+        }
+        ch.appendChild(mediaWrap);
+        ch.appendChild(timerRow);
+        // countdown logic
+        var remaining = secs;
+        var total = secs;
+        var timerId = null;
+        function updateTimer(){
+          timerEl.textContent = remaining+"s";
+          fill.style.width = (remaining/total*100)+"%";
+          if(remaining<=0){
+            clearInterval(timerId);
+            timerEl.textContent = "0s";
+            fill.style.width="0%";
+            // hide media after timer
+            mediaWrap.style.opacity="0.3";
+            mediaWrap.style.filter="grayscale(0.6)";
+            var hiddenMsg = el("div","concept-hidden-msg","Concept hidden – answer the question below");
+            hiddenMsg.style.fontSize="12px"; hiddenMsg.style.color="var(--muted)"; hiddenMsg.style.textAlign="center"; hiddenMsg.style.marginTop="6px";
+            if(!mediaWrap.querySelector(".concept-hidden-msg")) mediaWrap.appendChild(hiddenMsg);
+          }
+        }
+        function startTimer(){
+          remaining = total;
+          mediaWrap.style.opacity="1"; mediaWrap.style.filter="none";
+          var hm = mediaWrap.querySelector(".concept-hidden-msg"); if(hm) hm.remove();
+          updateTimer();
+          clearInterval(timerId);
+          timerId = setInterval(function(){ remaining--; updateTimer(); if(remaining<=0) clearInterval(timerId); }, 1000);
+        }
+        startTimer();
+        if(q._concept_allow_replay && replayBtn){
+          replayBtn.addEventListener("click", function(){ startTimer(); });
+        }
+        // store timer id for cleanup if needed (when card removed)
+        mediaWrap._timerId = timerId;
+      } else {
+        // no-limit: just show media, no timer, but replay still shows button if allowed (replay for no-limit means just show again? we hide replay for no-limit)
+        ch.appendChild(mediaWrap);
+      }
+    } else if(q._concept_text_html || q._concept_text){
+      // fallback: if no media, show text (so concept is not blank)
       var cbody = el("div","concept-body");
       if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
       else cbody.textContent = pipeText(q._concept_text);
       ch.appendChild(cbody);
     }
     cctx.appendChild(ch);
-    if(q._concept_duration && q._concept_duration !== "no-limit" && q._concept_duration !== "no limit"){
-      var dur = el("div","concept-duration"); dur.textContent = "Viewing time: "+q._concept_duration + (q._concept_allow_replay ? " · replay allowed" : ""); cctx.appendChild(dur);
-    } else if(q._concept_allow_replay){
-      var dur2 = el("div","concept-duration"); dur2.textContent = "Replay allowed"; cctx.appendChild(dur2);
-    }
-    if(q._concept_description_html){
-      var showDesc = true;
-      if(q._concept_show_desc_first_only){
-        var firstConceptId = null;
-        try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
-        if(!firstConceptId && q._concept_parent){
-          // preview fallback: first concept is the first in parent's original list
-          try{
-            var parentQ = null;
-            for(var pi=0; pi<SPEC.questions.length; pi++){ if(SPEC.questions[pi].id===q._concept_parent){ parentQ= SPEC.questions[pi]; break; } }
-            if(parentQ && parentQ.concepts && parentQ.concepts.length) firstConceptId = parentQ.concepts[0].id;
-          }catch(e2){}
-        }
-        if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
-      }
-      if(showDesc){
-        var desc = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(desc, q._concept_description_html, logicCtx(), "…"); else desc.textContent = pipeText(q._concept_description_html); cctx.appendChild(desc);
-      }
-    }
     return cctx;
   }
   function renderQuestion(q) {

@@ -1071,3 +1071,10 @@ body.voice-on .voice-rating-hint{display:block}
 .concept-media img{ max-width:100%; border-radius:8px; border:1px solid var(--line) }
 .concept-duration{ font-size:11.5px; color:var(--muted); margin-top:6px; font-weight:600 }
 .concept-desc{ margin-top:10px; font-size:13.5px; line-height:1.6; background:#fff; border:1px solid var(--line); border-radius:8px; padding:10px 12px }
+.concept-media-wrap{ position:relative; margin-top:6px }
+.concept-media-wrap img, .concept-media-wrap video{ max-width:100%; border-radius:8px; border:1px solid var(--line); display:block }
+.concept-timer-row{ display:flex; align-items:center; gap:8px; margin-top:8px; font-size:12px; color:var(--muted) }
+.concept-timer{ font-weight:800; color:var(--accent); min-width:32px; font-variant-numeric:tabular-nums }
+.concept-timer-bar{ flex:1; height:6px; background:#e3edf3; border-radius:999px; overflow:hidden }
+.concept-timer-fill{ height:100%; background:linear-gradient(90deg,#7fd4f0,#12789e); width:100%; transition:width 1s linear }
+.concept-hidden-msg{ font-size:12px; color:var(--muted); text-align:center; margin-top:6px; font-style:italic }
