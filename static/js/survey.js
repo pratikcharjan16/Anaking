@@ -1934,6 +1934,13 @@
       tbl.appendChild(row);
     });
     wrap.appendChild(tbl);
+    // camera button as in snip (bottom-left) – visual cue for image upload per grid
+    var cam = el("div", "tg-camera");
+    var camBtn = el("button", "tg-camera-btn", "&#128247;");
+    camBtn.type = "button";
+    camBtn.title = "Add image to feedback";
+    cam.appendChild(camBtn);
+    wrap.appendChild(cam);
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }

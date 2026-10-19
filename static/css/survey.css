@@ -715,24 +715,29 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .nm-td-na,.nm-th-na{text-align:center}
 .nm-input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .nm-cmtrow{border-top:1px solid var(--line);padding:6px 10px;background:#fcfdfe}
-/* Text Grid – rows × columns of text boxes, flexible, images on rows/cols, voice per cell */
-.text-grid{margin-top:8px}
-.tg-table{border:1px solid var(--line);border-radius:10px;overflow:hidden;background:#fff}
-.tg-tr{display:grid;grid-template-columns:var(--tg-cols);align-items:stretch;gap:0}
-.tg-tr+.tg-tr{border-top:1px solid var(--line)}
-.tg-head{background:#f4f7f9;font-size:11px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.tg-th{padding:10px 10px;display:flex;flex-direction:column;justify-content:center;align-items:center;text-align:center;font-size:12px;font-weight:700;background:#f4f7f9;gap:6px}
-.tg-corner{background:#eef3f6;text-align:left;align-items:flex-start;justify-content:center}
-.tg-th img{max-width:80px;max-height:60px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
+/* Text Grid – hotel-feedback style (Rooms/Food/Services × Likes/Improvement) */
+.text-grid{margin-top:10px}
+.tg-table{border:none;overflow:hidden;background:transparent;display:flex;flex-direction:column;gap:6px}
+.tg-tr{display:grid;grid-template-columns:var(--tg-cols);align-items:stretch;gap:8px}
+.tg-head{margin-bottom:2px}
+.tg-th{padding:6px 8px;display:flex;justify-content:center;align-items:center;text-align:center;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:transparent;gap:6px}
+.tg-corner{background:transparent}
+.tg-th img{max-width:60px;max-height:40px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
 .tg-th span{max-width:100%;word-break:break-word}
-.tg-td{padding:8px 8px;display:flex;flex-direction:column;gap:6px;background:#fff;min-height:86px}
-.tg-td textarea.tg-input{width:100%;min-height:56px;max-height:120px;resize:vertical;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px;line-height:1.4;background:#fff;flex:1}
-.tg-td textarea.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.12)}
-.tg-voice-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#f8fafb;color:var(--accent);border-radius:999px;padding:4px 10px;font-size:11.5px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
+.tg-th.tg-rowlabel{justify-content:flex-start;background:#f5f7f8;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
+.tg-tr:nth-child(even) .tg-rowlabel{background:#f5f7f8}
+.tg-tr:nth-child(odd) .tg-rowlabel{background:#fff}
+.tg-head .tg-rowlabel{background:transparent !important}
+.tg-td{padding:0;display:flex;flex-direction:column;gap:5px;background:transparent;min-height:44px}
+.tg-td textarea.tg-input{width:100%;min-height:44px;max-height:110px;resize:vertical;padding:10px 12px;border:1px solid #e9ecef;border-radius:8px;background:#f0f2f5;font:inherit;font-size:13px;line-height:1.4;flex:1}
+.tg-td textarea.tg-input:focus{outline:none;background:#fff;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
+.tg-voice-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
 .tg-voice-btn:hover{background:var(--soft);border-color:var(--accent2)}
 .tg-voice-btn.recording{background:#b3261e;color:#fff;border-color:#b3261e;animation:recPulse 1.2s ease-in-out infinite}
-.tg-voice-btn .g-ico{font-size:12px}
-.tg-input-wrap{display:flex;flex-direction:column;gap:6px;flex:1}
+.tg-voice-btn .g-ico{font-size:11px}
+.tg-camera{margin-top:8px;display:flex;align-items:center;gap:8px}
+.tg-camera-btn{width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.08);font-size:16px;color:var(--muted)}
+.tg-camera-btn:hover{border-color:var(--accent2);color:var(--accent)}
 
 /* ============ gamified touches: bull's-eyes, voice mode, target HUD ============ */
 .opt{position:relative}
