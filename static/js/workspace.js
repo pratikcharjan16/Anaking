@@ -103,177 +103,17 @@
         '</div>' +
       '</div>' +
       '<form id="analysis-form" class="toolbar">' +
-        '<label>Data scope<select name="scope"><option value="real">Real responses</option><option value="test">Test responses</option><option value="all">All responses</option></select></label>' +
+        '<label>Data scope<select name="scope"><option value="real">Real responses</option><option value="all">All responses</option><option value="test">Test responses</option></select></label>' +
         '<label>Define data cut<select name="cut_q"><option value="">No data cut (Total)</option>'+selectOptions(qs)+'</select></label>' +
         '<label class="inline-check" style="align-self:center;margin-top:14px"><input type="checkbox" name="show_sig" checked> Statistical significance</label>' +
         '<label>Confidence level<select name="alpha"><option value="0.05">95% confidence (p &lt; 0.05)</option><option value="0.01">99% confidence (p &lt; 0.01)</option><option value="0.10">90% confidence (p &lt; 0.10)</option></select></label>' +
         '<button class="primary">Apply data cut &amp; filters</button>' +
         '<button type="button" class="btn ghost" id="btn-refresh-analysis">↻ Live refresh</button>' +
       '</form>' +
-      '<p class="section-kicker">Interactive visualizations, dynamic legends, data labels, and statistical significance testing (two-proportion z-tests and Welch’s t-tests). Download full or customized question decks in editable PowerPoint format.</p>' +
+      '<p class="section-kicker">Interactive visualizations, multiple chart types (Bar, Column, Donut, Radar, Likert Stack, Scorecard), dynamic legends, data labels, and statistical significance testing. Download full or customized question decks in editable PowerPoint format.</p>' +
     '</section>' +
     '<div id="analysis-results" aria-live="polite">Loading results…</div>' +
     '<section class="panel"><h2>Cross-tabulate two questions</h2><form id="cross-form" class="toolbar"><label>Rows<select name="x" required>'+selectOptions(qs)+'</select></label><label>Columns<select name="y" required>'+selectOptions(qs)+'</select></label><button '+(qs.length?'':'disabled')+'>Build cross-tab</button></form><div id="cross-results" aria-live="polite"></div></section>';
-  }
-
-  function renderQuestionVisual(q, isCut, cut) {
-    var t = q.type;
-    // 1. Single Select & Multi Select
-    if ((t === 'single_select' || t === 'multi_select') && q.options && q.options.length) {
-      var html = '<div class="chart-box">';
-      html += '<div class="chart-title">Response Distribution (%)</div>';
-      if (isCut) {
-        html += '<div class="chart-legend">' +
-          '<span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span><b>' + esc(cut.segA_label) + '</b> (n=' + cut.segA_n + ')</span>' +
-          '<span class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span><b>' + esc(cut.segB_label) + '</b> (n=' + cut.segB_n + ')</span>' +
-          '<span class="legend-item"><span class="sig-star">★</span> Statistically significant difference (p &lt; ' + (cut.alpha || 0.05) + ')</span>' +
-        '</div>';
-        html += q.options.map(function (o) {
-          var sig = o.sig_test && o.sig_test.significant;
-          var sigStar = sig ? '<span class="sig-star" title="Significant difference: p=' + o.sig_test.p_value + '">★</span><span class="sig-badge">Sig (p=' + o.sig_test.p_value + ')</span>' : '';
-          var pA = o.segA_pct || 0, pB = o.segB_pct || 0;
-          return '<div class="chart-bar-row">' +
-            '<span class="chart-bar-label" title="' + esc(o.label) + '">' + esc(o.label) + '</span>' +
-            '<div class="chart-bar-track-wrap">' +
-              '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + Math.max(0, Math.min(100, pA)) + '%"></div></div>' +
-              '<div class="chart-bar-track"><div class="chart-bar-fill seg-b" style="width:' + Math.max(0, Math.min(100, pB)) + '%"></div></div>' +
-            '</div>' +
-            '<div class="chart-bar-val"><span><b>' + pA + '%</b> (' + (o.segA_count || 0) + ')</span> / <span style="color:#b45309"><b>' + pB + '%</b> (' + (o.segB_count || 0) + ')</span>' + sigStar + '</div>' +
-          '</div>';
-        }).join('');
-      } else {
-        html += '<div class="chart-legend"><span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span>Share of total respondents (%)</span></div>';
-        html += q.options.map(function (o) {
-          var pct = o.pct || 0;
-          return '<div class="chart-bar-row">' +
-            '<span class="chart-bar-label" title="' + esc(o.label) + '">' + esc(o.label) + '</span>' +
-            '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + Math.max(0, Math.min(100, pct)) + '%"></div></div>' +
-            '<div class="chart-bar-val"><b>' + pct + '%</b> <small style="color:#64748b">(n=' + o.count + ')</small></div>' +
-          '</div>';
-        }).join('');
-      }
-      html += '</div>';
-      return html;
-    }
-
-    // 2. Rating Scale / Grids / Multi-row Gauge Meter
-    if ((t === 'rating_scale' || t === 'rating_grid' || t === 'semantic_diff' || t === 'numeric_matrix' || (t === 'gauge_meter' && q.rows)) && q.rows && q.rows.length) {
-      var sMin = q.scale_min != null ? q.scale_min : 1;
-      var sMax = q.scale_max != null ? q.scale_max : 5;
-      var sRange = (sMax - sMin) || 1;
-      var html = '<div class="chart-box">';
-      html += '<div class="chart-title">Mean Rating Score Comparison (Scale ' + sMin + ' - ' + sMax + ')</div>';
-      if (isCut) {
-        html += '<div class="chart-legend">' +
-          '<span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span><b>' + esc(cut.segA_label) + '</b> Mean</span>' +
-          '<span class="legend-item"><span class="legend-swatch" style="background:#f59e0b"></span><b>' + esc(cut.segB_label) + '</b> Mean</span>' +
-          '<span class="legend-item"><span class="sig-star">★</span> Welch’s t-test p &lt; ' + (cut.alpha || 0.05) + '</span>' +
-        '</div>';
-        html += q.rows.map(function (r) {
-          var mA = r.segA_mean != null ? r.segA_mean : 0;
-          var mB = r.segB_mean != null ? r.segB_mean : 0;
-          var pctA = Math.max(0, Math.min(100, ((mA - sMin) / sRange) * 100));
-          var pctB = Math.max(0, Math.min(100, ((mB - sMin) / sRange) * 100));
-          var sig = r.sig_test && r.sig_test.significant;
-          var sigStar = sig ? '<span class="sig-star">★</span><span class="sig-badge">Sig (p=' + r.sig_test.p_value + ')</span>' : '';
-          return '<div class="chart-bar-row">' +
-            '<span class="chart-bar-label" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
-            '<div class="chart-bar-track-wrap">' +
-              '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pctA + '%"></div></div>' +
-              '<div class="chart-bar-track"><div class="chart-bar-fill seg-b" style="width:' + pctB + '%"></div></div>' +
-            '</div>' +
-            '<div class="chart-bar-val"><span><b>' + (r.segA_mean != null ? r.segA_mean : '—') + '</b></span> / <span style="color:#b45309"><b>' + (r.segB_mean != null ? r.segB_mean : '—') + '</b></span>' + sigStar + '</div>' +
-          '</div>';
-        }).join('');
-      } else {
-        html += '<div class="chart-legend"><span class="legend-item"><span class="legend-swatch" style="background:#12789e"></span>Mean score on ' + sMin + ' to ' + sMax + ' scale</span>' +
-          (q.min_label ? '<span class="legend-item">Low: <i>' + esc(q.min_label) + '</i></span>' : '') +
-          (q.max_label ? '<span class="legend-item">High: <i>' + esc(q.max_label) + '</i></span>' : '') +
-        '</div>';
-        html += q.rows.map(function (r) {
-          var m = r.mean != null ? r.mean : 0;
-          var pct = Math.max(0, Math.min(100, ((m - sMin) / sRange) * 100));
-          return '<div class="chart-bar-row">' +
-            '<span class="chart-bar-label" title="' + esc(r.label) + '">' + esc(r.label) + '</span>' +
-            '<div class="chart-bar-track"><div class="chart-bar-fill" style="width:' + pct + '%"></div></div>' +
-            '<div class="chart-bar-val"><b>' + (r.mean != null ? r.mean : '—') + '</b> <small style="color:#64748b">(n=' + r.base + ')</small></div>' +
-          '</div>';
-        }).join('');
-      }
-      html += '</div>';
-      return html;
-    }
-
-    // 3. Single Gauge Meter Visual
-    if (t === 'gauge_meter' && !q.rows) {
-      var m = q.mean != null ? q.mean : (q.min || 0);
-      var gMin = q.min != null ? q.min : 0;
-      var gMax = q.max != null ? q.max : 100;
-      var frac = gMax === gMin ? 0.5 : Math.max(0, Math.min(1, (m - gMin) / (gMax - gMin)));
-      var angle = 180 + frac * 180;
-      var rot = angle - 90;
-      var zones = q.zones || [];
-
-      var html = '<div class="chart-box">';
-      html += '<div class="chart-title">Gauge Meter Performance Dashboard</div>';
-      html += '<div class="dashboard-gauge-card">' +
-        '<svg class="dash-gauge-svg" viewBox="0 0 240 140">' +
-          '<path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>' +
-          '<path d="M 27 120 A 95 95 0 0 1 103 36" fill="none" stroke="#ef4444" stroke-width="14" opacity="0.85"/>' +
-          '<path d="M 106 34 A 95 95 0 0 1 154 39" fill="none" stroke="#f59e0b" stroke-width="14" opacity="0.85"/>' +
-          '<path d="M 157 41 A 95 95 0 0 1 213 120" fill="none" stroke="#10b981" stroke-width="14" opacity="0.85"/>' +
-          '<g style="transform-origin:120px 120px;transform:rotate(' + rot + 'deg);transition:transform 0.4s ease">' +
-            '<polygon points="116,120 124,120 120,38" fill="#0f2b48"/>' +
-            '<circle cx="120" cy="120" r="9" fill="#0f2b48"/>' +
-            '<circle cx="120" cy="120" r="3" fill="#ffffff"/>' +
-          '</g>' +
-        '</svg>' +
-        '<div class="dash-gauge-readout"><strong class="dash-gauge-val">' + (q.mean != null ? q.mean : '—') + '</strong><span class="dash-gauge-unit">' + esc(q.unit || '%') + '</span></div>' +
-        (q.target != null ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">Target benchmark: <b>' + q.target + esc(q.unit || '%') + '</b></div>' : '') +
-        '<div class="dash-zones-strip">' +
-          zones.map(function(z) {
-            return '<span class="dash-zone-tag ' + (z.cls || 'low') + '"><b>' + esc(z.label) + ':</b> ' + z.pct + '% (n=' + z.count + ')</span>';
-          }).join('') +
-        '</div>' +
-      '</div></div>';
-      return html;
-    }
-
-    // 4. NPS Visual
-    if (t === 'nps') {
-      return '<div class="chart-box">' +
-        '<div class="chart-title">NPS Distribution</div>' +
-        '<p>Mean recommendation rating: <strong>' + (q.mean != null ? q.mean : '—') + '</strong> · Median: ' + (q.median != null ? q.median : '—') + '</p>' +
-      '</div>';
-    }
-
-    // 5. Heatmap Visual
-    if (t === 'heatmap' && q.heatmap) {
-      return heatmapView(q.heatmap);
-    }
-
-    // 6. Numeric / Slider
-    if ((t === 'numeric' || t === 'slider' || t === 'delta') && q.mean !== null) {
-      return '<div class="chart-box">' +
-        '<div class="chart-title">Statistical Summary</div>' +
-        '<div style="display:flex;gap:20px;flex-wrap:wrap;font-size:12px;margin:8px 0">' +
-          '<div><b>Mean:</b> ' + q.mean + '</div>' +
-          '<div><b>Median:</b> ' + (q.median != null ? q.median : '—') + '</div>' +
-          (q.std_dev != null ? '<div><b>Std Dev:</b> ' + q.std_dev + '</div>' : '') +
-          (q.min_val != null && q.max_val != null ? '<div><b>Range:</b> ' + q.min_val + ' to ' + q.max_val + '</div>' : '') +
-        '</div>' +
-      '</div>';
-    }
-
-    return '<p>Detailed response data available via PowerPoint and raw exports.</p>';
-  }
-
-  function heatmapView(h) {
-    return '<p>'+esc(h.note)+'</p><div class="table-scroll" tabindex="0" role="region" aria-label="Heatmap results"><table class="results-heatmap"><thead><tr><th scope="col">Row / column</th>'+h.cols.map(c=>'<th scope="col">'+esc(c.label)+'</th>').join('')+'</tr></thead><tbody>'+h.rows.map(r=>'<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(c=>{
-      const cell=h.cells.find(x=>x.row_code===r.code&&x.col_code===c.code), mean=cell?cell.mean:null;
-      const color=mean==null?'#f5f6f4':mean<1.5?'#e8f4fa':mean<2.5?'#bfe3f2':'#7fc4e0';
-      return '<td style="background:'+color+';color:#153d4c"><strong>'+(mean==null?'—':esc(mean))+'</strong><small>n = '+(cell?cell.base:0)+'</small></td>';
-    }).join('')+'</tr>').join('')+'</tbody></table></div>';
   }
 
   async function loadAnalysis(params='&scope=real') {
@@ -283,10 +123,21 @@
       const d = await api(endpoint('analysis', params));
       if (!node.isConnected || current.slug !== slug) return;
       latestAnalysisData = d;
+      window.__currentAnalysisData = d;
       const isCut = d.data_cut && d.data_cut.active;
       const cut = d.data_cut || {};
 
-      let html = '<div class="metric-grid">' +
+      let html = '';
+
+      // Check if viewing real with 0 responses while test responses exist
+      if (d.scope === 'real' && d.complete === 0 && ((d.test_n || 0) > 0 || (d.total_n || 0) > 0)) {
+        html += '<div class="scope-switch-banner">' +
+          '<span>Currently viewing <b>Real Responses (0 completed)</b>. This project has <b>' + (d.test_n || d.total_n) + ' test/preview responses</b> available.</span>' +
+          '<button type="button" class="btn sm" id="btn-switch-scope-all">Switch to All Data →</button>' +
+        '</div>';
+      }
+
+      html += '<div class="metric-grid">' +
         metric('Started', d.started, d.scope + ' scope') +
         metric('Completed', d.complete, d.completion_pct + '% of starts') +
         metric('Median duration', d.median_minutes == null ? '—' : d.median_minutes + ' min', 'Completed respondents') +
@@ -306,15 +157,12 @@
 
       if (d.questions && d.questions.length) {
         html += d.questions.map(function (q) {
+          if (window.AnakingCharts && window.AnakingCharts.renderQuestionCard) {
+            return window.AnakingCharts.renderQuestionCard(q, isCut, cut);
+          }
           return '<section class="panel result-card" id="qcard-' + esc(q.id) + '">' +
             '<h2>' + esc(q.id + ' · ' + q.title) + '</h2>' +
-            '<div class="result-meta">Answered base: ' + q.base + ' · Missing/not shown: ' + q.missing_or_not_shown + ' ' + (q.small_base ? '<span class="pill small-base">Small base — interpret cautiously</span>' : '') + '</div>' +
-            '<div class="insight-banner"><span class="insight-badge">✦ KEY INSIGHT</span><p class="insight-text">' + esc(q.insight || ('Answered base: ' + q.base)) + '</p></div>' +
-            renderQuestionVisual(q, isCut, cut) +
-            '<div class="card-footer-actions">' +
-              '<span>Format: <b>' + esc((q.type || '').replace('_', ' ')) + '</b></span>' +
-              (dataRole() ? '<button type="button" class="btn sm ghost btn-dl-single-ppt" data-qid="' + esc(q.id) + '">Download slide (PPT) ↓</button>' : '') +
-            '</div>' +
+            '<div class="result-meta">Answered base: ' + q.base + '</div>' +
           '</section>';
         }).join('');
       } else {
@@ -403,6 +251,12 @@
     if (b.classList.contains('btn-dl-single-ppt')) {
       const qid = b.dataset.qid;
       window.location.href = endpoint('export_ppt', currentAnalysisParams + '&q=' + enc(qid));
+      return;
+    }
+    if (b.id === 'btn-switch-scope-all') {
+      const scopeSel = $('#analysis-form select[name="scope"]');
+      if (scopeSel) scopeSel.value = 'all';
+      await loadAnalysis('&scope=all');
       return;
     }
     if (b.id === 'btn-refresh-analysis') {

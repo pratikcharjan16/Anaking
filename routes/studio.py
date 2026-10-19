@@ -83,7 +83,34 @@ def get_study():
 @bp.get("/api/studio/analysis")
 def analysis():
     slug = study_arg()
-    return jsonify(analysis_for(records(slug), Study.cfg_of(slug)))
+    s = Study.get(slug)
+    cfg = Study.cfg_of(slug)
+    real_recs = records(slug, "real")
+    test_recs = records(slug, "test")
+    all_recs = records(slug, "all")
+
+    req_scope = request.args.get("scope")
+    if req_scope in ("real", "test", "all"):
+        scope = req_scope
+    else:
+        scope = "real" if real_recs else ("all" if test_recs else "real")
+
+    data = records(slug, scope)
+    cut_q = request.args.get("cut_q")
+    cut_v1 = request.args.get("cut_v1")
+    cut_v2 = request.args.get("cut_v2")
+    alpha = float(request.args.get("alpha", 0.05))
+    from core.datacut import analyze_with_datacut
+    res = analyze_with_datacut(data, cfg, cut_q_id=cut_q, cut_v1=cut_v1, cut_v2=cut_v2, alpha=alpha)
+    res["scope"] = scope
+    res["real_n"] = sum(1 for r in real_recs if r.get("status") == "complete")
+    res["test_n"] = sum(1 for r in test_recs if r.get("status") == "complete")
+    res["total_n"] = sum(1 for r in all_recs if r.get("status") == "complete")
+    legacy = analysis_for(data, cfg)
+    for k, v in legacy.items():
+        if k not in res:
+            res[k] = v
+    return jsonify(res)
 
 
 @bp.post("/api/studio/save")

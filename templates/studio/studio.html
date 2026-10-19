@@ -12,6 +12,7 @@
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="/static/js/security.js"></script>{% endif %}
 <link rel="stylesheet" href="/static/css/studio-workspace.css">
+<link rel="stylesheet" href="/static/css/workspace.css">
 </head>
 <body>
 <header class="st-top">
@@ -55,6 +56,7 @@
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=261006g"></script>
 <script src="{{ url_for('static', filename='js/survey.js') }}?v=261006g"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=261006g"></script>
+<script src="/static/js/chart-visuals.js"></script>
 <script src="{{ url_for('static', filename='js/studio.js') }}?v=261008a"></script>
 <script src="/static/js/studio-layout.js"></script>
 </body>

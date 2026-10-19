@@ -7,6 +7,7 @@ rating scale and numeric/gauge means, and dynamic data-driven insights.
 from __future__ import annotations
 
 import math
+import re
 import statistics
 import scipy.stats as stats
 
@@ -149,9 +150,38 @@ def generate_insight(q: dict, data: dict, cut_meta: dict | None = None) -> str:
 
     # NPS insight
     if qtype == "nps":
+        nps_info = data.get("nps") or {}
+        score = nps_info.get("score")
+        if score is not None:
+            sign = "+" if score > 0 else ""
+            return (f"Net Promoter Score is {sign}{score} ({nps_info.get('promoters_pct', 0)}% Promoters, "
+                    f"{nps_info.get('passives_pct', 0)}% Passives, {nps_info.get('detractors_pct', 0)}% Detractors) "
+                    f"with a mean recommendation rating of {data.get('mean', '—')}/10.")
         m = data.get("mean")
         med = data.get("median")
         return f"Average recommendation score is {m} (Median: {med}) across n={base} respondents."
+
+    # Rank insight
+    if qtype == "rank" and opts:
+        sorted_ranks = sorted(opts, key=lambda x: x.get("first_count", 0), reverse=True)
+        top = sorted_ranks[0]
+        return (f"Top-ranked priority is '{top['label']}', selected as #1 choice by {top.get('first_pct', 0)}% "
+                f"of respondents (Average rank position: {top.get('avg_rank', '—')}).")
+
+    # Sum to 100 insight
+    if qtype == "sum_to_100" and rows:
+        sorted_rows = sorted([r for r in rows if r.get("mean") is not None], key=lambda x: x.get("mean", 0), reverse=True)
+        if sorted_rows:
+            top_r = sorted_rows[0]
+            sec_txt = f", followed by '{sorted_rows[1]['label']}' ({sorted_rows[1]['mean']:.1f} pts)" if len(sorted_rows) > 1 else ""
+            return f"Highest allocated share is '{top_r['label']}' with {top_r['mean']:.1f} of 100 total points{sec_txt}."
+
+    # Open Text insight
+    if qtype == "open_text":
+        cloud = data.get("word_cloud") or []
+        top_words = ", ".join([f"'{w['word']}'" for w in cloud[:3]])
+        theme_txt = f" Top recurring themes: {top_words}." if top_words else ""
+        return f"Collected {base} verbatim responses (average {data.get('avg_word_count', 0)} words per response).{theme_txt}"
 
     # Numeric & Slider insight
     if qtype in ("numeric", "slider", "delta"):
@@ -273,6 +303,24 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
                     {"label": row["max_label"], "cls": "high", "count": z_high, "pct": round(100 * z_high / tot, 1)}
                 ]
 
+            if qtype == "nps":
+                promoters = sum(1 for x in ns if x >= 9)
+                passives = sum(1 for x in ns if 7 <= x <= 8)
+                detractors = sum(1 for x in ns if x <= 6)
+                tot = len(ns) or 1
+                p_pct = round(100 * promoters / tot, 1)
+                pas_pct = round(100 * passives / tot, 1)
+                d_pct = round(100 * detractors / tot, 1)
+                nps_score = round(p_pct - d_pct, 1)
+                dist = [{"score": i, "count": sum(1 for x in ns if int(round(x)) == i), "pct": round(100 * sum(1 for x in ns if int(round(x)) == i) / tot, 1)} for i in range(11)]
+                row["nps"] = {
+                    "score": nps_score,
+                    "promoters_count": promoters, "promoters_pct": p_pct,
+                    "passives_count": passives, "passives_pct": pas_pct,
+                    "detractors_count": detractors, "detractors_pct": d_pct,
+                    "dist": dist
+                }
+
             if cut_meta and cut_meta["active"]:
                 vals_A = [numeric(r["answers"].get(qid, {}).get("_")) for r in records_A]
                 vals_B = [numeric(r["answers"].get(qid, {}).get("_")) for r in records_B]
@@ -324,7 +372,55 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
             row["missing_or_not_shown"] = len(complete) - row["base"]
             row["small_base"] = row["base"] < 30
 
-        # Multi-row questions: Rating Scale, Grids, Multi-row Gauge Meter
+        # Rank
+        elif qtype == "rank":
+            opts = q.get("options", [])
+            orders = [r["answers"].get(qid, {}).get("order", []) for r in complete]
+            orders = [o for o in orders if isinstance(o, list) and len(o) > 0]
+            tot_r = len(orders) or 1
+            ranks_data = []
+            for o in opts:
+                ocode = str(o["code"])
+                f_cnt = sum(1 for ord_l in orders if ord_l and str(ord_l[0]) == ocode)
+                f_pct = round(100 * f_cnt / tot_r, 1)
+                t3_cnt = sum(1 for ord_l in orders if ocode in [str(x) for x in ord_l[:3]])
+                t3_pct = round(100 * t3_cnt / tot_r, 1)
+                positions = [ord_l.index(ocode) + 1 for ord_l in orders if ocode in [str(x) for x in ord_l]]
+                avg_p = round(statistics.mean(positions), 2) if positions else None
+                ranks_data.append({
+                    "code": o["code"],
+                    "label": plain(o.get("label_html") or o.get("label")),
+                    "first_count": f_cnt,
+                    "first_pct": f_pct,
+                    "top3_count": t3_cnt,
+                    "top3_pct": t3_pct,
+                    "avg_rank": avg_p,
+                    "pct": f_pct,
+                    "count": f_cnt,
+                })
+            row["options"] = ranks_data
+            row["base"] = len(orders)
+            row["missing_or_not_shown"] = len(complete) - len(orders)
+            row["small_base"] = row["base"] < 30
+
+        # Open text
+        elif qtype == "open_text":
+            texts = [str(r["answers"].get(qid, {}).get("_") or "").strip() for r in complete]
+            texts = [t for t in texts if t]
+            row["base"] = len(texts)
+            row["missing_or_not_shown"] = len(complete) - len(texts)
+            row["small_base"] = row["base"] < 30
+            STOP_WORDS = {"the", "a", "an", "and", "or", "in", "on", "at", "to", "for", "of", "with", "is", "are", "was", "were", "it", "this", "that", "i", "we", "they", "my", "our", "would", "be", "as", "by", "from", "not", "but", "have", "had", "has", "do", "does", "did", "if", "more", "than", "so", "very", "all", "can", "will", "because", "their"}
+            wc = {}
+            for t in texts:
+                for w in re.findall(r"[A-Za-z]{3,}", t.lower()):
+                    if w not in STOP_WORDS:
+                        wc[w] = wc.get(w, 0) + 1
+            row["word_cloud"] = [{"word": k, "count": v} for k, v in sorted(wc.items(), key=lambda x: x[1], reverse=True)[:18]]
+            row["sample_verbatims"] = texts[:10]
+            row["avg_word_count"] = round(statistics.mean([len(t.split()) for t in texts]), 1) if texts else 0
+
+        # Multi-row questions: Rating Scale, Grids, Multi-row Gauge Meter, Sum-to-100, Emoji Grid
         elif q.get("rows"):
             row["rows"] = []
             if qtype == "rating_scale":
@@ -341,6 +437,17 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
                 row["min_label"] = q.get("min_label", "Low")
                 row["mid_label"] = q.get("mid_label", "Moderate")
                 row["max_label"] = q.get("max_label", "High")
+            elif qtype == "sum_to_100":
+                row["scale_min"] = 0
+                row["scale_max"] = 100
+                row["unit"] = "%"
+                row["min_label"] = "0%"
+                row["max_label"] = "100%"
+            elif qtype == "emoji_grid":
+                row["scale_min"] = 1
+                row["scale_max"] = 5
+                row["faces"] = (q.get("scale") or {}).get("faces") or ["😞", "😕", "😐", "🙂", "😍"]
+                row["face_labels"] = (q.get("scale") or {}).get("face_labels") or ["Very negative", "Negative", "Neutral", "Positive", "Delighted"]
 
             for item in q["rows"]:
                 rcode = str(item["code"])
@@ -353,7 +460,18 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
                     "label": plain(item.get("label")),
                     "base": sum(present(v) for v in vs),
                     "mean": m,
+                    "pct": round(m, 1) if m is not None else 0,
                 }
+                # Distribution across scale points for Likert stacking
+                s_min = int(row.get("scale_min", 1))
+                s_max = int(row.get("scale_max", 5))
+                if ns and s_max > s_min and (s_max - s_min) <= 10:
+                    dist = {}
+                    for pt in range(s_min, s_max + 1):
+                        c = sum(1 for x in ns if int(round(x)) == pt)
+                        dist[str(pt)] = {"count": c, "pct": round(100 * c / len(ns), 1) if ns else 0}
+                    rdata["dist"] = dist
+                    rdata["top2_box"] = round(dist.get(str(s_max), {}).get("pct", 0) + dist.get(str(s_max - 1), {}).get("pct", 0), 1)
                 if cut_meta and cut_meta["active"]:
                     vs_A = [r["answers"].get(qid, {}).get(rcode) for r in records_A]
                     vs_B = [r["answers"].get(qid, {}).get(rcode) for r in records_B]

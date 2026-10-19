@@ -4335,56 +4335,76 @@
     function kpi(v, l) { return '<div class="st-kpi"><strong>' + v + "</strong><span>" + l + "</span></div>"; }
   }
   function analysisTab(p) {
-    fetch("/api/studio/analysis?study=" + encodeURIComponent(cur.slug), { credentials: "same-origin" })
+    var scope = p._curScope || "all";
+    fetch("/api/studio/analysis?study=" + encodeURIComponent(cur.slug) + "&scope=" + scope, { credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (a) {
-        var html = '<div class="st-page-head"><h2>Analysis</h2><p>Quick aggregates over completed responses.</p></div><div class="st-kpis">' +
-          '<div class="st-kpi"><strong>' + a.n_complete + "/" + a.n_started + "</strong><span>completed</span></div>" +
-          '<div class="st-kpi"><strong>' + a.mean_minutes + "</strong><span>mean minutes</span></div>" +
-          (a.nps ? '<div class="st-kpi"><strong>' + a.nps.score + "</strong><span>NPS</span></div>" : "") + "</div>";
-        a.ratings.forEach(function (r) {
-          html += "<h4>" + esc(r.id) + " - " + esc(r.stem) + "</h4>" +
-            '<table class="st-tbl"><tr><th>Item</th><th style="width:200px">Mean</th><th></th></tr>' +
-            r.rows.map(function (row) {
-              var m = row.mean == null ? 0 : row.mean;
-              return "<tr><td>" + esc(row.label) + "</td><td>" + (row.mean == null ? "\u2013" : m) + '</td><td><div class="st-meter"><i style="width:' + Math.min(100, m * 14) + '%"></i></div></td></tr>';
-            }).join("") + "</table>";
-        });
-        if (a.nps) html += '<div class="st-note">NPS segments: Promoter ' + a.nps.segments.Promoter + ", Passive " + a.nps.segments.Passive + ", Detractor " + a.nps.segments.Detractor + "</div>";
-        (a.gauges || []).forEach(function (g) {
-          html += "<h4>Gauge " + esc(g.id) + " - " + esc(g.stem) + "</h4>";
-          if (g.rows) {
-            html += '<table class="st-tbl"><tr><th>Item</th><th style="width:200px">Mean</th><th></th></tr>' +
-              g.rows.map(function (row) {
-                var m = row.mean == null ? 0 : row.mean;
-                return "<tr><td>" + esc(row.label) + "</td><td>" + (row.mean == null ? "\u2013" : m) + '</td><td><div class="st-meter"><i style="width:' + Math.min(100, m) + '%"></i></div></td></tr>';
-              }).join("") + "</table>";
-          } else {
-            var gm = g.mean == null ? "\u2013" : g.mean;
-            html += '<p>Average: <b>' + gm + ' ' + esc(g.unit || '%') + '</b></p>';
-          }
-        });
-        a.maxdiff.forEach(function (m) {
-          html += "<h4>MaxDiff " + esc(m.id) + " (best minus worst)</h4>" +
-            '<table class="st-tbl"><tr><th>Code</th><th>Best</th><th>Worst</th><th>B-W</th></tr>' +
-            m.scores.sort(function (x, y) { return y.bw - x.bw; }).map(function (s) {
-              return "<tr><td>" + esc(s.code) + "</td><td>" + s.best + "</td><td>" + s.worst + "</td><td><strong>" + s.bw + "</strong></td></tr>";
-            }).join("") + "</table>";
-        });
-        a.heatmap.forEach(function (h) {
-          html += "<h4>Heat map " + esc(h.id) + "</h4><p>" + esc(h.note) + '</p><div style="overflow-x:auto" tabindex="0" role="region" aria-label="Heatmap results"><table class="st-tbl"><thead><tr><th scope="col">Row / column</th>' +
-            h.cols.map(function(c){return '<th scope="col">'+esc(c.label)+'</th>';}).join('')+'</tr></thead><tbody>'+
-            h.rows.map(function(r){return '<tr><th scope="row">'+esc(r.label)+'</th>'+h.cols.map(function(c){
-              var cell=h.cells.find(function(x){return x.row_code===r.code&&x.col_code===c.code;}), m=cell?cell.mean:null;
-              var color=m==null?'#f5f6f4':m<1.5?'#e8f4fa':m<2.5?'#bfe3f2':'#7fc4e0';
-              return '<td style="min-width:90px;text-align:center;color:#153d4c;background:'+color+'"><b>'+(m==null?'—':esc(m))+'</b><br><small>n = '+(cell?cell.base:0)+'</small></td>';
-            }).join('')+'</tr>';}).join('')+'</tbody></table></div>';
-        });
+        window.__currentAnalysisData = a;
+        var html = '<div class="st-page-head" style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:12px">' +
+          '<div><h2>Analysis</h2><p>Interactive visuals &amp; data-driven insights linked to live data.</p></div>' +
+          '<div style="display:flex;align-items:center;gap:10px">' +
+            '<label style="font-size:12px;font-weight:600;display:flex;align-items:center;gap:6px">Scope: ' +
+              '<select class="st-scope-sel" style="padding:4px 8px;border-radius:6px;border:1px solid #cbd5e1;font-size:12px">' +
+                '<option value="all"' + (scope === "all" ? " selected" : "") + '>All data (' + (a.total_n || 0) + ')</option>' +
+                '<option value="real"' + (scope === "real" ? " selected" : "") + '>Real only (' + (a.real_n || 0) + ')</option>' +
+                '<option value="test"' + (scope === "test" ? " selected" : "") + '>Test only (' + (a.test_n || 0) + ')</option>' +
+              '</select>' +
+            '</label>' +
+            '<a class="st-btn on sm" href="/api/workspace/export_ppt?study=' + encodeURIComponent(cur.slug) + '&scope=' + scope + '">Download PPT deck ↓</a>' +
+          '</div>' +
+        '</div>';
+
+        if (scope === "real" && (a.complete === 0 || a.n_complete === 0) && (a.test_n > 0 || a.total_n > 0)) {
+          html += '<div class="scope-switch-banner" style="margin-bottom:12px">' +
+            '<span>Currently viewing <b>Real Responses (0 completed)</b>. This project has <b>' + (a.test_n || a.total_n) + ' test/preview responses</b> available.</span>' +
+            '<button type="button" class="st-btn sm st-scope-all-btn">Switch to All Data →</button>' +
+          '</div>';
+        }
+
+        var compN = a.complete != null ? a.complete : (a.n_complete || 0);
+        var startN = a.started != null ? a.started : (a.n_started || 0);
+        var dur = a.median_minutes != null ? a.median_minutes : (a.mean_minutes || '—');
+
+        html += '<div class="st-kpis">' +
+          '<div class="st-kpi"><strong>' + compN + '/' + startN + '</strong><span>completed</span></div>' +
+          '<div class="st-kpi"><strong>' + dur + '</strong><span>minutes</span></div>' +
+          (a.nps && a.nps.score != null ? '<div class="st-kpi"><strong>' + (a.nps.score > 0 ? '+' : '') + a.nps.score + '</strong><span>NPS</span></div>' : '') +
+        '</div>';
+
+        if (a.questions && a.questions.length && window.AnakingCharts) {
+          html += a.questions.map(function (q) {
+            return window.AnakingCharts.renderQuestionCard(q, false, {});
+          }).join('');
+        } else if (a.questions && a.questions.length) {
+          a.questions.forEach(function (q) {
+            html += '<div class="panel result-card"><h4>' + esc(q.id) + ' - ' + esc(q.title) + '</h4><p>Base: ' + q.base + '</p></div>';
+          });
+        } else {
+          html += '<p style="padding:20px;color:#64748b">No questions or responses yet.</p>';
+        }
+
+        // Legacy choice share if present
         if (a.choice_share) {
           html += "<h4>Conjoint: share of choices when level shown</h4><table class=\"st-tbl\"><tr><th>Attribute</th><th>Level</th><th>Choice share</th></tr>" +
             a.choice_share.map(function (s) { return "<tr><td>" + esc(s.attr) + "</td><td>" + esc(s.level) + "</td><td>" + s.share + "%</td></tr>"; }).join("") + "</table>";
         }
-        p.innerHTML = html || "<p>No responses yet.</p>";
+
+        p.innerHTML = html;
+
+        var sel = p.querySelector(".st-scope-sel");
+        if (sel) {
+          sel.addEventListener("change", function () {
+            p._curScope = sel.value;
+            analysisTab(p);
+          });
+        }
+        var allBtn = p.querySelector(".st-scope-all-btn");
+        if (allBtn) {
+          allBtn.addEventListener("click", function () {
+            p._curScope = "all";
+            analysisTab(p);
+          });
+        }
       });
   }
 

@@ -180,7 +180,17 @@ from core.ppt_export import build_ppt_report
 @bp.get('/api/workspace/analysis')
 def analysis():
     s = study()
-    data = scoped_records(s)
+    real_recs = records(s.slug, 'real')
+    test_recs = records(s.slug, 'test')
+    all_recs = records(s.slug, 'all')
+
+    req_scope = request.args.get('scope')
+    if req_scope in ('real', 'test', 'all'):
+        scope = req_scope
+    else:
+        scope = 'real' if real_recs else ('all' if test_recs else 'real')
+
+    data = records(s.slug, scope)
     cut_q = request.args.get('cut_q')
     cut_v1 = request.args.get('cut_v1')
     cut_v2 = request.args.get('cut_v2')
@@ -191,7 +201,10 @@ def analysis():
         legacy_res = summarize(data, base(s), request.args.get('segment'), request.args.get('value'))
         result['questions'] = legacy_res['questions']
     result['quota_target'] = base(s).get('quota_target', 0)
-    result['scope'] = request.args.get('scope', 'real')
+    result['scope'] = scope
+    result['real_n'] = sum(1 for r in real_recs if r.get('status') == 'complete')
+    result['test_n'] = sum(1 for r in test_recs if r.get('status') == 'complete')
+    result['total_n'] = sum(1 for r in all_recs if r.get('status') == 'complete')
     result['definition_digest'] = fingerprint(base(s))
     versions = sorted({r.get('survey_version', 'legacy') for r in data})
     result['response_versions'] = versions
