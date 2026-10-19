@@ -715,29 +715,29 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 .nm-td-na,.nm-th-na{text-align:center}
 .nm-input{width:100%;padding:8px 9px;border:1px solid var(--line);border-radius:8px;font:inherit}
 .nm-cmtrow{border-top:1px solid var(--line);padding:6px 10px;background:#fcfdfe}
-/* Text Grid – hotel-feedback style (Rooms/Food/Services × Likes/Improvement) */
+/* Text Grid – April/May/June column blocks (Saving/Invest, Rent, Food…) */
 .text-grid{margin-top:10px}
-.tg-table{border:none;overflow:hidden;background:transparent;display:flex;flex-direction:column;gap:6px}
-.tg-tr{display:grid;grid-template-columns:var(--tg-cols);align-items:stretch;gap:8px}
-.tg-head{margin-bottom:2px}
-.tg-th{padding:6px 8px;display:flex;justify-content:center;align-items:center;text-align:center;font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;background:transparent;gap:6px}
+.tg-table{border:none;overflow:hidden;background:transparent;display:flex;flex-direction:column;gap:0}
+.tg-tr{display:grid;grid-template-columns:var(--tg-cols);align-items:stretch;gap:0}
+.tg-th{padding:8px 10px;display:flex;justify-content:center;align-items:center;text-align:center;font-size:13px;font-weight:700;color:var(--ink);background:transparent;gap:6px}
 .tg-corner{background:transparent}
-.tg-th img{max-width:60px;max-height:40px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
+.tg-th img{max-width:50px;max-height:36px;border-radius:6px;border:1px solid var(--line);object-fit:cover}
 .tg-th span{max-width:100%;word-break:break-word}
-.tg-th.tg-rowlabel{justify-content:flex-start;background:#f5f7f8;border-radius:8px;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink);text-transform:none;letter-spacing:0}
-.tg-tr:nth-child(even) .tg-rowlabel{background:#f5f7f8}
-.tg-tr:nth-child(odd) .tg-rowlabel{background:#fff}
-.tg-head .tg-rowlabel{background:transparent !important}
-.tg-td{padding:0;display:flex;flex-direction:column;gap:5px;background:transparent;min-height:44px}
-.tg-td textarea.tg-input{width:100%;min-height:44px;max-height:110px;resize:vertical;padding:10px 12px;border:1px solid #e9ecef;border-radius:8px;background:#f0f2f5;font:inherit;font-size:13px;line-height:1.4;flex:1}
-.tg-td textarea.tg-input:focus{outline:none;background:#fff;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
+/* header columns: April/May/June – alternating gray */
+.tg-head .tg-th:nth-child(2), .tg-head .tg-th:nth-child(4), .tg-head .tg-th:nth-child(6){background:#eef1f3}
+.tg-head .tg-th:nth-child(3), .tg-head .tg-th:nth-child(5), .tg-head .tg-th:nth-child(7){background:#fff}
+/* row labels left: Saving/Invest etc. – no bg, right-aligned with icon */
+.tg-th.tg-rowlabel{justify-content:flex-end;background:transparent !important;padding:10px 12px;font-size:13px;font-weight:600;color:var(--ink);text-align:right}
+.tg-td{padding:6px 10px;display:flex;flex-direction:column;gap:5px;min-height:46px}
+/* column blocks: alternate column bg */
+.tg-tr .tg-td:nth-child(2), .tg-tr .tg-td:nth-child(4), .tg-tr .tg-td:nth-child(6){background:#eef1f3}
+.tg-tr .tg-td:nth-child(3), .tg-tr .tg-td:nth-child(5), .tg-tr .tg-td:nth-child(7){background:#fff}
+.tg-td textarea.tg-input, .tg-td input.tg-input{width:100%;min-height:40px;resize:vertical;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:#fff;font:inherit;font-size:13px;line-height:1.4;flex:1;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.tg-td textarea.tg-input:focus, .tg-td input.tg-input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.08)}
 .tg-voice-btn{align-self:flex-start;display:inline-flex;align-items:center;gap:5px;border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:999px;padding:3px 9px;font-size:11px;font-weight:700;cursor:pointer;white-space:nowrap;transition:all .15s}
 .tg-voice-btn:hover{background:var(--soft);border-color:var(--accent2)}
 .tg-voice-btn.recording{background:#b3261e;color:#fff;border-color:#b3261e;animation:recPulse 1.2s ease-in-out infinite}
 .tg-voice-btn .g-ico{font-size:11px}
-.tg-camera{margin-top:8px;display:flex;align-items:center;gap:8px}
-.tg-camera-btn{width:34px;height:34px;border-radius:50%;background:#fff;border:1px solid var(--line);display:grid;place-items:center;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.08);font-size:16px;color:var(--muted)}
-.tg-camera-btn:hover{border-color:var(--accent2);color:var(--accent)}
 
 /* ============ gamified touches: bull's-eyes, voice mode, target HUD ============ */
 .opt{position:relative}
