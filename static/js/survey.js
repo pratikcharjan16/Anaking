@@ -2823,7 +2823,8 @@
 
   function renderStem(q) {
     var h = el("h2", "stem");
-    if (q.hide_number !== true) h.appendChild(el("span", "qnum", q.id + ". "));
+    var hideNum = q.hide_number===true || !!q._concept_parent || q.type==="concept_test";
+    if (!hideNum) h.appendChild(el("span", "qnum", q.id + ". "));
     var body = el("span", "stem-text");
     if (q.stem_html && window.BeaconQ) window.BeaconQ.richInto(body, q.stem_html, logicCtx(), "…");
     else body.textContent = pipeText(q.stem);
@@ -2932,10 +2933,8 @@
     if(q._concept_description_html){
       var showDesc = true;
       if(q._concept_show_desc_first_only){
-        // only on first screen of first concept
         showDesc = !!q._concept_is_first_overall;
         if(showDesc===false && q._concept_is_first_overall===undefined){
-          // fallback for older synthetics without flags: use steps scan
           var firstConceptId = null;
           try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
           if(!firstConceptId && q._concept_parent){
@@ -2944,10 +2943,8 @@
           if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
         }
       } else {
-        // when toggle off: show at start of every concept (first question of each concept)
         if(q._concept_is_first_for_concept!==undefined) showDesc = !!q._concept_is_first_for_concept;
         else {
-          // fallback: check if previous step has same concept
           var idx=-1; try{ for(var si2=0; si2<steps.length; si2++){ if(steps[si2].q.id===q.id){ idx=si2; break; } } }catch(e){}
           if(idx>0){
             try{ if(steps[idx-1].q._concept_id===q._concept_id) showDesc=false; }catch(e){}
@@ -2961,76 +2958,64 @@
     var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
     if(exec) cctx.appendChild(exec);
     var ch = el("div","concept-header");
+    // top bar: label left, timer+replay right top
+    var topBar = el("div","concept-topbar");
     var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
-    ch.appendChild(clabel);
-    // Only attached image/video should show, along with name – no duration text, no text snippet
+    topBar.appendChild(clabel);
     var mediaWrap = null;
+    var durStr = q._concept_duration || "no-limit";
+    var secs = null;
+    (function(){ var d=String(durStr).toLowerCase().trim(); if(d==="no-limit"||d==="no limit"||d==="no_limit"||d==="") secs=null; else if(d.indexOf("min")>=0) secs=60; else { var m=d.match(/(\d+)/); secs=m?parseInt(m[1],10):null; } })();
+    var hasTimedMedia = !!(q._concept_media && q._concept_media.src && secs!==null && secs>0);
+    var timerEl = null, fill = null, replayBtn = null, timerGroup = null;
+    if(hasTimedMedia || (q._concept_allow_replay && q._concept_media && q._concept_media.src)){
+      timerGroup = el("div","concept-timer-group");
+      if(secs!==null && secs>0){
+        var timerPill = el("div","concept-timer-pill");
+        timerPill.innerHTML = '<svg class="concept-timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2"></path><path d="M9 2h6"></path><path d="M12 2v2"></path></svg>';
+        timerEl = el("span","concept-timer"); timerEl.textContent = secs+"s";
+        timerPill.appendChild(timerEl);
+        var bar = el("div","concept-timer-bar"); fill = el("div","concept-timer-fill"); bar.appendChild(fill);
+        timerPill.appendChild(bar);
+        timerGroup.appendChild(timerPill);
+      }
+      if(q._concept_allow_replay){
+        replayBtn = el("button","concept-replay-btn");
+        replayBtn.type="button"; replayBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="concept-replay-icon"><path d="M21 12a9 9 0 1 1-2.6-6.3"></path><path d="M21 3v6h-6"></path></svg> Replay';
+        timerGroup.appendChild(replayBtn);
+      }
+      if(timerGroup.children.length) topBar.appendChild(timerGroup);
+    }
+    ch.appendChild(topBar);
     if(q._concept_media && q._concept_media.src){
       mediaWrap = el("div","concept-media-wrap");
       var mediaEl = renderMedia(q._concept_media, "concept-media");
       mediaWrap.appendChild(mediaEl);
-      // timer handling
-      var durStr = q._concept_duration || "no-limit";
-      var secs = null;
-      (function(){
-        var d = String(durStr).toLowerCase().trim();
-        if(d==="no-limit"||d==="no limit"||d==="no_limit"||d==="") secs=null;
-        else if(d.indexOf("min")>=0) secs=60;
-        else { var m=d.match(/(\d+)/); secs=m?parseInt(m[1],10):null; }
-      })();
+      ch.appendChild(mediaWrap);
       if(secs!==null && secs>0){
-        var timerRow = el("div","concept-timer-row");
-        var timerEl = el("span","concept-timer"); timerEl.textContent = secs+"s";
-        var bar = el("div","concept-timer-bar"); var fill = el("div","concept-timer-fill"); bar.appendChild(fill);
-        timerRow.appendChild(timerEl);
-        timerRow.appendChild(bar);
-        if(q._concept_allow_replay){
-          var replayBtn = el("button","btn sm","Replay");
-          replayBtn.type="button";
-          replayBtn.style.marginLeft="8px";
-          timerRow.appendChild(replayBtn);
-        }
-        ch.appendChild(mediaWrap);
-        ch.appendChild(timerRow);
-        // countdown logic
-        var remaining = secs;
-        var total = secs;
-        var timerId = null;
+        var remaining = secs, total = secs, timerId = null;
         function updateTimer(){
-          timerEl.textContent = remaining+"s";
-          fill.style.width = (remaining/total*100)+"%";
+          if(timerEl) timerEl.textContent = remaining+"s";
+          if(fill) fill.style.width = (remaining/total*100)+"%";
           if(remaining<=0){
             clearInterval(timerId);
-            timerEl.textContent = "0s";
-            fill.style.width="0%";
-            // hide media after timer
-            mediaWrap.style.opacity="0.3";
-            mediaWrap.style.filter="grayscale(0.6)";
+            if(timerEl) timerEl.textContent = "0s";
+            if(fill) fill.style.width="0%";
+            mediaWrap.style.opacity="0.35"; mediaWrap.style.filter="grayscale(0.7)";
             var hiddenMsg = el("div","concept-hidden-msg","Concept hidden – answer the question below");
-            hiddenMsg.style.fontSize="12px"; hiddenMsg.style.color="var(--muted)"; hiddenMsg.style.textAlign="center"; hiddenMsg.style.marginTop="6px";
             if(!mediaWrap.querySelector(".concept-hidden-msg")) mediaWrap.appendChild(hiddenMsg);
           }
         }
         function startTimer(){
-          remaining = total;
-          mediaWrap.style.opacity="1"; mediaWrap.style.filter="none";
+          remaining = total; mediaWrap.style.opacity="1"; mediaWrap.style.filter="none";
           var hm = mediaWrap.querySelector(".concept-hidden-msg"); if(hm) hm.remove();
-          updateTimer();
-          clearInterval(timerId);
-          timerId = setInterval(function(){ remaining--; updateTimer(); if(remaining<=0) clearInterval(timerId); }, 1000);
+          updateTimer(); clearInterval(timerId); timerId = setInterval(function(){ remaining--; updateTimer(); if(remaining<=0) clearInterval(timerId); }, 1000);
         }
         startTimer();
-        if(q._concept_allow_replay && replayBtn){
-          replayBtn.addEventListener("click", function(){ startTimer(); });
-        }
-        // store timer id for cleanup if needed (when card removed)
+        if(replayBtn) replayBtn.addEventListener("click", function(){ startTimer(); });
         mediaWrap._timerId = timerId;
-      } else {
-        // no-limit: just show media, no timer, but replay still shows button if allowed (replay for no-limit means just show again? we hide replay for no-limit)
-        ch.appendChild(mediaWrap);
       }
     } else if(q._concept_text_html || q._concept_text){
-      // fallback: if no media, show text (so concept is not blank)
       var cbody = el("div","concept-body");
       if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
       else cbody.textContent = pipeText(q._concept_text);
