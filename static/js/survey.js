@@ -3003,6 +3003,26 @@
       var mediaEl = renderMedia(q._concept_media, "concept-media");
       mediaWrap.appendChild(mediaEl);
       ch.appendChild(mediaWrap);
+      function openPip(){
+        var overlay = el("div","concept-pip-overlay");
+        var box = el("div","concept-pip-box");
+        var title = el("div","concept-pip-title"); title.textContent = q._concept_label || "Concept";
+        var close = el("button","concept-pip-close"); close.type="button"; close.textContent="\u00d7";
+        box.appendChild(title); box.appendChild(close);
+        try{
+          var mc = renderMedia(q._concept_media, "concept-media");
+          box.appendChild(mc);
+        }catch(e){}
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        function closePip(){ overlay.remove(); document.removeEventListener("keydown", onKey); }
+        function onKey(e){ if(e.key==="Escape") closePip(); }
+        document.addEventListener("keydown", onKey);
+        overlay.addEventListener("click", function(e){ if(e.target===overlay) closePip(); });
+        close.addEventListener("click", closePip);
+      }
+      // Click on media itself also opens PIP (zoom) – but not when clicking video controls
+      if(mediaWrap){ mediaWrap.style.cursor="pointer"; mediaWrap.title="Click to view enlarged"; mediaWrap.addEventListener("click", function(e){ if(e.target.tagName==="VIDEO") return; openPip(); }); }
       if(secs!==null && secs>0){
         var remaining = secs, total = secs, timerId = null;
         function updateTimer(){
@@ -3013,7 +3033,10 @@
             if(timerEl) timerEl.textContent = "0s";
             if(fill) fill.style.width="0%";
             mediaWrap.style.opacity="0.35"; mediaWrap.style.filter="grayscale(0.7)";
-            var hiddenMsg = el("div","concept-hidden-msg","Concept hidden – answer the question below");
+            var hiddenMsg = el("div","concept-hidden-msg");
+            hiddenMsg.innerHTML = 'Concept hidden – Please click continue to <a href="#" class="concept-view-link">view the concept</a>';
+            var vl = hiddenMsg.querySelector(".concept-view-link");
+            if(vl) vl.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); openPip(); });
             if(!mediaWrap.querySelector(".concept-hidden-msg")) mediaWrap.appendChild(hiddenMsg);
           }
         }
