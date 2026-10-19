@@ -400,8 +400,7 @@
       '<div class="st-hero"><div><h1>Your studies</h1><p>Draft questions, preview exactly what respondents see, then launch. ' +
       tops.length + " stud" + (tops.length === 1 ? "y" : "ies") + (live ? " \u00B7 " + live + " live" : "") +
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
-      '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button>' +
-      '<button class="st-btn big" data-act="dup-beacon">Start from PROJECT BEACON</button></div></div>' +
+      '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button></div></div>' +
       '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with guided templates</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
