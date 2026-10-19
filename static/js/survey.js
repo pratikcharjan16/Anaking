@@ -1464,10 +1464,16 @@
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       }
       case "text_grid": {
-        return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
-          var v = a[r.code];
-          return v !== undefined && String(v).trim() !== "";
-        });
+        var tgc = q.cols || [];
+        if (tgc.length) {
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            return tgc.every(function (c) {
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v).trim() !== "";
+            });
+          });
+        }
+        return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && String(a[r.code]).trim() !== ""; });
       }
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
@@ -1897,45 +1903,37 @@
     var wrap = el("div", "text-grid");
     var g = q.grid || {}, cols = orderedList(q.cols || [], q, "cols"), rows = orderedList(q.rows || [], q, "rows");
     if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
-    if (!rows.length) {
-      wrap.appendChild(el("div", "st-note", "Add at least one row – each row is a text entry."));
+    if (!rows.length || !cols.length) {
+      wrap.appendChild(el("div", "st-note", "Add at least one row and one column – 3 cols × 2 rows = 6 text boxes."));
       return wrap;
     }
-    // If columns exist, show them as headings with images above the rows; rows are the only text entries
-    if (cols.length) {
-      var head = el("div", "tg-head-row");
-      head.style.cssText = "display:flex;gap:12px;flex-wrap:wrap;margin-bottom:12px";
-      cols.forEach(function (c) {
-        var ch = el("div", "tg-col-head");
-        ch.style.cssText = "flex:1 1 140px;min-width:120px;background:#f4f7f9;border:1px solid var(--line);border-radius:8px;padding:10px;text-align:center";
-        var lab = itemLabelNode(c, "tg-col-label");
-        // lab may contain image + text
-        ch.appendChild(lab);
-        head.appendChild(ch);
-      });
-      wrap.appendChild(head);
-    }
+    var tbl = el("div", "tg-table");
+    tbl.style.setProperty("--tg-cols", "minmax(150px,1.5fr) repeat(" + cols.length + ", minmax(200px,1fr))");
+    var head = el("div", "tg-tr tg-head");
+    head.appendChild(el("div", "tg-th tg-corner", pipeText(g.row_label || "")));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "tg-th")); });
+    tbl.appendChild(head);
     rows.forEach(function (r) {
-      var rowBox = el("div", "tg-row-box");
-      rowBox.style.cssText = "background:#fff;border:1px solid var(--line);border-radius:10px;padding:12px;margin-bottom:10px";
-      var rHead = itemLabelNode(r, "tg-row-head");
-      rHead.style.cssText = "font-weight:700;margin-bottom:8px;display:flex;align-items:center;gap:8px";
-      rowBox.appendChild(rHead);
-      var key = r.code;
-      var ta = el("textarea", "tg-input");
-      ta.placeholder = q.placeholder || "Type your answer here...";
-      ta.rows = 3;
-      ta.style.cssText = "width:100%;min-height:72px;padding:9px 11px;border:1px solid var(--line);border-radius:8px;font:inherit;font-size:13px";
-      ta.value = getAns(q.id, key) || "";
-      ta.addEventListener("input", function () {
-        setAns(q.id, key, ta.value);
-        hideErr(); ansChanged();
+      var row = el("div", "tg-tr");
+      row.appendChild(itemLabelNode(r, "tg-th tg-rowlabel"));
+      cols.forEach(function (c) {
+        var cell = el("div", "tg-td");
+        var key = r.code + "_" + c.code;
+        var ta = el("textarea", "tg-input");
+        ta.placeholder = q.placeholder || "Type here…";
+        ta.rows = 2;
+        ta.value = getAns(q.id, key) || "";
+        ta.addEventListener("input", function () {
+          setAns(q.id, key, ta.value);
+          hideErr(); ansChanged();
+        });
+        cell.appendChild(ta);
+        try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
+        row.appendChild(cell);
       });
-      rowBox.appendChild(ta);
-      try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
-      // also add per-row voice hint
-      wrap.appendChild(rowBox);
+      tbl.appendChild(row);
     });
+    wrap.appendChild(tbl);
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
     return wrap;
   }
