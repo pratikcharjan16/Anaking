@@ -8,6 +8,8 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}?v=261008b">
 {% if is_test %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921g">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/survey-test.css') }}?v=261008b">{% endif %}
+{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="/static/js/security.js"></script>{% endif %}
 </head>
 <body>
 {#- Test mode is the research team's view (drafts are previewed here too); the respondent
@@ -54,6 +56,7 @@
   <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
 </div>
 
+<div id="survey-save-status" role="status" aria-live="polite"></div>
 <main id="app">
   <div class="card" id="welcome">
     <div class="welcome-hero">
@@ -99,8 +102,9 @@
     <fieldset class="audio-choice" id="voice-choice">
       <legend>How would you like to answer?</legend>
       <label><input type="radio" name="voice-pref" value="manual" checked> <span><b>Tap my answers</b><small>Classic mode &mdash; click or tap the options, use Next to move on</small></span></label>
-      <label><input type="radio" name="voice-pref" value="voice"> <span><b>Answer by voice &#127908;</b><small class="voice-note">Say an option name or its number, several with &ldquo;and&rdquo;, then &ldquo;next&rdquo;. Free: uses your browser&rsquo;s own speech recognition, no account needed</small></span></label>
+      <label><input type="radio" name="voice-pref" value="voice"> <span><b>Answer by voice &#127908;</b><small class="voice-note">Speak numbers, text or option names. For grids and other controls, say &ldquo;control&rdquo; and the numbered badge; for fields add the value. Say &ldquo;next field&rdquo;, &ldquo;next&rdquo; or &ldquo;back&rdquo;. Free: uses your browser&rsquo;s own speech recognition, no account needed</small></span></label>
     </fieldset>
+    <div id="study-privacy" class="study-privacy"></div>
     <button class="btn primary big" id="start-btn">Begin survey &rarr;</button>
   </div>
 </main>

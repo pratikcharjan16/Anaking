@@ -6,6 +6,8 @@
 <title>PROJECT BEACON — Admin</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=260921a">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921a">
+{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="/static/js/security.js"></script>{% endif %}
 </head>
 <body>
 <header class="topbar">
@@ -56,6 +58,8 @@
       <button class="btn danger" id="reset-all">Clear everything</button>
     </div>
   </section>
+
+  <section class="panel"><h2>Data Validation</h2><p>Review all invited users and responses by response ID. Invalidate with a reason or restore a response. Invalidated responses are excluded from this dashboard and standard exports; original answers are retained.</p><a class="btn" id="data-validation-link" href="/workspace/#beacon/validation">Open Data Validation →</a></section>
 
   <section class="cards" id="cards"></section>
 

@@ -128,11 +128,11 @@ def extract_strings(cfg: dict) -> list[dict]:
         if not q.get("body_html"):
             _put(out, f"q:{qid}:body", q.get("body"), "question", qid)
         for o in q.get("options", []) or []:
-            _put(out, f"q:{qid}:opt:{o.get('code')}", o.get("label"), "option", qid)
+            _put(out, f"q:{qid}:opt:{o.get('code')}", o.get("label_html") or o.get("label"), "option", qid)
         for r in q.get("rows", []) or []:
-            _put(out, f"q:{qid}:row:{r.get('code')}", r.get("label"), "row", qid)
+            _put(out, f"q:{qid}:row:{r.get('code')}", r.get("label_html") or r.get("label"), "row", qid)
         for c in q.get("cols", []) or []:
-            _put(out, f"q:{qid}:col:{c.get('code')}", c.get("label"), "row", qid)
+            _put(out, f"q:{qid}:col:{c.get('code')}", c.get("label_html") or c.get("label"), "row", qid)
         # a grid also shows a title, a name over each axis, the N/A wording, a comment
         # prompt and one caption per column of the scale - all of it respondent-facing
         g_ = q.get("grid") or {}
@@ -209,19 +209,19 @@ def _set(cfg: dict, key: str, value: str) -> bool:
             o = next((x for x in q.get("options", []) or []
                       if str(x.get("code")) == parts[2]), None)
             if o is not None:
-                o["label"] = value
+                o["label_html" if o.get("label_html") else "label"] = value
                 return True
         if field == "row" and len(parts) == 3:
             r = next((x for x in q.get("rows", []) or []
                       if str(x.get("code")) == parts[2]), None)
             if r is not None:
-                r["label"] = value
+                r["label_html" if r.get("label_html") else "label"] = value
                 return True
         if field == "col" and len(parts) == 3:
             c = next((x for x in q.get("cols", []) or []
                       if str(x.get("code")) == parts[2]), None)
             if c is not None:
-                c["label"] = value
+                c["label_html" if c.get("label_html") else "label"] = value
                 return True
         if field == "face" and len(parts) == 3:
             fl = q.get("scale", {}).get("face_labels") or []
@@ -263,7 +263,10 @@ def apply_language(cfg: dict, lang: str | None) -> dict:
     if lang == default_language(cfg):
         return out
     table = (cfg.get("translations") or {}).get(lang) or {}
+    excluded = (cfg.get("translation_excluded") or {}).get(lang, [])
     for key, value in table.items():
+        if key in excluded:
+            continue
         if isinstance(value, str) and value.strip():
             _set(out, key, value)
     out["language"] = default_language(cfg)          # remember the authoring language
@@ -276,6 +279,8 @@ def coverage(cfg: dict, lang: str) -> dict:
     """Translation completeness of one language over the extractable strings."""
     strings = extract_strings(cfg)
     table = (cfg.get("translations") or {}).get(lang) or {}
+    excluded = (cfg.get("translation_excluded") or {}).get(lang, [])
+    strings = [s for s in strings if s["key"] not in excluded]
     done = [s for s in strings if (table.get(s["key"]) or "").strip()]
     return {"language": lang, "total": len(strings), "translated": len(done),
             "missing": [s["key"] for s in strings if not (table.get(s["key"]) or "").strip()],

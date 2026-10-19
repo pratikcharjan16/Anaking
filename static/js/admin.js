@@ -163,6 +163,8 @@
   }
 
   function load() {
+    var validationLink = $("#data-validation-link");
+    if (validationLink) validationLink.href = "/workspace/#" + encodeURIComponent(STUDY) + "/validation";
     api("/api/admin/data?scope=" + scope).then(render)
       .catch(function (e) { toast("Could not load admin data: " + e.message, true); });
     loadVerbatims();

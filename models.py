@@ -155,6 +155,12 @@ def init_db(path: str | None = None) -> None:
     try:
         with conn:
             conn.executescript(SCHEMA)
+            from core.security import SCHEMA as SECURITY_SCHEMA
+            conn.executescript(SECURITY_SCHEMA)
+            from core.governance import SCHEMA as GOVERNANCE_SCHEMA
+            conn.executescript(GOVERNANCE_SCHEMA)
+            from core.data_validation import SCHEMA as VALIDATION_SCHEMA
+            conn.executescript(VALIDATION_SCHEMA)
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(respondents)")}
             if "study_id" not in cols:
                 conn.execute("ALTER TABLE respondents ADD COLUMN study_id INTEGER DEFAULT 1")
@@ -300,13 +306,21 @@ class Study:
             raise StudyError("question references unknown section")
         conn, ts = get_db(), now()
         with write_lock, conn:
-            if Study.get(slug):
+            old = Study.get(slug)
+            from core.governance import revision
+            if old:
+                from core.research import fingerprint
+                if body.get('expected_digest') and body['expected_digest'] != fingerprint(old.cfg):
+                    raise StudyError('This draft changed in another tab. Reload before saving.', 409)
+                revision(conn, old.id, old.title, old.cfg)
                 conn.execute("UPDATE studies SET title=?, cfg=?, updated_at=? WHERE slug=?",
                              (title, json.dumps(cfg), ts, slug))
             else:
                 conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, "
                              "updated_at) VALUES (?,?,?,?,?,?)",
                              (slug, title, "draft", json.dumps(cfg), ts, ts))
+            saved = Study.get(slug)
+            revision(conn, saved.id, title, cfg)
         return slug
 
     @staticmethod
@@ -426,7 +440,10 @@ class Study:
         with write_lock, conn:
             conn.execute("DELETE FROM answers WHERE respondent_id IN "
                          "(SELECT id FROM respondents WHERE study_id=?)", (s.id,))
+            conn.execute("DELETE FROM response_versions WHERE respondent_id IN (SELECT id FROM respondents WHERE study_id=?)", (s.id,))
             conn.execute("DELETE FROM respondents WHERE study_id=?", (s.id,))
+            for table in ('study_revisions', 'publication_snapshots', 'publications', 'study_comments', 'study_reviews', 'verbatim_codes', 'response_validations', 'response_validation_events'):
+                conn.execute("DELETE FROM " + table + " WHERE study_id=?", (s.id,))
             conn.execute("DELETE FROM studies WHERE id=?", (s.id,))
 
     @staticmethod
@@ -523,7 +540,7 @@ class Respondent:
     # ---- lifecycle
     @staticmethod
     def create(study: Study, is_test: bool, user_agent: str = "", language: str = "",
-               embedded: dict | None = None) -> Respondent:
+               embedded: dict | None = None, snapshot: dict | None = None) -> Respondent:
         """Allocate the next T###/R### code for the study and open a session."""
         conn = get_db()
         sid = secrets.token_urlsafe(16)
@@ -539,6 +556,10 @@ class Respondent:
                 "started_at, user_agent, language, embedded) VALUES (?,?,?,?,?,?,?,?)",
                 (code, sid, study.id, int(is_test), now(), (user_agent or "")[:300],
                  (language or "")[:12], json.dumps(embedded or {})))
+            if snapshot is not None:
+                from core.research import fingerprint
+                rid = conn.execute('SELECT id FROM respondents WHERE session_id=?', (sid,)).fetchone()['id']
+                conn.execute('INSERT INTO response_versions(respondent_id,cfg,digest) VALUES(?,?,?)', (rid, json.dumps(snapshot), fingerprint(snapshot)))
         return Respondent.by_session(sid)
 
     def set_assignment(self, task_order: list, alt_positions: dict) -> None:
@@ -590,6 +611,8 @@ class Respondent:
         sid = study.id if study else -1
         conn = get_db()
         with write_lock, conn:
+            for table in ('response_versions', 'verbatim_codes', 'response_validations', 'response_validation_events'):
+                conn.execute("DELETE FROM " + table + " WHERE respondent_id IN (SELECT id FROM respondents WHERE study_id=? AND (?='all' OR is_test=?))", (sid, scope, 1 if scope == 'test' else 0))
             if scope == "all":
                 conn.execute("DELETE FROM answers WHERE respondent_id IN "
                              "(SELECT id FROM respondents WHERE study_id=?)", (sid,))

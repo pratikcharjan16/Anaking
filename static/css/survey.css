@@ -779,3 +779,17 @@ h2.stem table td,h2.stem table th,.help table td,.help table th{border:1px solid
 /* Completion screen: arrow in the bull's-eye. */
 .done-icon.done-target{background:#fff;border:none;width:76px;height:76px}
 .done-icon.done-target svg{width:100%;height:100%;display:block}
+
+/* Voice control badges are distinct from answer values and option codes. */
+.voice-control-tag { display:inline-flex; align-items:center; justify-content:center; min-width:22px; height:22px; padding:0 4px; margin:3px; border-radius:7px; background:#164e63; color:white; font:700 12px/1 system-ui; vertical-align:middle; }
+.voice-bar { flex-wrap:wrap; max-width:min(900px, 94vw); }
+.voice-bar .vb-live { flex:1; min-width:220px; white-space:normal; }
+body.voice-on { padding-bottom:130px; }
+
+.study-privacy{font-size:13px;line-height:1.65;white-space:pre-line;margin:18px 0}.survey-consent{display:flex;align-items:flex-start;gap:10px}.survey-consent input{flex:0 0 auto;margin-top:6px}#survey-save-status{text-align:center;font-size:12px;color:#52675d;min-height:20px;padding:4px 12px}button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:3px solid #218c77;outline-offset:3px}
+@media(prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important;scroll-behavior:auto!important}}
+
+/* Keep wide heatmaps reachable in surveys and the narrow Studio preview. */
+.hm-scroll{max-width:100%;overflow-x:auto;padding:3px;overscroll-behavior-x:contain}
+.hm-cell:focus-visible,.hm-scroll:focus-visible{outline:3px solid #126688;outline-offset:-3px}
+.hm-cmtrow>*{grid-column:1/-1;min-width:0;width:100%}
