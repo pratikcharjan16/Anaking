@@ -929,3 +929,96 @@ body.voice-on .voice-active-row {
 }
 .gauge-ends .g-mid { text-align: center; }
 .gauge-ends .g-max { text-align: right; }
+
+/* ---------- Anaking Global Brand Lockup for Survey Runtime ---------- */
+.anaking-brand-lockup {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.2;
+}
+.anaking-svg-logo {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: 0 4px 14px rgba(0, 217, 245, 0.22), 0 2px 6px rgba(15, 23, 42, 0.25);
+}
+.ak-crown-group {
+  animation: akFloat 3.2s ease-in-out infinite alternate;
+  transform-origin: 22px 22px;
+}
+@keyframes akFloat {
+  0% { transform: translateY(0px) scale(1); }
+  100% { transform: translateY(-1.2px) scale(1.025); }
+}
+.ak-particle {
+  animation: akOrbit 4.5s linear infinite;
+  transform-origin: 22px 22px;
+}
+@keyframes akOrbit {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+.anaking-brand-text {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+.anaking-brand-title {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.brand-anaking {
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Inter", sans-serif;
+  font-size: 18px;
+  font-weight: 850;
+  letter-spacing: -0.4px;
+  color: #ffffff;
+  background: linear-gradient(135deg, #ffffff 0%, #a5f3fc 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.brand-sub-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: rgba(255, 255, 255, 0.16);
+  color: #38bdf8;
+  font-size: 9px;
+  font-weight: 800;
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+}
+.live-pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #00f5a0;
+  box-shadow: 0 0 6px #00f5a0;
+  animation: liveDotPulse 1.8s ease-in-out infinite;
+}
+@keyframes liveDotPulse {
+  0%, 100% { transform: scale(1); opacity: 0.85; }
+  50% { transform: scale(1.4); opacity: 1; box-shadow: 0 0 10px #00f5a0; }
+}
+.anaking-tagline {
+  font-size: 10px;
+  font-weight: 550;
+  color: rgba(255, 255, 255, 0.85);
+  letter-spacing: -0.1px;
+  margin-top: 2px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.tagline-spark {
+  color: #00f5a0;
+  font-size: 9px;
+}
