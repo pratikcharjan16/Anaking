@@ -156,6 +156,8 @@
     if (type === "loop") {
       q.child = "open_text"; q.prompt_template = "{label}"; q.text_rows = 2;
       q.items = [{ code: "i1", label: "First item" }, { code: "i2", label: "Second item" }];
+      q.loop_mode = "create"; q.loop_source = ""; q.limit_loops = false; q.loop_limit = 3; q.loop_randomize = false; q.loop_override = false;
+      q.loop_questions = [{ id: q.id + "_LQ1", type: "open_text", stem: "What do you think about {label}?", placeholder: "Type your answer", required: true }];
     }
     if (type === "text_block") { q.required = false; q.body = "Add instructions, an introduction or a story here."; }
     return q;
@@ -2302,6 +2304,60 @@
       if (g) g.focus();
     }
   }
+  // ---- loop (new snip-matched card) ----
+  function loopBlock() {
+    if (!ed.loop_mode) ed.loop_mode = ed.loop_source ? "previous" : "create";
+    if (!ed.items || !ed.items.length) ed.items = [{code:"i1",label:"First item"},{code:"i2",label:"Second item"}];
+    if (!ed.loop_questions) ed.loop_questions = [];
+    var prevQs = (cur.cfg.questions||[]).slice(0, sel).filter(function(q){ return q.id !== ed.id; });
+    var html = '<div class="st-loop-wrap">';
+    html += '<div class="st-loop-head"><span class="st-loop-title"><i>\u27F3</i> ' + esc(ed.id) + ' Question loop</span><span class="st-loop-head-tools"><button class="st-ibtn" title="Search">\uD83D\uDD0D</button><button class="st-ibtn" data-act="qdup" data-i="'+sel+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="qdel" data-i="'+sel+'" title="Delete">\u2715</button></span></div>';
+    html += '<div class="st-loop-card"><div class="st-loop-tabs"><button class="st-loop-tab on">Questions</button><button class="st-loop-tab" data-act="loop-tab-logic">Conditional Display</button></div><div class="st-loop-body">';
+    html += '<div class="st-loop-source-head">Select source question</div>';
+    html += '<div class="st-loop-source-bar"><span>Loop answers from:</span><select id="f-loop-mode">' + [["previous","Previous question"],["create","Create questions"],["multiple","Multiple type"],["grid","Grid"]].map(function(o){ return '<option value="' + o[0] + '"' + (ed.loop_mode===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join("") + '</select><select id="f-loop-source" style="' + (ed.loop_mode==='previous'?'':'display:none') + '"><option value="">Select a question to loop from</option>' + prevQs.map(function(q){ return '<option value="' + esc(q.id) + '"' + (ed.loop_source===q.id?' selected':'') + '>' + esc(q.id + ' \u2014 ' + (q.stem||q.title||'').slice(0,50)) + '</option>'; }).join("") + '</select></div>';
+    function togRow(label, info, chkId, isOn, extraInputId, extraVal, placeholder){
+      var h = '<div class="st-loop-tog"><div class="st-loop-tog-l"><span>' + esc(label) + '</span>' + (info?'<span class="st-info" title="' + esc(info) + '">\u24D8</span>':'') + (extraInputId?'<input id="' + extraInputId + '" type="number" min="1" placeholder="' + esc(placeholder||'') + '" value="' + esc(extraVal||'') + '" style="width:70px;margin-left:8px;' + (isOn?'':'display:none') + '">':'') + '</div><label class="st-switch"><input type="checkbox" id="' + chkId + '"' + (isOn?' checked':'') + '><i></i></label></div>';
+      return h;
+    }
+    html += '<div class="st-loop-togs">' + togRow('Limit loops per respondent', 'Cap how many iterations each respondent sees', 'f-loop-limiton', !!ed.limit_loops, 'f-loop-limit', ed.loop_limit||'', 'e.g. 3') + togRow('Randomize order', 'Shuffle items and inner questions per respondent', 'f-loop-rand', !!ed.loop_randomize) + togRow('Override loop logic', 'Bypass show-if / screening inside the loop', 'f-loop-override', !!ed.loop_override) + '</div>';
+    if(ed.loop_mode==='previous' && ed.loop_source){
+      var srcQ = prevQs.filter(function(q){return q.id===ed.loop_source;})[0];
+      var srcInfo = srcQ ? (srcQ.options? srcQ.options.length+' options': srcQ.rows? srcQ.rows.length+' rows': srcQ.items? srcQ.items.length+' items': '') : '';
+      html += '<div class="st-loop-items"><div class="st-note">Items will be taken from <b>' + esc(ed.loop_source) + '</b> (' + esc(srcInfo) + ') at runtime. Preview uses its configured options.</div></div>';
+    } else {
+      html += '<div class="st-loop-items"><div class="st-loop-items-head"><span>Items to loop over</span><span class="st-meta">' + ed.items.length + ' items</span></div>' + itemTable("item", ed.items||[], {noun:"item", ph:"Item label"}) + '</div>';
+    }
+    html += '<div class="st-loop-qs"><div class="st-loop-qs-head"><span>Questions in this loop</span><span class="st-meta">they repeat for each item \u00B7 randomized per respondent when toggled</span></div>';
+    if(!ed.loop_questions.length){
+      html += '<div class="st-note" style="margin:8px 0">No questions yet \u2014 add the questions that should be asked for each item. Each item repeats this card.</div>';
+    } else {
+      ed.loop_questions.forEach(function(lq, lqi){
+        html += loopQuestionRow(lq, lqi);
+      });
+    }
+    html += '<div class="st-item-actions"><button class="st-btn sm on" data-act="loop-q-add">+ Add question</button><button class="st-btn sm" data-act="loop-q-add-grid">+ Add Grid</button><button class="st-btn sm" data-act="loop-q-add-multi">+ Add Multiple type</button></div></div>';
+    html += '</div></div>';
+    html += '<button class="st-btn ghost wide" data-act="loop-item-add" style="margin-top:10px">+ Add Item</button>';
+    html += '</div>';
+    return html;
+  }
+  function loopQuestionRow(lq, lqi){
+    var typeOpts = ["single_select","multi_select","open_text","numeric","slider","rating_scale","rating_grid","date","rank","sum_to_100"].map(function(t){ var ti=tinfo(t); return '<option value="' + t + '"' + (lq.type===t?' selected':'') + '>' + esc(ti.name) + '</option>'; }).join("");
+    var h = '<div class="st-loop-q" data-lq="' + lqi + '"><div class="st-loop-q-head"><span class="st-grip" title="Drag to reorder">\u283F</span><span class="st-seq">' + (lqi+1) + '</span><select data-loop-k="type" data-lq="' + lqi + '">' + typeOpts + '</select><input data-loop-k="stem" data-lq="' + lqi + '" value="' + esc(lq.stem||"") + '" placeholder="Question stem (use {label} for item)"> <span class="st-item-tools"><button class="st-ibtn danger" data-act="loop-q-del" data-lq="' + lqi + '" title="Delete">\u2715</button></span></div>';
+    if(lq.type==='single_select' || lq.type==='multi_select'){
+      var opts = lq.options||[{code:1,label:"Option 1"},{code:2,label:"Option 2"}];
+      h += '<div class="st-loop-q-opts">' + opts.map(function(o,oi){ return '<div class="st-loop-opt"><input data-loop-k="opt_code" data-lq="' + lqi + '" data-oi="' + oi + '" value="' + esc(o.code) + '" style="width:50px" placeholder="code"><input data-loop-k="opt_label" data-lq="' + lqi + '" data-oi="' + oi + '" value="' + esc(o.label) + '" placeholder="Option label" style="flex:1"><button class="st-ibtn danger" data-act="loop-opt-del" data-lq="' + lqi + '" data-oi="' + oi + '" title="Delete">\u2715</button></div>'; }).join("") + '<button class="st-btn sm" data-act="loop-opt-add" data-lq="' + lqi + '" style="margin-top:6px">+ Add option</button></div>';
+    }
+    if(lq.type==='open_text'){
+      h += '<div class="st-loop-q-meta st-grid2"><div class="st-field"><label>Placeholder</label><input data-loop-k="placeholder" data-lq="' + lqi + '" value="' + esc(lq.placeholder||'') + '" placeholder="Placeholder"></div><div class="st-field"><label>Min words</label><input data-loop-k="min_words" data-lq="' + lqi + '" type="number" value="' + esc(lq.min_words||'') + '" placeholder="3"></div></div>';
+    }
+    if(lq.type==='numeric'||lq.type==='slider'){
+      h += '<div class="st-loop-q-meta st-grid4"><div class="st-field"><label>Min</label><input data-loop-k="min" data-lq="' + lqi + '" type="number" value="' + esc(lq.min!=null?lq.min:'') + '"></div><div class="st-field"><label>Max</label><input data-loop-k="max" data-lq="' + lqi + '" type="number" value="' + esc(lq.max!=null?lq.max:'') + '"></div></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
   function answersCard() {
     var t = ed.type, html = "";
     if (hasOptions(t)) {
@@ -2316,13 +2372,7 @@
     else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
-      html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
-        '<div class="st-grid3"><div class="st-field"><label>Answer type</label><select id="f-child">' +
-        [["open_text", "Text entry"], ["numeric", "Numeric entry"]].map(function (o) {
-          return '<option value="' + o[0] + '"' + ((ed.child || "open_text") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div>" +
-        '<div class="st-field"><label>Text rows</label><input id="f-textrows" type="number" min="1" value="' + (ed.text_rows || 2) + '"></div>' +
-        '<div class="st-field"><label>Placeholder</label><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '"></div></div>' +
-        '<h4 class="st-h4">Loop over</h4>' + itemTable("item", ed.items || [], { noun: "item", flags: [], ph: "Item label" });
+      html += loopBlock();
     }
 
     if (t === "nps") html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
@@ -3529,11 +3579,53 @@
     }
     if (t === "delta" && val("f-beforel") !== undefined) { setOrDel(ed, "before_label", val("f-beforel")); setOrDel(ed, "after_label", val("f-afterl")); }
     if (t === "date" && val("f-datemin") !== undefined) { setOrDel(ed, "min", val("f-datemin")); setOrDel(ed, "max", val("f-datemax")); }
-    if (t === "loop" && val("f-child") !== undefined) {
-      setOrDel(ed, "child", val("f-child") === "open_text" ? "" : val("f-child"));
-      setOrDel(ed, "prompt_template", val("f-ptmpl"));
-      setOrDel(ed, "text_rows", num("f-textrows"));
-      setOrDel(ed, "placeholder", val("f-placeholder"));
+    if (t === "loop") {
+      setOrDel(ed, "loop_mode", val("f-loop-mode"));
+      setOrDel(ed, "loop_source", val("f-loop-source"));
+      setOrDel(ed, "limit_loops", chk("f-loop-limiton"));
+      setOrDel(ed, "loop_limit", num("f-loop-limit"));
+      setOrDel(ed, "loop_randomize", chk("f-loop-rand"));
+      setOrDel(ed, "loop_override", chk("f-loop-override"));
+      // legacy fields (kept for backwards compat, but new UI is authoritative)
+      if (val("f-child") !== undefined) {
+        setOrDel(ed, "child", val("f-child") === "open_text" ? "" : val("f-child"));
+        setOrDel(ed, "prompt_template", val("f-ptmpl"));
+        setOrDel(ed, "text_rows", num("f-textrows"));
+        setOrDel(ed, "placeholder", val("f-placeholder"));
+      }
+      // sync loop_questions (questions inside the loop card)
+      if (ed.loop_questions) {
+        ed.loop_questions.forEach(function(lq, lqi){
+          var typeEl = document.querySelector('[data-loop-k="type"][data-lq="'+lqi+'"]');
+          if (typeEl) lq.type = typeEl.value;
+          var stemEl = document.querySelector('[data-loop-k="stem"][data-lq="'+lqi+'"]');
+          if (stemEl) lq.stem = stemEl.value;
+          var phEl = document.querySelector('[data-loop-k="placeholder"][data-lq="'+lqi+'"]');
+          if (phEl) setOrDel(lq, "placeholder", phEl.value);
+          var mwEl = document.querySelector('[data-loop-k="min_words"][data-lq="'+lqi+'"]');
+          if (mwEl) setOrDel(lq, "min_words", mwEl.value ? Number(mwEl.value) : undefined);
+          // handle min/max for numeric
+          var minEl = document.querySelector('[data-loop-k="min"][data-lq="'+lqi+'"]');
+          if (minEl && minEl.value!=="") lq.min = Number(minEl.value); else if(minEl) delete lq.min;
+          var maxEl = document.querySelector('[data-loop-k="max"][data-lq="'+lqi+'"]');
+          if (maxEl && maxEl.value!=="") lq.max = Number(maxEl.value); else if(maxEl) delete lq.max;
+          // options for choice types
+          if (lq.type==='single_select' || lq.type==='multi_select'){
+            var optCodes = document.querySelectorAll('[data-loop-k="opt_code"][data-lq="'+lqi+'"]');
+            var optLabels = document.querySelectorAll('[data-loop-k="opt_label"][data-lq="'+lqi+'"]');
+            if (optCodes.length){
+              var newOpts=[];
+              optCodes.forEach(function(cEl, oi){
+                var lEl = optLabels[oi];
+                var code = cEl.value.trim(); if(!code) code = oi+1;
+                var lab = lEl ? lEl.value : "";
+                newOpts.push({code: isNaN(Number(code))? code : Number(code), label: lab});
+              });
+              lq.options = newOpts;
+            }
+          }
+        });
+      }
     }
     var bodyRich = document.getElementById("f-body-rich");
     if (bodyRich) {
@@ -4084,6 +4176,12 @@
       if (m && !m.external && m.src) api("/api/studio/media/delete", { study: cur.slug, file: m.src.split("/").pop() });
       delete ed.media; rerenderCard("media"); changed(); return;
     }
+    if (act === "loop-item-add") { syncFromForm(); ed.items = ed.items || []; var n = ed.items.length; ed.items.push({code:"i"+(n+1), label:"New item "+(n+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-q-add" || act === "loop-q-add-grid" || act === "loop-q-add-multi") { syncFromForm(); ed.loop_questions = ed.loop_questions || []; var typ = act==="loop-q-add-grid" ? "rating_grid" : act==="loop-q-add-multi" ? "multi_select" : "open_text"; var nid = ed.id + "_LQ" + (ed.loop_questions.length+1); var qn = {id:nid, type:typ, stem:"New "+tinfo(typ).name.toLowerCase()+" about {label}", required:true}; if(typ==="single_select"||typ==="multi_select"||typ==="rating_grid"||typ==="rating_scale") qn.options = [{code:1,label:"Option 1"},{code:2,label:"Option 2"}]; if(typ==="rating_grid") qn.rows=[{code:"a",label:"Row 1"}]; if(typ==="rating_scale") { qn.scale={min:1,max:5}; qn.rows=[{code:"a",label:"Item 1"}]; } ed.loop_questions.push(qn); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-q-del") { syncFromForm(); var lqi = Number(b.getAttribute("data-lq")); ed.loop_questions.splice(lqi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-opt-add") { syncFromForm(); var lqIdx = Number(b.getAttribute("data-lq")); var lq = ed.loop_questions[lqIdx]; lq.options = lq.options || []; lq.options.push({code: lq.options.length+1, label:"Option "+(lq.options.length+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-opt-del") { syncFromForm(); var lqIdx2 = Number(b.getAttribute("data-lq")), oi = Number(b.getAttribute("data-oi")); ed.loop_questions[lqIdx2].options.splice(oi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-tab-logic") { syncFromForm(); var logicCard = document.getElementById("card-logic"); if(logicCard) { logicCard.open = true; logicCard.scrollIntoView({behavior:"smooth"}); } else { toast("Conditional logic is on the Logic card below"); } return; }
     if (act === "raw-apply") {
       try {
         var parsed = JSON.parse(val("f-raw"));
@@ -4359,6 +4457,8 @@
     if (t.getAttribute && t.getAttribute("data-sf") && !t.classList.contains("st-scr-rownum")) {
       changed(); refreshScrPlain(); return;         // a number being typed: update the sentence only
     }
+    if (t.id && t.id.indexOf("f-loop")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-loop-k")) { syncFromForm(); if(t.getAttribute("data-loop-k")==="type") rerenderCard("answers"); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }

@@ -1129,6 +1129,37 @@
     return out.concat(groups[groups.length - 1].qs);
   }
 
+  function loopItemsFor(q){
+    var items=[];
+    if(q.loop_mode==="previous" && q.loop_source){
+      var src=null; for(var si=0; si<SPEC.questions.length; si++){ if(SPEC.questions[si].id===q.loop_source){ src=SPEC.questions[si]; break; } }
+      if(src){
+        if(src.options && src.options.length) items = src.options.map(function(o){ return {code:String(o.code), label:String(o.label||o.code)}; });
+        else if(src.rows && src.rows.length) items = src.rows.map(function(r){ return {code:String(r.code), label:String(r.label||r.code)}; });
+        else if(src.cols && src.cols.length) items = src.cols.map(function(c){ return {code:String(c.code), label:String(c.label||c.code)}; });
+        else if(src.items && src.items.length) items = src.items.map(function(it){ return {code:String(it.code), label:String(it.label||it.code)}; });
+      }
+    } else {
+      items = (q.items||[]).map(function(it){ return {code:String(it.code), label:String(it.label||it.code)}; });
+    }
+    if(q.limit_loops && q.loop_limit){
+      var lim = Number(q.loop_limit);
+      if(lim>0 && lim < items.length) items = items.slice(0, lim);
+    }
+    if(q.loop_randomize){
+      var seed = (SESSION && SESSION.session_id) || "preview";
+      if(window.BeaconQ && window.BeaconQ.order){
+        var wrapped = items.map(function(it){ return {code: it.code, label: it.label, _it: it}; });
+        var ordered = window.BeaconQ.order(wrapped, {id: q.id, randomize: "shuffle"}, seed);
+        items = ordered.map(function(o){ return o._it; });
+      } else {
+        var h = 2166136261; for(var i2=0;i2<seed.length;i2++){ h ^= seed.charCodeAt(i2); h = (h*16777619)>>>0; }
+        var st = h||1; function rnd(){ st ^= st<<13; st ^= st>>>17; st ^= st<<5; st>>>=0; return st/4294967296; }
+        for(var j=items.length-1;j>0;j--){ var k=Math.floor(rnd()*(j+1)); var t=items[j]; items[j]=items[k]; items[k]=t; }
+      }
+    }
+    return items;
+  }
   function buildSteps() {
     steps = [];
     var list = SPEC.questions.slice();
@@ -1141,6 +1172,44 @@
         order.forEach(function (tid, i) {
           steps.push({ kind: "task", taskId: tid, slot: i + 1, q: q, total: order.length });
         });
+      } else if (q.type === "loop") {
+        var items = loopItemsFor(q);
+        if (q.loop_questions && q.loop_questions.length) {
+          var qs = q.loop_questions.slice();
+          if (q.loop_randomize && window.BeaconQ && window.BeaconQ.order) {
+            var seed2 = (SESSION && SESSION.session_id) || "preview";
+            var wrapped2 = qs.map(function(x,i){ return {code: String(x.id||i), label: x.stem, _orig: x}; });
+            var ordered2 = window.BeaconQ.order(wrapped2, {id: q.id+"_qs", randomize: "shuffle"}, seed2);
+            qs = ordered2.map(function(o){ return o._orig; });
+          } else if (q.loop_randomize) {
+            var s = (SESSION && SESSION.session_id) || "preview";
+            var hh = 2166136261; for(var ii=0; ii<s.length; ii++){ hh ^= s.charCodeAt(ii); hh = (hh*16777619)>>>0; }
+            var st2 = hh||1; function rr(){ st2 ^= st2<<13; st2 ^= st2>>>17; st2 ^= st2<<5; st2>>>=0; return st2/4294967296; }
+            for(var j2=qs.length-1;j2>0;j2--){ var k2=Math.floor(rr()*(j2+1)); var t2=qs[j2]; qs[j2]=qs[k2]; qs[k2]=t2; }
+          }
+          if(items.length){
+            items.forEach(function(it){
+              qs.forEach(function(lq){
+                var synth = JSON.parse(JSON.stringify(lq));
+                synth.id = q.id + "_" + it.code + "_" + (lq.id || lq.type + "_" + qs.indexOf(lq));
+                synth._loop_parent = q.id;
+                synth._loop_item = it.code;
+                synth._loop_label = it.label;
+                synth.section = q.section;
+                if(synth.stem) synth.stem = synth.stem.replace(/\{label\}/g, it.label).replace(/\{item\}/g, it.label);
+                if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{label\}/g, it.label).replace(/\{item\}/g, it.label);
+                if(synth.help) synth.help = synth.help.replace(/\{label\}/g, it.label);
+                if(synth.help_html) synth.help_html = synth.help_html.replace(/\{label\}/g, it.label);
+                if(synth.required===undefined) synth.required = true;
+                steps.push({ kind: "q", q: synth });
+              });
+            });
+          } else {
+            var q2 = JSON.parse(JSON.stringify(q)); q2._loop_items = items; steps.push({ kind: "q", q: q2 });
+          }
+        } else {
+          var q3 = JSON.parse(JSON.stringify(q)); q3._loop_items = items; steps.push({ kind: "q", q: q3 });
+        }
       } else {
         steps.push({ kind: "q", q: q });
       }
@@ -1224,8 +1293,10 @@
             return [1, 2, 3].indexOf(Number(a[r.code + "_" + c.code])) >= 0;
           });
         });
-      case "loop":
-        return (q.items || []).length > 0 && (q.items || []).every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
+      case "loop": {
+        var its2 = q._loop_items || loopItemsFor(q);
+        return its2.length > 0 && its2.every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
+      }
       case "text_block":
         return true;
       case "rank":
@@ -1685,7 +1756,30 @@
   function renderLoop(q) {
     var wrap = el("div", "loopq");
     var a = answers[q.id] || {};
-    (q.items || []).forEach(function (it) {
+    var items = q._loop_items || q.items || loopItemsFor(q);
+    if(q.loop_questions && q.loop_questions.length){
+      var limTxt = q.limit_loops ? " limited to "+q.loop_limit : "";
+      var randTxt = q.loop_randomize ? " \u00B7 randomized per respondent" : "";
+      var srcTxt = q.loop_mode==="previous" && q.loop_source ? " from "+q.loop_source : "";
+      wrap.appendChild(el("div","st-note","This loop repeats "+q.loop_questions.length+" question(s) for each of "+items.length+" item(s) ("+(items.length*q.loop_questions.length)+" steps)"+limTxt+randTxt+srcTxt+". Each item repeats this card."));
+      q.loop_questions.forEach(function(lq, idx){
+        var prow = el("div","loop-row");
+        prow.appendChild(el("div","loop-label", (idx+1)+". ["+lq.type+"] "+(lq.stem||"").replace("{label}", items[0] ? items[0].label : "item")));
+        if(lq.type==="single_select"||lq.type==="multi_select"){
+          var olist = el("div","st-note"); olist.textContent = (lq.options||[]).map(function(o){return o.label;}).join(" \u00B7 "); prow.appendChild(olist);
+        }
+        wrap.appendChild(prow);
+      });
+      if(items.length){
+        var ilist = el("div","st-note"); ilist.textContent = "Items: "+items.map(function(it){return it.label;}).join(", "); wrap.appendChild(ilist);
+      }
+      return wrap;
+    }
+    if(!items.length){
+      wrap.appendChild(el("div","st-note","No items to loop over - configure the source in Studio."));
+      return wrap;
+    }
+    items.forEach(function (it) {
       var row = el("div", "loop-row");
       var lbl = el("div", "loop-label");
       lbl.textContent = (q.prompt_template || "{label}").replace("{label}", it.label);
@@ -2603,6 +2697,12 @@
     // is never shown to the respondent - not on the card, not in the progress strip. Section
     // titles stay visible in the Studio outline, where the team needs them.
     var card = el("div", "card");
+    if (q._loop_parent) {
+      var ctx = el("div", "loop-ctx");
+      ctx.textContent = "For " + (q._loop_label || q._loop_item) + " \u2014 " + q._loop_parent;
+      ctx.title = "Loop from " + q._loop_parent + " for item " + q._loop_item;
+      card.appendChild(ctx);
+    }
 
     if (q.comprehension) {
       card.appendChild(el("div", "cc-banner",
@@ -2811,9 +2911,10 @@
     }
     if (q.type === "loop" && q.child === "numeric") {
       var la = answers[q.id] || {};
-      for (var li = 0; li < (q.items || []).length; li++) {
-        var lv = la[q.items[li].code];
-        if (lv !== undefined && lv !== "" && !isNum(lv)) { showErr(q.items[li].label + ": please enter a number."); return false; }
+      var itsL = q._loop_items || loopItemsFor(q);
+      for (var li = 0; li < itsL.length; li++) {
+        var lv = la[itsL[li].code];
+        if (lv !== undefined && lv !== "" && !isNum(lv)) { showErr(itsL[li].label + ": please enter a number."); return false; }
       }
     }
     if (q.type === "open_text" && q.required && q.min_words) {
