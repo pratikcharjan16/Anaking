@@ -815,8 +815,10 @@
       case "rating_scale":
       case "semantic_diff":
       case "nps":
+        return thumbScale(q);
       case "concept_test":
-        return (q.type === "concept_test" ? thumbRows(q, 2) : "") + thumbScale(q);
+        var cc = (q.concepts||[]).length, cq = (q.concept_questions||[]).length;
+        return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+cc+' concepts</b><i></i></span><span class="st-tb-row"><b>'+cq+' questions</b><i></i></span>'+(cq? '<span class="st-tb-more">'+cc*cq+' steps</span>':'')+'</div>';
       case "heatmap":
         var hm = q.heatmap || {};
         if (hm.image_src) return '<div class="st-tb-hm"><img src="' + esc(hm.image_src) + '" alt=""><span>' + esc(hm.image_title || "Heatmap") + ' \u00B7 ' + ((hm.reactions||[]).length||0) + ' reactions</span></div>';
@@ -1326,15 +1328,15 @@
   };
 
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
-  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
+  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "numeric_matrix"].indexOf(t) >= 0; }
 
   // ---- matrix / grid questions ----------------------------------------------------------
   // A grid always has a Question title plus two axes.  On a rating grid the columns ARE the
   // scale points (1..7, each with a label of its own); on a heat map and a numeric matrix
   // they are a second list.  Both axes are edited the same way: add, label, format, attach
   // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
-  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix", "concept_test"];
-  var SCALE_TYPES = ["semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
+  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix"];
+  var SCALE_TYPES = ["semantic_diff", "emoji_grid"];   // columns = scale points
   var AXIS_TYPES = ["rating_grid", "numeric_matrix"];       // columns = a second list
   var RZ_MODES = [
     ["none", "Fixed", "Everyone sees the list as written"],
@@ -1707,11 +1709,6 @@
     var t = ed.type, html = "";
     if (t === "rating_grid") html += gridSelectField();
     html += gridHeadFields();
-    if (t === "concept_test") {
-      html += '<div class="st-field"><label>Concept shown to respondents</label><textarea id="f-concept" rows="4">' +
-        esc(ed.concept || "") + '</textarea><div class="st-hint">Attach an image or video under <b>Image / video</b>, ' +
-        "or use rich text in the question text above.</div></div>";
-    }
     if (hasScale(t)) {
       html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
       html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + scalePoints(ed).length + " scale points</span></h4>" +
@@ -2447,15 +2444,15 @@
       html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box \u00B7 <b>Screen out</b> ends the survey there and then. Groups of options, counts and conditions on other questions belong on the <b>Screening</b> tab.</div>';
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
+    if (t === "concept_test") {
+      html += conceptTestBlock();
+      return html;
+    }
     if (t === "heatmap") html += heatmapBlock();
     else if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
     else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
-    if (t === "concept_test") {
-      html += conceptTestBlock();
-      return html;
-    }
     if (t === "loop") {
       html += loopBlock();
     }
@@ -3586,7 +3583,7 @@
       if (!hm.image_src) delete hm.image_src;
       if (!Object.keys(hm).length) delete ed.heatmap;
     }
-    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
+    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps") {
       if (val("f-smin") !== undefined) {
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
