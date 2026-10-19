@@ -1840,7 +1840,7 @@
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
     if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
-      var concepts = (q.concepts || []).slice();
+      var concepts = conceptListFor(q);
       var cqs = q.concept_questions || [];
       if(!concepts.length || !cqs.length){
         wrap.appendChild(el("div","st-note","Add at least one concept and one question to preview."));
@@ -2946,7 +2946,7 @@
     // description handling: show per first-only flag using synthetic indices
     if(q._concept_description_html){
       var showDesc = true;
-      if(q._concept_show_desc_first_only){
+      if(q._concept_show_desc_first_only!==false){
         showDesc = !!q._concept_is_first_overall;
         if(showDesc===false && q._concept_is_first_overall===undefined){
           var firstConceptId = null;

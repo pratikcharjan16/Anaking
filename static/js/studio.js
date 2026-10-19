@@ -3732,8 +3732,8 @@
       setOrDel(ed, "concept_execution", val("f-ct-exec"));
       var cd = document.getElementById("f-ct-desc");
       if (cd) { var hh = unchip(Q.sanitize(cd.innerHTML)); ed.concept_description_html = hh; if(Q.stripTags(hh)) ed.concept_description = Q.stripTags(hh); else delete ed.concept_description; }
-      setOrDel(ed, "concept_show_desc_first_only", chk("f-ct-showfirst"));
-      setOrDel(ed, "concept_concepts_per_enabled", chk("f-ct-cper-on"));
+      ed.concept_show_desc_first_only = !!chk("f-ct-showfirst");
+      ed.concept_concepts_per_enabled = !!chk("f-ct-cper-on");
       setOrDel(ed, "concept_concepts_per", num("f-ct-cper"));
       if (ed.concepts) {
         ed.concepts.forEach(function(c, i){
@@ -4481,6 +4481,8 @@
       changed(); return;
     }
     var act = t.getAttribute("data-act");
+    // Concept Test toggles (f-ct-showfirst, f-ct-cper-on, f-ct-cper) – persist immediately
+    if(t.id==="f-ct-showfirst" || t.id==="f-ct-cper-on" || t.id==="f-ct-cper") { syncFromForm(); changed(); renderPreview(); return; }
     if (act === "hm-img" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.heatmap = ed.heatmap || {}; ed.heatmap.image_src = r.src; rerenderCard("answers"); changed(); toast("Image attached - " + r.file); });
       return;
