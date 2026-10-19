@@ -1833,40 +1833,68 @@
 
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
-    // new structure: concepts + concept_questions
     if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
-      var clist = conceptListFor(q);
+      var concepts = (q.concepts || []).slice();
       var cqs = q.concept_questions || [];
-      var total = clist.length * cqs.length;
-      var limTxt = q.concept_concepts_per_enabled ? " limited to "+q.concept_concepts_per : "";
-      var randTxt = q.concept_randomize ? " \u00B7 randomized per respondent" : "";
-      wrap.appendChild(el("div","st-note","This concept test repeats "+cqs.length+" question(s) for each of "+clist.length+" concept(s) ("+total+" steps)"+limTxt+randTxt+". Each concept repeats the survey below."));
-      if(q.concept_execution) wrap.appendChild(el("div","st-note","EXECUTIONS: "+pipeText(q.concept_execution)));
-      if(q.concept_description_html){
-        var d = el("div","concept-desc-preview");
-        if(window.BeaconQ) window.BeaconQ.richInto(d, q.concept_description_html, logicCtx(), "…");
-        else d.textContent = pipeText(q.concept_description_html);
-        d.style.border="1px dashed #ccc"; d.style.padding="8px"; d.style.margin="6px 0"; d.style.borderRadius="6px";
-        wrap.appendChild(d);
+      if(!concepts.length || !cqs.length){
+        wrap.appendChild(el("div","st-note","Add at least one concept and one question to preview."));
+        return wrap;
       }
-      clist.forEach(function(c, ci){
-        var prow = el("div","loop-row");
-        prow.style.border="1px solid #e0e0e0"; prow.style.borderRadius="6px"; prow.style.padding="8px"; prow.style.margin="4px 0";
-        var head = el("div","loop-label", (ci+1)+". "+(c.label||"Concept")+" ("+(c.duration||"no limit")+(c.allow_replay?" \u00B7 replay":"")+")");
-        prow.appendChild(head);
-        if(c.text) prow.appendChild(el("div","st-note", c.text));
-        if(c.media && c.media.src) prow.appendChild(el("div","st-note","Media: "+c.media.src));
-        wrap.appendChild(prow);
+      var total = concepts.length * cqs.length;
+      var curC = 0, curQ = 0, curIdx = 0;
+      var progress = el("div","st-note");
+      var stage = el("div");
+      var nav = el("div","nav");
+      var prevBtn = el("button","btn","Prev");
+      var nextBtn = el("button","btn primary","Next");
+      prevBtn.type = "button"; nextBtn.type = "button";
+      nav.appendChild(prevBtn); nav.appendChild(nextBtn);
+      wrap.appendChild(progress);
+      wrap.appendChild(stage);
+      wrap.appendChild(nav);
+      function synthFor(cIdx, qIdx){
+        var concept = concepts[cIdx];
+        var cq = cqs[qIdx];
+        var synth = JSON.parse(JSON.stringify(cq));
+        synth.id = q.id + "_" + concept.id + "_" + cq.id;
+        synth._concept_parent = q.id;
+        synth._concept_id = concept.id;
+        synth._concept_label = concept.label;
+        synth._concept_text = concept.text;
+        synth._concept_text_html = concept.text_html;
+        synth._concept_media = concept.media;
+        synth._concept_duration = concept.duration;
+        synth._concept_allow_replay = concept.allow_replay;
+        synth._concept_description_html = q.concept_description_html;
+        synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
+        synth._concept_execution = q.concept_execution;
+        synth.section = q.section;
+        if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+        if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+        return synth;
+      }
+      function render(){
+        var concept = concepts[curC];
+        progress.textContent = "Preview \u00B7 Concept "+(curC+1)+" of "+concepts.length+" ("+concept.label+") \u00B7 Question "+(curQ+1)+" of "+cqs.length+" \u00B7 Step "+(curIdx+1)+" of "+total;
+        stage.innerHTML = "";
+        var synth = synthFor(curC, curQ);
+        var card = renderQuestion(synth);
+        stage.appendChild(card);
+        prevBtn.disabled = curIdx===0;
+        nextBtn.textContent = curIdx===total-1 ? "Done" : "Next \u00BB";
+      }
+      prevBtn.addEventListener("click", function(){
+        if(curIdx>0){ curIdx--; curQ--; if(curQ<0){ curC--; curQ=cqs.length-1; } render(); }
       });
-      cqs.forEach(function(cq, idx){
-        var prow2 = el("div","loop-row");
-        prow2.appendChild(el("div","loop-label", (idx+1)+". ["+cq.type+"] "+(cq.stem||"").replace("{concept}", clist[0]?clist[0].label:"concept")));
-        if(cq.type==="single_select"||cq.type==="multi_select"){
-          var olist = el("div","st-note"); olist.textContent = (cq.options||[]).map(function(o){return o.label;}).join(" \u00B7 "); prow2.appendChild(olist);
+      nextBtn.addEventListener("click", function(){
+        if(curIdx<total-1){ curIdx++; curQ++; if(curQ>=cqs.length){ curC++; curQ=0; } render(); }
+        else {
+          progress.textContent = "Preview complete \u2014 "+total+" steps shown ("+concepts.length+" concepts \u00D7 "+cqs.length+" questions)";
+          stage.innerHTML = '<div class="st-note">You have seen all '+total+' screens. In the live survey each screen is one page: Concept '+concepts.map(function(c){return c.label;}).join(", ")+' each shows Q1..Q'+cqs.length+' on separate screens with Next.</div>';
+          nav.hidden = true;
         }
-        wrap.appendChild(prow2);
       });
-      if(cqs.length && clist.length) wrap.appendChild(el("div","st-note","Flow: "+clist.map(function(c){return c.label;}).join(" \u2192 ")+" each \u00D7 "+cqs.length+" questions"));
+      render();
       return wrap;
     }
     if (q.concept_html && window.BeaconQ) {
@@ -2822,73 +2850,7 @@
     return box;
   }
 
-  function renderQuestion(q) {
-    // Which section a question sits in (screeners, main, ...) is research-team information and
-    // is never shown to the respondent - not on the card, not in the progress strip. Section
-    // titles stay visible in the Studio outline, where the team needs them.
-    var card = el("div", "card");
-    if (q._loop_parent) {
-      var ctx = el("div", "loop-ctx");
-      ctx.textContent = "For " + (q._loop_label || q._loop_item) + " \u2014 " + q._loop_parent;
-      ctx.title = "Loop from " + q._loop_parent + " for item " + q._loop_item;
-      card.appendChild(ctx);
-    }
-    if (q._concept_parent) {
-      var cctx = el("div", "concept-ctx");
-      var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
-      if(exec) cctx.appendChild(exec);
-      var ch = el("div","concept-header");
-      var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
-      ch.appendChild(clabel);
-      if(q._concept_media && q._concept_media.src){
-        ch.appendChild(renderMedia(q._concept_media, "concept-media"));
-      }
-      if(q._concept_text_html || q._concept_text){
-        var cbody = el("div","concept-body");
-        if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
-        else cbody.textContent = pipeText(q._concept_text);
-        ch.appendChild(cbody);
-      }
-      cctx.appendChild(ch);
-      if(q._concept_duration && q._concept_duration !== "no-limit" && q._concept_duration !== "no limit"){
-        var dur = el("div","concept-duration"); dur.textContent = "Viewing time: "+q._concept_duration + (q._concept_allow_replay ? " \u00B7 replay allowed" : ""); cctx.appendChild(dur);
-      } else if(q._concept_allow_replay){
-        var dur2 = el("div","concept-duration"); dur2.textContent = "Replay allowed"; cctx.appendChild(dur2);
-      }
-      // description per spec: Show description before first concept only -> only on first concept's first question
-      // For now we show if available; first-only handled by checking if concept is first in list (via index) - but we approximate by always showing if not first-only flag
-      if(q._concept_description_html){
-        var showDesc = true;
-        if(q._concept_show_desc_first_only){
-          // Only show for first concept (we don't have index, so show if concept is first? fallback to not showing for others via checking session progress)
-          // Simple heuristic: if this is not the first concept encountered in steps, hide description.
-          // We'll determine by comparing current step index's concept ordering.
-          var firstConceptId = null;
-          try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
-          if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
-        }
-        if(showDesc){
-          var desc = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(desc, q._concept_description_html, logicCtx(), "…"); else desc.textContent = pipeText(q._concept_description_html); cctx.appendChild(desc);
-        }
-      }
-      card.appendChild(cctx);
-    }
-
-    if (q.comprehension) {
-      card.appendChild(el("div", "cc-banner",
-        "\uD83D\uDCA1 Quick check \u2014 this confirms the profile was clear. " +
-        "It does not affect your participation."));
-    }
-    card.appendChild(renderStem(q));
-    if (q.help_html || q.help) {
-      var hp = el("div", "help");
-      if (q.help_html && window.BeaconQ) window.BeaconQ.richInto(hp, q.help_html, logicCtx(), "…");
-      else hp.textContent = pipeText(q.help);
-      card.appendChild(hp);
-    }
-    if (q.media && q.media.src) card.appendChild(renderMedia(q.media));
-    card.appendChild(guideBar(function () { return qSpeechText(q); }));
-
+  function questionBodyFor(q){
     var body;
     switch (q.type) {
       case "single_select": body = renderOptions(q, false); break;
@@ -2957,7 +2919,80 @@
         break;
       }
     }
-    card.appendChild(body);
+    return body;
+  }
+  function renderConceptHeader(q){
+    var cctx = el("div", "concept-ctx");
+    var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
+    if(exec) cctx.appendChild(exec);
+    var ch = el("div","concept-header");
+    var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
+    ch.appendChild(clabel);
+    if(q._concept_media && q._concept_media.src){
+      ch.appendChild(renderMedia(q._concept_media, "concept-media"));
+    }
+    if(q._concept_text_html || q._concept_text){
+      var cbody = el("div","concept-body");
+      if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
+      else cbody.textContent = pipeText(q._concept_text);
+      ch.appendChild(cbody);
+    }
+    cctx.appendChild(ch);
+    if(q._concept_duration && q._concept_duration !== "no-limit" && q._concept_duration !== "no limit"){
+      var dur = el("div","concept-duration"); dur.textContent = "Viewing time: "+q._concept_duration + (q._concept_allow_replay ? " · replay allowed" : ""); cctx.appendChild(dur);
+    } else if(q._concept_allow_replay){
+      var dur2 = el("div","concept-duration"); dur2.textContent = "Replay allowed"; cctx.appendChild(dur2);
+    }
+    if(q._concept_description_html){
+      var showDesc = true;
+      if(q._concept_show_desc_first_only){
+        var firstConceptId = null;
+        try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
+        if(!firstConceptId && q._concept_parent){
+          // preview fallback: first concept is the first in parent's original list
+          try{
+            var parentQ = null;
+            for(var pi=0; pi<SPEC.questions.length; pi++){ if(SPEC.questions[pi].id===q._concept_parent){ parentQ= SPEC.questions[pi]; break; } }
+            if(parentQ && parentQ.concepts && parentQ.concepts.length) firstConceptId = parentQ.concepts[0].id;
+          }catch(e2){}
+        }
+        if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
+      }
+      if(showDesc){
+        var desc = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(desc, q._concept_description_html, logicCtx(), "…"); else desc.textContent = pipeText(q._concept_description_html); cctx.appendChild(desc);
+      }
+    }
+    return cctx;
+  }
+  function renderQuestion(q) {
+    // Which section a question sits in (screeners, main, ...) is research-team information and
+    // is never shown to the respondent - not on the card, not in the progress strip. Section
+    // titles stay visible in the Studio outline, where the team needs them.
+    var card = el("div", "card");
+    if (q._concept_parent) { card.appendChild(renderConceptHeader(q)); }
+    if (q._loop_parent) {
+      var ctx = el("div", "loop-ctx");
+      ctx.textContent = "For " + (q._loop_label || q._loop_item) + " \u2014 " + q._loop_parent;
+      ctx.title = "Loop from " + q._loop_parent + " for item " + q._loop_item;
+      card.appendChild(ctx);
+    }
+    if (q.comprehension) {
+      card.appendChild(el("div", "cc-banner",
+        "\uD83D\uDCA1 Quick check \u2014 this confirms the profile was clear. " +
+        "It does not affect your participation."));
+    }
+    card.appendChild(renderStem(q));
+    if (q.help_html || q.help) {
+      var hp = el("div", "help");
+      if (q.help_html && window.BeaconQ) window.BeaconQ.richInto(hp, q.help_html, logicCtx(), "…");
+      else hp.textContent = pipeText(q.help);
+      card.appendChild(hp);
+    }
+    if (q.media && q.media.src) card.appendChild(renderMedia(q.media));
+    card.appendChild(guideBar(function () { return qSpeechText(q); }));
+
+    var body = questionBodyFor(q);
+    if (body) card.appendChild(body);
 
     if (q.comprehension) card.appendChild(buildCcFeedback(q));
     return card;
