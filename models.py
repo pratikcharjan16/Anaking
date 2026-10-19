@@ -475,7 +475,7 @@ class Answer:
             out.setdefault(r["question_id"], {})
             # structured items: multi-select codes, rank order, and the free-text quality
             # telemetry / AI verdict the survey client stores next to a written answer
-            if r["item"] in ("codes", "order", "_meta", "_ai"):
+            if r["item"] in ("codes", "order", "_meta", "_ai", "clicks", "_selected"):
                 try:
                     out[r["question_id"]][r["item"]] = json.loads(r["value"])
                 except (json.JSONDecodeError, TypeError):

@@ -610,6 +610,97 @@
     return row;
   }
 
+  // ---- Text Grid voice: per-textbox real-time transcript (applies to every text entry)
+  function attachVoiceTranscript(textarea, qId, ansKey) {
+    if (!textarea || textarea._voiceAttached) return;
+    if (!(window.BeaconVoice && window.BeaconVoice.supported && window.BeaconVoice.supported())) {
+      // fallback: check native webkitSpeechRecognition
+      if (!(window.SpeechRecognition || window.webkitSpeechRecognition)) return;
+    }
+    textarea._voiceAttached = true;
+    var wrap = textarea.parentNode;
+    // avoid duplicate if already has button
+    if (wrap && wrap.querySelector && wrap.querySelector('.tg-voice-btn[data-for="'+ansKey+'"]')) return;
+    var btn = el("button", "tg-voice-btn", '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate');
+    btn.type = "button";
+    btn.setAttribute("data-for", ansKey);
+    btn.title = "Click to dictate – transcript appears live in this box";
+    var rec = null, isRec = false, baseText = "", finalTxt = "";
+    btn.addEventListener("click", function () {
+      if (isRec) { try { if (rec) rec.stop(); } catch(e){} return; }
+      baseText = textarea.value || "";
+      finalTxt = "";
+      btn.classList.add("recording");
+      btn.innerHTML = '<span class="g-ico">\u23F9</span> Stop';
+      textarea.setAttribute("data-ph", textarea.placeholder || "");
+      textarea.placeholder = "Listening… speak clearly";
+      textarea.focus();
+      var handlers = {
+        onFinal: function (txt) {
+          if (!txt) return;
+          finalTxt = finalTxt ? finalTxt + " " + txt : txt;
+          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt : finalTxt;
+          textarea.value = full;
+          // trigger save
+          var ev = new Event("input", {bubbles:true});
+          textarea.dispatchEvent(ev);
+        },
+        onInterim: function (txt) {
+          if (!txt) return;
+          var interim = txt;
+          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt + " " + interim : finalTxt + " " + interim;
+          textarea.value = full.trim();
+        },
+        onState: function (state, code) {
+          if (state === "off" || state === "error") {
+            isRec = false;
+            btn.classList.remove("recording");
+            btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate';
+            textarea.placeholder = textarea.getAttribute("data-ph") || "Type here…";
+            // ensure final is saved
+            if (finalTxt || baseText !== textarea.value) {
+              var ev2 = new Event("input", {bubbles:true});
+              textarea.dispatchEvent(ev2);
+            }
+          } else if (state === "listening") {
+            isRec = true;
+          }
+        }
+      };
+      try {
+        rec = window.BeaconVoice.create(handlers);
+      } catch(e) { rec = null; }
+      if (rec) rec.start();
+      else {
+        // fallback direct SpeechRecognition if BeaconVoice unavailable
+        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (!SR) { btn.classList.remove("recording"); btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate'; return; }
+        var sr = new SR();
+        sr.lang = (document.documentElement && document.documentElement.lang) || navigator.language || "en-US";
+        sr.interimResults = true;
+        sr.continuous = true;
+        sr.maxAlternatives = 1;
+        isRec = true;
+        sr.onresult = function (e) {
+          var fin="", inter="";
+          for (var i=e.resultIndex;i<e.results.length;i++) {
+            if (e.results[i].isFinal) fin += e.results[i][0].transcript + " ";
+            else inter += e.results[i][0].transcript + " ";
+          }
+          if (fin) handlers.onFinal(fin.trim());
+          if (inter) handlers.onInterim(inter.trim());
+        };
+        sr.onerror = function(e){ handlers.onState("error", e.error); };
+        sr.onend = function(){ if(isRec) try{ sr.start(); }catch(e){} else handlers.onState("off"); };
+        rec = { start:function(){ try{ sr.start(); handlers.onState("listening"); }catch(e){} }, stop:function(){ isRec=false; try{ sr.stop(); }catch(e){} handlers.onState("off"); } };
+        rec.start();
+      }
+    });
+    // insert after textarea
+    if (textarea.nextSibling) textarea.parentNode.insertBefore(btn, textarea.nextSibling);
+    else textarea.parentNode.appendChild(btn);
+  }
+
   // ============================================================ gamification
   var RANKS = [[0, "Observer"], [100, "Clinical Explorer"], [250, "Evidence Analyst"],
                [400, "Insight Strategist"], [600, "KOL Partner"]];
@@ -783,7 +874,7 @@
       highlightActiveVoiceRow(voiceField);
       if (fields[voiceField]) fields[voiceField].focus();
       var rLabel = rows[voiceField] ? (rows[voiceField].label || ("Row " + (voiceField + 1))) : ("Field " + (voiceField + 1));
-      showVoiceBar("Row " + (fromIdx + 1) + " saved. Ready for Row " + (voiceField + 1) + " (" + rLabel + "). Say rating.");
+      showVoiceBar("Saved \u2713 Now on Row " + (voiceField + 1) + " — \u201C" + rLabel + "\u201D — say 1\u20135, or \u2018row " + (voiceField + 1) + " is 4\u2019.");
       coachSay("Ready for Row " + (voiceField + 1) + ": " + rLabel, "info");
     } else {
       showVoiceBar("All rows rated! Say \u201Cnext\u201D to proceed, or say a row number to change.");
@@ -794,9 +885,12 @@
   function labelVoiceControls() {
     Array.prototype.forEach.call(document.querySelectorAll('.voice-control-tag'), function (n) { n.remove(); });
     if (!voiceOn) return;
+    // Numbers on-screen were confusing — keep DOM for fallback but hide visually via CSS.
+    // Only highlight the active row for multi-field/ rating questions.
     voiceControls().forEach(function (n, i) {
       var badge = el("span", "voice-control-tag", String(i + 1));
       badge.setAttribute("aria-hidden", "true");
+      badge.style.display = "none";
       if (n.matches("button, [role=button], [role=slider], .alt-card, .optout-card")) n.appendChild(badge);
       else n.parentNode.insertBefore(badge, n);
     });
@@ -824,7 +918,7 @@
     };
   }
   function voiceSetValue(field, value) {
-    if (!field) { showVoiceBar("Say control followed by its badge number."); return; }
+    if (!field) { showVoiceBar("Tap the field, or say its name, then say the value."); return; }
     if (/^(checkbox|radio)$/.test(field.type) || field.tagName === "BUTTON" || field.getAttribute("role") === "button" || field.matches(".alt-card, .optout-card")) {
       field.click(); labelVoiceControls(); return;
     }
@@ -832,10 +926,10 @@
     if (field.getAttribute("role") === "slider") {
       var rating = window.BeaconVoice.parseNumber(value);
       if (rating === null || !Number.isInteger(rating) || rating < Number(field.getAttribute("aria-valuemin")) || rating > Number(field.getAttribute("aria-valuemax"))) {
-        showVoiceBar("Say a whole number within the displayed scale."); return;
+        showVoiceBar("Say a number shown under the scale (e.g. 1\u20135). Tap the row to change it highlight."); return;
       }
       field.dispatchEvent(new CustomEvent("voice-value", {detail:rating}));
-      showVoiceBar("Rating entered. Say next field or next."); return;
+      showVoiceBar("Rated \u2713 Say the next row\u2019s number (1\u20135), or \u2018next\u2019 to continue."); return;
     }
     if (/^(number|range)$/.test(field.type)) {
       value = window.BeaconVoice.parseNumber(value);
@@ -881,7 +975,7 @@
     }
     var live = voiceBar.querySelector(".vb-live");
     var heard = voiceBar.querySelector(".vb-heard");
-    live.textContent = msg || "Listening · Say an answer, next / back, or control [badge] [value]. Say next field for multi-part answers.";
+    live.textContent = msg || "Listening — say an option name or number, \u2018next\u2019 to continue, \u2018back\u2019 to go back. For scales, just say the number for the highlighted row.";
     heard.textContent = "";
     voiceBar.classList.add("listening");
     voiceBar.hidden = false;
@@ -928,7 +1022,7 @@
           fields[voiceField].focus();
           var curQ = steps[cur] && steps[cur].q;
           var curRowLabel = (curQ && curQ.rows && curQ.rows[voiceField]) ? curQ.rows[voiceField].label : ("Field " + (voiceField + 1));
-          showVoiceBar("Row " + (voiceField + 1) + " (" + curRowLabel + ") selected. Say its rating.");
+          showVoiceBar("On Row " + (voiceField + 1) + " — \u201C" + curRowLabel + "\u201D — say 1\u20135.");
         }
       }
       else if (a.act === "value") {
@@ -956,7 +1050,7 @@
         voiceField = Math.max(0, Math.min(fields.length - 1, voiceField + a.direction));
         highlightActiveVoiceRow(voiceField);
         if (fields[voiceField]) fields[voiceField].focus();
-        showVoiceBar("Field " + (voiceField + 1) + " selected. Say its value.");
+        showVoiceBar("On field " + (voiceField + 1) + " — say its value, or \u2018next\u2019.");
       }
       else if (a.act === "next") {
         if (spoken) coachSay("Next question coming up\u2026", "info");
@@ -1026,7 +1120,7 @@
       voice.start();                                   // may report a failure straight away
       if (voiceOn) {
         showVoiceBar();
-        coachSay("Voice mode on — say numbers or text, option names, or control followed by a badge number. Say next field for multi-part answers, and next to continue.", "info");
+        coachSay("Voice mode on — just say an option name or number. For scales, say the number for the highlighted row, e.g. \u201Cfour\u201D or \u201Crow 2 is 5\u201D. Say \u201Cnext\u201D when ready.", "info");
       }
     } else {
       voice.stop();
@@ -1126,6 +1220,77 @@
     return out.concat(groups[groups.length - 1].qs);
   }
 
+  function loopItemsFor(q){
+    var items=[];
+    if(q.loop_mode==="previous" && q.loop_source){
+      var src=null; for(var si=0; si<SPEC.questions.length; si++){ if(SPEC.questions[si].id===q.loop_source){ src=SPEC.questions[si]; break; } }
+      if(src){
+        if(src.options && src.options.length) items = src.options.map(function(o){ return {code:String(o.code), label:String(o.label||o.code)}; });
+        else if(src.rows && src.rows.length) items = src.rows.map(function(r){ return {code:String(r.code), label:String(r.label||r.code)}; });
+        else if(src.cols && src.cols.length) items = src.cols.map(function(c){ return {code:String(c.code), label:String(c.label||c.code)}; });
+        else if(src.items && src.items.length) items = src.items.map(function(it){ return {code:String(it.code), label:String(it.label||it.code)}; });
+      }
+    } else {
+      items = (q.items||[]).map(function(it){ return {code:String(it.code), label:String(it.label||it.code)}; });
+    }
+    if(q.limit_loops && q.loop_limit){
+      var lim = Number(q.loop_limit);
+      if(lim>0 && lim < items.length) items = items.slice(0, lim);
+    }
+    if(q.loop_randomize){
+      var seed = (SESSION && SESSION.session_id) || "preview";
+      if(window.BeaconQ && window.BeaconQ.order){
+        var wrapped = items.map(function(it){ return {code: it.code, label: it.label, _it: it}; });
+        var ordered = window.BeaconQ.order(wrapped, {id: q.id, randomize: "shuffle"}, seed);
+        items = ordered.map(function(o){ return o._it; });
+      } else {
+        var h = 2166136261; for(var i2=0;i2<seed.length;i2++){ h ^= seed.charCodeAt(i2); h = (h*16777619)>>>0; }
+        var st = h||1; function rnd(){ st ^= st<<13; st ^= st>>>17; st ^= st<<5; st>>>=0; return st/4294967296; }
+        for(var j=items.length-1;j>0;j--){ var k=Math.floor(rnd()*(j+1)); var t=items[j]; items[j]=items[k]; items[k]=t; }
+      }
+    }
+    return items;
+  }
+  function conceptListFor(q){
+    var concepts = (q.concepts || []).slice();
+    if(!concepts.length && q.concept_concepts) concepts = (q.concept_concepts||[]).slice();
+    var enabled = q.concept_concepts_per_enabled;
+    if(enabled===undefined) enabled = q.concepts_per_enabled;
+    var per = q.concept_concepts_per;
+    if(per===undefined) per = q.concepts_per;
+    if(enabled && per){
+      var lim = Number(per);
+      // if randomize, shuffle first then slice to get random subset
+      if(q.concept_randomize){
+        var seed = (SESSION && SESSION.session_id) || "preview";
+        if(window.BeaconQ && window.BeaconQ.order){
+          var wrapped = concepts.map(function(c){ return {code: c.id||c.label, label: c.label, _c: c}; });
+          var ordered = window.BeaconQ.order(wrapped, {id: q.id, randomize: "shuffle"}, seed);
+          concepts = ordered.map(function(o){ return o._c; });
+        } else {
+          var h = 2166136261; for(var i=0;i<seed.length;i++){ h ^= seed.charCodeAt(i); h = (h*16777619)>>>0; }
+          var st = h||1; function rnd(){ st ^= st<<13; st ^= st>>>17; st ^= st<<5; st>>>=0; return st/4294967296; }
+          for(var j=concepts.length-1;j>0;j--){ var k=Math.floor(rnd()*(j+1)); var t=concepts[j]; concepts[j]=concepts[k]; concepts[k]=t; }
+        }
+        if(lim>0 && lim < concepts.length) concepts = concepts.slice(0, lim);
+      } else {
+        if(lim>0 && lim < concepts.length) concepts = concepts.slice(0, lim);
+        // then randomize if enabled? already handled
+      }
+    } else if(q.concept_randomize){
+      var seed2 = (SESSION && SESSION.session_id) || "preview";
+      if(window.BeaconQ && window.BeaconQ.order){
+        var wrapped2 = concepts.map(function(c){ return {code: c.id||c.label, label: c.label, _c: c}; });
+        var ordered2 = window.BeaconQ.order(wrapped2, {id: q.id, randomize: "shuffle"}, seed2);
+        concepts = ordered2.map(function(o){ return o._c; });
+      } else {
+        var h2 = 2166136261; for(var i2=0;i2<seed2.length;i2++){ h2 ^= seed2.charCodeAt(i2); h2 = (h2*16777619)>>>0; }
+        var st2 = h2||1; function rnd2(){ st2 ^= st2<<13; st2 ^= st2>>>17; st2 ^= st2<<5; st2>>>=0; return st2/4294967296; }
+        for(var j2=concepts.length-1;j2>0;j2--){ var k2=Math.floor(rnd2()*(j2+1)); var t2=concepts[j2]; concepts[j2]=concepts[k2]; concepts[k2]=t2; }
+      }
+    }
+    return concepts;
+  }
   function buildSteps() {
     steps = [];
     var list = SPEC.questions.slice();
@@ -1138,6 +1303,104 @@
         order.forEach(function (tid, i) {
           steps.push({ kind: "task", taskId: tid, slot: i + 1, q: q, total: order.length });
         });
+      } else if (q.type === "loop") {
+        var items = loopItemsFor(q);
+        if (q.loop_questions && q.loop_questions.length) {
+          var qs = q.loop_questions.slice();
+          if (q.loop_randomize && window.BeaconQ && window.BeaconQ.order) {
+            var seed2 = (SESSION && SESSION.session_id) || "preview";
+            var wrapped2 = qs.map(function(x,i){ return {code: String(x.id||i), label: x.stem, _orig: x}; });
+            var ordered2 = window.BeaconQ.order(wrapped2, {id: q.id+"_qs", randomize: "shuffle"}, seed2);
+            qs = ordered2.map(function(o){ return o._orig; });
+          } else if (q.loop_randomize) {
+            var s = (SESSION && SESSION.session_id) || "preview";
+            var hh = 2166136261; for(var ii=0; ii<s.length; ii++){ hh ^= s.charCodeAt(ii); hh = (hh*16777619)>>>0; }
+            var st2 = hh||1; function rr(){ st2 ^= st2<<13; st2 ^= st2>>>17; st2 ^= st2<<5; st2>>>=0; return st2/4294967296; }
+            for(var j2=qs.length-1;j2>0;j2--){ var k2=Math.floor(rr()*(j2+1)); var t2=qs[j2]; qs[j2]=qs[k2]; qs[k2]=t2; }
+          }
+          if(items.length){
+            items.forEach(function(it){
+              qs.forEach(function(lq){
+                var synth = JSON.parse(JSON.stringify(lq));
+                synth.id = q.id + "_" + it.code + "_" + (lq.id || lq.type + "_" + qs.indexOf(lq));
+                synth._loop_parent = q.id;
+                synth._loop_item = it.code;
+                synth._loop_label = it.label;
+                synth.section = q.section;
+                if(synth.stem) synth.stem = synth.stem.replace(/\{label\}/g, it.label).replace(/\{item\}/g, it.label);
+                if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{label\}/g, it.label).replace(/\{item\}/g, it.label);
+                if(synth.help) synth.help = synth.help.replace(/\{label\}/g, it.label);
+                if(synth.help_html) synth.help_html = synth.help_html.replace(/\{label\}/g, it.label);
+                if(synth.required===undefined) synth.required = true;
+                steps.push({ kind: "q", q: synth });
+              });
+            });
+          } else {
+            var q2 = JSON.parse(JSON.stringify(q)); q2._loop_items = items; steps.push({ kind: "q", q: q2 });
+          }
+        } else {
+          var q3 = JSON.parse(JSON.stringify(q)); q3._loop_items = items; steps.push({ kind: "q", q: q3 });
+        }
+      } else if (q.type === "concept_test") {
+        var concepts = conceptListFor(q);
+        var cqs = (q.concept_questions && q.concept_questions.length) ? q.concept_questions.slice() : [];
+        // legacy fallback: if no new structure, treat as single question
+        if(!concepts.length && !cqs.length){
+          steps.push({ kind: "q", q: q });
+        } else if(concepts.length && cqs.length){
+          concepts.forEach(function(concept){
+            var cIdx = concepts.indexOf(concept);
+            cqs.forEach(function(cq){
+              var qIdx = cqs.indexOf(cq);
+              var synth = JSON.parse(JSON.stringify(cq));
+              synth.id = q.id + "_" + concept.id + "_" + (cq.id || cq.type);
+              synth._concept_parent = q.id;
+              synth._concept_id = concept.id;
+              synth._concept_label = concept.label;
+              synth._concept_text = concept.text;
+              synth._concept_text_html = concept.text_html;
+              synth._concept_media = concept.media;
+              synth._concept_duration = concept.duration;
+              synth._concept_allow_replay = concept.allow_replay;
+              synth._concept_description_html = q.concept_description_html;
+              synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
+              synth._concept_execution = q.concept_execution;
+              synth._concept_cIdx = cIdx;
+              synth._concept_qIdx = qIdx;
+              synth._concept_is_first_overall = (cIdx===0 && qIdx===0);
+              synth._concept_is_first_for_concept = (qIdx===0);
+              synth.section = q.section;
+              if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label).replace(/\{item\}/g, concept.label);
+              if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+              if(synth.required===undefined) synth.required = false;
+              steps.push({ kind: "q", q: synth });
+            });
+          });
+        } else if(concepts.length){
+          concepts.forEach(function(concept){
+            var synth2 = JSON.parse(JSON.stringify(q));
+            synth2.id = q.id + "_" + concept.id;
+            synth2._concept_parent = q.id;
+            synth2._concept_id = concept.id;
+            synth2._concept_label = concept.label;
+            synth2._concept_text = concept.text;
+            synth2._concept_text_html = concept.text_html;
+            synth2._concept_media = concept.media;
+            synth2._concept_duration = concept.duration;
+            synth2._concept_allow_replay = concept.allow_replay;
+            synth2.type = "text_block";
+            synth2.body_html = "<div class='concept-media'>" + (concept.media&&concept.media.src ? "<img src='"+concept.media.src+"' style='max-width:100%'>" : "") + "</div><h3>"+concept.label+"</h3><p>"+(concept.text_html||concept.text||"")+"</p>";
+            synth2.section = q.section;
+            steps.push({ kind: "q", q: synth2 });
+          });
+        } else {
+          cqs.forEach(function(cq){
+            var synth3 = JSON.parse(JSON.stringify(cq));
+            synth3._concept_parent = q.id;
+            synth3.section = q.section;
+            steps.push({ kind: "q", q: synth3 });
+          });
+        }
       } else {
         steps.push({ kind: "q", q: q });
       }
@@ -1200,18 +1463,43 @@
         }
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && a[r.code] !== ""; });
       }
+      case "text_grid": {
+        var tgc = q.cols || [];
+        if (tgc.length) {
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            return tgc.every(function (c) {
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v).trim() !== "";
+            });
+          });
+        }
+        return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && String(a[r.code]).trim() !== ""; });
+      }
       case "delta":
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
-      case "heatmap": // Only configured cells with a selected intensity count.
+      case "heatmap":
+        if (q.heatmap) {
+          var minH = q.heatmap.min_clicks != null ? Number(q.heatmap.min_clicks) : 0;
+          var maxH = q.heatmap.max_clicks != null ? Number(q.heatmap.max_clicks) : 99;
+          var n = (a && Array.isArray(a.clicks) ? a.clicks.length : 0);
+          if (n < minH || n > maxH) return false;
+          // required comments are enforced per click at entry, but ensure any required reaction that was used has a comment
+          if (q.heatmap.reactions) {
+            for (var ri=0; ri<q.heatmap.reactions.length; ri++) { var rx=q.heatmap.reactions[ri]; if (rx.requireComments) { var used=(a.clicks||[]).some(function(c){ return String(c.reaction)===String(rx.code); }); if (used) { var hasComment=(a.clicks||[]).some(function(c){ return String(c.reaction)===String(rx.code) && c.comment && String(c.comment).trim(); }); if (!hasComment) return false; } } }
+          }
+          return true;
+        }
         return (q.rows || []).some(function (r) {
           return (q.cols || []).some(function (c) {
             return [1, 2, 3].indexOf(Number(a[r.code + "_" + c.code])) >= 0;
           });
         });
-      case "loop":
-        return (q.items || []).length > 0 && (q.items || []).every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
+      case "loop": {
+        var its2 = q._loop_items || loopItemsFor(q);
+        return its2.length > 0 && its2.every(function (it) { return a[it.code] !== undefined && String(a[it.code]).trim() !== ""; });
+      }
       case "text_block":
         return true;
       case "rank":
@@ -1611,6 +1899,45 @@
     return wrap;
   }
 
+  function renderTextGrid(q) {
+    var wrap = el("div", "text-grid");
+    var g = q.grid || {}, cols = orderedList(q.cols || [], q, "cols"), rows = orderedList(q.rows || [], q, "rows");
+    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (!rows.length || !cols.length) {
+      wrap.appendChild(el("div", "st-note", "Add at least one row and one column – 2 cols × 2 rows = 4 text boxes."));
+      return wrap;
+    }
+    var tbl = el("div", "tg-table");
+    tbl.style.setProperty("--tg-cols", "140px repeat(" + cols.length + ", 1fr)");
+    var head = el("div", "tg-tr tg-head");
+    head.appendChild(el("div", "tg-th tg-corner", ""));
+    cols.forEach(function (c) { head.appendChild(itemLabelNode(c, "tg-th tg-col-head")); });
+    tbl.appendChild(head);
+    rows.forEach(function (r) {
+      var row = el("div", "tg-tr");
+      row.appendChild(itemLabelNode(r, "tg-th tg-rowlabel"));
+      cols.forEach(function (c) {
+        var cell = el("div", "tg-td");
+        var key = r.code + "_" + c.code;
+        var ta = el("textarea", "tg-input");
+        ta.placeholder = q.placeholder || "Type here…";
+        ta.rows = 1;
+        ta.value = getAns(q.id, key) || "";
+        ta.addEventListener("input", function () {
+          setAns(q.id, key, ta.value);
+          hideErr(); ansChanged();
+        });
+        cell.appendChild(ta);
+        try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
+        row.appendChild(cell);
+      });
+      tbl.appendChild(row);
+    });
+    wrap.appendChild(tbl);
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
   function renderDelta(q) {
     var wrap = el("div", "delta");
     var a = answers[q.id] || {};
@@ -1654,6 +1981,69 @@
 
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
+    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
+      var concepts = conceptListFor(q);
+      var cqs = q.concept_questions || [];
+      if(!concepts.length || !cqs.length){
+        wrap.appendChild(el("div","st-note","Add at least one concept and one question to preview."));
+        return wrap;
+      }
+      var total = concepts.length * cqs.length;
+      var curC = 0, curQ = 0, curIdx = 0;
+      var stage = el("div");
+      var nav = el("div","nav");
+      var prevBtn = el("button","btn","Prev");
+      var nextBtn = el("button","btn primary","Next");
+      prevBtn.type = "button"; nextBtn.type = "button";
+      nav.appendChild(prevBtn); nav.appendChild(nextBtn);
+      wrap.appendChild(stage);
+      wrap.appendChild(nav);
+      function synthFor(cIdx, qIdx){
+        var concept = concepts[cIdx];
+        var cq = cqs[qIdx];
+        var synth = JSON.parse(JSON.stringify(cq));
+        synth.id = q.id + "_" + concept.id + "_" + cq.id;
+        synth._concept_parent = q.id;
+        synth._concept_id = concept.id;
+        synth._concept_label = concept.label;
+        synth._concept_text = concept.text;
+        synth._concept_text_html = concept.text_html;
+        synth._concept_media = concept.media;
+        synth._concept_duration = concept.duration;
+        synth._concept_allow_replay = concept.allow_replay;
+        synth._concept_description_html = q.concept_description_html;
+        synth._concept_show_desc_first_only = q.concept_show_desc_first_only;
+        synth._concept_execution = q.concept_execution;
+        synth._concept_cIdx = cIdx;
+        synth._concept_qIdx = qIdx;
+        synth._concept_is_first_overall = (cIdx===0 && qIdx===0);
+        synth._concept_is_first_for_concept = (qIdx===0);
+        synth.section = q.section;
+        if(synth.stem) synth.stem = synth.stem.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+        if(synth.stem_html) synth.stem_html = synth.stem_html.replace(/\{concept\}/g, concept.label).replace(/\{label\}/g, concept.label);
+        return synth;
+      }
+      function render(){
+        stage.innerHTML = "";
+        var synth = synthFor(curC, curQ);
+        var card = renderQuestion(synth);
+        stage.appendChild(card);
+        prevBtn.disabled = curIdx===0;
+        nextBtn.textContent = curIdx===total-1 ? "Done" : "Next \u00BB";
+      }
+      prevBtn.addEventListener("click", function(){
+        if(curIdx>0){ curIdx--; curQ--; if(curQ<0){ curC--; curQ=cqs.length-1; } render(); }
+      });
+      nextBtn.addEventListener("click", function(){
+        if(curIdx<total-1){ curIdx++; curQ++; if(curQ>=cqs.length){ curC++; curQ=0; } render(); }
+        else {
+          stage.innerHTML = '<div class="st-note">You have seen all '+total+' screens. In the live survey each screen is one page: Concept '+concepts.map(function(c){return c.label;}).join(", ")+' each shows Q1..Q'+cqs.length+' on separate screens with Next.</div>';
+          nav.hidden = true;
+        }
+      });
+      render();
+      return wrap;
+    }
     if (q.concept_html && window.BeaconQ) {
       var c = el("div", "concept-html");
       window.BeaconQ.richInto(c, q.concept_html, logicCtx(), q.concept || "\u2026");
@@ -1671,7 +2061,30 @@
   function renderLoop(q) {
     var wrap = el("div", "loopq");
     var a = answers[q.id] || {};
-    (q.items || []).forEach(function (it) {
+    var items = q._loop_items || q.items || loopItemsFor(q);
+    if(q.loop_questions && q.loop_questions.length){
+      var limTxt = q.limit_loops ? " limited to "+q.loop_limit : "";
+      var randTxt = q.loop_randomize ? " \u00B7 randomized per respondent" : "";
+      var srcTxt = q.loop_mode==="previous" && q.loop_source ? " from "+q.loop_source : "";
+      wrap.appendChild(el("div","st-note","This loop repeats "+q.loop_questions.length+" question(s) for each of "+items.length+" item(s) ("+(items.length*q.loop_questions.length)+" steps)"+limTxt+randTxt+srcTxt+". Each item repeats this card."));
+      q.loop_questions.forEach(function(lq, idx){
+        var prow = el("div","loop-row");
+        prow.appendChild(el("div","loop-label", (idx+1)+". ["+lq.type+"] "+(lq.stem||"").replace("{label}", items[0] ? items[0].label : "item")));
+        if(lq.type==="single_select"||lq.type==="multi_select"){
+          var olist = el("div","st-note"); olist.textContent = (lq.options||[]).map(function(o){return o.label;}).join(" \u00B7 "); prow.appendChild(olist);
+        }
+        wrap.appendChild(prow);
+      });
+      if(items.length){
+        var ilist = el("div","st-note"); ilist.textContent = "Items: "+items.map(function(it){return it.label;}).join(", "); wrap.appendChild(ilist);
+      }
+      return wrap;
+    }
+    if(!items.length){
+      wrap.appendChild(el("div","st-note","No items to loop over - configure the source in Studio."));
+      return wrap;
+    }
+    items.forEach(function (it) {
       var row = el("div", "loop-row");
       var lbl = el("div", "loop-label");
       lbl.textContent = (q.prompt_template || "{label}").replace("{label}", it.label);
@@ -1850,6 +2263,11 @@
     if (sc.mid_label) ends.appendChild(el("span", "rs-end-mid", pipeText(sc.mid_label)));
     ends.appendChild(el("span", "rs-end-high", pipeText(sc.max_label) || String(max)));
     wrap.appendChild(ends);
+    // Voice hint — only visible when Answer by Voice is on, makes rating effortless
+    try {
+      var vh = el("div", "voice-rating-hint", "🎙 Voice: say <b>" + min + "–" + max + "</b> for the highlighted row. Try “<b>four</b>”, “<b>row 2 is 4</b>” or tap a row to move it.");
+      wrap.insertBefore(vh, wrap.firstChild);
+    } catch(e) {}
     return wrap;
   }
 
@@ -2063,6 +2481,10 @@
         });
         wrap.appendChild(row);
       });
+      try {
+        var vh2 = el("div", "voice-rating-hint", "🎙 Voice: say a number for the highlighted gauge, e.g. “<b>" + min + "–" + max + "</b>”, or “<b>row 2 is 75</b>”.");
+        wrap.insertBefore(vh2, wrap.firstChild);
+      } catch(e2) {}
       return wrap;
     }
 
@@ -2124,18 +2546,105 @@
   // A heat map: rows x columns, tap a cell to raise how strongly it applies (0 - 3).
 
   function renderHeatmap(q) {
-    var wrap = el("div", "heatmap");
+    // New image-click heatmap (Title/Reference + Description + Image + Reactions + Min/Max)
+    var hm = q.heatmap || null;
+    if (hm) {
+      var wrap = el("div", "heatmap heatmap-img");
+      if (hm.title) wrap.appendChild(el("div", "hm-title", pipeText(hm.title)));
+      if (hm.description_html) { var desc = el("div", "hm-desc"); desc.innerHTML = hm.description_html; wrap.appendChild(desc); }
+      if (hm.image_title) wrap.appendChild(el("div", "hm-image-title", pipeText(hm.image_title)));
+      if (hm.instructions) wrap.appendChild(el("div", "hm-instructions", pipeText(hm.instructions)));
+      var reactions = hm.reactions || [];
+      var minC = hm.min_clicks != null ? Number(hm.min_clicks) : 0;
+      var maxC = hm.max_clicks != null ? Number(hm.max_clicks) : 99;
+      var ans = answers[q.id] || {};
+      if (!Array.isArray(ans.clicks)) ans.clicks = [];
+      var selected = reactions.length ? reactions[0].code : null;
+      if (ans._selected && reactions.some(function(r){ return String(r.code)===String(ans._selected); })) selected = ans._selected;
+      function saveAns(){ answers[q.id]=ans; if (!PREVIEW && SESSION && SESSION.session_id){ store("answers", answers); save(); } hideErr(); ansChanged(); }
+      var picker = el("div", "hm-reactions-picker");
+      var pickerLabel = el("div", "hm-picker-label", "Select a reaction then click the image:");
+      picker.appendChild(pickerLabel);
+      var pillRow = el("div", "hm-pills");
+      reactions.forEach(function(r){
+        var btn = el("button", "hm-pill" + (String(r.code)===String(selected) ? " on" : ""));
+        btn.type="button";
+        btn.textContent = r.label || r.code;
+        btn.title = (r.onlyOnce ? "Only once. " : "") + (r.allowComments ? "Comment allowed." : "") + (r.requireComments ? "Comment required." : "");
+        btn.addEventListener("click", function(){ selected = r.code; ans._selected = selected; Array.prototype.forEach.call(pillRow.querySelectorAll(".hm-pill"), function(b){ b.classList.remove("on"); }); btn.classList.add("on"); saveAns(); });
+        pillRow.appendChild(btn);
+      });
+      picker.appendChild(pillRow);
+      wrap.appendChild(picker);
+      if (!hm.image_src) {
+        wrap.appendChild(el("div", "hm-legend", "No image has been uploaded for this heatmap yet. Please contact the survey owner."));
+        if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+        return wrap;
+      }
+      var canvas = el("div", "hm-canvas");
+      var img = el("img", "hm-image"); img.src = hm.image_src; img.alt = hm.image_title || "Heatmap image"; img.draggable=false;
+      img.addEventListener("error", function(){ canvas.classList.add("hm-error"); showErr("Image failed to load - check the uploaded file."); });
+      img.addEventListener("load", function(){ hideErr(); canvas.classList.remove("hm-error"); });
+      canvas.appendChild(img);
+      var overlay = el("div", "hm-overlay");
+      canvas.appendChild(overlay);
+      function renderMarkers(){
+        overlay.innerHTML="";
+        (ans.clicks||[]).forEach(function(cl, idx){
+          var dot = el("button", "hm-dot");
+          dot.type="button";
+          dot.style.left = (cl.x*100) + "%"; dot.style.top = (cl.y*100) + "%";
+          var rx = reactions.filter(function(r){ return String(r.code)===String(cl.reaction); })[0];
+          dot.textContent = rx ? (rx.label||rx.code).slice(0,2) : "?";
+          dot.title = (rx? rx.label : cl.reaction) + " at " + Math.round(cl.x*100) + "%, " + Math.round(cl.y*100) + "% - click to remove";
+          dot.addEventListener("click", function(ev){ ev.stopPropagation(); ans.clicks.splice(idx,1); renderMarkers(); saveAns(); updateCounter(); });
+          overlay.appendChild(dot);
+        });
+      }
+      var counter = el("div", "hm-counter");
+      function updateCounter(){
+        var n = (ans.clicks||[]).length;
+        counter.textContent = n + " of " + maxC + " clicks" + (minC ? " (min " + minC + ")" : "");
+        counter.className = "hm-counter" + (n < minC ? " warn" : n > maxC ? " bad" : " ok");
+      }
+      canvas.addEventListener("click", function(ev){
+        if (!selected) { showErr("Pick a reaction first, then click the image."); return; }
+        var r = reactions.filter(function(x){ return String(x.code)===String(selected); })[0];
+        if (r && r.onlyOnce && (ans.clicks||[]).some(function(c){ return String(c.reaction)===String(selected); })) { showErr("This reaction can only be used once - pick another or remove the existing mark."); return; }
+        if ((ans.clicks||[]).length >= maxC) { showErr("You have reached the maximum of " + maxC + " clicks. Remove one to add another."); return; }
+        var rect = canvas.getBoundingClientRect();
+        if (!rect.width || !rect.height || rect.width < 5 || rect.height < 5) { showErr("Image is still loading - please wait a moment and try again."); return; }
+        var x = (ev.clientX - rect.left)/rect.width;
+        var y = (ev.clientY - rect.top)/rect.height;
+        x = Math.max(0, Math.min(0.98, x)); y = Math.max(0, Math.min(0.98, y));
+        var entry = { x: Math.round(x*1000)/1000, y: Math.round(y*1000)/1000, reaction: selected };
+        if (r && (r.allowComments || r.requireComments)) {
+          var txt = window.prompt(r.requireComments ? "Add a comment for this reaction (required):" : "Add a comment (optional) - leave blank to skip:");
+          if (r.requireComments && (!txt || !txt.trim())) { showErr("A comment is required for this reaction."); return; }
+          if (txt) entry.comment = txt;
+        }
+        ans.clicks.push(entry); renderMarkers(); updateCounter(); saveAns(); hideErr();
+      });
+      wrap.appendChild(canvas);
+      wrap.appendChild(counter);
+      renderMarkers(); updateCounter();
+      wrap.appendChild(el("div", "hm-legend", "Click the image to place your selected reaction. Need " + minC + " to " + maxC + " marks. Click a mark to remove it." + (reactions.some(function(r){return r.onlyOnce;}) ? " Some reactions can only be used once." : "")));
+      if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+      return wrap;
+    }
+    // Legacy grid heatmap (rows x cols intensity 1-3)
+    var wrap2 = el("div", "heatmap");
     var g = q.grid || {};
     var cols = orderedList(q.cols || [], q, "cols");
-    if (g.title) wrap.appendChild(el("div", "grid-title", pipeText(g.title)));
+    if (g.title) wrap2.appendChild(el("div", "grid-title", pipeText(g.title)));
     if (!(q.rows || []).length || !cols.length) {
-      wrap.appendChild(el("p", "hm-legend", "This heatmap needs at least one row and one column. Please contact the survey owner."));
-      return wrap;
+      wrap2.appendChild(el("p", "hm-legend", "This heatmap needs at least one row and one column. Please contact the survey owner."));
+      return wrap2;
     }
     var scroll = el("div", "hm-scroll");
     scroll.tabIndex = 0;
     scroll.setAttribute("role", "region");
-    scroll.setAttribute("aria-label", "Heatmap — scroll horizontally to reach all columns");
+    scroll.setAttribute("aria-label", "Heatmap \u2014 scroll horizontally to reach all columns");
     var tbl = el("div", "hm-table");
     tbl.style.minWidth = (140 + cols.length * 90) + "px";
     tbl.style.setProperty("--hm-cols", "minmax(120px,1.5fr) repeat(" + cols.length + ", minmax(74px,1fr))");
@@ -2158,14 +2667,13 @@
         cell.appendChild(mark);
         function paint(value) {
           cell.dataset.lvl = String(value);
-          mark.textContent = value ? String(value) : "—";
-          cell.title = rowName + " × " + colName + ": " + ["Not selected", "1 — Weak", "2 — Moderate", "3 — Strong"][value];
-          cell.setAttribute("aria-label", cell.title + ". Activate to cycle; keys 1–3 to set, Delete to clear.");
+          mark.textContent = value ? String(value) : "\u2014";
+          cell.title = rowName + " \u00D7 " + colName + ": " + ["Not selected", "1 \u2014 Weak", "2 \u2014 Moderate", "3 \u2014 Strong"][value];
+          cell.setAttribute("aria-label", cell.title + ". Activate to cycle; keys 1\u20133 to set, Delete to clear.");
           cell.setAttribute("aria-pressed", value ? "true" : "false");
         }
         function select(value) {
           paint(value);
-          // Explicit blank is a tombstone: an upsert must replace any previously saved value.
           if (!answers[q.id]) answers[q.id] = {};
           answers[q.id][key] = value || "";
           hideErr(); ansChanged();
@@ -2192,12 +2700,13 @@
       }
     });
     scroll.appendChild(tbl);
-    wrap.appendChild(scroll);
-    wrap.appendChild(el("div", "hm-legend",
-      "Tap a cell to cycle: 1 Weak → 2 Moderate → 3 Strong → clear. Keyboard: 1–3 to set, Delete to clear. Scroll sideways for more columns. Unselected cells are not zero ratings."));
-    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
-    return wrap;
+    wrap2.appendChild(scroll);
+    wrap2.appendChild(el("div", "hm-legend",
+      "Tap a cell to cycle: 1 Weak \u2192 2 Moderate \u2192 3 Strong \u2192 clear. Keyboard: 1\u20133 to set, Delete to clear. Scroll sideways for more columns. Unselected cells are not zero ratings."));
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap2.appendChild(questionComment(q));
+    return wrap2;
   }
+
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
 
@@ -2456,10 +2965,22 @@
 
   function renderStem(q) {
     var h = el("h2", "stem");
-    if (q.hide_number !== true) h.appendChild(el("span", "qnum", q.id + ". "));
+    var hideNum = q.hide_number===true || !!q._concept_parent || q.type==="concept_test";
+    if (!hideNum) h.appendChild(el("span", "qnum", q.id + ". "));
     var body = el("span", "stem-text");
-    if (q.stem_html && window.BeaconQ) window.BeaconQ.richInto(body, q.stem_html, logicCtx(), "…");
-    else body.textContent = pipeText(q.stem);
+    // for Concept Test, also strip leading "Q1:" style number from the human text so only the question content shows
+    if (q.stem_html && window.BeaconQ) {
+      var html = q.stem_html;
+      if(q._concept_parent){
+        // strip a leading Q-number from rich html by converting to text first, but keep markup: simple regex on html string
+        html = html.replace(/^\s*Q\s*\d+\s*[:.]\s*/i, "");
+      }
+      window.BeaconQ.richInto(body, html, logicCtx(), "…");
+    } else {
+      var txt = pipeText(q.stem);
+      if(q._concept_parent) txt = txt.replace(/^\s*Q\s*\d+\s*[:.]\s*/i, "");
+      body.textContent = txt;
+    }
     h.appendChild(body);
     if (q.style) {
       var st = q.style;
@@ -2488,27 +3009,7 @@
     return box;
   }
 
-  function renderQuestion(q) {
-    // Which section a question sits in (screeners, main, ...) is research-team information and
-    // is never shown to the respondent - not on the card, not in the progress strip. Section
-    // titles stay visible in the Studio outline, where the team needs them.
-    var card = el("div", "card");
-
-    if (q.comprehension) {
-      card.appendChild(el("div", "cc-banner",
-        "\uD83D\uDCA1 Quick check \u2014 this confirms the profile was clear. " +
-        "It does not affect your participation."));
-    }
-    card.appendChild(renderStem(q));
-    if (q.help_html || q.help) {
-      var hp = el("div", "help");
-      if (q.help_html && window.BeaconQ) window.BeaconQ.richInto(hp, q.help_html, logicCtx(), "…");
-      else hp.textContent = pipeText(q.help);
-      card.appendChild(hp);
-    }
-    if (q.media && q.media.src) card.appendChild(renderMedia(q.media));
-    card.appendChild(guideBar(function () { return qSpeechText(q); }));
-
+  function questionBodyFor(q){
     var body;
     switch (q.type) {
       case "single_select": body = renderOptions(q, false); break;
@@ -2570,14 +3071,210 @@
         var aiBox = el("div", "ai-actions");
         body = el("div");
         body.appendChild(ta);
+        try { attachVoiceTranscript(ta, q.id, "_"); } catch(e) {}
         body.appendChild(chip);
         body.appendChild(aiBox);
         body.appendChild(recorderFor(q));
         wireTextWatch(q, ta, chip, aiBox);
         break;
       }
+      case "text_grid": { body = renderTextGrid(q); break; }
     }
-    card.appendChild(body);
+    return body;
+  }
+  function renderConceptHeader(q){
+    var cctx = el("div", "concept-ctx");
+    var descEl = null;
+    var showConcept = null;
+    var startTimer = null;
+    // description handling: show per first-only flag using synthetic indices
+    if(q._concept_description_html){
+      var showDesc = true;
+      if(q._concept_show_desc_first_only!==false){
+        showDesc = !!q._concept_is_first_overall;
+        if(showDesc===false && q._concept_is_first_overall===undefined){
+          var firstConceptId = null;
+          try{ for(var si=0; si<steps.length; si++){ var sq = steps[si].q; if(sq._concept_parent===q._concept_parent){ firstConceptId = sq._concept_id; break; } } }catch(e){}
+          if(!firstConceptId && q._concept_parent){
+            try{ var parentQ=null; for(var pi=0; pi<SPEC.questions.length; pi++){ if(SPEC.questions[pi].id===q._concept_parent){ parentQ=SPEC.questions[pi]; break; } } if(parentQ&&parentQ.concepts&&parentQ.concepts.length) firstConceptId=parentQ.concepts[0].id; }catch(e2){}
+          }
+          if(firstConceptId && q._concept_id !== firstConceptId) showDesc = false;
+        }
+      } else {
+        if(q._concept_is_first_for_concept!==undefined) showDesc = !!q._concept_is_first_for_concept;
+        else {
+          var idx=-1; try{ for(var si2=0; si2<steps.length; si2++){ if(steps[si2].q.id===q.id){ idx=si2; break; } } }catch(e){}
+          if(idx>0){
+            try{ if(steps[idx-1].q._concept_id===q._concept_id) showDesc=false; }catch(e){}
+          }
+        }
+      }
+      if(showDesc){
+        descEl = el("div","concept-desc"); if(window.BeaconQ) window.BeaconQ.richInto(descEl, q._concept_description_html, logicCtx(), "…"); else descEl.textContent = pipeText(q._concept_description_html); cctx.appendChild(descEl);
+      }
+    }
+    var exec = q._concept_execution ? el("div","concept-exec", pipeText(q._concept_execution)) : null;
+    if(exec) cctx.appendChild(exec);
+    var ch = el("div","concept-header");
+    // top bar: label left, timer+replay right top (small, not covering image)
+    var topBar = el("div","concept-topbar"); topBar.setAttribute("style","display:flex;align-items:center;justify-content:space-between;gap:8px");
+    var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept"; clabel.setAttribute("style","font-size:11px;font-weight:800;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:999px;padding:2px 7px;width:max-content;flex:none");
+    topBar.appendChild(clabel);
+    var mediaWrap = null;
+    var durStr = q._concept_duration || "no-limit";
+    var secs = null;
+    (function(){ var d=String(durStr).toLowerCase().trim(); if(d==="no-limit"||d==="no limit"||d==="no_limit"||d==="") secs=null; else if(d.indexOf("min")>=0) secs=60; else { var m=d.match(/(\d+)/); secs=m?parseInt(m[1],10):null; } })();
+    var hasTimedMedia = !!(q._concept_media && q._concept_media.src && secs!==null && secs>0);
+    var timerEl = null, fill = null, replayBtn = null, timerGroup = null;
+    // PIP helper – defined early so description Continue can use it
+    function openPip(){
+        var overlay = el("div","concept-pip-overlay");
+        var box = el("div","concept-pip-box");
+        var title = el("div","concept-pip-title"); title.textContent = q._concept_label || "Concept";
+        var close = el("button","concept-pip-close"); close.type="button"; close.textContent="\u00d7";
+        box.appendChild(title); box.appendChild(close);
+        try{
+          var mc = renderMedia(q._concept_media, "concept-media");
+          box.appendChild(mc);
+        }catch(e){}
+        overlay.appendChild(box);
+        document.body.appendChild(overlay);
+        function closePip(){ overlay.remove(); document.removeEventListener("keydown", onKey); }
+        function onKey(e){ if(e.key==="Escape") closePip(); }
+        document.addEventListener("keydown", onKey);
+        overlay.addEventListener("click", function(e){ if(e.target===overlay) closePip(); });
+        close.addEventListener("click", closePip);
+      }
+    if(hasTimedMedia || (q._concept_allow_replay && q._concept_media && q._concept_media.src)){
+      timerGroup = el("div","concept-timer-group"); timerGroup.setAttribute("style","display:flex;align-items:center;gap:5px;flex:none");
+      if(secs!==null && secs>0){
+        var timerPill = el("div","concept-timer-pill"); timerPill.setAttribute("style","display:inline-flex;align-items:center;gap:4px;background:#0b4f6c;color:#fff;border-radius:999px;padding:2px 6px 2px 5px;font-size:10px;font-weight:700;min-width:58px;justify-content:center;line-height:1");
+        timerPill.innerHTML = '<svg class="concept-timer-icon" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2"></path><path d="M9 2h6"></path><path d="M12 2v2"></path></svg>';
+        timerEl = el("span","concept-timer"); timerEl.textContent = secs+"s"; timerEl.setAttribute("style","min-width:18px;text-align:center;font-variant-numeric:tabular-nums;color:#fff;font-size:10px");
+        timerPill.appendChild(timerEl);
+        var bar = el("div","concept-timer-bar"); bar.setAttribute("style","width:22px;height:2.5px;background:rgba(255,255,255,.32);border-radius:999px;overflow:hidden;flex:none"); fill = el("div","concept-timer-fill"); fill.setAttribute("style","height:100%;background:linear-gradient(90deg,#7fd4f0,#5eead4);width:100%;transition:width 1s linear"); bar.appendChild(fill);
+        timerPill.appendChild(bar);
+        timerGroup.appendChild(timerPill);
+      }
+      if(q._concept_allow_replay){
+        replayBtn = el("button","concept-replay-btn");
+        replayBtn.type="button"; replayBtn.setAttribute("style","display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg,#ff6b35 0%,#f7931e 100%);color:#fff;border:1px solid #e05a2a;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1"); replayBtn.innerHTML = '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="concept-replay-icon"><path d="M21 12a9 9 0 1 1-2.6-6.3"></path><path d="M21 3v6h-6"></path></svg> Replay';
+        timerGroup.appendChild(replayBtn);
+      }
+      if(timerGroup.children.length) topBar.appendChild(timerGroup);
+    }
+    ch.appendChild(topBar);
+    if(q._concept_media && q._concept_media.src){
+      mediaWrap = el("div","concept-media-wrap");
+      var mediaEl = renderMedia(q._concept_media, "concept-media");
+      mediaWrap.appendChild(mediaEl);
+      // Initially hidden until Continue clicked – timer only starts then
+      mediaWrap.style.display = "none";
+      ch.appendChild(mediaWrap);
+      // Click on media itself also opens PIP (zoom)
+      mediaWrap.style.cursor = "pointer"; mediaWrap.title = "Click to view enlarged";
+      mediaWrap.addEventListener("click", function(e){ if(e.target.tagName==="VIDEO") return; openPip(); });
+      if(secs!==null && secs>0){
+        var remaining = secs, total = secs, timerId = null;
+        function updateTimer(){
+          if(timerEl) timerEl.textContent = remaining+"s";
+          if(fill) fill.style.width = (remaining/total*100)+"%";
+          if(remaining<=0){
+            clearInterval(timerId);
+            if(timerEl) timerEl.textContent = "0s";
+            if(fill) fill.style.width="0%";
+            mediaWrap.style.opacity="0.35"; mediaWrap.style.filter="grayscale(0.7)";
+            var hiddenMsg = el("div","concept-hidden-msg");
+            hiddenMsg.setAttribute("style","font-size:11px;color:var(--muted);text-align:center;margin-top:6px;font-style:italic");
+            hiddenMsg.innerHTML = 'Concept hidden – <a href="#" class="concept-view-link" style="color:var(--accent-2);font-weight:700;text-decoration:underline">view the concept</a> again';
+            var vl = hiddenMsg.querySelector(".concept-view-link");
+            if(vl) vl.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); openPip(); });
+            if(!mediaWrap.querySelector(".concept-hidden-msg")) mediaWrap.appendChild(hiddenMsg);
+          }
+        }
+        startTimer = function(){
+          remaining = total; 
+          mediaWrap.style.display = "block";
+          mediaWrap.style.opacity="1"; mediaWrap.style.filter="none";
+          var hm = mediaWrap.querySelector(".concept-hidden-msg"); if(hm) hm.remove();
+          updateTimer(); clearInterval(timerId); timerId = setInterval(function(){ remaining--; updateTimer(); if(remaining<=0) clearInterval(timerId); }, 1000);
+        }
+        showConcept = function(){
+          startTimer();
+          // disable the Continue link after first use
+          if(descEl){
+            var l = descEl.querySelector(".concept-view-link");
+            if(l){ l.style.opacity="0.6"; l.style.pointerEvents="none"; }
+          }
+        }
+        if(replayBtn) replayBtn.addEventListener("click", function(){ startTimer(); });
+        mediaWrap._timerId = timerId;
+      } else {
+        // no-limit: no timer, but showConcept just reveals media
+        showConcept = function(){
+          mediaWrap.style.display = "block";
+          mediaWrap.style.opacity="1"; mediaWrap.style.filter="none";
+        }
+      }
+    } else if(q._concept_text_html || q._concept_text){
+      var cbody = el("div","concept-body");
+      if(q._concept_text_html && window.BeaconQ) window.BeaconQ.richInto(cbody, q._concept_text_html, logicCtx(), "…");
+      else cbody.textContent = pipeText(q._concept_text);
+      ch.appendChild(cbody);
+    }
+    // After media/timer are set up, hyperlink the Continue in the description (only one instance)
+    if(descEl){
+      try{
+        var html = descEl.innerHTML;
+        if(html.indexOf("Continue")!==-1 && !descEl.querySelector(".concept-view-link")){
+          descEl.innerHTML = html.replace(/Continue/, '<a href="#" class="concept-view-link" style="color:var(--accent-2);font-weight:700;text-decoration:underline">Continue</a>');
+        }
+        var dlink = descEl.querySelector(".concept-view-link");
+        if(dlink && showConcept){
+          dlink.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); showConcept(); });
+        } else if(dlink && q._concept_media && q._concept_media.src){
+          // if no timer (no-limit), clicking Continue should just reveal media
+          dlink.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); if(mediaWrap) mediaWrap.style.display="block"; });
+        }
+      }catch(e){}
+    }
+    // If no Continue link exists (e.g., description hidden for this concept), show concept immediately
+    if(mediaWrap && mediaWrap.style.display==="none" && !cctx.querySelector(".concept-view-link")){
+      mediaWrap.style.display = "block";
+      if(startTimer) startTimer();
+    }
+    cctx.appendChild(ch);
+    return cctx;
+  }
+  function renderQuestion(q) {
+    // Which section a question sits in (screeners, main, ...) is research-team information and
+    // is never shown to the respondent - not on the card, not in the progress strip. Section
+    // titles stay visible in the Studio outline, where the team needs them.
+    var card = el("div", "card");
+    if (q._concept_parent) { card.appendChild(renderConceptHeader(q)); }
+    if (q._loop_parent) {
+      var ctx = el("div", "loop-ctx");
+      ctx.textContent = "For " + (q._loop_label || q._loop_item) + " \u2014 " + q._loop_parent;
+      ctx.title = "Loop from " + q._loop_parent + " for item " + q._loop_item;
+      card.appendChild(ctx);
+    }
+    if (q.comprehension) {
+      card.appendChild(el("div", "cc-banner",
+        "\uD83D\uDCA1 Quick check \u2014 this confirms the profile was clear. " +
+        "It does not affect your participation."));
+    }
+    card.appendChild(renderStem(q));
+    if (q.help_html || q.help) {
+      var hp = el("div", "help");
+      if (q.help_html && window.BeaconQ) window.BeaconQ.richInto(hp, q.help_html, logicCtx(), "…");
+      else hp.textContent = pipeText(q.help);
+      card.appendChild(hp);
+    }
+    if (q.media && q.media.src) card.appendChild(renderMedia(q.media));
+    card.appendChild(guideBar(function () { return qSpeechText(q); }));
+
+    var body = questionBodyFor(q);
+    if (body) card.appendChild(body);
 
     if (q.comprehension) card.appendChild(buildCcFeedback(q));
     return card;
@@ -2701,9 +3398,10 @@
     }
     if (q.type === "loop" && q.child === "numeric") {
       var la = answers[q.id] || {};
-      for (var li = 0; li < (q.items || []).length; li++) {
-        var lv = la[q.items[li].code];
-        if (lv !== undefined && lv !== "" && !isNum(lv)) { showErr(q.items[li].label + ": please enter a number."); return false; }
+      var itsL = q._loop_items || loopItemsFor(q);
+      for (var li = 0; li < itsL.length; li++) {
+        var lv = la[itsL[li].code];
+        if (lv !== undefined && lv !== "" && !isNum(lv)) { showErr(itsL[li].label + ": please enter a number."); return false; }
       }
     }
     if (q.type === "open_text" && q.required && q.min_words) {
@@ -2876,7 +3574,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap')(q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}

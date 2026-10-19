@@ -214,20 +214,39 @@
       case "not_selected": return codes.indexOf(want) < 0;
       case "any_of": return want.split(",").some(function (v) { return codes.indexOf(v.trim()) >= 0; });
       case "none_of": return !want.split(",").some(function (v) { return codes.indexOf(v.trim()) >= 0; });
+      case "all_of": return want.split(",").filter(Boolean).length > 0 && want.split(",").every(function (v) { return codes.indexOf(v.trim()) >= 0; });
+      case "exactly": return codes.length === want.split(",").filter(Boolean).length && want.split(",").every(function (v) { return codes.indexOf(v.trim()) >= 0; });
+      case "count_gte": return codes.length >= Number(want);
+      case "count_lte": return codes.length <= Number(want);
+      case "count_eq": return codes.length === Number(want);
       case "eq": return a._ !== undefined && String(a._) === want;
       case "ne": return a._ === undefined || String(a._) !== want;
       case "gt": return !isNaN(num) && a._ !== undefined && num > Number(want);
       case "gte": return !isNaN(num) && a._ !== undefined && num >= Number(want);
       case "lt": return !isNaN(num) && a._ !== undefined && num < Number(want);
       case "lte": return !isNaN(num) && a._ !== undefined && num <= Number(want);
+      case "between": { var p = want.split("-"); var lo = Number(p[0]), hi = Number(p[1]); return !isNaN(num) && a._ !== undefined && num >= lo && num <= hi; }
+      case "not_between": { var pb = want.split("-"); var lob = Number(pb[0]), hib = Number(pb[1]); return isNaN(num) || a._ === undefined || num < lob || num > hib; }
       case "contains": return String(answerText(q, a)).toLowerCase().indexOf(want.toLowerCase()) >= 0;
+      case "not_contains": return String(answerText(q, a)).toLowerCase().indexOf(want.toLowerCase()) < 0;
+      case "words_lt": return String(a._ || "").trim().split(/\s+/).filter(Boolean).length < Number(want);
       case "row_eq": { var parts = want.split("="); return parts.length === 2 && String(a[parts[0].trim()]) === parts[1].trim(); }
+      case "row_ne": { var prn = want.split("="); return prn.length === 2 && String(a[prn[0].trim()]) !== prn[1].trim(); }
+      case "row_gte": { var prg = want.split("="); return prg.length === 2 && Number(a[prg[0].trim()]) >= Number(prg[1].trim()); }
+      case "row_lte": { var prl = want.split("="); return prl.length === 2 && Number(a[prl[0].trim()]) <= Number(prl[1].trim()); }
+      case "row_gt": { var prgt = want.split("="); return prgt.length === 2 && Number(a[prgt[0].trim()]) > Number(prgt[1].trim()); }
+      case "row_lt": { var prlt = want.split("="); return prlt.length === 2 && Number(a[prlt[0].trim()]) < Number(prlt[1].trim()); }
+      case "row_between": { var prb = want.split("="); if (prb.length !== 2) return false; var bnd = prb[1].split("-"); var rv = Number(a[prb[0].trim()]); return rv >= Number(bnd[0]) && rv <= Number(bnd[1]); }
+      case "row_outside": { var pro = want.split("="); if (pro.length !== 2) return false; var bndo = pro[1].split("-"); var rvo = Number(a[pro[0].trim()]); return rvo < Number(bndo[0]) || rvo > Number(bndo[1]); }
+      case "ranked_first": return codes.length > 0 && codes[0] === want;
+      case "ranked_top": { var rkp = want.split("="); var n = Number(rkp[1]); return codes.slice(0, n).indexOf(rkp[0]) >= 0; }
       case "cell_is": case "cell_not": case "cell_includes": case "cell_lacks":
         return cellPickTrue(r.op, a, want);
       case "cell_gte": case "cell_lte": case "cell_gt": case "cell_lt":
       case "cell_eq": case "cell_ne": case "cell_between":
         return cellNumTrue(r.op, a, want);
     }
+    try { if (typeof screenRuleTrue === "function") return screenRuleTrue(r, ctx); } catch(e) {}
     return true;
   }
   function showIf(q, ctx) {
@@ -849,6 +868,15 @@
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
         case "loop":
           (q.items || []).forEach(function (it, k) { a[it.code] = q.child === "numeric" ? 5 + k : "(sample " + it.label + ")"; }); break;
+        case "heatmap":
+          var hm=q.heatmap||{};
+          if (hm.image_src && hm.reactions && hm.reactions.length) {
+            a.clicks = [{ x:0.32, y:0.45, reaction: hm.reactions[0].code }];
+            if (hm.reactions.length>1 && (hm.max_clicks||3)>1) a.clicks.push({ x:0.66, y:0.52, reaction: hm.reactions[1].code });
+          } else {
+            (q.rows||[]).forEach(function(r){ (q.cols||[]).forEach(function(c){ a[r.code+"_"+c.code]=1; }); });
+          }
+          break;
         case "text_block": break;
         default: break;
       }

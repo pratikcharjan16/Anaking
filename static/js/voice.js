@@ -98,7 +98,7 @@
     if (/^(clear|reset|clear selection|start over|clear my answers)$/.test(t)) return [{ act: "clear" }];
 
     // ---- Multi-field / Rating Scale / Gauge Meter voice handling ----
-    var isRatingScale = ctx.type === "rating_scale" || (ctx.rows && ctx.rows.length > 0 && ctx.inputType === "number");
+    var isRatingScale = ctx.type === "rating_scale" || ctx.type === "gauge_meter" || ctx.type === "numeric_matrix" || (ctx.rows && ctx.rows.length > 0 && ctx.inputType === "number");
     var hasMultiFields = isRatingScale || (ctx.fieldsCount && ctx.fieldsCount > 1 && ctx.inputType === "number");
 
     if (hasMultiFields) {
@@ -176,9 +176,27 @@
         }
       }
 
-      // 4. Single rating number for current active field: e.g. "4" or "four" or "score 4" or "rate 4"
-      var cleanRating = t.replace(/^(?:rate|score|give|value|it is|it s|is)\s+/, "");
+      // 4. Single rating number for current active field: "4", "four", "rate 4", "I would rate this four", "my rating is 4"
+      var cleanRating = t.replace(/^(?:rate|score|give|value|it is|it s|is|answer|my answer|this is|i would rate|i rate|rating)\s+/, "").trim();
       var singleVal = parseNumber(cleanRating);
+      if (singleVal === null) {
+        // Fallback: extract the last number token anywhere in the utterance (helps natural speech like "I would rate this as four")
+        var tokens = t.split(/\s+/);
+        var nums = [];
+        tokens.forEach(function(tok){ var n = parseNumber(tok); if (n !== null) nums.push(n); });
+        // also try two-word numbers like "twenty five" are already handled by parseNumber on whole phrase, but last token fallback covers simple scales 1-10
+        if (nums.length) singleVal = nums[nums.length - 1];
+        else {
+          // try parseNumber on each sliding window of 2-3 words for "one hundred" etc — keep last success
+          for (var wi = 0; wi < tokens.length; wi++) {
+            for (var wl = 1; wl <= 3 && wi + wl <= tokens.length; wl++) {
+              var phrase = tokens.slice(wi, wi + wl).join(" ");
+              var pn = parseNumber(phrase);
+              if (pn !== null) singleVal = pn;
+            }
+          }
+        }
+      }
       if (singleVal !== null) {
         return [{ act: "fieldValue", index: ctx.activeFieldIndex || 0, value: singleVal, autoAdvance: true }];
       }

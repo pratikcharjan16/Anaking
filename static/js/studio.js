@@ -67,6 +67,7 @@
     multi_select: { name: "Multiple Choice (many)", icon: "\u2611", desc: "Tick all that apply", group: "Questions" },
     rank: { name: "Rank Order", icon: "\u21C5", desc: "Put items in order of preference", group: "Questions" },
     rating_grid: { name: "Grid", icon: "\u25A6", desc: "Rows \u00D7 columns - one or several picks per row", group: "Questions" },
+    text_grid: { name: "Text Grid", icon: "\u229E", desc: "Rows \u00D7 columns of text boxes – flexible, images on rows & columns, voice to text", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
     semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
@@ -147,15 +148,39 @@
       q.rows = [{ code: "a", label: "First row" }, { code: "b", label: "Second row" }];
       q.cols = [{ code: "c1", label: "Column one" }, { code: "c2", label: "Column two" }];
     }
+    if (type === "text_grid") {
+      q.rows = [{ code: "r1", label: "Row 1" }, { code: "r2", label: "Row 2" }];
+      q.cols = [{ code: "c1", label: "Column 1" }, { code: "c2", label: "Column 2" }];
+    }
     if (type === "delta") { q.min = 0; q.max = 100; q.before_label = "Before"; q.after_label = "After"; }
     if (type === "concept_test") {
       q.concept = "Describe the concept here.";
       q.scale = { min: 1, max: 7, min_label: "Strongly disagree", max_label: "Strongly agree" };
       q.rows = [{ code: "a", label: "It is easy to understand" }, { code: "b", label: "It is relevant to me" }];
+      q.concept_execution = "";
+      q.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
+      q.concept_show_desc_first_only = true;
+      q.concept_concepts_per_enabled = true;
+      q.concept_concepts_per = 3;
+      q.concept_randomize = false;
+      q.concepts = [
+        { id: q.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
+        { id: q.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
+        { id: q.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
+      ];
+      q.concept_questions = [
+        { id: q.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: true, placeholder: "Type your answer" },
+        { id: q.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient — KEY DIAGNOSTIC", required: true, options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
+        { id: q.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
+        { id: q.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
+        { id: q.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
+      ];
     }
     if (type === "loop") {
       q.child = "open_text"; q.prompt_template = "{label}"; q.text_rows = 2;
       q.items = [{ code: "i1", label: "First item" }, { code: "i2", label: "Second item" }];
+      q.loop_mode = "create"; q.loop_source = ""; q.limit_loops = false; q.loop_limit = 3; q.loop_randomize = false; q.loop_override = false;
+      q.loop_questions = [{ id: q.id + "_LQ1", type: "open_text", stem: "What do you think about {label}?", placeholder: "Type your answer", required: true }];
     }
     if (type === "text_block") { q.required = false; q.body = "Add instructions, an introduction or a story here."; }
     return q;
@@ -795,10 +820,15 @@
       case "rating_scale":
       case "semantic_diff":
       case "nps":
+        return thumbScale(q);
       case "concept_test":
-        return (q.type === "concept_test" ? thumbRows(q, 2) : "") + thumbScale(q);
+        var cc = (q.concepts||[]).length, cq = (q.concept_questions||[]).length;
+        return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+cc+' concepts</b><i></i></span><span class="st-tb-row"><b>'+cq+' questions</b><i></i></span>'+(cq? '<span class="st-tb-more">'+cc*cq+' steps</span>':'')+'</div>';
       case "heatmap":
-        return thumbRows(q, 2) + thumbScale(q);
+        var hm = q.heatmap || {};
+        if (hm.image_src) return '<div class="st-tb-hm"><img src="' + esc(hm.image_src) + '" alt=""><span>' + esc(hm.image_title || "Heatmap") + ' \u00B7 ' + ((hm.reactions||[]).length||0) + ' reactions</span></div>';
+        if ((q.rows||[]).length) return thumbRows(q, 2) + thumbScale(q);
+        return '<div class="st-tb-hm"><span class="st-tb-hm-ph">No image yet</span></div>';
       case "rank":
         return '<div class="st-tb-rows">' + (q.rows || []).slice(0, 3).map(function (r, i) {
           return '<span class="st-tb-row"><b>' + (i + 1) + ".</b>" + esc(String(r.label || "").slice(0, 20)) + "</span>";
@@ -900,7 +930,7 @@
     sl.innerHTML = cur.cfg.sections.map(function (s) { return '<option value="' + esc(s.id) + '"' + (ed.section === s.id ? " selected" : "") + ">" + esc(secLabel(s)) + "</option>"; }).join("");
   }
   function selectQuestion(qi) {
-    if (qi !== sel) scrTest = {};          // the screening tester starts clean per question
+    if (qi !== sel) { scrTest = {}; ctInnerQi = null; }
     sel = qi;
     if (migrateLegacyGrid(cur.cfg.questions[qi])) markChanged();
     // the outline may be showing rows or thumbnails - mark the selection in whichever is up
@@ -1279,6 +1309,7 @@
 
   // ------------------------------------------------------------ question editor pane
   var ed = null;           // live reference to cur.cfg.questions[sel]
+  var ctInnerQi = null;    // when editing a question inside Concept Test: index in ed.concept_questions
   var OPS = [["selected", "has selected"], ["not_selected", "has not selected"],
     ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
     ["eq", "equals"], ["ne", "does not equal"], ["gt", "is greater than"], ["gte", "is at least"], ["lt", "is less than"], ["lte", "is at most"],
@@ -1293,7 +1324,7 @@
   var FONTS = [["", "Default"], ["Georgia, serif", "Georgia (serif)"], ["'Times New Roman', serif", "Times New Roman"],
     ["Arial, Helvetica, sans-serif", "Arial"], ["Verdana, sans-serif", "Verdana"], ["'Trebuchet MS', sans-serif", "Trebuchet"],
     ["'Courier New', monospace", "Courier (mono)"]];
-  var SIZES = [["", "Default"], ["15px", "Small"], ["19px", "Normal"], ["22px", "Large"], ["26px", "X-Large"], ["32px", "Huge"]];
+  var SIZES = [["", "Default (15px)"], ["8px", "8px"], ["9px", "9px"], ["10px", "10px"], ["11px", "11px"], ["12px", "12px"], ["13px", "13px"], ["14px", "14px"], ["15px", "15px — Small"], ["16px", "16px"], ["17px", "17px"], ["18px", "18px"], ["19px", "19px — Normal"], ["20px", "20px"], ["22px", "22px — Large"], ["24px", "24px"], ["26px", "26px — X-Large"], ["28px", "28px"], ["32px", "32px — Huge"], ["36px", "36px"], ["40px", "40px"], ["48px", "48px"], ["60px", "60px"], ["72px", "72px"], ["custom", "Custom…"]];
   var LIST_KEY = { opt: "options", row: "rows", col: "cols", item: "items" };
   var FLAG_INFO = {
     pin: { label: "\uD83D\uDCCC Pin", tip: "Keeps its place when the list is randomised" },
@@ -1303,16 +1334,16 @@
   };
 
   function hasOptions(t) { return t === "single_select" || t === "multi_select"; }
-  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"].indexOf(t) >= 0; }
+  function hasRows(t) { return ["rating_grid", "rating_scale", "semantic_diff", "sum_to_100", "rank", "emoji_grid", "numeric_matrix"].indexOf(t) >= 0; }
 
   // ---- matrix / grid questions ----------------------------------------------------------
   // A grid always has a Question title plus two axes.  On a rating grid the columns ARE the
   // scale points (1..7, each with a label of its own); on a heat map and a numeric matrix
   // they are a second list.  Both axes are edited the same way: add, label, format, attach
   // an image / video / audio clip, duplicate, move, delete - and the two can be swapped.
-  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "heatmap", "numeric_matrix", "concept_test"];
-  var SCALE_TYPES = ["semantic_diff", "emoji_grid", "concept_test"];   // columns = scale points
-  var AXIS_TYPES = ["rating_grid", "heatmap", "numeric_matrix"];       // columns = a second list
+  var GRID_TYPES = ["rating_grid", "semantic_diff", "emoji_grid", "numeric_matrix", "text_grid"];
+  var SCALE_TYPES = ["semantic_diff", "emoji_grid"];   // columns = scale points
+  var AXIS_TYPES = ["rating_grid", "numeric_matrix", "text_grid"];       // columns = a second list
   var RZ_MODES = [
     ["none", "Fixed", "Everyone sees the list as written"],
     ["shuffle", "Shuffle", "A fresh random order for every respondent"],
@@ -1600,15 +1631,100 @@
       '<option value="multi"' + (sel === "multi" ? " selected" : "") + ">Multi select - several columns per row</option>" +
       "</select></div>";
   }
+
+  // ---- heatmap (image click map) ---------------------------------------------------
+  function heatmapOf() { return (ed && ed.heatmap) || {}; }
+  function ensureHeatmap() {
+    if (!ed) return {};
+    if (!ed.heatmap) ed.heatmap = {};
+    var hm = ed.heatmap;
+    if (!hm.reactions || !hm.reactions.length) {
+      // migrate legacy rows -> reactions if present
+      if ((ed.rows||[]).length && !hm.reactions) {
+        hm.reactions = (ed.rows||[]).map(function(r,i){ return { code: String(r.code||("r"+(i+1))), label: r.label||"Like", onlyOnce:false, allowComments:false, requireComments:false }; });
+      } else {
+        hm.reactions = [{ code: "r1", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }, { code: "r2", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }];
+      }
+    }
+    if (hm.min_clicks == null) hm.min_clicks = 1;
+    if (hm.max_clicks == null) hm.max_clicks = 3;
+    if (hm.instructions == null) hm.instructions = "Click on any area of the image and select your reaction.";
+    return hm;
+  }
+  function heatmapBlock() {
+    var hm = ensureHeatmap();
+    var info = function(t){ return '<span class="st-info" title="' + esc(t) + '">\u24D8</span>'; };
+    var html = '<div class="st-hm">';
+    // Title
+    html += '<div class="st-field"><label>Title or reference to this Heatmap ' + info("Internal name for the heatmap - shown to the research team, never to respondents.") + '</label>' +
+      '<input id="f-heatmap-title" value="' + esc(hm.title||"") + '" placeholder="Title or reference to this Heatmap"></div>';
+    // Description
+    html += '<div class="st-field"><label>Description ' + info("What the respondent reads above the heatmap image.") + '</label>' +
+      richToolbar("f-heatmap-desc") +
+      '<div class="st-rich sm hm-center" id="f-heatmap-desc" contenteditable="true" data-placeholder="We would like to know what you think of the image on the next screen. Please click continue to proceed.">' +
+      chipify(Q.sanitize(hm.description_html||"We would like to know what you think of the image on the next screen. Please click continue to proceed.")) + '</div></div>';
+    // Image block
+    html += '<h4 class="st-h4">Image ' + info("The image respondents will click on to place reactions.") + '</h4>';
+    html += '<div class="st-hm-image-box">';
+    html += '<div class="st-field"><label>Image Title ' + info("Title shown above the image to respondents.") + '</label>' +
+      '<input id="f-heatmap-img-title" value="' + esc(hm.image_title||"") + '" placeholder="Image Title"></div>';
+    html += '<div class="st-field"><label>Image ' + info("Upload the image for the heatmap. JPG, PNG or GIF.") + '</label>';
+    html += '<div class="st-hm-upload-row">';
+    if (hm.image_src) {
+      html += '<span class="st-thumb" title="' + esc(String(hm.image_src).split("/").pop()) + '"><img src="' + esc(hm.image_src) + '" alt=""><button class="st-x" data-act="hm-img-del" title="Remove this image">\u00D7</button></span>';
+      html += '<span class="st-meta">' + esc(String(hm.image_src).split("/").pop()) + '</span>';
+      html += '<label class="st-link danger" style="margin-left:8px;cursor:pointer">\u21BB Replace image<input type="file" accept="image/*" data-act="hm-img" hidden></label>';
+    } else {
+      html += '<label class="st-link danger" style="cursor:pointer"><span style="font-weight:800">\u2191</span> Upload image<input type="file" accept="image/*" data-act="hm-img" hidden></label>';
+      html += '<span class="st-meta" style="margin-left:8px">No image uploaded yet.</span>';
+    }
+    html += '</div></div>';
+    html += '<div class="st-field"><label>Instructions ' + info("Shown directly above the image to explain what to do.") + '</label>' +
+      '<input id="f-heatmap-instructions" value="' + esc(hm.instructions||"") + '" placeholder="Click on any area of the image and select your reaction."></div>';
+    html += '<button class="st-btn sm on" data-act="heatmap-preview">Preview</button>';
+    html += '</div>';
+    // Reactions
+    html += '<h4 class="st-h4">Reactions ' + info("Each reaction is a clickable label respondents can place on the image. Use Only use once to limit each label to a single placement.") + '</h4>';
+    html += '<div class="st-hm-reactions">';
+    (hm.reactions||[]).forEach(function(r, i){
+      html += '<div class="st-hm-reaction" data-ri="' + i + '">';
+      html += '<div class="st-hm-reaction-head">';
+      html += '<span class="st-seq" style="min-width:22px">' + (i+1) + '.</span>';
+      html += '<input data-hm="label" data-i="' + i + '" value="' + esc(r.label||"") + '" placeholder="Like">';
+      html += '<button class="st-ibtn danger" data-act="hm-del" data-i="' + i + '" title="Delete this reaction">\uD83D\uDDD1</button>';
+      html += '</div>';
+      html += '<div class="st-hm-toggles">';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="onlyOnce" data-i="' + i + '"' + (r.onlyOnce ? " checked" : "") + '><i></i>Only use once</label>';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="allowComments" data-i="' + i + '"' + (r.allowComments ? " checked" : "") + '><i></i>Allow comments</label>';
+      html += '<label class="st-switch"><input type="checkbox" data-hm="requireComments" data-i="' + i + '"' + (r.requireComments ? " checked" : "") + '><i></i>Require comments</label>';
+      html += '</div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<button class="st-btn sm on st-hm-add" data-act="hm-add">+ Add Reaction</button>';
+    // Clicks allowed
+    html += '<h4 class="st-h4">Clicks allowed ' + info("Minimum and maximum number of clicks respondents must make on the image.") + '</h4>';
+    html += '<div class="st-grid2"><div class="st-field"><label>Min</label><input id="f-heatmap-min" type="number" min="0" value="' + (hm.min_clicks!=null ? hm.min_clicks : 1) + '"></div>' +
+      '<div class="st-field"><label>Max</label><input id="f-heatmap-max" type="number" min="0" value="' + (hm.max_clicks!=null ? hm.max_clicks : 3) + '"></div></div>';
+    html += '<div class="st-hint">Respondents must place at least Min and at most Max reactions on the image. Unfilled clicks block progress when Min is set.</div>';
+    html += '</div>';
+    return html;
+  }
+
   function gridBlock() {
     var t = ed.type, html = "";
+    if (t === "text_grid") {
+      html += gridHeadFields();
+      html += '<div class="st-hint" style="margin-bottom:10px">Each cell is a free-text box. Add rows and columns below — both support custom names and images. The grid is fully flexible (1 to 12 per axis).</div>';
+      html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + (ed.cols || []).length + '</span></h4>' +
+        itemTable("col", ed.cols || [], { noun: "column", flags: ["pin"], media: true, ph: "Column name", labelHead: "Column" });
+      html += '<h4 class="st-h4">Rows <span class="st-h4-n">' + (ed.rows || []).length + '</span></h4>' +
+        itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, ph: "Row label", labelHead: "Row" });
+      html += '<div class="st-item-actions"><button class="st-btn sm" data-act="mtx-swap">⇄ Swap rows and columns</button><span class="st-meta">Swap rows ↔ columns</span></div>';
+      return html;
+    }
     if (t === "rating_grid") html += gridSelectField();
     html += gridHeadFields();
-    if (t === "concept_test") {
-      html += '<div class="st-field"><label>Concept shown to respondents</label><textarea id="f-concept" rows="4">' +
-        esc(ed.concept || "") + '</textarea><div class="st-hint">Attach an image or video under <b>Image / video</b>, ' +
-        "or use rich text in the question text above.</div></div>";
-    }
     if (hasScale(t)) {
       html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
       html += '<h4 class="st-h4">Columns <span class="st-h4-n">' + scalePoints(ed).length + " scale points</span></h4>" +
@@ -1734,6 +1850,44 @@
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
     ed = sel >= 0 ? cur.cfg.questions[sel] : null;
+    if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
+      var parentQ = ed;
+      var innerQ = parentQ.concept_questions && parentQ.concept_questions[ctInnerQi];
+      if (innerQ) {
+        ed = innerQ;
+        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
+        var ti = tinfo(ed.type);
+        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="ct-inner-back" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(ctInnerQi+1)+' of '+parentQ.concept_questions.length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentQ.concept_execution||'Concept Test')+')</span><span class="st-count">'+(ctInnerQi+1)+'/'+parentQ.concept_questions.length+'</span></div>';
+        host.innerHTML =
+          backHead +
+          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
+          '<div class="st-ehead">' +
+            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
+            '<div class="st-ehead-main"><div class="st-ehead-row">' +
+              '<div class="st-ehead-idcol">' +
+                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
+                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
+              '</div>' +
+              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
+              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
+              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
+            '</div></div>' +
+            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="ct-inner-dup" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="ct-inner-del" title="Delete">✕</button></div>' +
+          '</div>' +
+          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
+          edStrip() +
+          (edTab==="screen" ? "" : scrLineHtml()) +
+          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
+           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
+           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
+             card("q","Question","What respondents read", qCard()) +
+             card("answers",answersTitle(),"", answersCard()) +
+             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
+             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
+             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
+        renderPreview(); return;
+      } else { ctInnerQi=null; ed = parentQ; }
+    }
     if (!ed) {
       host.innerHTML = '<div class="st-editor-empty"><div class="st-editor-empty-ic">\u270E</div><h3>' +
         (cur.cfg.questions.length ? "Pick a question on the left to edit it" : "This study has no questions yet") +
@@ -1796,6 +1950,13 @@
     if (/don't you|obviously|clearly|best|excellent/.test(lower)) out.push({key:"leading", level:"warn", text:"Potentially leading language could bias the answer.", fix:"Make wording neutral"});
     if ((ed.type === "single_select" || ed.type === "multi_select") && (!ed.options || ed.options.length < 2)) out.push({key:"options", level:"error", text:"Add at least two answer options.", fix:"Add starter options"});
     if (ed.options && ed.options.some(function(o){return !String(o.label || '').trim();})) out.push({key:"emptyopt", level:"error", text:"One or more answer options are blank.", fix:"Label blank options"});
+    if (ed.type === "heatmap") {
+      var hm = ed.heatmap || {};
+      if (!hm.image_src) out.push({ key: "hmimg", level: "warn", text: "Upload an image for this heatmap - respondents click the image to place reactions.", fix: "Upload image" });
+      if (!(hm.reactions || []).length) out.push({ key: "hmreact", level: "error", text: "Add at least one reaction for the heatmap.", fix: "Add reaction" });
+      var min = hm.min_clicks, max = hm.max_clicks;
+      if (min != null && max != null && Number(min) > Number(max)) out.push({ key: "hmminmax", level: "error", text: "Min clicks cannot be larger than Max clicks.", fix: "Fix clicks" });
+    }
     if (isGrid(ed.type) || ed.type === "rating_scale") {
       if (!(ed.rows || []).length) out.push({ key: "gridrows", level: "error",
         text: (ed.type === "rating_scale" ? "This rating scale" : "This grid") + " has no rows yet.", fix: "Add starter rows" });
@@ -1830,6 +1991,9 @@
     if (key === 'double') { ed.stem = String(ed.stem).replace(/\s+(and|or)\s+.*?(\?|$)/i, '?'); ed.stem_html = esc(ed.stem); }
     if (key === 'leading') { ed.stem = String(ed.stem).replace(/obviously|clearly|excellent|best/gi, '').replace(/don't you/gi, 'do you'); ed.stem_html = esc(ed.stem); }
     if (key === 'options') ed.options = [{code:1,label:'Option one'},{code:2,label:'Option two'},{code:99,label:'Other',other:true,pin:true}];
+    if (key === 'hmimg') { /* user must upload via Image section - no auto fix */ }
+    if (key === 'hmreact') { ensureHeatmap(); if(!(ed.heatmap.reactions||[]).length) ed.heatmap.reactions=[{code:'r1',label:'Like',onlyOnce:false,allowComments:false,requireComments:false}]; }
+    if (key === 'hmminmax') { var hm=ensureHeatmap(); hm.min_clicks=1; hm.max_clicks=3; }
     if (key === 'gridrows') ed.rows = [{code:'a',label:'First row'},{code:'b',label:'Second row'},{code:'c',label:'Third row'}];
     if (key === 'gridcols') ed.cols = [{code:'c1',label:'First column'},{code:'c2',label:'Second column'},{code:'c3',label:'Third column'}];
     if (key === 'emptyopt') (ed.options || []).forEach(function(o,i){if(!String(o.label || '').trim()) o.label='Option ' + (i+1);});
@@ -1865,16 +2029,23 @@
     var pick = function (cmd, title, opts) {
       return '<select class="st-tb-sel" data-cmd="' + cmd + '" data-target="' + target + '" title="' + title + '" aria-label="' + title + '">' + opts + "</select>";
     };
-    var sizes = [["", "12px"], ["1", "10px"], ["2", "12px"], ["3", "14px"], ["4", "16px"], ["5", "20px"], ["6", "24px"], ["7", "32px"]]
-      .map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
+    // Font size: 8px → 72px + Custom (fully customisable)
+    var sizeOpts = [["", "12px"], ["8px","8px"],["9px","9px"],["10px","10px"],["11px","11px"],["12px","12px"],["13px","13px"],["14px","14px"],["15px","15px"],["16px","16px"],["18px","18px"],["20px","20px"],["22px","22px"],["24px","24px"],["28px","28px"],["32px","32px"],["36px","36px"],["48px","48px"],["72px","72px"],["custom","Custom…"]]
+      .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
     var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
-      .map(function (o) { return '<option value="' + esc(o[0]) + '"' + (o[0] === "" ? " selected" : "") + ">" + o[1] + "</option>"; }).join("");
-    return '<div class="st-toolbar">' +
-      pick("fontSize", "Text size", sizes) + (small ? "" : pick("fontName", "Font", fonts)) +
+      .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
+    // Colour palette: Automatic (black) is the default selected; full RGB/hex picker included
+    function colorBtn(kind, title, swatch) {
+      var tid = target + (kind === "foreColor" ? "_fg" : "_bg");
+      // Palette HTML is injected outside toolbar and toggled; button only holds trigger
+      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000") + '"></span></button>';
+    }
+    return '<div class="st-toolbar" data-for="' + target + '">' +
+      '<select class="st-tb-sel" data-size-for="' + target + '" title="Text size" aria-label="Text size">' + sizeOpts + '</select>' + (small ? "" : pick("fontName", "Font", fonts)) +
       b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
       act("more", "\u2026", "More formatting") +
-      '<label class="st-tb st-tb-color" title="Text colour">A<input type="color" data-cmd="foreColor" data-target="' + target + '" value="#b3261e"></label>' +
-      '<label class="st-tb st-tb-color hl" title="Highlight colour">&#9639;<input type="color" data-cmd="hiliteColor" data-target="' + target + '" value="#fff3a3"></label>' +
+      colorBtn("foreColor", "Text colour — Automatic is black", "A") +
+      colorBtn("hiliteColor", "Highlight colour", "&#9639;") +
       b("justifyLeft", "\u2261", "Align left") + b("justifyCenter", "\u2261", "Align centre") + b("justifyRight", "\u2261", "Align right") +
       b("insertUnorderedList", "&#8226; list", "Bulleted list") + b("insertOrderedList", "1. list", "Numbered list") +
       act("link", "\u{1F517}", "Insert link") + act("table", "\u25A6", "Insert table") +
@@ -1890,6 +2061,145 @@
         act("fullscreen", "\u26F6", "Full screen") +
       "</span></div>";
   }
+  // --- rich text helpers: font size (8px+ + custom) and colour palette (Automatic black) ---
+  var ST_COLORS = ["#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#ffffff","#b3261e","#cc4125","#e06666","#f6b26b","#ffd966","#38761d","#274e13","#6aa84f","#1155cc","#0b5394","#3c78d8","#9900ff","#b45f06","#bf9000","#783f04","#a61c00","#cc0000"];
+  function stPaletteHTML(target, kind) {
+    var isFore = kind === "foreColor";
+    var title = isFore ? "Text colour" : "Highlight colour";
+    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '" role="dialog" aria-label="' + title + '">';
+    html += '<div class="st-color-head"><strong>' + title + '</strong><button type="button" class="st-color-close" data-color-close>&times;</button></div>';
+    html += '<button type="button" class="st-color-auto' + (isFore ? ' on' : '') + '" data-color="automatic" title="Automatic (black) = remove colour"><span class="st-color-auto-swatch"></span> Automatic <em>(black)</em> <span class="st-color-check">\u2713</span></button>';
+    html += '<div class="st-color-grid">';
+    ST_COLORS.forEach(function(c){ html += '<button type="button" class="st-color-cell" data-color="' + c + '" title="' + c + '" style="background:' + c + '"></button>'; });
+    html += '</div>';
+    html += '<div class="st-color-custom"><label>Hex <input type="text" class="st-color-hex" placeholder="#000000" maxlength="7" pattern="#?[0-9a-fA-F]{6}"></label><label>RGB <input type="color" class="st-color-picker" value="#000000"></label></div>';
+    html += '<div class="st-color-rgbrow"><label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label><label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label><label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label><button type="button" class="st-btn sm" data-color-apply>Apply</button></div>';
+    html += '<div class="st-color-hint">Automatic is black. Pick a swatch or enter Hex/RGB.</div></div>';
+    return html;
+  }
+  function stEnsurePalette(target, kind) {
+    var sel = '.st-color-pop[data-palette-for="' + target + '"][data-palette-kind="' + kind + '"]';
+    var pop = document.querySelector(sel);
+    if (pop) return pop;
+    var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
+    if (!tb) return null;
+    var wrap = document.createElement("div");
+    wrap.innerHTML = stPaletteHTML(target, kind);
+    pop = wrap.firstChild;
+    tb.parentElement.insertBefore(pop, tb.nextSibling);
+    // sync RGB/hex interactions inside this palette only
+    (function bindPalette(p){
+      var hex = p.querySelector(".st-color-hex"), pick = p.querySelector(".st-color-picker");
+      var rI = p.querySelector(".st-color-r"), gI = p.querySelector(".st-color-g"), bI = p.querySelector(".st-color-b");
+      function fromHex(h){ if(!h) return null; h=h.trim(); if(h[0]!=='#') h='#'+h; if(!/^#[0-9a-fA-F]{6}$/.test(h)) return null; var n=parseInt(h.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255,hex:h.toLowerCase()}; }
+      function toHex(r,g,b){ return '#' + [r,g,b].map(function(v){ var s=Number(v).toString(16); return s.length===1?'0'+s:s; }).join(''); }
+      function syncFromPicker(){ var c=fromHex(pick.value); if(!c) return; hex.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
+      function syncFromHex(){ var c=fromHex(hex.value); if(!c) return; pick.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
+      function syncFromRGB(){ var r=Math.max(0,Math.min(255, parseInt(rI.value,10)||0)), g=Math.max(0,Math.min(255, parseInt(gI.value,10)||0)), b=Math.max(0,Math.min(255, parseInt(bI.value,10)||0)); var h=toHex(r,g,b); hex.value=h; pick.value=h; }
+      if(pick) pick.addEventListener("input", syncFromPicker);
+      if(hex) hex.addEventListener("input", syncFromHex);
+      if(rI) rI.addEventListener("input", syncFromRGB); if(gI) gI.addEventListener("input", syncFromRGB); if(bI) bI.addEventListener("input", syncFromRGB);
+    })(pop);
+    return pop;
+  }
+  function stApplyFontSize(target, px) {
+    var host = document.getElementById(target); if (!host) return;
+    host.focus();
+    if (!px) { document.execCommand("removeFormat", false, null); changed(); return; }
+    if (px === "custom") {
+      var cur = window.getSelection && window.getSelection().toString ? "" : "";
+      var v = window.prompt("Enter font size (e.g. 13px, 1.2em, 11pt or number 8-72)", "16px");
+      if (!v) return;
+      v = v.trim();
+      if (/^\d+$/.test(v)) v = v + "px";
+      if (!/^[0-9.]+(px|em|rem|pt|%)$/.test(v)) { window.alert("Use like 13px, 1.2em or 11pt"); return; }
+      px = v;
+    }
+    var sel = window.getSelection(); if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      // Insert a styled span for future typing
+      var span = document.createElement("span"); span.style.fontSize = px; span.appendChild(document.createTextNode("\u200B"));
+      range.insertNode(span);
+      sel.removeAllRanges(); var nr=document.createRange(); nr.setStart(span.firstChild,1); nr.collapse(true); sel.addRange(nr);
+    } else {
+      var frag = range.extractContents();
+      var span2 = document.createElement("span"); span2.style.fontSize = px; span2.appendChild(frag);
+      range.insertNode(span2);
+      sel.removeAllRanges(); var nr2=document.createRange(); nr2.selectNodeContents(span2); sel.addRange(nr2);
+    }
+    changed();
+  }
+  function stApplyForeColor(target, color, kind) {
+    var host = document.getElementById(target); if (!host) return;
+    host.focus();
+    document.execCommand("styleWithCSS", false, true);
+    if (!color || color === "automatic") {
+      // Automatic = black (remove colour to inherit black)
+      document.execCommand("removeFormat", false, null);
+      // ensure future typing is black
+      document.execCommand("foreColor", false, "#000000");
+      // remove to keep automatic intent: black is default
+      var sel = window.getSelection(); if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
+        // Remove the just-set black by clearing again so new text is automatic black
+        // (browser keeps black as explicit, but visual is same)
+      }
+    } else {
+      document.execCommand(kind, false, color);
+    }
+    var sw = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' + (kind==="hiliteColor"?".hl":"") + ' .st-color-swatch');
+    if (sw) sw.style.background = (color==="automatic" ? (kind==="hiliteColor"?"#fff3a3":"#000") : color);
+    changed();
+  }
+
+
+
+  // -- Question card: font-size (8+ custom) and colour palette (Automatic black) wiring --
+  document.addEventListener("change", function(e){
+    var sel = e.target.closest("select[data-size-for]");
+    if (sel) { e.preventDefault(); stApplyFontSize(sel.getAttribute("data-size-for"), sel.value); sel.selectedIndex = 0; }
+  });
+  document.addEventListener("click", function(e){
+    var trig = e.target.closest("[data-color-trigger]");
+    if (trig) {
+      e.preventDefault(); e.stopPropagation();
+      var tgt = trig.getAttribute("data-target"), kind = trig.getAttribute("data-color-trigger");
+      var pop = stEnsurePalette(tgt, kind);
+      if (!pop) return;
+      // close other palettes
+      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ if(p!==pop) p.classList.remove("open"); });
+      pop.classList.toggle("open");
+      return;
+    }
+    var cell = e.target.closest(".st-color-cell");
+    if (cell && cell.closest(".st-color-pop")) {
+      var pop2 = cell.closest(".st-color-pop"); var col = cell.getAttribute("data-color");
+      stApplyForeColor(pop2.getAttribute("data-palette-for"), col, pop2.getAttribute("data-palette-kind"));
+      pop2.classList.remove("open"); return;
+    }
+    var auto = e.target.closest(".st-color-auto");
+    if (auto && auto.closest(".st-color-pop")) {
+      var pop3 = auto.closest(".st-color-pop");
+      stApplyForeColor(pop3.getAttribute("data-palette-for"), "automatic", pop3.getAttribute("data-palette-kind"));
+      pop3.classList.remove("open"); return;
+    }
+    var close = e.target.closest("[data-color-close]");
+    if (close) { var p4=close.closest(".st-color-pop"); if(p4) p4.classList.remove("open"); return; }
+    // click on Apply in custom RGB/hex row
+    var apply = e.target.closest("[data-color-apply]");
+    if (apply && apply.closest(".st-color-pop")) {
+      var pop5 = apply.closest(".st-color-pop");
+      var hexI = pop5.querySelector(".st-color-hex"); var hexV = hexI ? hexI.value.trim() : "";
+      if (hexV && hexV[0] !== "#") hexV = "#" + hexV;
+      if (!/^#[0-9a-fA-F]{6}$/.test(hexV)) { var pickI = pop5.querySelector(".st-color-picker"); if (pickI) hexV = pickI.value; }
+      stApplyForeColor(pop5.getAttribute("data-palette-for"), hexV, pop5.getAttribute("data-palette-kind"));
+      pop5.classList.remove("open"); return;
+    }
+    // click outside closes palettes
+    if (!e.target.closest(".st-color-pop")) {
+      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ p.classList.remove("open"); });
+    }
+  });
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
   function chipify(html) {
@@ -2063,6 +2373,136 @@
       if (g) g.focus();
     }
   }
+  // ---- loop (new snip-matched card) ----
+  function loopBlock() {
+    if (!ed.loop_mode) ed.loop_mode = ed.loop_source ? "previous" : "create";
+    if (!ed.items || !ed.items.length) ed.items = [{code:"i1",label:"First item"},{code:"i2",label:"Second item"}];
+    if (!ed.loop_questions) ed.loop_questions = [];
+    var prevQs = (cur.cfg.questions||[]).slice(0, sel).filter(function(q){ return q.id !== ed.id; });
+    var html = '<div class="st-loop-wrap">';
+    html += '<div class="st-loop-head"><span class="st-loop-title"><i>\u27F3</i> ' + esc(ed.id) + ' Question loop</span><span class="st-loop-head-tools"><button class="st-ibtn" title="Search">\uD83D\uDD0D</button><button class="st-ibtn" data-act="qdup" data-i="'+sel+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="qdel" data-i="'+sel+'" title="Delete">\u2715</button></span></div>';
+    html += '<div class="st-loop-card"><div class="st-loop-tabs"><button class="st-loop-tab on">Questions</button><button class="st-loop-tab" data-act="loop-tab-logic">Conditional Display</button></div><div class="st-loop-body">';
+    html += '<div class="st-loop-source-head">Select source question</div>';
+    html += '<div class="st-loop-source-bar"><span>Loop answers from:</span><select id="f-loop-mode">' + [["previous","Previous question"],["create","Create questions"],["multiple","Multiple type"],["grid","Grid"]].map(function(o){ return '<option value="' + o[0] + '"' + (ed.loop_mode===o[0]?' selected':'') + '>' + o[1] + '</option>'; }).join("") + '</select><select id="f-loop-source" style="' + (ed.loop_mode==='previous'?'':'display:none') + '"><option value="">Select a question to loop from</option>' + prevQs.map(function(q){ return '<option value="' + esc(q.id) + '"' + (ed.loop_source===q.id?' selected':'') + '>' + esc(q.id + ' \u2014 ' + (q.stem||q.title||'').slice(0,50)) + '</option>'; }).join("") + '</select></div>';
+    function togRow(label, info, chkId, isOn, extraInputId, extraVal, placeholder){
+      var h = '<div class="st-loop-tog"><div class="st-loop-tog-l"><span>' + esc(label) + '</span>' + (info?'<span class="st-info" title="' + esc(info) + '">\u24D8</span>':'') + (extraInputId?'<input id="' + extraInputId + '" type="number" min="1" placeholder="' + esc(placeholder||'') + '" value="' + esc(extraVal||'') + '" style="width:70px;margin-left:8px;' + (isOn?'':'display:none') + '">':'') + '</div><label class="st-switch"><input type="checkbox" id="' + chkId + '"' + (isOn?' checked':'') + '><i></i></label></div>';
+      return h;
+    }
+    html += '<div class="st-loop-togs">' + togRow('Limit loops per respondent', 'Cap how many iterations each respondent sees', 'f-loop-limiton', !!ed.limit_loops, 'f-loop-limit', ed.loop_limit||'', 'e.g. 3') + togRow('Randomize order', 'Shuffle items and inner questions per respondent', 'f-loop-rand', !!ed.loop_randomize) + togRow('Override loop logic', 'Bypass show-if / screening inside the loop', 'f-loop-override', !!ed.loop_override) + '</div>';
+    if(ed.loop_mode==='previous' && ed.loop_source){
+      var srcQ = prevQs.filter(function(q){return q.id===ed.loop_source;})[0];
+      var srcInfo = srcQ ? (srcQ.options? srcQ.options.length+' options': srcQ.rows? srcQ.rows.length+' rows': srcQ.items? srcQ.items.length+' items': '') : '';
+      html += '<div class="st-loop-items"><div class="st-note">Items will be taken from <b>' + esc(ed.loop_source) + '</b> (' + esc(srcInfo) + ') at runtime. Preview uses its configured options.</div></div>';
+    } else {
+      html += '<div class="st-loop-items"><div class="st-loop-items-head"><span>Items to loop over</span><span class="st-meta">' + ed.items.length + ' items</span></div>' + itemTable("item", ed.items||[], {noun:"item", ph:"Item label"}) + '</div>';
+    }
+    html += '<div class="st-loop-qs"><div class="st-loop-qs-head"><span>Questions in this loop</span><span class="st-meta">they repeat for each item \u00B7 randomized per respondent when toggled</span></div>';
+    if(!ed.loop_questions.length){
+      html += '<div class="st-note" style="margin:8px 0">No questions yet \u2014 add the questions that should be asked for each item. Each item repeats this card.</div>';
+    } else {
+      ed.loop_questions.forEach(function(lq, lqi){
+        html += loopQuestionRow(lq, lqi);
+      });
+    }
+    html += '<div class="st-item-actions"><button class="st-btn sm on" data-act="loop-q-add">+ Add question</button><button class="st-btn sm" data-act="loop-q-add-grid">+ Add Grid</button><button class="st-btn sm" data-act="loop-q-add-multi">+ Add Multiple type</button></div></div>';
+    html += '</div></div>';
+    html += '<button class="st-btn ghost wide" data-act="loop-item-add" style="margin-top:10px">+ Add Item</button>';
+    html += '</div>';
+    return html;
+  }
+  function loopQuestionRow(lq, lqi){
+    var typeOpts = ["single_select","multi_select","open_text","numeric","slider","rating_scale","rating_grid","date","rank","sum_to_100"].map(function(t){ var ti=tinfo(t); return '<option value="' + t + '"' + (lq.type===t?' selected':'') + '>' + esc(ti.name) + '</option>'; }).join("");
+    var h = '<div class="st-loop-q" data-lq="' + lqi + '"><div class="st-loop-q-head"><span class="st-grip" title="Drag to reorder">\u283F</span><span class="st-seq">' + (lqi+1) + '</span><select data-loop-k="type" data-lq="' + lqi + '">' + typeOpts + '</select><input data-loop-k="stem" data-lq="' + lqi + '" value="' + esc(lq.stem||"") + '" placeholder="Question stem (use {label} for item)"> <span class="st-item-tools"><button class="st-ibtn danger" data-act="loop-q-del" data-lq="' + lqi + '" title="Delete">\u2715</button></span></div>';
+    if(lq.type==='single_select' || lq.type==='multi_select'){
+      var opts = lq.options||[{code:1,label:"Option 1"},{code:2,label:"Option 2"}];
+      h += '<div class="st-loop-q-opts">' + opts.map(function(o,oi){ return '<div class="st-loop-opt"><input data-loop-k="opt_code" data-lq="' + lqi + '" data-oi="' + oi + '" value="' + esc(o.code) + '" style="width:50px" placeholder="code"><input data-loop-k="opt_label" data-lq="' + lqi + '" data-oi="' + oi + '" value="' + esc(o.label) + '" placeholder="Option label" style="flex:1"><button class="st-ibtn danger" data-act="loop-opt-del" data-lq="' + lqi + '" data-oi="' + oi + '" title="Delete">\u2715</button></div>'; }).join("") + '<button class="st-btn sm" data-act="loop-opt-add" data-lq="' + lqi + '" style="margin-top:6px">+ Add option</button></div>';
+    }
+    if(lq.type==='open_text'){
+      h += '<div class="st-loop-q-meta st-grid2"><div class="st-field"><label>Placeholder</label><input data-loop-k="placeholder" data-lq="' + lqi + '" value="' + esc(lq.placeholder||'') + '" placeholder="Placeholder"></div><div class="st-field"><label>Min words</label><input data-loop-k="min_words" data-lq="' + lqi + '" type="number" value="' + esc(lq.min_words||'') + '" placeholder="3"></div></div>';
+    }
+    if(lq.type==='numeric'||lq.type==='slider'){
+      h += '<div class="st-loop-q-meta st-grid4"><div class="st-field"><label>Min</label><input data-loop-k="min" data-lq="' + lqi + '" type="number" value="' + esc(lq.min!=null?lq.min:'') + '"></div><div class="st-field"><label>Max</label><input data-loop-k="max" data-lq="' + lqi + '" type="number" value="' + esc(lq.max!=null?lq.max:'') + '"></div></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function conceptTestBlock(){
+    if(!ed.concepts) ed.concepts = [
+      { id: ed.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
+      { id: ed.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
+      { id: ed.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
+    ];
+    if(ed.concept_concepts_per===undefined) ed.concept_concepts_per = 3;
+    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = true;
+    if(ed.concept_randomize===undefined) ed.concept_randomize = false;
+    if(ed.concept_execution===undefined) ed.concept_execution = "";
+    if(ed.concept_description_html===undefined) ed.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
+    if(ed.concept_show_desc_first_only===undefined) ed.concept_show_desc_first_only = true;
+    if(!ed.concept_questions) ed.concept_questions = [
+      { id: ed.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: false },
+      { id: ed.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient \u2014 KEY DIAGNOSTIC", options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
+      { id: ed.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
+      { id: ed.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
+      { id: ed.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
+    ];
+    var html = '<div class="st-ct-wrap st-ct-breathable">';
+    html += '<div class="st-ct-section"><div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="e.g. Execution A, B, C"></div></div>';
+    html += '<div class="st-ct-section"><div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div></div>';
+    html += '<div class="st-ct-toggle-row"><label class="st-switch"><input type="checkbox" id="f-ct-showfirst"' + (ed.concept_show_desc_first_only!==false ? " checked" : "") + '><i></i>Show description before first concept only</label><span class="st-ct-toggle-hint">When on, description appears only on the first screen</span></div></div>';
+    html += '<div class="st-ct-section"><div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Concepts</span><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label></div>';
+    html += '<div class="st-ct-concepts-controls"><div class="st-ct-select-group"><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></div><span class="st-hint" style="margin:0">How many concepts each respondent sees</span></div></div>';
+    html += '<div class="st-ct-concepts">';
+    ed.concepts.forEach(function(c,i){
+      var durOpts = ["no-limit","5 sec","10 sec","15 sec","20 sec","25 sec","30 sec","1 min"];
+      var durMap = {"no-limit":"no-limit","5s":"5 sec","5 sec":"5 sec","10s":"10 sec","10 sec":"10 sec","15s":"15 sec","15 sec":"15 sec","20s":"20 sec","20 sec":"20 sec","25s":"25 sec","25 sec":"25 sec","30s":"30 sec","30 sec":"30 sec","1 min":"1 min"};
+      var curDur = durMap[c.duration] || c.duration || "5 sec";
+      html += '<div class="st-ct-concept-card" data-ct-i="' + i + '">';
+      html += '<div class="st-ct-concept-top"><span class="st-grip" draggable="true">\u283F</span><input data-ct="label" data-i="' + i + '" value="' + esc(c.label) + '" placeholder="EXECUTION A" class="st-ct-label-input"><button class="st-ibtn danger" data-act="ct-del" data-i="' + i + '" title="Delete">\u2715</button></div>';
+      html += '<div class="st-ct-concept-mid"><button class="st-ibtn" data-act="ct-media" data-i="' + i + '" title="Attach image/video">&#128206;</button>';
+      if(c.media && c.media.src) html += '<span class="st-thumb"><img src="' + esc(c.media.src) + '" alt=""><button class="st-x" data-act="ct-media-del" data-i="' + i + '">&times;</button></span>';
+      html += '<span class="st-ct-text">' + esc((c.text||"").slice(0,36)) + '... <a href="#" data-act="ct-edit-text" data-i="' + i + '" class="st-link">Change text</a></span></div>';
+      html += '<div class="st-ct-concept-bottom"><select data-ct="duration" data-i="' + i + '">' + durOpts.map(function(d){ return '<option value="' + d + '"' + (curDur===d ? " selected" : "") + '>' + d + '</option>'; }).join("") + '</select><label class="st-switch"><input type="checkbox" data-ct="allow_replay" data-i="' + i + '"' + (c.allow_replay ? " checked" : "") + '><i></i>Allow replay</label><a href="#" class="st-link" data-act="ct-preview" data-i="' + i + '" style="color:#12789e">Preview</a></div>';
+      html += '</div>';
+    });
+    html += '</div>';
+    html += '<button class="st-btn sm st-ct-add-btn" data-act="ct-add">+ Add Concept</button>';
+    html += '<div class="st-ct-sep"><span>Concept Test Survey</span></div>';
+    html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    ed.concept_questions.forEach(function(qq, qi){
+      html += conceptQuestionRow(qq, qi);
+    });
+    html += '</div><button class="st-btn ghost wide" data-act="ct-q-add" style="margin-top:10px">+ Add Item</button></div>';
+    html += '</div>';
+    return html;
+  }
+  function conceptQuestionRow(qq, qi){
+    var icon = tinfo(qq.type).icon || "\u2261";
+    var tname = (tinfo(qq.type).name || qq.type);
+    var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
+    var reqTxt = qq.required!==false ? "Required" : "Optional";
+    var h = '<div class="st-ct-q" data-qi="'+qi+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;margin-bottom:6px">';
+    h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
+    h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
+    h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="ct-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="ct-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '</div>';
+    return h;
+  }
+  function openCtTypePicker(){
+    var html = '<div class="st-modal-head"><strong>Add a question to Concept Test</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+      '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
+    GROUPS.forEach(function(g){
+      html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
+      TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
+        var i = TYPE_INFO[t];
+        html += '<button class="st-type" data-act="ct-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+      });
+      html += '</div>';
+    });
+    openModal(html, "st-typepick");
+  }
+
   function answersCard() {
     var t = ed.type, html = "";
     if (hasOptions(t)) {
@@ -2071,18 +2511,17 @@
       html += '<div class="st-hint"><b>Pin</b> keeps an option in place when the list is shuffled \u00B7 <b>Exclusive</b> clears the other answers (None / N/A) \u00B7 <b>Other</b> adds a text box \u00B7 <b>Screen out</b> ends the survey there and then. Groups of options, counts and conditions on other questions belong on the <b>Screening</b> tab.</div>';
       if (t === "multi_select") html += '<div class="st-grid2"><div class="st-field"><label>Maximum they may tick <span class="st-opt">blank = no limit</span></label><input id="f-maxselect" type="number" min="1" value="' + (ed.max_select || "") + '"></div></div>';
     }
-    if (isGrid(t)) html += gridBlock();
+    if (t === "concept_test") {
+      html += conceptTestBlock();
+      return html;
+    }
+    if (t === "heatmap") html += heatmapBlock();
+    else if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
     else if (t === "gauge_meter") html += gaugeMeterBlock();
     else if (hasRows(t)) html += itemTable("row", ed.rows || [], { noun: "row", flags: ["pin"], media: true, fmt: true, left: t === "semantic_diff", ph: t === "rank" ? "Item to rank" : "Row / statement", labelHead: t === "rank" ? "Item" : "Row" });
     if (t === "loop") {
-      html += '<div class="st-field"><label>What each loop asks <span class="st-opt">{label} is replaced with the item name</span></label><input id="f-ptmpl" value="' + esc(ed.prompt_template || "{label}") + '" placeholder="{label}"></div>' +
-        '<div class="st-grid3"><div class="st-field"><label>Answer type</label><select id="f-child">' +
-        [["open_text", "Text entry"], ["numeric", "Numeric entry"]].map(function (o) {
-          return '<option value="' + o[0] + '"' + ((ed.child || "open_text") === o[0] ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select></div>" +
-        '<div class="st-field"><label>Text rows</label><input id="f-textrows" type="number" min="1" value="' + (ed.text_rows || 2) + '"></div>' +
-        '<div class="st-field"><label>Placeholder</label><input id="f-placeholder" value="' + esc(ed.placeholder || "") + '"></div></div>' +
-        '<h4 class="st-h4">Loop over</h4>' + itemTable("item", ed.items || [], { noun: "item", flags: [], ph: "Item label" });
+      html += loopBlock();
     }
 
     if (t === "nps") html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
@@ -2273,9 +2712,176 @@
       '<div class="st-hint">Pinned ' + what + ' keep their position - use it for "Other", "None" or "Don\'t know". The order each respondent saw is exported as <code>' + esc(ed.id) + "_order_shown</code>.</div></div>";
   }
 
-  // ---- card: logic -------------------------------------------------------------------
-  // Show IF has its own On / Off switch: the conditions are kept when it is off.
+  // ---- helpers for Show IF --------------------------------------------------------
+  // Dropdown of all options + numeric range: the value field adapts to the question
+  // type and the chosen operator.  Choices use a dropdown (or chips for multi),
+  // numbers use number box(es), grids use row/column pickers + number(s).
   function sifOn() { var s = ed && ed.show_if; return !s || s.off !== true; }
+  function sifOpsFor(q) {
+    if (!q) return OPS;
+    if (typeof Q !== "undefined" && Q.opsFor) {
+      try {
+        var ops = Q.opsFor(q);
+        if (ops && ops.length) return ops.map(function(o){ return [o.op, o.label]; });
+      } catch(e) {}
+    }
+    return OPS;
+  }
+  function sifDefault(q, op) {
+    if (!q) return "";
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(op) : "text";
+    if (kind === "none") return undefined;
+    if (kind === "codes") { var o = (q.options || q.rows || q.items || [])[0]; return o ? String(o.code) : ""; }
+    if (kind === "count") return 1;
+    if (kind === "text") return "";
+    if (kind === "between") return (q.min !== undefined ? q.min : 0) + "-" + (q.max !== undefined ? q.max : 100);
+    var row = (q.rows || q.items || [])[0], code = row ? String(row.code) : "";
+    if (kind === "rowvalue") return code + "=" + (q.scale ? q.scale.max : 0);
+    if (kind === "rowcode") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "");
+    if (kind === "cellnum") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") + "=" + (q.min !== undefined ? q.min : 0);
+    if (kind === "cellrange") return code + "=" + ((q.cols || [])[0] ? String(q.cols[0].code) : "") + "=" + (q.min !== undefined ? q.min : 0) + "-" + (q.max !== undefined ? q.max : 100);
+    if (kind === "ranktop") return code + "=1";
+    if (kind === "rowsum") return "=0";
+    return q.min !== undefined ? q.min : 0;
+  }
+  function sifValueField(r, i) {
+    var q = null;
+    for (var qi = 0; qi < cur.cfg.questions.length; qi++) if (cur.cfg.questions[qi].id === r.q) q = cur.cfg.questions[qi];
+    if (!q) return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(r.op) : "text";
+    if (kind === "none") return '<span class="st-sif-empty">no value needed</span>';
+    if (kind === "codes") {
+      var list = (q.options || q.rows || q.items || []);
+      if (!list.length) return '<span class="st-meta">no options yet</span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      if (r.op === "selected" || r.op === "not_selected" || r.op === "eq" || r.op === "ne") {
+        return '<select data-rule="value" data-ri="' + i + '">' + list.map(function(o){
+          return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + '>' + esc(o.label) + '</option>';
+        }).join("") + '</select>';
+      }
+      var codes = (typeof Q !== "undefined" && Q.codeList) ? Q.codeList(r.value) : String(r.value || "").split(",").map(function(s){return s.trim();}).filter(Boolean);
+      var html = '<div class="st-scr-chips">' + list.map(function(o){
+        var on = codes.indexOf(String(o.code)) >= 0;
+        return '<button type="button" class="st-chip' + (on ? " on" : "") + '" data-act="sif-code" data-ri="' + i + '" data-code="' + esc(o.code) + '">' + (on ? "&#10003; " : "+ ") + esc(o.label) + '</button>';
+      }).join("") + '</div>';
+      html += '<input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(codes.join(",")) + '">';
+      return html;
+    }
+    if (kind === "count" || kind === "number") {
+      var ph = kind === "count" ? "count" : "number";
+      var val = r.value == null ? "" : r.value;
+      var numHtml = '<input data-rule="value" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(val) + '" placeholder="' + ph + '">';
+      return '<span class="st-scr-numwrap">' + numHtml + '</span>';
+    }
+    if (kind === "between") {
+      var p = String(r.value || "0-100").split("-");
+      var lo = p[0] || "", hi = p[1] || "";
+      return '<span class="st-scr-pair"><input data-rule="valueLo" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(lo) + '" placeholder="min">' +
+        '<em>and</em><input data-rule="valueHi" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(hi) + '" placeholder="max"></span>';
+    }
+    if (kind === "text") {
+      return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="text to find">';
+    }
+    if (kind === "rowvalue" || kind === "ranktop") {
+      var rows = (q.rows || q.items || []);
+      if (!rows.length) return '<span class="st-meta">no rows yet</span>';
+      var parts = String(r.value || "").split("=");
+      var want = parts[0] || String(rows[0].code), numv = parts[1] || "";
+      var isTop = kind === "ranktop";
+      var pts = [];
+      if (isTop) { for (var n = 1; n <= rows.length; n++) pts.push(n); }
+      else if (q.scale) { for (var v = q.scale.min; v <= q.scale.max; v++) pts.push(v); }
+      var rowSel = '<select data-rule="row" data-ri="' + i + '">' + rows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === want ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select>';
+      if (pts.length) {
+        return '<span class="st-scr-pair">' + rowSel + '<em>=</em><select data-rule="col" data-ri="' + i + '">' + pts.map(function(v){
+          return '<option value="' + esc(v) + '"' + (String(v) === numv ? " selected" : "") + '>' + esc(v) + '</option>';
+        }).join("") + '</select></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      }
+      return '<span class="st-scr-pair">' + rowSel + '<em>=</em><input data-rule="value" data-ri="' + i + '" type="number" value="' + esc(numv) + '" placeholder="value"></span>';
+    }
+    if (kind === "rowcode") {
+      var grows = (q.rows || q.items || []), gcols = q.cols || [];
+      if (!grows.length || !gcols.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var gparts = String(r.value || "").split("=");
+      var gwant = gparts[0] || String(grows[0].code), gcol = gparts[1] || String(gcols[0].code);
+      var word = {cell_is: "is", cell_not: "is not", cell_includes: "includes", cell_lacks: "does not include"}[r.op] || "is";
+      return '<span class="st-scr-pair"><select data-rule="row" data-ri="' + i + '">' + grows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === gwant ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select><em>' + word + '</em><select data-rule="col" data-ri="' + i + '">' + gcols.map(function(c){
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === gcol ? " selected" : "") + '>' + esc(c.label) + '</option>';
+      }).join("") + '</select></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+    }
+    if (kind === "cellnum" || kind === "cellrange") {
+      var nrows = (q.rows || q.items || []), ncolz = q.cols || [];
+      if (!nrows.length || !ncolz.length) return '<span class="st-meta">no rows or columns yet</span>';
+      var nparts = String(r.value || "").split("=");
+      var nwantR = nparts[0] || String(nrows[0].code), nwantC = nparts[1] || String(ncolz[0].code), ntail = nparts.slice(2).join("=");
+      var nword = {cell_gte: "is at least", cell_lte: "is at most", cell_gt: "is more than", cell_lt: "is less than", cell_eq: "is", cell_ne: "is not", cell_between: "is between"}[r.op] || "is";
+      var base = '<span class="st-scr-pair"><select data-rule="row" data-ri="' + i + '">' + nrows.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === nwantR ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select><em>\u00D7</em><select data-rule="col" data-ri="' + i + '">' + ncolz.map(function(c){
+        return '<option value="' + esc(c.code) + '"' + (String(c.code) === nwantC ? " selected" : "") + '>' + esc(c.label) + '</option>';
+      }).join("") + '</select><em>' + nword + '</em>';
+      if (kind === "cellrange") {
+        var nband = String(ntail || "0-100").split("-");
+        return base + '<input data-rule="valueLo" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(nband[0] || "") + '" placeholder="min"><em>and</em><input data-rule="valueHi" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(nband[1] || "") + '" placeholder="max"></span><input type="hidden" data-rule="value" data-ri="' + i + '" value="' + esc(r.value || "") + '">';
+      }
+      return base + '<input data-rule="value" data-ri="' + i + '" type="number" class="st-scr-num" value="' + esc(ntail || "") + '" placeholder="number"></span>';
+    }
+    if (q.options && q.options.length) {
+      return '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function(o){
+        return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + '>' + esc(o.label) + '</option>';
+      }).join("") + '</select>';
+    }
+    return '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
+  }
+
+  function sifSummary(r, q, opLabel) {
+    if (!q) return 'When <b>' + esc(r.q) + '</b> ' + esc(opLabel || r.op) + ' ' + esc(String(r.value == null ? '' : r.value));
+    var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(r.op) : "text";
+    var qName = '<b>' + esc(q.id) + ' \u00B7 ' + esc(String(q.stem || q.title || '').slice(0,70)) + '</b>';
+    var op = opLabel || r.op;
+    if (kind === "none") return qName + ' ' + esc(op);
+    if (kind === "codes") {
+      var list = (q.options || q.rows || q.items || []);
+      var want = String(r.value || "");
+      var labs = want.split(",").map(function(c){ c=c.trim(); var f=list.filter(function(o){return String(o.code)===c;})[0]; return f? esc(f.label): esc(c);}).join(", ");
+      // chip case: show badges
+      if (!labs) labs = esc(want);
+      return qName + ' <em>' + esc(op) + '</em> ' + labs;
+    }
+    if (kind === "number" || kind === "count" || kind === "between" || kind === "text") {
+      return qName + ' <em>' + esc(op) + '</em> <b>' + esc(String(r.value == null ? '' : r.value)) + '</b>';
+    }
+    if (kind === "rowvalue" || kind === "ranktop" || kind === "rowrange") {
+      var pr = String(r.value || "").split("=");
+      var rowCode = pr[0] || "";
+      var tail = pr.slice(1).join("=");
+      var rowLab = (q.rows || q.items || []).filter(function(o){return String(o.code)===rowCode;})[0];
+      var rl = rowLab ? esc(rowLab.label) : esc(rowCode);
+      return qName + ' \u2014 row \u201C' + rl + '\u201D <em>' + esc(op) + '</em> <b>' + esc(tail) + '</b>';
+    }
+    if (kind === "rowcode") {
+      var pc = String(r.value || "").split("=");
+      var rr = pc[0]||"", cc=pc[1]||"";
+      var rL = (q.rows||[]).filter(function(o){return String(o.code)===rr;})[0];
+      var cL = (q.cols||[]).filter(function(o){return String(o.code)===cc;})[0];
+      return qName + ' \u2014 row \u201C' + esc(rL?rL.label:rr) + '\u201D \u00D7 column \u201C' + esc(cL?cL.label:cc) + '\u201D <em>' + esc(op) + '</em>';
+    }
+    if (kind === "cellnum" || kind === "cellrange") {
+      var pt = String(r.value || "").split("=");
+      var rr2 = pt[0]||"", cc2=pt[1]||"", nn=pt.slice(2).join("=");
+      var rL2 = (q.rows||[]).filter(function(o){return String(o.code)===rr2;})[0];
+      var cL2 = (q.cols||[]).filter(function(o){return String(o.code)===cc2;})[0];
+      return qName + ' \u2014 cell \u201C' + esc(rL2?rL2.label:rr2) + ' \u00D7 ' + esc(cL2?cL2.label:cc2) + '\u201D <em>' + esc(op) + '</em> <b>' + esc(nn) + '</b>';
+    }
+    if (kind === "rowsum") {
+      return qName + ' \u2014 sum <em>' + esc(op) + '</em> <b>' + esc(String(r.value||"")) + '</b>';
+    }
+    return qName + ' <em>' + esc(op) + '</em> <b>' + esc(String(r.value == null ? '' : r.value)) + '</b>';
+  }
+
   function logicCard() {
     var c = cur.cfg, sif = ed.show_if || { match: "all", rules: [] };
     var others = c.questions.filter(function (q) { return q.id !== ed.id && q.type !== "choice_task"; });
@@ -2289,44 +2895,34 @@
         ? (rules.length ? "This question is shown only to the respondents who match." : "No conditions yet - everybody sees this question.")
         : (rules.length ? "Shown to everybody - the conditions below are kept but never applied." : "Switched off - everybody sees this question.")) +
       "</span></div>";
-    html += '<div class="st-logic-guide"><span>✦</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
+    html += '<div class="st-logic-guide"><span>\u2726</span><div><b>Need help with display logic?</b><small>Tell the agent who should see this question. It will prepare the rule and ask before applying it.</small></div><button class="st-btn sm" data-act="logic-guide">Guide me</button></div>' +
       '<div class="st-logic-intro">' + (rules.length
       ? 'Show this question <b>only when</b> <select id="f-sif-match"><option value="all"' + (sif.match !== "any" ? " selected" : "") + '>all</option><option value="any"' + (sif.match === "any" ? " selected" : "") + '>any</option></select> of these are true:'
       : "<b>Always shown.</b> Add a condition to show it only to some respondents - e.g. only those who chose \u201COncology\u201D in Q1.") + "</div>";
     if (!on && rules.length) html += '<div class="st-scr-off">Show IF is switched off - the conditions below are parked, not deleted.</div>';
     html += '<div id="f-rules">' + rules.map(function (r, i) {
-      var q = others.filter(function (x) { return x.id === r.q; })[0];
-      var valField;
-      if (q && q.options && ["selected", "not_selected", "eq", "ne"].indexOf(r.op) >= 0) {
-        valField = '<select data-rule="value" data-ri="' + i + '">' + q.options.map(function (o) {
-          return '<option value="' + esc(o.code) + '"' + (String(o.code) === String(r.value) ? " selected" : "") + ">" + esc(o.label) + "</option>"; }).join("") + "</select>";
-      } else if (q && (q.cols || []).length && ["cell_is", "cell_not", "cell_includes", "cell_lacks"].indexOf(r.op) >= 0) {
-        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
-          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
-            var v = rr.code + "=" + cc.code;
-            return '<option value="' + esc(v) + '"' + (v === String(r.value) ? " selected" : "") + ">" +
-              esc(String(rr.label || rr.code) + " \u2192 " + String(cc.label || cc.code)) + "</option>";
-          }).join("") + "</optgroup>";
-        }).join("") + "</select>";
-      } else if (q && q.type === "numeric_matrix" && (q.cols || []).length &&
-                 ["cell_gte", "cell_lte", "cell_gt", "cell_lt", "cell_eq", "cell_ne", "cell_between"].indexOf(r.op) >= 0) {
-        var nvp = String(r.value == null ? "" : r.value).split("=");
-        var nvc = nvp[0] + "=" + (nvp[1] || ""), nvn = nvp.slice(2).join("=");
-        valField = '<select data-rule="value" data-ri="' + i + '">' + (q.rows || []).map(function (rr) {
-          return '<optgroup label="' + esc(String(rr.label || rr.code)) + '">' + q.cols.map(function (cc) {
-            var v = rr.code + "=" + cc.code;
-            return '<option value="' + esc(v) + '"' + (v === nvc ? " selected" : "") + ">" +
-              esc(String(rr.label || rr.code) + " \u00D7 " + String(cc.label || cc.code)) + "</option>";
-          }).join("") + "</optgroup>";
-        }).join("") + '</select><input data-rule="cellnum" data-ri="' + i + '" type="number" class="st-scr-cellnum" value="' +
-          esc(nvn) + '" placeholder="number">';
-      } else if (r.op === "answered" || r.op === "not_answered") valField = "<span></span>";
-      else valField = '<input data-rule="value" data-ri="' + i + '" value="' + esc(r.value == null ? "" : r.value) + '" placeholder="value">';
-      return '<div class="st-rule"><span class="st-rule-no">' + (i ? (sif.match === "any" ? "or" : "and") : "when") + "</span>" +
-        '<select data-rule="q" data-ri="' + i + '">' + others.map(function (x) {
-          return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " \u00B7 " + String(x.stem).slice(0, 48)) + (c.questions.indexOf(x) > idx ? " (comes later)" : "") + "</option>"; }).join("") + "</select>" +
-        '<select data-rule="op" data-ri="' + i + '">' + OPS.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + o[1] + "</option>"; }).join("") + "</select>" +
-        valField + '<button class="st-ibtn danger" data-act="rule-del" data-ri="' + i + '" title="Remove condition">\u2715</button></div>';
+      var q = others.filter(function (x) { return x.id === r.q; })[0] || (r.q === ed.id ? ed : null);
+      var avail = sifOpsFor(q);
+      if (q && !avail.some(function(o){ return o[0] === r.op; })) r.op = avail[0] ? avail[0][0] : r.op;
+      var valField = sifValueField(r, i);
+      var badge = i ? (sif.match === "any" ? "OR" : "AND") : "WHEN";
+      var badgeCls = badge.toLowerCase();
+      var opLabel = "";
+      for (var oi = 0; oi < avail.length; oi++) if (avail[oi][0] === r.op) opLabel = avail[oi][1];
+      var summary = sifSummary(r, q, opLabel);
+      return '<div class="st-rule st-sif-rule">' +
+        '<div class="st-sif-head">' +
+          '<span class="st-sif-badge ' + badgeCls + '">' + badge + '</span>' +
+          '<div class="st-sif-qwrap"><label>Question</label><select data-rule="q" data-ri="' + i + '" title="' + esc((q ? q.id + " \u00B7 " + String(q.stem||q.title||"").slice(0,80) : r.q)) + '">' + others.map(function (x) {
+            return '<option value="' + esc(x.id) + '"' + (x.id === r.q ? " selected" : "") + ">" + esc(x.id + " \u00B7 " + String(x.stem).slice(0, 64)) + (c.questions.indexOf(x) > idx ? " (comes later)" : "") + "</option>"; }).join("") + "</select></div>" +
+          '<button class="st-ibtn danger" data-act="rule-del" data-ri="' + i + '" title="Remove condition">\u2715</button>' +
+        '</div>' +
+        '<div class="st-sif-cond">' +
+          '<div class="st-sif-field"><label>Condition</label><select data-rule="op" data-ri="' + i + '">' + avail.map(function (o) { return '<option value="' + o[0] + '"' + (o[0] === r.op ? " selected" : "") + ">" + esc(o[1]) + "</option>"; }).join("") + "</select></div>" +
+          '<div class="st-sif-field st-sif-value"><label>Value</label>' + valField + '</div>' +
+        '</div>' +
+        '<div class="st-sif-summary"><span class="st-sif-summary-ic">\u2192</span><span>' + summary + '</span></div>' +
+      '</div>';
     }).join("") + "</div>";
     html += '<div class="st-item-actions"><button class="st-btn sm' + (rules.length ? "" : " on") + '" data-act="rule-add"' + (others.length ? "" : " disabled") + ">+ Add condition</button>" +
       (rules.length ? '<label class="st-switch"><input type="checkbox" id="f-sif-negate"' + (sif.negate ? " checked" : "") + "><i></i>Invert - <em>hide</em> when true</label>" : "") +
@@ -2939,6 +3535,7 @@
 
   // ---- card: media -----------------------------------------------------------------------
   function mediaCard() {
+    if (ed.type === "heatmap") return '<div class="st-note">Image is managed in <b>Content & Settings</b> &gt; Image section above. Upload or replace the heatmap image there.</div>';
     var m = ed.media || {};
     return '<div class="st-media-row">' +
       (m.src ? '<div class="st-media-cur">' + (m.kind === "video" ? '<video src="' + esc(m.src) + '" controls></video>' : '<img src="' + esc(m.src) + '" alt="">') +
@@ -2971,7 +3568,28 @@
     if (!ed) { host.innerHTML = ""; if (note) note.textContent = "Select a question to preview it."; return; }
     var useSample = document.getElementById("prev-sample");
     var answers = (!useSample || useSample.checked) ? Q.sampleAnswers(cur.cfg.questions, ed.id) : {};
-    var res = window.BeaconSurveyPreview.render(host, ed, { answers: answers, questions: cur.cfg.questions, sections: cur.cfg.sections }, prevSeed);
+    // when editing a question inside Concept Test, preview it as respondent sees: Concept + Question on one screen
+    var previewQ = ed;
+    if (ctInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="concept_test") {
+      var parentP = cur.cfg.questions[sel];
+      var conc = (parentP.concepts && parentP.concepts[0]) || {label: parentP.concepts && parentP.concepts[ctInnerQi] ? parentP.concepts[ctInnerQi].label : "Concept", text:"", text_html:"", media:null};
+      try {
+        var synthP = JSON.parse(JSON.stringify(ed));
+        synthP._concept_parent = parentP.id;
+        synthP._concept_label = conc.label;
+        synthP._concept_text = conc.text;
+        synthP._concept_text_html = conc.text_html;
+        synthP._concept_media = conc.media;
+        synthP._concept_duration = conc.duration;
+        synthP._concept_allow_replay = conc.allow_replay;
+        synthP._concept_description_html = parentP.concept_description_html;
+        synthP._concept_show_desc_first_only = parentP.concept_show_desc_first_only;
+        synthP._concept_execution = parentP.concept_execution;
+        // keep original id for preview routing but add concept context
+        previewQ = synthP;
+      } catch(e) { previewQ = ed; }
+    }
+    var res = window.BeaconSurveyPreview.render(host, previewQ, { answers: answers, questions: cur.cfg.questions, sections: cur.cfg.sections }, prevSeed);
     var visible = Q.showIf(ed, { answers: answers, questions: cur.cfg.questions });
     var bits = [];
     if (!visible) bits.push("<b>Hidden</b> for these sample answers - respondents matching them would skip it.");
@@ -3025,7 +3643,35 @@
       setOrDel(ed.style, "font", val("f-font")); setOrDel(ed.style, "size", val("f-size")); setOrDel(ed.style, "align", val("f-align"));
       if (!Object.keys(ed.style).length) delete ed.style;
     }
-    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps" || t === "concept_test") {
+    if (t === "heatmap") {
+      ed.heatmap = ed.heatmap || {};
+      var hm = ed.heatmap;
+      setOrDel(hm, "title", (val("f-heatmap-title")||"").trim());
+      var hmDesc = document.getElementById("f-heatmap-desc");
+      if (hmDesc) { var hh = unchip(Q.sanitize(hmDesc.innerHTML)); if (Q.stripTags(hh)) hm.description_html = hh; else delete hm.description_html; }
+      setOrDel(hm, "image_title", (val("f-heatmap-img-title")||"").trim());
+      setOrDel(hm, "instructions", (val("f-heatmap-instructions")||"").trim());
+      if (val("f-heatmap-min") !== undefined) setOrDel(hm, "min_clicks", num("f-heatmap-min"));
+      if (val("f-heatmap-max") !== undefined) setOrDel(hm, "max_clicks", num("f-heatmap-max"));
+      // reactions
+      var reactNodes = document.querySelectorAll('#st-editor [data-hm="label"]');
+      if (reactNodes.length) {
+        var newReacts = [];
+        reactNodes.forEach(function(n){
+          var idx = Number(n.getAttribute("data-i"));
+          var lab = n.value;
+          var onlyEl = document.querySelector('[data-hm="onlyOnce"][data-i="'+idx+'"]');
+          var allowEl = document.querySelector('[data-hm="allowComments"][data-i="'+idx+'"]');
+          var reqEl = document.querySelector('[data-hm="requireComments"][data-i="'+idx+'"]');
+          var existing = (ed.heatmap.reactions && ed.heatmap.reactions[idx]) || {};
+          newReacts.push({ code: existing.code || ("r"+(idx+1)), label: lab, onlyOnce: onlyEl ? !!onlyEl.checked : false, allowComments: allowEl ? !!allowEl.checked : false, requireComments: reqEl ? !!reqEl.checked : false });
+        });
+        hm.reactions = newReacts;
+      }
+      if (!hm.image_src) delete hm.image_src;
+      if (!Object.keys(hm).length) delete ed.heatmap;
+    }
+    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps") {
       if (val("f-smin") !== undefined) {
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
@@ -3097,17 +3743,101 @@
       setOrDel(ed, "ai_action", qaa);
       if (qaa === "off") ed.ai_check = false; else delete ed.ai_check;
     }
-    if (t === "concept_test" && val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
+    if (t === "concept_test") {
+      setOrDel(ed, "concept_execution", val("f-ct-exec"));
+      var cd = document.getElementById("f-ct-desc");
+      if (cd) { var hh = unchip(Q.sanitize(cd.innerHTML)); ed.concept_description_html = hh; if(Q.stripTags(hh)) ed.concept_description = Q.stripTags(hh); else delete ed.concept_description; }
+      ed.concept_show_desc_first_only = !!chk("f-ct-showfirst");
+      ed.concept_concepts_per_enabled = !!chk("f-ct-cper-on");
+      setOrDel(ed, "concept_concepts_per", num("f-ct-cper"));
+      if (ed.concepts) {
+        ed.concepts.forEach(function(c, i){
+          var labEl = document.querySelector('[data-ct="label"][data-i="'+i+'"]');
+          if(labEl) c.label = labEl.value;
+          var durEl = document.querySelector('[data-ct="duration"][data-i="'+i+'"]');
+          if(durEl) c.duration = durEl.value;
+          var replayEl = document.querySelector('[data-ct="allow_replay"][data-i="'+i+'"]');
+          if(replayEl) c.allow_replay = replayEl.checked;
+          var textInput = document.querySelector('[data-ct="text_input"][data-i="'+i+'"]');
+          if(textInput) { c.text = textInput.value; c.text_html = Q.sanitize(esc(textInput.value)); }
+        });
+      }
+      if (ed.concept_questions) {
+        ed.concept_questions.forEach(function(qq, qi){
+          var stemEl = document.querySelector('[data-cq="stem"][data-qi="'+qi+'"]');
+          if(stemEl) qq.stem = stemEl.value;
+          var typeEl = document.querySelector('[data-cq="type"][data-qi="'+qi+'"]');
+          if(typeEl) qq.type = typeEl.value;
+          if(qq.type==="single_select"||qq.type==="multi_select"){
+            var optCodes = document.querySelectorAll('[data-cq="opt_code"][data-qi="'+qi+'"]');
+            var optLabels = document.querySelectorAll('[data-cq="opt_label"][data-qi="'+qi+'"]');
+            if(optCodes.length){
+              var newOpts=[];
+              optCodes.forEach(function(cEl, oi){
+                var lEl = optLabels[oi];
+                var code = cEl.value.trim(); if(!code) code = oi+1;
+                var lab = lEl ? lEl.value : "";
+                newOpts.push({code: isNaN(Number(code))?code:Number(code), label: lab});
+              });
+              qq.options = newOpts;
+            }
+          }
+        });
+      }
+      if (val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
+    }
     if (t === "numeric_matrix" || t === "delta") {
       if (val("f-nmin") !== undefined) { setOrDel(ed, "min", num("f-nmin")); setOrDel(ed, "max", num("f-nmax")); setOrDel(ed, "step", num("f-nstep")); }
     }
     if (t === "delta" && val("f-beforel") !== undefined) { setOrDel(ed, "before_label", val("f-beforel")); setOrDel(ed, "after_label", val("f-afterl")); }
     if (t === "date" && val("f-datemin") !== undefined) { setOrDel(ed, "min", val("f-datemin")); setOrDel(ed, "max", val("f-datemax")); }
-    if (t === "loop" && val("f-child") !== undefined) {
-      setOrDel(ed, "child", val("f-child") === "open_text" ? "" : val("f-child"));
-      setOrDel(ed, "prompt_template", val("f-ptmpl"));
-      setOrDel(ed, "text_rows", num("f-textrows"));
-      setOrDel(ed, "placeholder", val("f-placeholder"));
+    if (t === "loop") {
+      setOrDel(ed, "loop_mode", val("f-loop-mode"));
+      setOrDel(ed, "loop_source", val("f-loop-source"));
+      setOrDel(ed, "limit_loops", chk("f-loop-limiton"));
+      setOrDel(ed, "loop_limit", num("f-loop-limit"));
+      setOrDel(ed, "loop_randomize", chk("f-loop-rand"));
+      setOrDel(ed, "loop_override", chk("f-loop-override"));
+      // legacy fields (kept for backwards compat, but new UI is authoritative)
+      if (val("f-child") !== undefined) {
+        setOrDel(ed, "child", val("f-child") === "open_text" ? "" : val("f-child"));
+        setOrDel(ed, "prompt_template", val("f-ptmpl"));
+        setOrDel(ed, "text_rows", num("f-textrows"));
+        setOrDel(ed, "placeholder", val("f-placeholder"));
+      }
+      // sync loop_questions (questions inside the loop card)
+      if (ed.loop_questions) {
+        ed.loop_questions.forEach(function(lq, lqi){
+          var typeEl = document.querySelector('[data-loop-k="type"][data-lq="'+lqi+'"]');
+          if (typeEl) lq.type = typeEl.value;
+          var stemEl = document.querySelector('[data-loop-k="stem"][data-lq="'+lqi+'"]');
+          if (stemEl) lq.stem = stemEl.value;
+          var phEl = document.querySelector('[data-loop-k="placeholder"][data-lq="'+lqi+'"]');
+          if (phEl) setOrDel(lq, "placeholder", phEl.value);
+          var mwEl = document.querySelector('[data-loop-k="min_words"][data-lq="'+lqi+'"]');
+          if (mwEl) setOrDel(lq, "min_words", mwEl.value ? Number(mwEl.value) : undefined);
+          // handle min/max for numeric
+          var minEl = document.querySelector('[data-loop-k="min"][data-lq="'+lqi+'"]');
+          if (minEl && minEl.value!=="") lq.min = Number(minEl.value); else if(minEl) delete lq.min;
+          var maxEl = document.querySelector('[data-loop-k="max"][data-lq="'+lqi+'"]');
+          if (maxEl && maxEl.value!=="") lq.max = Number(maxEl.value); else if(maxEl) delete lq.max;
+          // options for choice types
+          if (lq.type==='single_select' || lq.type==='multi_select'){
+            var optCodes = document.querySelectorAll('[data-loop-k="opt_code"][data-lq="'+lqi+'"]');
+            var optLabels = document.querySelectorAll('[data-loop-k="opt_label"][data-lq="'+lqi+'"]');
+            if (optCodes.length){
+              var newOpts=[];
+              optCodes.forEach(function(cEl, oi){
+                var lEl = optLabels[oi];
+                var code = cEl.value.trim(); if(!code) code = oi+1;
+                var lab = lEl ? lEl.value : "";
+                newOpts.push({code: isNaN(Number(code))? code : Number(code), label: lab});
+              });
+              lq.options = newOpts;
+            }
+          }
+        });
+      }
     }
     var bodyRich = document.getElementById("f-body-rich");
     if (bodyRich) {
@@ -3117,13 +3847,43 @@
     if (t === "rank" && val("f-rankcount") !== undefined) setOrDel(ed, "rank_count", num("f-rankcount"));
     if (t === "maxdiff" && val("f-rounds") !== undefined) ed.rounds = String(val("f-rounds")).split("\n").filter(function (l) { return l.trim(); }).map(function (l) { return { items: l.split(",").map(function (x) { return x.trim(); }).filter(Boolean) }; });
     if (t === "choice_task" && val("f-vignette") !== undefined) ed.vignette = val("f-vignette");
-    // logic
+    // logic - Show IF: dropdown of options + numeric range handling
     if (document.getElementById("f-rules")) {
       var rules = [];
-        $$("#f-rules .st-rule").forEach(function (row) {
-        var r = {};
-        $$("[data-rule]", row).forEach(function (n) { r[n.getAttribute("data-rule")] = n.value; });
-        if (r.cellnum !== undefined) { r.value = (r.value || "") + "=" + r.cellnum; delete r.cellnum; }
+      $$("#f-rules .st-rule").forEach(function (row) {
+        var qid = (row.querySelector('[data-rule="q"]') || {}).value || "";
+        var op = (row.querySelector('[data-rule="op"]') || {}).value || "";
+        if (!qid || !op) return;
+        var kind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(op) : "text";
+        var get = function(name){ var n = row.querySelector('[data-rule="'+name+'"]'); return n ? n.value : ""; };
+        var hed = row.querySelector('[data-rule="value"]');
+        var rawHidden = hed ? hed.value : "";
+        var value;
+        if (kind === "none") value = undefined;
+        else if (kind === "codes") value = get("value");
+        else if (kind === "between") value = get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowvalue" || kind === "ranktop") {
+          var rv = get("row"), cv = get("col") || get("value");
+          if (rv && cv !== "") value = rv + "=" + cv;
+          else value = rawHidden || (rv + "=" + (cv || "0"));
+        }
+        else if (kind === "rowcode") value = get("row") + "=" + get("col");
+        else if (kind === "cellnum") value = get("row") + "=" + get("col") + "=" + get("value");
+        else if (kind === "cellrange") value = get("row") + "=" + get("col") + "=" + get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowrange") value = get("row") + "=" + get("valueLo") + "-" + get("valueHi");
+        else if (kind === "rowsum") {
+          var held = String(get("value") || rawHidden || "");
+          value = (held.split("=")[0] || "") + "=" + get("valueSum");
+          if (!value || value === "=") value = rawHidden;
+        }
+        else if (kind === "count" || kind === "number") value = Number(get("value") || 0);
+        else if (kind === "text") value = get("value");
+        else {
+          if (get("cellnum") !== "" && get("value") !== "") value = get("value") + "=" + get("cellnum");
+          else value = rawHidden || get("value") || "";
+        }
+        var r = { q: qid, op: op };
+        if (value !== undefined) r.value = value;
         if (r.q && r.op) rules.push(r);
       });
       var sifNode = document.getElementById("f-sif-on");
@@ -3502,11 +4262,32 @@
       var q0 = others[0]; if (!q0) return;
       var firstRule = !((ed.show_if && ed.show_if.rules) || []).length;
       ed.show_if = ed.show_if || { match: "all", rules: [] };
-      if (firstRule) delete ed.show_if.off;          // the first condition switches Show IF on: nothing is parked yet
-      ed.show_if.rules.push({ q: q0.id, op: q0.options ? "selected" : "answered", value: q0.options ? q0.options[0].code : "" });
+      if (firstRule) delete ed.show_if.off;
+      var ops0 = sifOpsFor(q0);
+      var op0 = ops0.length ? ops0[0][0] : (q0.options ? "selected" : "answered");
+      var val0 = sifDefault(q0, op0);
+      var nr = { q: q0.id, op: op0 };
+      if (val0 !== undefined) nr.value = val0;
+      ed.show_if.rules.push(nr);
       rerenderCard("logic"); changed(); return;
     }
     if (act === "rule-del") { syncFromForm(); ed.show_if.rules.splice(ri, 1); if (!ed.show_if.rules.length && ed.show_if.off !== true) delete ed.show_if; rerenderCard("logic"); changed(); return; }
+    if (act === "hm-add") { syncFromForm(); var hm=ensureHeatmap(); var n=hm.reactions.length+1; hm.reactions.push({ code: "r"+n, label: "Like", onlyOnce:false, allowComments:false, requireComments:false }); rerenderCard("answers"); changed(); return; }
+    if (act === "hm-del") { syncFromForm(); var hm2=ensureHeatmap(); hm2.reactions.splice(i,1); if (!hm2.reactions.length) hm2.reactions.push({ code: "r1", label: "Like", onlyOnce:false, allowComments:false, requireComments:false }); rerenderCard("answers"); changed(); return; }
+    if (act === "hm-img-del") { syncFromForm(); if (ed.heatmap) delete ed.heatmap.image_src; rerenderCard("answers"); changed(); return; }
+    if (act === "heatmap-preview") { syncFromForm(); var hm3=heatmapOf(); if (!hm3.image_src) { toast("Upload an image first - no preview yet."); return; } openModal('<div class="st-modal-head"><strong>Heatmap preview</strong><span class="st-meta">' + esc(hm3.image_title || "Image preview") + '</span><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="text-align:center;padding:10px"><img src="' + esc(hm3.image_src) + '" style="max-width:100%;max-height:60vh;border:1px solid var(--line);border-radius:8px"><p style="margin:10px 0 0;font-size:13px;color:var(--muted)">' + esc(hm3.instructions || "") + '</p></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
+    if (act === "sif-code") {
+      syncFromForm();
+      var riSif = Number(b.getAttribute("data-ri")), codeSif = String(b.getAttribute("data-code"));
+      var ruleSif = ed.show_if && ed.show_if.rules && ed.show_if.rules[riSif];
+      if (ruleSif) {
+        var listSif = (typeof Q !== "undefined" && Q.codeList) ? Q.codeList(ruleSif.value) : String(ruleSif.value || "").split(",").map(function(s){return s.trim();}).filter(Boolean);
+        var atSif = listSif.indexOf(codeSif);
+        if (atSif >= 0) listSif.splice(atSif, 1); else listSif.push(codeSif);
+        ruleSif.value = listSif.join(",");
+      }
+      rerenderCard("logic"); changed(); return;
+    }
 
     // ---- screening builder -------------------------------------------------------------
     if (act === "scr-add") {
@@ -3607,6 +4388,30 @@
       if (m && !m.external && m.src) api("/api/studio/media/delete", { study: cur.slug, file: m.src.split("/").pop() });
       delete ed.media; rerenderCard("media"); changed(); return;
     }
+    if (act === "loop-item-add") { syncFromForm(); ed.items = ed.items || []; var n = ed.items.length; ed.items.push({code:"i"+(n+1), label:"New item "+(n+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-q-add" || act === "loop-q-add-grid" || act === "loop-q-add-multi") { syncFromForm(); ed.loop_questions = ed.loop_questions || []; var typ = act==="loop-q-add-grid" ? "rating_grid" : act==="loop-q-add-multi" ? "multi_select" : "open_text"; var nid = ed.id + "_LQ" + (ed.loop_questions.length+1); var qn = {id:nid, type:typ, stem:"New "+tinfo(typ).name.toLowerCase()+" about {label}", required:true}; if(typ==="single_select"||typ==="multi_select"||typ==="rating_grid"||typ==="rating_scale") qn.options = [{code:1,label:"Option 1"},{code:2,label:"Option 2"}]; if(typ==="rating_grid") qn.rows=[{code:"a",label:"Row 1"}]; if(typ==="rating_scale") { qn.scale={min:1,max:5}; qn.rows=[{code:"a",label:"Item 1"}]; } ed.loop_questions.push(qn); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-q-del") { syncFromForm(); var lqi = Number(b.getAttribute("data-lq")); ed.loop_questions.splice(lqi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-opt-add") { syncFromForm(); var lqIdx = Number(b.getAttribute("data-lq")); var lq = ed.loop_questions[lqIdx]; lq.options = lq.options || []; lq.options.push({code: lq.options.length+1, label:"Option "+(lq.options.length+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-opt-del") { syncFromForm(); var lqIdx2 = Number(b.getAttribute("data-lq")), oi = Number(b.getAttribute("data-oi")); ed.loop_questions[lqIdx2].options.splice(oi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "loop-tab-logic") { syncFromForm(); var logicCard = document.getElementById("card-logic"); if(logicCard) { logicCard.open = true; logicCard.scrollIntoView({behavior:"smooth"}); } else { toast("Conditional logic is on the Logic card below"); } return; }
+    if (act === "ct-add") { syncFromForm(); ed.concepts = ed.concepts||[]; var nid = ed.id+"_C"+(ed.concepts.length+1); ed.concepts.push({id:nid, label:"EXECUTION "+String.fromCharCode(65+ed.concepts.length), text:"New concept text", text_html:"New concept text", duration:"5 sec", allow_replay:true, media:null}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-del") { syncFromForm(); var ci = Number(b.getAttribute("data-i")); ed.concepts.splice(ci,1); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-media-del") { syncFromForm(); var cmi = Number(b.getAttribute("data-i")); if(ed.concepts[cmi]) delete ed.concepts[cmi].media; rerenderCard("answers"); changed(); return; }
+    if (act === "ct-media") { var cidx = Number(b.getAttribute("data-i")); var inp = document.createElement("input"); inp.type="file"; inp.accept="image/*,video/*,audio/*"; inp.onchange=function(){ if(inp.files&&inp.files[0]) uploadMedia(inp.files[0], function(r){ syncFromForm(); ed.concepts[cidx].media = {src:r.src, kind:r.kind, external:false}; rerenderCard("answers"); changed(); toast("Attached "+r.file); }); }; inp.click(); return; }
+    if (act === "ct-edit-text") { syncFromForm(); var ei = Number(b.getAttribute("data-i")); askText("Concept text", "Text shown with the concept (supports rich formatting via toolbar)", (ed.concepts[ei]&&ed.concepts[ei].text)||"", function(txt){ var c=ed.concepts[ei]; c.text=txt; c.text_html=Q.sanitize(esc(txt)); rerenderCard("answers"); changed(); }); return; }
+    if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
+    if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-add") { openCtTypePicker(); return; }
+    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
+      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
+    if (act === "ct-q-edit") { var qei = Number(b.getAttribute("data-qi")); var p = cur.cfg.questions[sel]; if(p && p.type==="concept_test" && p.concept_questions[qei]){ syncFromForm(); ctInnerQi = qei; renderEditorPane(); } return; }
+    if (act === "ct-inner-back") { syncFromForm(); ctInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "ct-inner-dup") { var pp = cur.cfg.questions[sel]; if(!pp) return; syncFromForm(); var curQi = ctInnerQi; var copyI = JSON.parse(JSON.stringify(pp.concept_questions[curQi])); copyI.id = pp.id+"_CQ"+(pp.concept_questions.length+1); copyI.stem = (copyI.stem||"")+" (copy)"; pp.concept_questions.splice(curQi+1,0,copyI); ctInnerQi = curQi+1; renderEditorPane(); changed(); return; }
+    if (act === "ct-inner-del") { var pp2 = cur.cfg.questions[sel]; if(!pp2) return; syncFromForm(); pp2.concept_questions.splice(ctInnerQi,1); ctInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "ct-q-del") { syncFromForm(); var qdi = Number(b.getAttribute("data-qi")); ed.concept_questions.splice(qdi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-q-dup") { syncFromForm(); var qdup2 = Number(b.getAttribute("data-qi")); var copy2 = JSON.parse(JSON.stringify(ed.concept_questions[qdup2])); copy2.id = ed.id+"_CQ"+(ed.concept_questions.length+1); copy2.stem=(copy2.stem||"")+" (copy)"; ed.concept_questions.splice(qdup2+1,0,copy2); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-opt-add") { syncFromForm(); var qoi = Number(b.getAttribute("data-qi")); var qqq = ed.concept_questions[qoi]; qqq.options=qqq.options||[]; qqq.options.push({code:qqq.options.length+1, label:"Option "+(qqq.options.length+1)}); rerenderCard("answers"); changed(); return; }
+    if (act === "ct-opt-del") { syncFromForm(); var qoi2 = Number(b.getAttribute("data-qi")), oi2 = Number(b.getAttribute("data-oi")); ed.concept_questions[qoi2].options.splice(oi2,1); rerenderCard("answers"); changed(); return; }
     if (act === "raw-apply") {
       try {
         var parsed = JSON.parse(val("f-raw"));
@@ -3691,8 +4496,26 @@
       changed(); return;
     }
     var act = t.getAttribute("data-act");
+    // Concept Test toggles (f-ct-showfirst, f-ct-cper-on, f-ct-cper) – persist immediately
+    if(t.id==="f-ct-showfirst" || t.id==="f-ct-cper-on" || t.id==="f-ct-cper") { syncFromForm(); changed(); renderPreview(); return; }
+    if (act === "hm-img" && t.files && t.files[0]) {
+      uploadMedia(t.files[0], function (r) { syncFromForm(); ed.heatmap = ed.heatmap || {}; ed.heatmap.image_src = r.src; rerenderCard("answers"); changed(); toast("Image attached - " + r.file); });
+      return;
+    }
     if (act === "media-upload" && t.files && t.files[0]) {
       uploadMedia(t.files[0], function (r) { syncFromForm(); ed.media = Object.assign(ed.media || {}, { src: r.src, kind: r.kind, external: false }); rerenderCard("media"); changed(); toast("Attached " + r.file); });
+      return;
+    }
+    if (t.id === "f-size" && t.value === "custom") {
+      var cv = window.prompt("Custom font size (e.g. 13px, 1.1em, 10pt)", "16px");
+      if (cv && cv.trim()) {
+        cv = cv.trim();
+        if (/^\d+$/.test(cv)) cv = cv + "px";
+        if (!/^[0-9.]+(px|em|rem|pt|%)$/.test(cv)) { window.alert("Use like 13px, 1.2em or 11pt"); t.selectedIndex = 0; return; }
+        var opt = document.createElement("option"); opt.value = cv; opt.textContent = cv + " (custom)"; opt.selected = true;
+        t.appendChild(opt);
+        ed.style = ed.style || {}; ed.style.size = cv; markChanged(); renderPreview();
+      } else { t.selectedIndex = 0; }
       return;
     }
     if (t.tagName === "SELECT" && t.getAttribute("data-cmd") && t.getAttribute("data-target")) {
@@ -3756,7 +4579,30 @@
     if (t.id === "f-id") { applyId(t); return; }
     if (t.id === "f-type") { if (t.value !== ed.type) convertType(t.value); return; }
     if (t.id === "f-section") { changed(); renderOutline(); return; }
-    if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op" || t.id === "f-sif-match") { syncFromForm(); rerenderCard("logic"); changed(); return; }
+    if (t.getAttribute("data-rule") === "q" || t.getAttribute("data-rule") === "op" || t.id === "f-sif-match") {
+      var isSifQ = t.getAttribute("data-rule") === "q", sifRi = Number(t.getAttribute("data-ri"));
+      var beforeOp = (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) ? ed.show_if.rules[sifRi].op : null;
+      var beforeVal = (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) ? ed.show_if.rules[sifRi].value : undefined;
+      syncFromForm();
+      if (ed.show_if && ed.show_if.rules && ed.show_if.rules[sifRi]) {
+        var qn = null;
+        for (var qi2 = 0; qi2 < cur.cfg.questions.length; qi2++) if (cur.cfg.questions[qi2].id === ed.show_if.rules[sifRi].q) qn = cur.cfg.questions[qi2];
+        if (!qn) qn = ed;
+        if (isSifQ) {
+          var opsN2 = sifOpsFor(qn);
+          ed.show_if.rules[sifRi] = { q: qn.id, op: opsN2.length ? opsN2[0][0] : "answered", value: sifDefault(qn, opsN2.length ? opsN2[0][0] : "answered") };
+          if (ed.show_if.rules[sifRi].value === undefined) delete ed.show_if.rules[sifRi].value;
+        } else if (beforeOp && (beforeOp !== ed.show_if.rules[sifRi].op)) {
+          var newKind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(ed.show_if.rules[sifRi].op) : "";
+          var oldKind = (typeof Q !== "undefined" && Q.valueKind) ? Q.valueKind(beforeOp) : "";
+          if (newKind !== oldKind || !scrValueFits(beforeVal, newKind)) {
+            var nv = sifDefault(qn, ed.show_if.rules[sifRi].op);
+            if (nv !== undefined) ed.show_if.rules[sifRi].value = nv; else delete ed.show_if.rules[sifRi].value;
+          }
+        }
+      }
+      rerenderCard("logic"); changed(); return;
+    }
     // screening: switching the question or the condition rebuilds the value control
     if (t.getAttribute("data-sf") === "q" || t.getAttribute("data-sf") === "op") {
       var isQ = t.getAttribute("data-sf") === "q", ri3 = Number(t.getAttribute("data-ri"));
@@ -3836,11 +4682,17 @@
       ss.sum.op = t.value;                           // syncScreening reshapes the number
       rerenderCard("screening"); changed(); return;
     }
+    if (t.id && t.id.indexOf("f-heatmap-")===0) { syncFromForm(); markChanged(); renderPreview(); refreshOutlineRow(); return; }
+    if (t.getAttribute && t.getAttribute("data-hm") != null) { syncFromForm(); changed(); return; }
     if (t.id === "f-sif-on") { syncFromForm(); renderEditorPane(); changed(); return; }
     if (t.id === "f-scr-match" || t.id === "f-scr-when") { syncFromForm(); rerenderCard("screening"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-sf") && !t.classList.contains("st-scr-rownum")) {
       changed(); refreshScrPlain(); return;         // a number being typed: update the sentence only
     }
+    if (t.id && t.id.indexOf("f-loop")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-loop-k")) { syncFromForm(); if(t.getAttribute("data-loop-k")==="type") rerenderCard("answers"); changed(); return; }
+    if (t.id && t.id.indexOf("f-ct")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && (t.getAttribute("data-ct") || t.getAttribute("data-cq"))) { syncFromForm(); if(t.getAttribute("data-cq")==="type") rerenderCard("answers"); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }
