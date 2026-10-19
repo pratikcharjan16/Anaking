@@ -872,3 +872,27 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-ct-opt{ display:flex; gap:6px; align-items:center }
 .st-ct-opt input{ border:1px solid var(--line); border-radius:7px; padding:5px 8px; font-size:12.5px; background:#fff; flex:1 }
 .st-ct-q-meta{ margin-top:8px; padding-left:26px }
+/* breathable redesign for Concept Test editor */
+.st-ct-breathable{ background:#f8fafb; border:1px solid #dfe6ec; border-radius:14px; padding:16px; margin:8px 0 12px; display:flex; flex-direction:column; gap:18px }
+.st-ct-section{ background:#fff; border:1px solid var(--line2); border-radius:10px; padding:14px 16px; display:flex; flex-direction:column; gap:10px }
+.st-ct-section .st-field{ margin-bottom:0 }
+.st-ct-section .st-field label{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:6px }
+.st-ct-section .st-field input{ width:100%; max-width:360px; padding:9px 11px; font-size:13.5px; border-radius:8px }
+.st-ct-section .st-rich{ min-height:84px; padding:12px; font-size:14px; line-height:1.5 }
+.st-ct-toggle-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding-top:8px; border-top:1px solid var(--line2); margin-top:4px }
+.st-ct-toggle-hint{ font-size:11.5px; color:var(--faint) }
+.st-ct-concepts-head{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding-bottom:2px }
+.st-ct-concepts-title{ font-size:13px; font-weight:800; color:var(--ink); letter-spacing:.02em }
+.st-ct-concepts-controls{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; padding:8px 0 0 }
+.st-ct-select-group{ display:flex; align-items:center; gap:8px }
+.st-ct-select-group select{ border:1px solid var(--line); border-radius:8px; padding:7px 10px; font-size:12.5px; background:#fff; min-width:90px }
+.st-ct-concepts{ display:flex; flex-direction:column; gap:10px; margin-top:4px }
+.st-ct-concept-card{ background:#fff; border:1px solid var(--line); border-radius:10px; padding:14px; display:flex; flex-direction:column; gap:10px; box-shadow:0 1px 4px rgba(16,32,46,.06) }
+.st-ct-concept-top{ display:flex; align-items:center; gap:10px }
+.st-ct-label-input{ flex:1; max-width:200px; border:1px solid var(--line); border-radius:8px; padding:8px 10px; font-weight:700; font-size:13px; background:#fff }
+.st-ct-concept-mid{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; padding:6px 4px; background:var(--soft2); border:1px solid var(--line2); border-radius:8px }
+.st-ct-concept-mid .st-ct-text{ font-size:12.5px; color:var(--muted); flex:1; min-width:160px }
+.st-ct-concept-bottom{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
+.st-ct-concept-bottom select{ border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:12.5px; background:#fff }
+.st-ct-add-btn{ align-self:flex-start; background:#e53935; color:#fff; border-color:#e53935; padding:7px 14px; font-weight:700; margin-top:2px }
+.st-ct-add-btn:hover{ background:#c62828; border-color:#c62828 }

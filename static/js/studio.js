@@ -2431,28 +2431,27 @@
       { id: ed.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
       { id: ed.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
     ];
-    var html = '<div class="st-ct-wrap">';
-    html += '<div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="EXECUTIONS"></div>';
-    html += '<div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div>';
-    html += '<div class="st-row" style="justify-content:flex-end;margin-top:6px"><label class="st-switch"><input type="checkbox" id="f-ct-showfirst"' + (ed.concept_show_desc_first_only!==false ? " checked" : "") + '><i></i>Show description before first concept only</label></div></div>';
-    html += '<div class="st-ct-concepts-head"><span>Concepts</span><span class="st-ct-concepts-tools"><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></span></div>';
+    var html = '<div class="st-ct-wrap st-ct-breathable">';
+    html += '<div class="st-ct-section"><div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="e.g. Execution A, B, C"></div></div>';
+    html += '<div class="st-ct-section"><div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div></div>';
+    html += '<div class="st-ct-toggle-row"><label class="st-switch"><input type="checkbox" id="f-ct-showfirst"' + (ed.concept_show_desc_first_only!==false ? " checked" : "") + '><i></i>Show description before first concept only</label><span class="st-ct-toggle-hint">When on, description appears only on the first screen</span></div></div>';
+    html += '<div class="st-ct-section"><div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Concepts</span><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label></div>';
+    html += '<div class="st-ct-concepts-controls"><div class="st-ct-select-group"><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></div><span class="st-hint" style="margin:0">How many concepts each respondent sees</span></div></div>';
     html += '<div class="st-ct-concepts">';
     ed.concepts.forEach(function(c,i){
       var durOpts = ["no-limit","5 sec","10 sec","15 sec","20 sec","25 sec","30 sec","1 min"];
       var durMap = {"no-limit":"no-limit","5s":"5 sec","5 sec":"5 sec","10s":"10 sec","10 sec":"10 sec","15s":"15 sec","15 sec":"15 sec","20s":"20 sec","20 sec":"20 sec","25s":"25 sec","25 sec":"25 sec","30s":"30 sec","30 sec":"30 sec","1 min":"1 min"};
       var curDur = durMap[c.duration] || c.duration || "5 sec";
-      html += '<div class="st-ct-concept" data-ct-i="' + i + '"><span class="st-grip" draggable="true">\u283F</span>';
-      html += '<input data-ct="label" data-i="' + i + '" value="' + esc(c.label) + '" placeholder="EXECUTION A" style="width:140px;font-weight:700">';
-      html += '<button class="st-ibtn" data-act="ct-media" data-i="' + i + '" title="Attach">&#128206;</button>';
+      html += '<div class="st-ct-concept-card" data-ct-i="' + i + '">';
+      html += '<div class="st-ct-concept-top"><span class="st-grip" draggable="true">\u283F</span><input data-ct="label" data-i="' + i + '" value="' + esc(c.label) + '" placeholder="EXECUTION A" class="st-ct-label-input"><button class="st-ibtn danger" data-act="ct-del" data-i="' + i + '" title="Delete">\u2715</button></div>';
+      html += '<div class="st-ct-concept-mid"><button class="st-ibtn" data-act="ct-media" data-i="' + i + '" title="Attach image/video">&#128206;</button>';
       if(c.media && c.media.src) html += '<span class="st-thumb"><img src="' + esc(c.media.src) + '" alt=""><button class="st-x" data-act="ct-media-del" data-i="' + i + '">&times;</button></span>';
-      html += '<span class="st-ct-text">' + esc((c.text||"").slice(0,18)) + '... <a href="#" data-act="ct-edit-text" data-i="' + i + '" style="color:#b3261e;font-weight:700">Change text</a></span>';
-      html += '<select data-ct="duration" data-i="' + i + '">' + durOpts.map(function(d){ return '<option value="' + d + '"' + (curDur===d ? " selected" : "") + '>' + d + '</option>'; }).join("") + '</select>';
-      html += '<label class="st-switch"><input type="checkbox" data-ct="allow_replay" data-i="' + i + '"' + (c.allow_replay ? " checked" : "") + '><i></i>Allow replay</label>';
-      html += '<a href="#" class="st-link" data-act="ct-preview" data-i="' + i + '" style="color:#12789e">Preview</a>';
-      html += '<button class="st-ibtn danger" data-act="ct-del" data-i="' + i + '" title="Delete">\u2715</button></div>';
+      html += '<span class="st-ct-text">' + esc((c.text||"").slice(0,36)) + '... <a href="#" data-act="ct-edit-text" data-i="' + i + '" class="st-link">Change text</a></span></div>';
+      html += '<div class="st-ct-concept-bottom"><select data-ct="duration" data-i="' + i + '">' + durOpts.map(function(d){ return '<option value="' + d + '"' + (curDur===d ? " selected" : "") + '>' + d + '</option>'; }).join("") + '</select><label class="st-switch"><input type="checkbox" data-ct="allow_replay" data-i="' + i + '"' + (c.allow_replay ? " checked" : "") + '><i></i>Allow replay</label><a href="#" class="st-link" data-act="ct-preview" data-i="' + i + '" style="color:#12789e">Preview</a></div>';
+      html += '</div>';
     });
     html += '</div>';
-    html += '<button class="st-btn sm" data-act="ct-add" style="background:#e53935;color:#fff;border-color:#e53935;margin-top:6px">+ Add Concept</button>';
+    html += '<button class="st-btn sm st-ct-add-btn" data-act="ct-add">+ Add Concept</button>';
     html += '<div class="st-ct-sep"><span>Concept Test Survey</span></div>';
     html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
     ed.concept_questions.forEach(function(qq, qi){
