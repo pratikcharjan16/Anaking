@@ -2970,8 +2970,8 @@
     if(exec) cctx.appendChild(exec);
     var ch = el("div","concept-header");
     // top bar: label left, timer+replay right top
-    var topBar = el("div","concept-topbar");
-    var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept";
+    var topBar = el("div","concept-topbar"); topBar.setAttribute("style","display:flex;align-items:center;justify-content:space-between;gap:8px");
+    var clabel = el("div","concept-label"); clabel.textContent = q._concept_label || "Concept"; clabel.setAttribute("style","font-size:11px;font-weight:800;color:var(--ink);background:#fff;border:1px solid var(--line);border-radius:999px;padding:2px 7px;width:max-content;flex:none");
     topBar.appendChild(clabel);
     var mediaWrap = null;
     var durStr = q._concept_duration || "no-limit";
@@ -2980,30 +2980,26 @@
     var hasTimedMedia = !!(q._concept_media && q._concept_media.src && secs!==null && secs>0);
     var timerEl = null, fill = null, replayBtn = null, timerGroup = null;
     if(hasTimedMedia || (q._concept_allow_replay && q._concept_media && q._concept_media.src)){
-      timerGroup = el("div","concept-timer-group");
+      timerGroup = el("div","concept-timer-group"); timerGroup.setAttribute("style","display:flex;align-items:center;gap:5px;flex:none");
       if(secs!==null && secs>0){
         var timerPill = el("div","concept-timer-pill");
-        timerPill.innerHTML = '<svg class="concept-timer-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2"></path><path d="M9 2h6"></path><path d="M12 2v2"></path></svg>';
+        timerPill.innerHTML = '<svg class="concept-timer-icon" viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13" r="8"></circle><path d="M12 9v4l2 2"></path><path d="M9 2h6"></path><path d="M12 2v2"></path></svg>';
         timerEl = el("span","concept-timer"); timerEl.textContent = secs+"s";
+        timerPill.setAttribute("style","display:inline-flex;align-items:center;gap:4px;background:#0b4f6c;color:#fff;border-radius:999px;padding:2px 6px 2px 5px;font-size:10px;font-weight:700;min-width:58px;justify-content:center;line-height:1");
         timerPill.appendChild(timerEl);
-        var bar = el("div","concept-timer-bar"); fill = el("div","concept-timer-fill"); bar.appendChild(fill);
+        var bar = el("div","concept-timer-bar"); bar.setAttribute("style","width:22px;height:2.5px;background:rgba(255,255,255,.32);border-radius:999px;overflow:hidden;flex:none"); fill = el("div","concept-timer-fill"); fill.setAttribute("style","height:100%;background:linear-gradient(90deg,#7fd4f0,#5eead4);width:100%;transition:width 1s linear"); bar.appendChild(fill);
         timerPill.appendChild(bar);
         timerGroup.appendChild(timerPill);
       }
       if(q._concept_allow_replay){
         replayBtn = el("button","concept-replay-btn");
-        replayBtn.type="button"; replayBtn.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="concept-replay-icon"><path d="M21 12a9 9 0 1 1-2.6-6.3"></path><path d="M21 3v6h-6"></path></svg> Replay';
+        replayBtn.type="button"; replayBtn.setAttribute("style","display:inline-flex;align-items:center;gap:3px;background:linear-gradient(135deg,#ff6b35 0%,#f7931e 100%);color:#fff;border:1px solid #e05a2a;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:700;cursor:pointer;white-space:nowrap;line-height:1"); replayBtn.innerHTML = '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" class="concept-replay-icon"><path d="M21 12a9 9 0 1 1-2.6-6.3"></path><path d="M21 3v6h-6"></path></svg> Replay';
         timerGroup.appendChild(replayBtn);
       }
       if(timerGroup.children.length) topBar.appendChild(timerGroup);
     }
-    ch.appendChild(topBar);
-    if(q._concept_media && q._concept_media.src){
-      mediaWrap = el("div","concept-media-wrap");
-      var mediaEl = renderMedia(q._concept_media, "concept-media");
-      mediaWrap.appendChild(mediaEl);
-      ch.appendChild(mediaWrap);
-      function openPip(){
+    // PIP helper – defined early so Continue prompt can use it
+    function openPip(){
         var overlay = el("div","concept-pip-overlay");
         var box = el("div","concept-pip-box");
         var title = el("div","concept-pip-title"); title.textContent = q._concept_label || "Concept";
@@ -3021,6 +3017,21 @@
         overlay.addEventListener("click", function(e){ if(e.target===overlay) closePip(); });
         close.addEventListener("click", closePip);
       }
+    ch.appendChild(topBar);
+    // “Please click Continue to view the concept.” – hyperlink triggers PIP on same screen
+    if(q._concept_media && q._concept_media.src){
+      var cont = el("div","concept-continue-prompt");
+      cont.setAttribute("style","font-size:11px;color:var(--muted);text-align:center;margin:2px 0 4px");
+      cont.innerHTML = 'Please click <a href="#" class="concept-view-link" style="color:var(--accent-2);font-weight:700;text-decoration:underline">Continue</a> to view the concept.';
+      var ca = cont.querySelector("a");
+      if(ca) ca.addEventListener("click", function(e){ e.preventDefault(); e.stopPropagation(); openPip(); });
+      ch.appendChild(cont);
+    }
+    if(q._concept_media && q._concept_media.src){
+      mediaWrap = el("div","concept-media-wrap");
+      var mediaEl = renderMedia(q._concept_media, "concept-media");
+      mediaWrap.appendChild(mediaEl);
+      ch.appendChild(mediaWrap);
       // Click on media itself also opens PIP (zoom) – but not when clicking video controls
       if(mediaWrap){ mediaWrap.style.cursor="pointer"; mediaWrap.title="Click to view enlarged"; mediaWrap.addEventListener("click", function(e){ if(e.target.tagName==="VIDEO") return; openPip(); }); }
       if(secs!==null && secs>0){
