@@ -55,6 +55,13 @@
         { id: 'bar', label: '📊 Row Ranking' }
       ];
     }
+    if (t === 'delta' && (q.cols || []).length) {
+      return [
+        { id: 'bar', label: '📊 New Value by Row' },
+        { id: 'movement', label: '↕ Movement by Column' },
+        { id: 'table', label: '≡ Row × Column Table' }
+      ];
+    }
     if (t === 'numeric' || t === 'slider' || t === 'delta') {
       return [
         { id: 'box', label: '📋 Summary Stats' }
@@ -523,6 +530,37 @@
       if (view === 'likert') return renderStackedLikert(rows, sMin, sMax);
       if (view === 'scorecard') return renderScorecard(rows, sMin, sMax);
       return renderRatingBars(rows, sMin, sMax, isCut, cut);
+    }
+
+    // 2b. Delta grid - the rows carry the new values, the columns carry the movement
+    if (t === 'delta' && (q.cols || []).length) {
+      var dRows = q.rows || [];
+      var dCols = q.columns || [];
+      if (view === 'movement') {
+        if (!dCols.length) return '<p style="color:#64748b;padding:8px 0">No new columns to compare yet.</p>';
+        return '<div class="table-scroll" tabindex="0" role="region" aria-label="Movement by column"><table class="results-table"><thead><tr>' +
+          '<th scope="col">New column</th><th scope="col">Base (n)</th><th scope="col">Mean new value</th>' +
+          '</tr></thead><tbody>' +
+          dCols.map(function (c) {
+            return '<tr><th scope="row">' + esc(c.label || c.code) + '</th><td>' + (c.base || 0) +
+              '</td><td><strong>' + (c.mean != null ? c.mean : '—') + '</strong></td></tr>';
+          }).join('') + '</tbody></table></div>' +
+          '<p class="chart-note">Each column is the value respondents entered against every row already stated.</p>';
+      }
+      if (view === 'table') {
+        var tCols = dCols.length ? dCols : (q.cols || []).filter(function (c) { return c.kind !== 'src'; });
+        return '<div class="table-scroll" tabindex="0" role="region" aria-label="Delta results"><table class="results-table"><thead><tr><th scope="col">Row</th>' +
+          tCols.map(function (c) { return '<th scope="col">' + esc(c.label || c.code) + '</th>'; }).join('') +
+          '</tr></thead><tbody>' +
+          dRows.map(function (r) {
+            return '<tr><th scope="row">' + esc(r.label) + '</th>' +
+              tCols.map(function () { return '<td>' + (r.mean != null ? r.mean : '—') + '</td>'; }).join('') +
+              '</tr>';
+          }).join('') + '</tbody></table></div>';
+      }
+      var dMin = q.min != null ? q.min : 0, dMax = q.max != null ? q.max : 100;
+      if (!dRows.length) return '<p style="color:#64748b;padding:8px 0">No rows to chart yet.</p>';
+      return renderRatingBars(dRows, dMin, dMax, isCut, cut);
     }
 
     // 3. Single Gauge Meter

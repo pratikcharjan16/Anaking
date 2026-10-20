@@ -301,7 +301,7 @@ def build_ppt_report(study_title: str, summary_data: dict, questions_to_include:
                     table_rows.append([o["label"], str(o.get("count", 0)), f"{o.get('pct', 0)}%"])
 
         # 2. Rating Scale, Grids, Sum to 100, Emoji Grid, or Gauge with Rows
-        elif (qtype in ("rating_scale", "rating_grid", "semantic_diff", "numeric_matrix", "sum_to_100", "emoji_grid") or (qtype == "gauge_meter" and rows)) and rows:
+        elif (qtype in ("rating_scale", "rating_grid", "semantic_diff", "numeric_matrix", "sum_to_100", "emoji_grid", "delta") or (qtype == "gauge_meter" and rows)) and rows:
             has_chart = True
             cdata.categories = [r["label"][:28] for r in rows]
             if is_cut:

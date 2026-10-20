@@ -295,7 +295,7 @@ Variables** (names captured from the respondent link, e.g. `?panel=A` → export
 Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
 options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
 Rank Order, Scale, Text Entry, Numeric Entry, NPS,
-Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -
+Constant Sum, Numeric Matrix, Date, Delta (carry a grid forward, fill in the new columns); **Methodologies** -
 Max Diff experiment, Conjoint, Concept Test, Walk Through, Heatmap; **Survey flow** - Welcome Page,
 Thank You Page, Question Page, Question Loop, Page Randomizer; **Objects** - Embedded
 Variable, Text Block. Every type is fully editable (rows, scales, ranges, labels,
@@ -339,6 +339,40 @@ character. Fifteen such escapes had crept into the matrix / scale-point editor -
 duplicate, delete, remove-attachment and audio glyphs, and the · / … / ⌘ separators in the
 hints - so every one of those was rendering as raw escape text. All fifteen are repaired, and
 `studio_scale_row_test.js` fails if any comes back.
+
+### Delta (Studio → + Add question → Delta)
+
+A Delta is a question that reuses what a study already asked. Pick an earlier grid or
+matrix question - Numeric Matrix, Grid, Word Pairs, Emoji Grid, Constant Sum, a Rating
+Scale, a Rank - and press **Carry forward**. Its columns and every one of its rows come
+across exactly as they were written, so nothing is retyped. Carried columns keep a
+**Source** tag and are shown to respondents as reference; new columns are tagged **New**
+and are where the answers go. Both sit side by side on every row, under two labelled
+bands (*Already stated* / *To enter*), so "what we said before" and "what we are asking
+now" read as one table rather than two.
+
+Every column can be renamed - a carried one as readily as a new one - and **+ Add column**
+and **+ Add row** both stay available, so a Delta can grow past the question it came from.
+Each row also holds the reference value shown under each carried column, so the author
+decides what the respondent is comparing against. Carrying forward from a second source
+*adds* to what is there: the columns and reference values already authored are never
+dropped, only a column whose own source question has lost it.
+
+A **Validation rule** of *Each new column adds up to* puts a live total row under the new
+columns; it follows the cells as they are typed and turns red the moment a column is off,
+so an overshoot is visible on the question rather than only after submit. N/A is offered
+per row and empties that row's cells.
+
+Answers are stored per cell as `row_code_col_code` on the new columns only - carried
+columns hold no answer. That flows through the flattened export, the data dictionary
+(which names the question the reference came from), the research summary (a mean per row
+and a mean per new column, which is the movement a Delta exists to measure) and the
+dashboard charts (*New Value by Row*, *Movement by Column*, *Row × Column Table*).
+
+A Delta saved before this had two number boxes - *Before* and *After* - and a computed
+change, stored as `{qid}_before` / `_after` / `_delta`. That shape still opens on its own
+editor and still exports exactly as it did, so an older study keeps its data and its
+columns.
 
 ### Written-answer quality: AI-generated & pasted text (all open-text questions)
 
@@ -471,6 +505,8 @@ Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 python3 -m pytest                               # in-process suite, no server needed
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
+python3 -m pytest tests/test_delta_grid.py        # Delta as a carried grid: export, data dictionary,
+                                                 #   research summary, and the older before/after Delta
 python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
 python3 -m pytest tests/test_screening.py       # screening config on save, plain-English logic, outline & export
 
@@ -484,6 +520,8 @@ node scripts/dom/studio_colors_test.js          # font-colour & highlight palett
 node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
 node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
 node scripts/dom/studio_scale_row_test.js          # the six-column scale-point row: track sizes, the SVG attach control, no literal escape text
+node scripts/dom/studio_delta_grid_test.js         # Delta: carry-forward, side-by-side columns, renames,
+                                                 #   add / delete / reorder, the rendered grid, N/A and totals
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view

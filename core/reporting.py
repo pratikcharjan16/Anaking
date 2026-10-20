@@ -192,6 +192,28 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                         out[f"{qid}_{r['code']}_{c['code']}"] = a.get(str(r["code"]) + "_" + str(c["code"]), "")
                 else:
                     out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
+        elif t == "delta" and q.get("cols"):
+            # a delta grid: one number per row x new column. The carried columns are
+            # reference only, so they never carry an answer.
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
+                        str(r["code"]) + "_" + str(c["code"]), "")
+                if a.get(str(r["code"])) == "NA":
+                    out[f"{qid}_{r['code']}"] = "NA"
+        elif t == "delta" and q.get("cols"):
+            # a delta grid: one number per row x new column. The carried columns are
+            # reference only, so they never carry an answer.
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
+                        str(r["code"]) + "_" + str(c["code"]), "")
+                if a.get(str(r["code"])) == "NA":
+                    out[f"{qid}_{r['code']}"] = "NA"
         elif t == "delta":
             out[qid + "_before"] = a.get("before", "")
             out[qid + "_after"] = a.get("after", "")
@@ -542,6 +564,26 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 else:
                     dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
                                     f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
+        elif q["type"] == "delta" and q.get("cols"):
+            # carried columns are named too, so the export says what the reference was
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    dd_rows.append([q["id"], q.get("section", ""), q["type"], stem,
+                                    f"{r['code']}_{c['code']}",
+                                    f"{r['label']} \u00D7 {c['label']} (carried from {q.get('delta_source', '')})".strip(),
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
+        elif q["type"] == "delta" and q.get("cols"):
+            # carried columns are named too, so the export says what the reference was
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    dd_rows.append([q["id"], q.get("section", ""), q["type"], stem,
+                                    f"{r['code']}_{c['code']}",
+                                    f"{r['label']} \u00D7 {c['label']} (carried from {q.get('delta_source', '')})".strip(),
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
         elif q["type"] == "delta":
             dd_rows.append([q["id"], q["section"], q["type"], stem,
                             "before/after/delta", "two values and their difference",

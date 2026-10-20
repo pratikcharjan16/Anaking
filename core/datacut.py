@@ -170,7 +170,18 @@ def generate_insight(q: dict, data: dict, cut_meta: dict | None = None) -> str:
         theme_txt = f" Top recurring themes: {top_words}." if top_words else ""
         return f"Collected {base} verbatim responses (average {data.get('avg_word_count', 0)} words per response).{theme_txt}"
 
-    # Numeric & Slider insight
+    # Rating Scale & Grids insight - a delta grid reads down its rows like any grid
+    if qtype == "delta" and rows and any(r.get("mean") is not None for r in rows):
+        valid_rows = [r for r in rows if r.get("mean") is not None]
+        sorted_rows = sorted(valid_rows, key=lambda x: x.get("mean", 0), reverse=True)
+        top_r, low_r = sorted_rows[0], sorted_rows[-1]
+        if len(sorted_rows) > 1 and top_r != low_r:
+            gap = round(top_r["mean"] - low_r["mean"], 2)
+            return (f"Largest movement is on '{top_r['label']}' (mean {top_r['mean']:.2f}), "
+                    f"while '{low_r['label']}' moved least (mean {low_r['mean']:.2f}, gap of {gap:.2f} pts).")
+        return f"Top item by new value is '{top_r['label']}' with a mean of {top_r['mean']:.2f}."
+
+    # Numeric & Slider insight - the original two-cell delta lands here too
     if qtype in ("numeric", "slider", "delta"):
         m = data.get("mean")
         med = data.get("median")

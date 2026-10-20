@@ -448,6 +448,14 @@
     if (a.delta !== undefined && a.before !== undefined) return Number(a.delta);
     return a._ === undefined || a._ === null || a._ === "" ? NaN : Number(a._);
   }
+  // A delta grid has no single number: its values live under row_code_col_code, so a
+  // condition reads the first new column it finds.
+  function deltaNumOf(q, a) {
+    var cols = (q.cols || []).filter(function (c) { return c.kind !== "src"; });
+    if (!cols.length || !(q.rows || []).length) return NaN;
+    var r = q.rows[0], v = a[r.code + "_" + cols[0].code];
+    return v === undefined || v === null || v === "" ? NaN : Number(v);
+  }
   function textOf(q, a) {
     a = a || {};
     if (q && q.type === "loop") {
@@ -484,7 +492,8 @@
     var a = (ctx && ctx.answers && ctx.answers[r.q]) || {};
     var codes = pickedCodes(q, a);
     var want = codeList(r.value);
-    var num = numOf(a);
+    // a delta grid keeps its numbers under row_code_col_code, so it needs its own read
+    var num = q && q.type === "delta" && (q.cols || []).length ? deltaNumOf(q, a) : numOf(a);
     switch (r.op) {
       case "selected": return codes.indexOf(want[0]) >= 0;
       case "not_selected": return codes.indexOf(want[0]) < 0;
@@ -663,7 +672,18 @@
         return a._ !== undefined && a._ !== null && String(a._) !== "";
       case "multi_select": return (a.codes || []).length > 0;
       case "rank": return (a.order || []).length === (q.rows || []).length && (q.rows || []).length > 0;
-      case "delta": return a.before !== undefined && a.after !== undefined;
+      case "delta":
+        if ((q.cols || []).length) {              // a grid: every new cell on every row
+          return (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;  // N/A stands in for the row
+            return (q.cols || []).every(function (c) {
+              if (c.kind === "src") return true;  // carried columns are reference only
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v) !== "";
+            });
+          });
+        }
+        return a.before !== undefined && a.after !== undefined;
       case "sum_to_100": return (q.rows || []).some(function (r) { return a[r.code] !== undefined; });
       case "numeric_matrix":
         if ((q.cols || []).length) return (q.rows || []).every(function (r) {
@@ -866,7 +886,17 @@
           });
           break;
         }
-        case "delta": a.before = 40; a.after = 60; a.delta = 20; break;
+        case "delta":
+          if ((q.cols || []).length) {            // a grid: fill the new columns, row by row
+            (q.rows || []).forEach(function (r, ri) {
+              (q.cols || []).forEach(function (c) {
+                if (c.kind === "src") return;
+                var base = r.code === "a" || ri === 0 ? 60 : 40;
+                a[r.code + "_" + c.code] = String(base + ri);
+              });
+            });
+          } else { a.before = 40; a.after = 60; a.delta = 20; }
+          break;
         case "concept_test":
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
         case "loop":

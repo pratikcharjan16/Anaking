@@ -151,6 +151,50 @@ def summarize(records, cfg, segment=None, segment_value=None):
             row['base'] = row['heatmap']['base']
             row['missing_or_not_shown'] = len(complete) - row['base']
             row['small_base'] = row['base'] < 30
+        elif q.get('rows') and q.get('type') == 'delta' and q.get('cols'):
+            # a delta grid answers row_code_col_code on its new columns only
+            dcols = [c for c in q.get('cols') or [] if c.get('kind') != 'src']
+            row['rows'] = []
+            for item in q['rows']:
+                vs = [r['answers'].get(qid, {}).get(f"{item['code']}_{c['code']}")
+                      for r in complete for c in dcols]
+                ns = [numeric(v) for v in vs if present(v)]
+                ns = [v for v in ns if v is not None]
+                row['rows'].append({'label': plain(item.get('label')),
+                                    'base': sum(present(v) for v in vs),
+                                    'mean': round(statistics.mean(ns), 3) if ns else None})
+            # and the same read down the new columns, which is what a Delta is really for
+            row['columns'] = []
+            for c in dcols:
+                vs = [r['answers'].get(qid, {}).get(f"{it['code']}_{c['code']}")
+                      for r in complete for it in q.get('rows') or []]
+                ns = [numeric(v) for v in vs if present(v)]
+                ns = [v for v in ns if v is not None]
+                row['columns'].append({'code': c.get('code'), 'label': plain(c.get('label')),
+                                       'base': sum(present(v) for v in vs),
+                                       'mean': round(statistics.mean(ns), 3) if ns else None})
+        elif q.get('rows') and q.get('type') == 'delta' and q.get('cols'):
+            # a delta grid answers row_code_col_code on its new columns only
+            dcols = [c for c in q.get('cols') or [] if c.get('kind') != 'src']
+            row['rows'] = []
+            for item in q['rows']:
+                vs = [r['answers'].get(qid, {}).get(f"{item['code']}_{c['code']}")
+                      for r in complete for c in dcols]
+                ns = [numeric(v) for v in vs if present(v)]
+                ns = [v for v in ns if v is not None]
+                row['rows'].append({'label': plain(item.get('label')),
+                                    'base': sum(present(v) for v in vs),
+                                    'mean': round(statistics.mean(ns), 3) if ns else None})
+            # and the same read down the new columns, which is what a Delta is really for
+            row['columns'] = []
+            for c in dcols:
+                vs = [r['answers'].get(qid, {}).get(f"{it['code']}_{c['code']}")
+                      for r in complete for it in q.get('rows') or []]
+                ns = [numeric(v) for v in vs if present(v)]
+                ns = [v for v in ns if v is not None]
+                row['columns'].append({'code': c.get('code'), 'label': plain(c.get('label')),
+                                       'base': sum(present(v) for v in vs),
+                                       'mean': round(statistics.mean(ns), 3) if ns else None})
         elif q.get('rows'):
             row['rows'] = []
             for item in q['rows']:

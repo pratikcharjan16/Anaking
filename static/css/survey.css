@@ -1090,3 +1090,40 @@ body.voice-on .voice-rating-hint{display:block}
 .concept-pip-close{ position:absolute; top:6px; right:6px; width:26px; height:26px; border-radius:50%; border:1px solid var(--line); background:#fff; color:var(--ink); font-size:16px; line-height:1; cursor:pointer; display:grid; place-items:center; box-shadow:0 1px 6px rgba(0,0,0,.12) }
 .concept-pip-close:hover{ background:#f4f7f9 }
 .concept-pip-title{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em; margin-bottom:8px; padding-right:30px }
+
+/* ---------- Delta grid ---------- */
+.deltagrid{ --dg-src:#fffdf4; --dg-src-line:#e6d9a8; --dg-src-ink:#5c4a12;
+  --dg-new:#f4fbf7; --dg-new-line:#bfe3cd; --dg-new-ink:#14472c }
+.dg-table{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff }
+.dg-tr{ display:grid; grid-template-columns:var(--dg-cols); gap:0 10px; align-items:center;
+  padding:9px 12px; border-top:1px solid var(--line2) }
+.dg-tr:first-child{ border-top:0 }
+.dg-head{ background:#f8fafb; align-items:end; padding-bottom:10px }
+.dg-corner{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted) }
+.dg-th{ min-width:0; font-size:12.5px; font-weight:700; color:var(--ink) }
+.dg-th.dg-src{ color:var(--dg-src-ink) }
+.dg-th.dg-new{ color:var(--dg-new-ink) }
+.dg-th-na{ text-align:center }
+.dg-groups{ padding:0 12px 6px; background:#f8fafb }
+.dg-group{ display:flex; align-items:center; justify-content:center; padding:3px 8px;
+  font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; border-radius:5px }
+.dg-group-src{ background:var(--dg-src); border:1px solid var(--dg-src-line); color:var(--dg-src-ink) }
+.dg-group-new{ background:var(--dg-new); border:1px solid var(--dg-new-line); color:var(--dg-new-ink) }
+.dg-rowlabel{ min-width:0; font-size:13px; font-weight:600; color:var(--ink) }
+.dg-td{ min-width:0 }
+.dg-td-src{ background:var(--dg-src); border:1px solid var(--dg-src-line); border-radius:7px;
+  padding:6px 10px; text-align:center }
+.dg-td-src .dg-ref{ font-size:13px; font-weight:700; color:var(--dg-src-ink); font-variant-numeric:tabular-nums }
+.dg-td-new .nm-input{ width:100%; text-align:center; background:var(--dg-new);
+  border-color:var(--dg-new-line) }
+.dg-td-na{ text-align:center }
+.dg-total{ background:#fbfcfd; font-weight:700 }
+.dg-total .dg-sum{ font-variant-numeric:tabular-nums; font-weight:800; color:var(--ink) }
+.dg-total .dg-sum.bad{ color:#c0392b }
+.dg-hint{ font-size:12px; color:var(--muted); margin-top:8px }
+.dg-empty{ padding:14px; font-size:12.5px; color:var(--muted) }
+@media (max-width:900px){
+  .dg-tr{ gap:0 6px; padding:8px }
+  .dg-th{ font-size:11.5px }
+  .dg-td-src{ padding:5px 6px }
+}

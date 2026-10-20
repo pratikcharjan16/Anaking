@@ -78,7 +78,7 @@
     open_text: { name: "Text Entry", icon: "\u00B6", desc: "Free text, with optional voice note", group: "Questions" },
     date: { name: "Date", icon: "\uD83D\uDCC5", desc: "Pick a calendar date", group: "Questions" },
     numeric_matrix: { name: "Numeric Matrix", icon: "\u25A4", desc: "A number for every row", group: "Questions" },
-    delta: { name: "Delta", icon: "\u0394", desc: "Before / after values and the change", group: "Questions" },
+    delta: { name: "Delta", icon: "\u0394", desc: "Carry a grid forward, fill in the new columns", group: "Questions" },
     concept_test: { name: "Concept Test", icon: "\uD83D\uDCA1", desc: "Show a concept, rate it on rows", group: "Methodologies" },
     walk_through: { name: "Walk Through", icon: "\u25B6\uFE0F", desc: "Narrated animated walkthrough - no answer stored", group: "Methodologies" },
     heatmap: { name: "Heatmap", icon: "\u25A9", desc: "Intensity per row \u00D7 column", group: "Methodologies" },
@@ -151,7 +151,14 @@
       q.rows = [{ code: "r1", label: "Row 1" }, { code: "r2", label: "Row 2" }];
       q.cols = [{ code: "c1", label: "Column 1" }, { code: "c2", label: "Column 2" }];
     }
-    if (type === "delta") { q.min = 0; q.max = 100; q.before_label = "Before"; q.after_label = "After"; }
+    // A new Delta starts as a grid: one empty column to hold the answers, no rows until
+    // the author carries them forward from an earlier question or adds their own. Studies
+    // saved before this had before_label / after_label instead, and still render that way.
+    if (type === "delta") {
+      q.min = 0; q.max = 100; q.step = 1;
+      q.cols = [{ code: "d1", label: "New column", kind: "delta" }];
+      q.rows = [];
+    }
     if (type === "concept_test") {
       q.concept = "Describe the concept here.";
       q.scale = { min: 1, max: 7, min_label: "Strongly disagree", max_label: "Strongly agree" };
@@ -1362,6 +1369,53 @@
   function hasScale(t) { return SCALE_TYPES.indexOf(t) >= 0; }
   function hasColAxis(t) { return AXIS_TYPES.indexOf(t) >= 0; }
 
+  // ---- delta questions ------------------------------------------------------------------
+  // A Delta duplicates the shape of an earlier grid / matrix question. Its rows and its
+  // columns are carried across, so the author starts from exactly what respondents already
+  // saw instead of retyping it. The carried columns stay as reference; the new columns are
+  // where the values get entered - and both sit side by side on every row, so "what we said
+  // before" and "what we are asking now" read as one table.
+  //
+  // Shape: cols[] carries kind:"src" for a carried column and kind:"delta" for a new one;
+  // rows[] carries label plus ref{} - the reference value shown under each carried column.
+  // Answers are rowCode_colCode on the delta columns only.
+  //
+  // A delta saved before this had before_label / after_label and no cols; that shape is
+  // still rendered, unchanged, so existing studies keep working.
+  var DELTA_SOURCE_TYPES = ["numeric_matrix", "text_grid", "rating_grid", "semantic_diff",
+                            "emoji_grid", "sum_to_100", "rating_scale", "rank",
+                            "numeric", "slider"];
+  function isDeltaSourceType(t) { return DELTA_SOURCE_TYPES.indexOf(t) >= 0; }
+  function deltaSources() {
+    return (cur.cfg.questions || []).slice(0, sel)
+      .filter(function (q) { return isDeltaSourceType(q.type); });
+  }
+  function deltaSourceQ() {
+    if (!ed.delta_source) return null;
+    return deltaSources().filter(function (q) { return q.id === ed.delta_source; })[0] || null;
+  }
+  // The columns an earlier question can offer: its own column list, its scale points, or a
+  // single derived column when it has neither (a rating scale, a rank, a plain number).
+  function sourceColumns(q) {
+    if (!q) return [];
+    if (q.cols && q.cols.length) return q.cols;
+    if (hasScale(q.type)) return scalePoints(q);
+    if (q.rows && q.rows.length &&
+        (q.type === "rating_scale" || q.type === "rank" || q.type === "sum_to_100"))
+      return [{ code: "v", label: "Value" }];
+    if (q.type === "numeric" || q.type === "slider") return [{ code: "v", label: "Value" }];
+    return [];
+  }
+  function sourceRows(q) {
+    if (!q) return [];
+    if (q.rows && q.rows.length) return q.rows;
+    if (q.items && q.items.length) return q.items;
+    return [];
+  }
+  function deltaCols() { return ed.cols || []; }
+  function deltaRows() { return ed.rows || []; }
+  function deltaIsGrid() { return !!(ed.cols && ed.cols.length); }
+
   // Older studies carried grids with a scale (one rating per row).  A grid is now rows x
   // columns with a pick per row, so the first time such a question is opened its scale
   // points become the columns - codes and labels travel with them, nothing is thrown away.
@@ -1977,6 +2031,259 @@
     if (key === 'screen-next' && ed.screening) ed.screening.when = 'next';
     if (key === 'screen-opts') (ed.options || []).forEach(function(o){ delete o.terminate; });
     markChanged(); renderOutline(); renderEditorPane(); toast('Suggestion applied — review before publishing');
+  }
+
+  // Pull the rows and columns off the chosen source question. Carried columns keep their
+  // own codes and labels so the two line up; anything already authored is left alone, so
+  // re-carrying after adding rows does not throw that work away.
+  // prevSrc is the question the Delta was carrying from before this click, so a re-carry
+  // from the same source can prune columns the source has lost, while carrying from a new
+  // source only ever adds.
+  function carryDeltaForward(prevSrc) {
+    var src = deltaSourceQ();
+    if (!src) return;
+    var sCols = sourceColumns(src), sRows = sourceRows(src);
+    var cols = ed.cols || [], rows = ed.rows || [];
+
+    // a carried column already present keeps its (possibly renamed) label; the rest are added
+    sCols.forEach(function (c, i) {
+      var code = String(c.code != null ? c.code : "c" + (i + 1));
+      var there = cols.filter(function (x) { return x.kind === "src" && String(x.src_code) === code; })[0];
+      if (there) return;
+      // insert ahead of any new columns, so carried and new stay grouped
+      var firstNew = cols.map(function (x) { return x.kind; }).indexOf("delta");
+      var at = firstNew < 0 ? cols.length : firstNew;
+      cols.splice(at, 0, { code: "dsc" + code, label: String(c.label || ("Column " + (i + 1))),
+                           kind: "src", src_code: code, src_q: src.id });
+    });
+    // A carried column only goes away when the question it came from lost it: carrying
+    // forward from a different question adds to what is here, it never removes the
+    // columns and the reference values the author already put together.
+    // A carried column only goes away when the question it came from has lost it. Columns
+    // carried from any other question stay put, so re-carrying from a new source adds to
+    // what is here and never removes the columns or reference values already authored.
+    var live = sCols.map(function (c) { return String(c.code != null ? c.code : ""); });
+    for (var k = cols.length - 1; k >= 0; k--) {
+      if (cols[k].kind === "src" && cols[k].src_q === src.id &&
+          live.indexOf(String(cols[k].src_code)) < 0) cols.splice(k, 1);
+    }
+    sRows.forEach(function (r, i) {
+      var code = String(r.code != null ? r.code : "r" + (i + 1));
+      if (rows.some(function (x) { return String(x.code) === code; })) return;
+      rows.push({ code: code, label: String(r.label || ("Row " + (i + 1))), ref: {} });
+    });
+    ed.cols = cols;
+    ed.rows = rows;
+    if (!cols.length) ed.cols = [{ code: "d1", label: "New column", kind: "delta" }];
+  }
+
+  // Read the delta card's inputs. Called from syncFromForm, so every other path that saves
+  // (markChanged, the action handlers) sees the same values.
+  function syncDeltaForm() {
+    if (!ed || ed.type !== "delta" || !deltaIsGrid()) return;
+    var srcSel = document.getElementById("f-delta-source");
+    if (srcSel) setOrDel(ed, "delta_source", srcSel.value);
+    var cols = ed.cols || [];
+    $$("#st-editor [data-dcol]").forEach(function (nd) {
+      var c = cols[Number(nd.getAttribute("data-dci"))]; if (!c) return;
+      c.label = nd.value;
+    });
+    var rows = ed.rows || [];
+    $$("#st-editor [data-drow]").forEach(function (nd) {
+      var r = rows[Number(nd.getAttribute("data-dri"))]; if (!r) return;
+      r.label = nd.value;
+    });
+    $$("#st-editor [data-dref]").forEach(function (nd) {
+      var r = rows[Number(nd.getAttribute("data-dri"))]; if (!r) return;
+      var ci = Number(nd.getAttribute("data-dci"));
+      var c = cols[ci]; if (!c) return;
+      r.ref = r.ref || {};
+      var v = String(nd.value).trim();
+      if (v === "") delete r.ref[c.code]; else r.ref[c.code] = v;
+    });
+    if (val("f-dl-rule") !== undefined) setOrDel(ed, "delta_rule", val("f-dl-rule"));
+    if (val("f-dl-rule-total") !== undefined) setOrDel(ed, "delta_total", num("f-dl-rule-total"));
+    setOrDel(ed, "delta_na", chk("f-dl-na"));
+    setOrDel(ed, "delta_randomize", chk("f-dl-rand"));
+    setOrDel(ed, "delta_nochange", chk("f-dl-nochange"));
+    setOrDel(ed, "delta_percentage", val("f-dl-unit") === "percentage");
+    setOrDel(ed, "min", num("f-dl-min"));
+    setOrDel(ed, "max", num("f-dl-max"));
+    setOrDel(ed, "step", num("f-dl-step"));
+  }
+
+  // ---- card: delta ----------------------------------------------------------------------
+  function deltaTog(label, info, id, on) {
+    return '<div class="st-dl-tog"><div class="st-dl-tog-l"><span>' + esc(label) + "</span>" +
+      (info ? '<span class="st-info" title="' + esc(info) + '">&#9432;</span>' : "") + "</div>" +
+      '<label class="st-switch"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") +
+      "><i></i></label></div>";
+  }
+
+  // The one line under the source picker that says what is carried across.
+  // A Delta written before the grid had two number boxes and a computed change.  It is
+  // kept exactly as it was: the same fields, the same hint, the same answer keys.
+  function deltaPairBlock() {
+    return '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label>' +
+      '<input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' +
+      (ed.max != null ? ed.max : "") + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' +
+      (ed.step != null ? ed.step : "") + '"></div>' +
+      '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' +
+      esc(ed.id) + '_delta</code>.</div></div></div>' +
+      '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label>' +
+      '<input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
+      '<div class="st-field"><label>\u201CAfter\u201D label</label>' +
+      '<input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
+  }
+
+  // A Delta written before the grid had two number boxes and a computed change.  It is
+  // kept exactly as it was: the same fields, the same hint, the same answer keys.
+  function deltaPairBlock() {
+    return '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label>' +
+      '<input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' +
+      (ed.max != null ? ed.max : "") + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' +
+      (ed.step != null ? ed.step : "") + '"></div>' +
+      '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' +
+      esc(ed.id) + '_delta</code>.</div></div></div>' +
+      '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label>' +
+      '<input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
+      '<div class="st-field"><label>\u201CAfter\u201D label</label>' +
+      '<input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
+  }
+
+  function deltaNote(src) {
+    var cols = deltaCols(), rows = deltaRows();
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+    if (!src) {
+      return "Pick a grid or matrix question above and press <b>Carry forward</b>. Its rows and columns " +
+        "are copied in, and you can add more of either afterwards.";
+    }
+    return "Carried from <b>" + esc(src.id) + "</b> — " + srcCols.length + " column" +
+      (srcCols.length === 1 ? "" : "s") + " and " + rows.length + " row" + (rows.length === 1 ? "" : "s") +
+      ". Carried columns are shown to respondents for reference; the values go in the " +
+      newCols.length + " new column" + (newCols.length === 1 ? "" : "s") + ".";
+  }
+
+  function deltaBlock() {
+    var srcs = deltaSources(), src = deltaSourceQ();
+    var cols = deltaCols(), rows = deltaRows();
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+
+    var html = '<div class="st-dl-wrap"><div class="st-dl-card">';
+    html += '<div class="st-dl-head"><span class="st-dl-title"><i>&#916;</i> ' + esc(ed.id) +
+      " Delta</span></div>";
+    html += '<div class="st-dl-tabs"><button class="st-dl-tab on" type="button">Questions</button>' +
+      '<button class="st-dl-tab" type="button" data-act="delta-tab-logic">Conditional Display</button></div>';
+
+    html += '<div class="st-dl-body">';
+    html += '<div class="st-dl-source-head">Select source question</div>';
+    html += '<div class="st-dl-source-bar"><span>Populate rows from:</span>' +
+      '<select id="f-delta-source" title="The grid or matrix question this Delta copies its rows and columns from">' +
+      '<option value="">Select a question to carry forward</option>' +
+      srcs.map(function (q) {
+        var n = sourceColumns(q).length, m = sourceRows(q).length;
+        return '<option value="' + esc(q.id) + '"' + (ed.delta_source === q.id ? " selected" : "") + ">" +
+          esc(q.id + " — " + (q.stem || q.title || "").slice(0, 46) +
+              " (" + m + " row" + (m === 1 ? "" : "s") + " × " + n + " col" + (n === 1 ? "" : "s") + ")") +
+          "</option>";
+      }).join("") + "</select>" +
+      '<button class="st-btn sm on" type="button" data-act="delta-carry">Carry forward</button></div>';
+
+    html += '<div class="st-dl-togs">' +
+      deltaTog("Validate per row", "Check each row on its own rather than the whole table", "f-dl-nochange", !!ed.delta_nochange) +
+      deltaTog("Add “No change” option", "Let a respondent mark a row as unchanged instead of typing a number", "f-dl-perow", !!ed.delta_per_row) +
+      "</div>";
+
+    html += '<div class="st-dl-note">' + deltaNote(src) + "</div>";
+
+    // ---- the table: existing and new columns side by side, on every row ----
+    html += '<div class="st-dl-table"' +
+      ' style="--st-dl-cols:minmax(150px,1.4fr) ' +
+      cols.map(function () { return "minmax(96px,1fr)"; }).join(" ") + ' auto">';
+    html += '<div class="st-dl-tr st-dl-head">' +
+      '<div class="st-dl-th st-dl-corner">Row</div>';
+    cols.forEach(function (c, ci) {
+      var isSrc = c.kind === "src";
+      html += '<div class="st-dl-th ' + (isSrc ? "st-dl-src" : "st-dl-new") + '">' +
+        '<span class="st-dl-kind">' + (isSrc ? "Source" : "New") + "</span>" +
+        '<input class="st-dl-colname" data-dcol="label" data-dci="' + ci + '" value="' + esc(c.label || "") +
+        '" placeholder="' + (isSrc ? "Carried column" : "New column name") + '">' +
+        '<button class="st-ibtn danger st-dl-coldel" type="button" data-act="delta-col-del" data-dci="' + ci +
+        '" title="Delete this column"' + (cols.length <= 1 ? " disabled" : "") + ">&#10005;</button></div>";
+    });
+    html += '<div class="st-dl-th st-dl-acts">Actions</div></div>';
+
+    if (!rows.length) {
+      html += '<div class="st-dl-empty">No rows yet — carry them forward from the source question, or add your own below.</div>';
+    }
+    rows.forEach(function (r, ri) {
+      html += '<div class="st-dl-tr" data-dri="' + ri + '">';
+      html += '<div class="st-dl-td st-dl-rowlabel"><input class="st-dl-rowname" data-drow="label" data-dri="' +
+        ri + '" value="' + esc(r.label || "") + '" placeholder="Row label"></div>';
+      cols.forEach(function (c, ci) {
+        var isSrc = c.kind === "src";
+        html += '<div class="st-dl-td ' + (isSrc ? "st-dl-src" : "st-dl-new") + '">' +
+          (isSrc
+            ? '<input class="st-dl-ref" data-dref="1" data-dri="' + ri + '" data-dci="' + ci +
+              '" value="' + esc((r.ref || {})[c.code] != null ? (r.ref || {})[c.code] : "") +
+              '" placeholder="—" title="The value shown to respondents for reference">'
+            : '<span class="st-dl-ph">Value</span>') +
+          "</div>";
+      });
+      html += '<div class="st-dl-td st-dl-acts"><span class="st-item-tools">' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-up" data-dri="' + ri + '"' +
+        (ri === 0 ? " disabled" : "") + ' title="Move this row up">&#9650;</button>' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-down" data-dri="' + ri + '"' +
+        (ri === rows.length - 1 ? " disabled" : "") + ' title="Move this row down">&#9660;</button>' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-dup" data-dri="' + ri +
+        '" title="Duplicate this row">&#9104;</button>' +
+        '<button class="st-ibtn danger" type="button" data-act="delta-row-del" data-dri="' + ri +
+        '" title="Delete this row">&#128465;</button></span></div>';
+      html += "</div>";
+    });
+    html += "</div>";
+
+    html += '<div class="st-item-actions">' +
+      '<button class="st-btn sm on" type="button" data-act="delta-row-add">+ Add row</button>' +
+      '<button class="st-btn sm" type="button" data-act="delta-col-add">+ Add column</button>' +
+      '<span class="st-meta">A new column is where respondents type. A carried column is shown to them for reference.</span></div>';
+
+    // ---- general settings ----
+    html += '<div class="st-dl-source-head">General settings</div>';
+    html += '<div class="st-dl-settings">' +
+      '<div class="st-field"><label>Validation rule <span class="st-opt">optional</span></label>' +
+      '<div class="st-dl-rulerow"><select id="f-dl-rule">' +
+      [["", "None"], ["total", "Each new column adds up to"]].map(function (o) {
+        return '<option value="' + o[0] + '"' + (ed.delta_rule === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
+      }).join("") + "</select>" +
+      '<select id="f-dl-op"><option>Equal to</option><option>At least</option><option>At most</option></select>' +
+      '<input id="f-dl-rule-total" type="number" value="' + (ed.delta_total != null ? ed.delta_total : "") +
+      '" placeholder="100" style="width:90px"></div></div>' +
+      '<div class="st-dl-togs st-dl-togs-flat">' +
+      deltaTog("Allow N/A", "Adds an N/A tick so a row can be skipped", "f-dl-na", !!ed.delta_na) +
+      deltaTog("Randomize rows", "Shuffle the row order per respondent", "f-dl-rand", !!ed.delta_randomize) +
+      "</div>" +
+      '<div class="st-field"><label>Numeric inputs</label><div class="st-dl-rulerow">' +
+      '<select id="f-dl-unit"><option value="normal"' + (ed.delta_percentage ? "" : " selected") +
+      '>Normal</option><option value="percentage"' + (ed.delta_percentage ? " selected" : "") +
+      ">Percentage</option></select>" +
+      '<input id="f-dl-min" type="number" value="' + (ed.min != null ? ed.min : 0) +
+      '" style="width:84px" title="Minimum">' +
+      '<input id="f-dl-max" type="number" value="' + (ed.max != null ? ed.max : 100) +
+      '" style="width:84px" title="Maximum">' +
+      '<input id="f-dl-step" type="number" value="' + (ed.step != null ? ed.step : 1) +
+      '" style="width:70px" title="Step"></div></div>' +
+      '<div class="st-hint">Answers are stored as <code>' + esc(ed.id) + '_&lt;row&gt;_&lt;column&gt;</code> on the new columns.</div>' +
+      "</div>";
+
+    html += "</div></div></div>";
+    return html;
   }
 
   // ---- card: question text -------------------------------------------------------------
@@ -3155,16 +3462,28 @@
       html += loopBlock();
     }
 
-    if (t === "numeric_matrix" || t === "delta") {
+    if (t === "delta") {
+      // a grid Delta carries columns; the older two-cell one does not, and keeps its own card
+      if (!deltaIsGrid()) return html + deltaPairBlock();
+      html += deltaBlock();
+      setTimeout(function () {
+        var ds = document.getElementById("f-delta-source");
+        if (ds && !ds.dataset.dlwatch) {
+          ds.dataset.dlwatch = "1";
+          ds.addEventListener("change", function () {
+            setOrDel(ed, "delta_source", ds.value);
+            markChanged(); renderPreview();
+            var nt = document.querySelector("#st-editor .st-dl-note");
+            if (nt) nt.innerHTML = deltaNote(deltaSourceQ());
+          });
+        }
+      }, 0);
+      return html;
+    }
+    if (t === "numeric_matrix") {
       html += '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label><input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
         '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' + (ed.max != null ? ed.max : "") + '"></div>' +
-        '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' + (ed.step != null ? ed.step : "") + '"></div>' +
-        (t === "delta" ? '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' + esc(ed.id) + '_delta</code>.</div></div>' : "") +
-        "</div>";
-      if (t === "delta") {
-        html += '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label><input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
-          '<div class="st-field"><label>\u201CAfter\u201D label</label><input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
-      }
+        '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' + (ed.step != null ? ed.step : "") + '"></div></div>';
     }
     if (t === "date") {
       html += '<div class="st-grid2"><div class="st-field"><label>Earliest date <span class="st-opt">blank = any</span></label><input id="f-datemin" type="date" value="' + esc(ed.min || "") + '"></div>' +
@@ -4252,6 +4571,7 @@
       if (host) host.innerHTML = Q.sanitize(ta.value);
     });
     if (val("f-section") !== undefined) ed.section = val("f-section");
+    if (ed.type === "delta") syncDeltaForm();
     if (ed.type === "choice_task") syncConjointForm();
     if (val("f-title") !== undefined) setOrDel(ed, "title", String(val("f-title")).trim());
     var rich = document.getElementById("f-stem-rich");
@@ -4423,6 +4743,7 @@
       if (val("f-nmin") !== undefined) { setOrDel(ed, "min", num("f-nmin")); setOrDel(ed, "max", num("f-nmax")); setOrDel(ed, "step", num("f-nstep")); }
     }
     if (t === "delta" && val("f-beforel") !== undefined) { setOrDel(ed, "before_label", val("f-beforel")); setOrDel(ed, "after_label", val("f-afterl")); }
+    if (t === "delta" && deltaIsGrid()) syncDeltaForm();
     if (t === "date" && val("f-datemin") !== undefined) { setOrDel(ed, "min", val("f-datemin")); setOrDel(ed, "max", val("f-datemax")); }
     if (t === "loop") {
       setOrDel(ed, "loop_mode", val("f-loop-mode"));
@@ -4668,6 +4989,17 @@
     if (hasRows(newType) && old.rows) fresh.rows = old.rows;
     if (old.items && fresh.items) fresh.items = old.items;
     if (old.cols && fresh.cols) fresh.cols = old.cols;
+    // a Delta's carried columns have to say where they came from, or the carry-forward
+    // cannot tell them apart from a column the author added afterwards
+    if (newType === "delta" && fresh.cols) {
+      fresh.cols = fresh.cols.map(function (c) {
+        var k = Object.assign({}, c);
+        if (!k.kind) k.kind = "src";
+        if (!k.src_code) k.src_code = String(c.code);
+        if (!k.src_q) k.src_q = "retitled";
+        return k;
+      });
+    }
     if (old.scale && fresh.scale) fresh.scale = Object.assign(fresh.scale, old.scale);
     cur.cfg.questions[sel] = fresh; markChanged(); renderOutline(); renderEditorPane();
     toast("Changed to " + tinfo(newType).name);
@@ -4790,6 +5122,61 @@
     if (act === "logic-guide") { openLogicGuide(); return; }
     if (act === "jump") { e.preventDefault(); var c = document.getElementById("card-" + b.getAttribute("data-card")); if (c) { c.open = true; c.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
     if (act === "set-layout") { syncFromForm(); var v = b.getAttribute("data-v"); setOrDel(ed, "layout", v === (ed.type === "multi_select" ? "grid" : "list") ? "" : v); $$("#f-layout-seg .st-seg-btn").forEach(function (x) { x.classList.toggle("on", x === b); }); markChanged(); renderPreview(); return; }
+    // ---- delta: rows, columns and the carry-forward --------------------------------------
+    if (act === "delta-carry" || act === "delta-row-add" || act === "delta-row-del" ||
+        act === "delta-row-up" || act === "delta-row-down" || act === "delta-row-dup" ||
+        act === "delta-col-add" || act === "delta-col-del" || act === "delta-tab-logic") {
+      // remember which question the Delta was carrying from before the click settles
+      // the dropdown's current choice, so a re-carry knows whether it is the same source
+      var prevSrc = ed.delta_source;
+      var dsrc = document.getElementById("f-delta-source");
+      if (dsrc && dsrc.value) setOrDel(ed, "delta_source", dsrc.value);
+      syncFromForm();
+      var dci = Number(b.getAttribute("data-dci")), dri = Number(b.getAttribute("data-dri"));
+      var dcols = ed.cols = ed.cols || [], drows = ed.rows = ed.rows || [];
+
+      if (act === "delta-carry") {
+        carryDeltaForward(prevSrc);
+      } else if (act === "delta-row-add") {
+        var used = {};
+        drows.forEach(function (r) { used[String(r.code)] = 1; });
+        var n = drows.length, rc = "r" + (n + 1);
+        while (used[rc]) rc = "r" + (++n + 1);
+        drows.push({ code: rc, label: "New row", ref: {} });
+      } else if (act === "delta-row-del") {
+        drows.splice(dri, 1);
+      } else if (act === "delta-row-up") {
+        if (dri > 0) { var mv = drows[dri - 1]; drows[dri - 1] = drows[dri]; drows[dri] = mv; }
+      } else if (act === "delta-row-down") {
+        if (dri < drows.length - 1) { var mv2 = drows[dri]; drows[dri] = drows[dri + 1]; drows[dri + 1] = mv2; }
+      } else if (act === "delta-row-dup") {
+        var cp = JSON.parse(JSON.stringify(drows[dri] || {}));
+        cp.code = "r" + (drows.length + 1) + "x";
+        while (drows.some(function (r) { return r.code === cp.code; })) cp.code += "x";
+        drows.splice(dri + 1, 0, cp);
+      } else if (act === "delta-col-add") {
+        var cUsed = {};
+        dcols.forEach(function (c) { cUsed[String(c.code)] = 1; });
+        var cn = dcols.length, cc = "d" + (cn + 1);
+        while (cUsed[cc]) cc = "d" + (++cn + 1);
+        dcols.push({ code: cc, label: "New column", kind: "delta" });
+      } else if (act === "delta-col-del") {
+        // a carried column that goes away takes its reference values with it
+        if (dcols.length <= 1) return;
+        var gone = dcols[dci];
+        dcols.splice(dci, 1);
+        if (gone && gone.kind === "src") {
+          drows.forEach(function (r) { if (r.ref) delete r.ref[gone.code]; });
+        }
+      } else if (act === "delta-tab-logic") {
+        rerenderCard("display");
+        var lg = document.getElementById("card-display"); if (lg) lg.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (!dcols.length) dcols.push({ code: "d1", label: "New column", kind: "delta" });
+      rerenderCard("answers"); changed(); return;
+    }
+
     if (act === "it-add" || act === "opt-add-none" || act === "opt-add-na" || act === "opt-add-other") {
       syncFromForm();
       var k2 = act === "it-add" ? kind : "opt", key = LIST_KEY[k2], list = ed[key] = ed[key] || [];

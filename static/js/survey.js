@@ -1597,6 +1597,16 @@
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && String(a[r.code]).trim() !== ""; });
       }
       case "delta":
+        if ((q.cols || []).length) {          // a grid: every new cell on every row
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;
+            return (q.cols || []).every(function (c) {
+              if (c.kind === "src") return true;
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v) !== "";
+            });
+          });
+        }
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
@@ -1951,7 +1961,7 @@
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
   function numInput(q, key, onType) {
-    var inp = el("input", "nm-input");
+    var inp = el("input", "nm-input dg-input");
     inp.type = "number";
     if (q.min !== undefined) inp.min = q.min;
     if (q.max !== undefined) inp.max = q.max;
@@ -2070,7 +2080,150 @@
     return wrap;
   }
 
+  // A Delta either duplicates the shape of an earlier grid / matrix question - columns
+  // and rows carried across, answered in the new columns - or it is the original two-cell
+  // before / after / change box. Which one it is depends on whether it carries columns.
   function renderDelta(q) {
+    if (q.cols && q.cols.length) return renderDeltaGrid(q);
+    return renderDeltaPair(q);
+  }
+
+  // The rows and columns of a carried-forward source question, with the new columns open
+  // for entry alongside the ones already stated.
+  function renderDeltaGrid(q) {
+    var wrap = el("div", "deltagrid");
+    var cols = orderedList(q.cols || [], q, "cols");
+    var rows = orderedList(q.rows || [], q, "rows");
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+    var naOn = q.delta_na !== false;
+    // a target typed into the validation rule is enough to ask for the totals
+    var totalOn = q.delta_rule === "total" || (q.delta_total !== undefined && q.delta_total !== "");
+    var unit = q.delta_percentage ? "%" : "";
+    var naLabel = "N/A";
+
+    if (!rows.length) {
+      wrap.appendChild(el("div", "dg-empty",
+        "This question has no rows yet — the person who built it needs to add some."));
+      return wrap;
+    }
+
+    var tbl = el("div", "dg-table");
+    tbl.style.setProperty("--dg-cols",
+      "minmax(150px,1.5fr) " +
+      srcCols.map(function () { return "minmax(104px,1fr)"; }).join(" ") + " " +
+      newCols.map(function () { return "minmax(118px,1fr)"; }).join(" ") +
+      (naOn ? " 70px" : ""));
+
+    // ---- header: one column per carried and new column, grouped so the two read apart ----
+    var head = el("div", "dg-tr dg-head");
+    head.appendChild(el("div", "dg-th dg-corner", ""));
+    srcCols.forEach(function (c) { head.appendChild(itemLabelNode(c, "dg-th dg-src")); });
+    newCols.forEach(function (c) { head.appendChild(itemLabelNode(c, "dg-th dg-new")); });
+    if (naOn) head.appendChild(el("div", "dg-th dg-th-na", naLabel));
+    tbl.appendChild(head);
+
+    if (srcCols.length && newCols.length) {
+      var grp = el("div", "dg-tr dg-groups");
+      grp.appendChild(el("div", "dg-group dg-group-src",
+        "Already stated · " + srcCols.length + " column" + (srcCols.length === 1 ? "" : "s")));
+      grp.appendChild(el("div", "dg-group dg-group-new",
+        "To enter · " + newCols.length + " column" + (newCols.length === 1 ? "" : "s")));
+      grp.querySelectorAll(".dg-group").forEach(function (g) {
+        g.style.gridColumn = "1 / -1";
+      });
+      // the two bands sit on their own line, one under the other
+      var first = grp.firstChild;
+      first.style.gridColumn = "2 / " + (srcCols.length + 2);
+      grp.lastChild.style.gridColumn = (srcCols.length + 2) + " / " +
+        (srcCols.length + newCols.length + 2);
+      tbl.appendChild(grp);
+    }
+
+    // ---- one row per carried row: reference on the left, entry on the right -------------
+    rows.forEach(function (r) {
+      var row = el("div", "dg-tr");
+      row.appendChild(itemLabelNode(r, "dg-th dg-rowlabel"));
+      srcCols.forEach(function (c) {
+        var td = el("div", "dg-td dg-td-src");
+        var v = (r.ref || {})[c.code];
+        td.appendChild(el("span", "dg-ref", v === undefined || v === null || v === "" ? "—" : String(v) + unit));
+        row.appendChild(td);
+      });
+      var naKey = r.code;
+      var clearNa = (function (rowEl) {
+        return function () {
+          if ((answers[q.id] || {})[naKey] !== "NA") return;
+          setAns(q.id, naKey, "");
+          var nb = rowEl.querySelector(".dg-na input");
+          if (nb) nb.checked = false;
+        };
+      })(row);
+      newCols.forEach(function (c) {
+        var td = el("div", "dg-td dg-td-new");
+        td.appendChild(numInput(q, r.code + "_" + c.code, function () {
+          clearNa(); refreshTotals();
+        }));
+        row.appendChild(td);
+      });
+      if (naOn) {
+        var nc = el("div", "dg-td dg-td-na");
+        nc.classList.add("dg-na");
+        nc.appendChild(naCell(q, naKey, naLabel, function (checked) {
+          if (!checked) return;
+          newCols.forEach(function (c) { setAns(q.id, r.code + "_" + c.code, ""); });
+          row.querySelectorAll(".dg-input").forEach(function (ni) { ni.value = ""; });
+        }));
+        row.appendChild(nc);
+      }
+      tbl.appendChild(row);
+    });
+
+    // ---- the validation row, when the author asked for one ------------------------------
+    // Every total follows the cells as they are typed, so a respondent sees a wrong total
+    // while they are still on the question.
+    var totalCells = [];
+    function refreshTotals() {
+      totalCells.forEach(function (tc) {
+        var sum = 0, any = false;
+        rows.forEach(function (r) {
+          var v = parseFloat((answers[q.id] || {})[r.code + "_" + tc.code]);
+          if (isFinite(v)) { sum += v; any = true; }
+        });
+        var want = q.delta_total === undefined || q.delta_total === "" ? null : Number(q.delta_total);
+        var off = any && want !== null && Math.abs(sum - want) > 0.001;
+        tc.node.textContent = any ? String(Math.round(sum * 100) / 100) + unit : "\u2014";
+        tc.node.classList.toggle("bad", off);
+      });
+    }
+    if (totalOn && newCols.length) {
+      var tot = el("div", "dg-tr dg-total");
+      var lbl = el("div", "dg-th dg-rowlabel", "Total");
+      lbl.style.gridColumn = "1 / " + (srcCols.length + 2);
+      tot.appendChild(lbl);
+      newCols.forEach(function (c, ci) {
+        var td = el("div", "dg-td dg-td-new");
+        td.style.gridColumn = (srcCols.length + 2 + ci) + " / " + (srcCols.length + 3 + ci);
+        var sp = el("span", "dg-sum");
+        totalCells.push({ code: c.code, node: sp });
+        td.appendChild(sp);
+        tot.appendChild(td);
+      });
+      tbl.appendChild(tot);
+    }
+    refreshTotals();
+
+    wrap.appendChild(tbl);
+    if (q.delta_total !== undefined && q.delta_total !== "" && totalOn) {
+      wrap.appendChild(el("div", "dg-hint",
+        "Each column should add up to " + q.delta_total + unit + "."));
+    }
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  // The original two-cell Delta: a number before, a number after, and the change between.
+  function renderDeltaPair(q) {
     var wrap = el("div", "delta");
     var a = answers[q.id] || {};
     var out = el("div", "delta-out");
