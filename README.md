@@ -322,6 +322,24 @@ a row's own padding, a clear gap between rows, and taller inputs. On a narrow wi
 three- and four-across field grids drop to two-up, because a long label and its input do
 not fit in a third of a 400px pane.
 
+The scale-point row is the tightest of these - six columns (#, value, label, format, media,
+actions) inside a pane that can be under 500px. Its media and action tracks were sized as if
+they were afterthoughts: 38px for a track holding a 30px thumbnail whose remove button
+deliberately overhangs by 6px, which put that button inside the neighbouring column's gap.
+Each fixed track is now sized for what actually sits in it, the media cell is centred so the
+thumbnail and its remove button both stay inside it, and a narrow pane trims the fixed tracks
+rather than clipping the action buttons off the edge. On the options / rows / columns table
+the attach and format controls are grouped apart from the move / duplicate / delete buttons,
+so a six-control row reads as two jobs instead of one smear.
+
+The attach control is an inline SVG paperclip rather than an emoji: an emoji glyph is not
+something the app can guarantee on the reader's machine, and this one had been written with a
+doubled backslash, which put the literal text `\uD83D\uDCE5` into the DOM instead of the
+character. Fifteen such escapes had crept into the matrix / scale-point editor - the reorder,
+duplicate, delete, remove-attachment and audio glyphs, and the · / … / ⌘ separators in the
+hints - so every one of those was rendering as raw escape text. All fifteen are repaired, and
+`studio_scale_row_test.js` fails if any comes back.
+
 ### Written-answer quality: AI-generated & pasted text (all open-text questions)
 
 Free text is the part of a study most often faked - paste a chatbot answer into the box and
@@ -465,6 +483,7 @@ node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / k
 node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
 node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
 node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
+node scripts/dom/studio_scale_row_test.js          # the six-column scale-point row: track sizes, the SVG attach control, no literal escape text
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view

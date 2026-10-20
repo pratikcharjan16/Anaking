@@ -1439,18 +1439,25 @@
     if (it.image) return { kind: "image", src: it.image };
     return null;
   }
+  // A paperclip rather than an emoji: the attachment control has to be legible on
+  // every machine, and an emoji glyph is not something this app can guarantee.
+  var MEDIA_CLIP_SVG = '<svg class="st-ic-svg" viewBox="0 0 24 24" width="15" height="15" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path ' +
+    'd="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+
   function mediaCell(it, kind, i) {
     var m = mediaOf(it);
     if (m) {
       return '<span class="st-thumb" title="' + esc(String(m.src).split("/").pop()) + '">' +
         (m.kind === "video" ? '<video src="' + esc(m.src) + '" muted></video>'
-          : m.kind === "audio" ? '<span class="st-thumb-ic" title="Audio clip">\\u266B</span>'
+          : m.kind === "audio" ? '<span class="st-thumb-ic" title="Audio clip">\u266B</span>'
             : '<img src="' + esc(m.src) + '" alt="">') +
         '<button class="st-x" data-act="it-media-del" data-kind="' + kind + '" data-i="' + i +
-        '" title="Remove this attachment">\\u00D7</button></span>';
+        '" title="Remove this attachment">\u00D7</button></span>';
     }
-    return '<label class="st-ibtn" title="Attach an image, video or audio clip to this ' + esc(kind === "pt" ? "point" : kind) + '">' +
-      "\\uD83D\\uDCE5" + '<input type="file" accept="image/*,video/*,audio/*" data-act="it-media" data-kind="' +
+    return '<label class="st-ibtn st-ibtn-media" title="Attach an image, video or audio clip to this ' + esc(kind === "pt" ? "point" : kind) + '">' +
+      MEDIA_CLIP_SVG + '<input type="file" accept="image/*,video/*,audio/*" data-act="it-media" data-kind="' +
       kind + '" data-i="' + i + '" hidden></label>';
   }
   // The scale points: one row per value, each with its own label, format and media.
@@ -1458,7 +1465,7 @@
     var pts = scalePoints(ed);
     var html = '<div class="st-items st-pts" data-kind="pt">' +
       '<div class="st-item st-item-head"><span>#</span><span>Value</span><span>Label respondents read</span>' +
-      "<span>Format</span><span>Attachment</span><span>Actions</span></div>";
+      "<span>Format</span><span>Media</span><span>Actions</span></div>";
     pts.forEach(function (p, i) {
       var pid = "f-pt-" + i;
       html += '<div class="st-item" data-i="' + i + '">' +
@@ -1471,17 +1478,17 @@
         mediaCell(p, "pt", i) +
         '<span class="st-item-tools">' +
         '<button class="st-ibtn" data-act="pt-up" data-i="' + i + '" title="Move this label up one point"' +
-        (i === 0 ? " disabled" : "") + ">\\u25B2</button>" +
+        (i === 0 ? " disabled" : "") + ">\u25B2</button>" +
         '<button class="st-ibtn" data-act="pt-down" data-i="' + i + '" title="Move this label down one point"' +
-        (i === pts.length - 1 ? " disabled" : "") + ">\\u25BC</button>" +
-        '<button class="st-ibtn" data-act="pt-dup" data-i="' + i + '" title="Duplicate this point">\\u2398</button>' +
+        (i === pts.length - 1 ? " disabled" : "") + ">\u25BC</button>" +
+        '<button class="st-ibtn" data-act="pt-dup" data-i="' + i + '" title="Duplicate this point">\u2398</button>' +
         '<button class="st-ibtn danger" data-act="pt-del" data-i="' + i + '" title="Delete this point"' +
-        (pts.length <= 2 ? " disabled" : "") + ">\\uD83D\\uDDD1</button></span></div>";
+        (pts.length <= 2 ? " disabled" : "") + ">\uD83D\uDDD1</button></span></div>";
     });
     html += "</div>" +
       '<div class="st-item-actions"><button class="st-btn sm on" data-act="pt-add">+ Add column</button>' +
-      '<button class="st-btn sm ghost" data-act="pt-paste">Enter multiple\\u2026</button>' +
-      '<span class="st-meta">Adding a column extends the scale \\u00B7 deleting one shortens it. ' +
+      '<button class="st-btn sm ghost" data-act="pt-paste">Enter multiple\u2026</button>' +
+      '<span class="st-meta">Adding a column extends the scale \u00B7 deleting one shortens it. ' +
       "The numbers stored stay in step.</span></div>";
     return html;
   }
@@ -1529,12 +1536,12 @@
       '<div class="st-field"><label>Prompt <span class="st-opt">what the box says</span></label>' +
       '<input id="f-cmt-label" value="' + esc(c.label || "Any other comments?") + '"></div>' +
       '<div class="st-field"><label>Mandatory for <span class="st-opt">rows that must be explained</span></label>' +
-      '<select id="f-cmt-rows" multiple size="3" title="Hold Ctrl / \\u2318 to pick several rows">' +
+      '<select id="f-cmt-rows" multiple size="3" title="Hold Ctrl / \u2318 to pick several rows">' +
       (ed.rows || []).map(function (r) {
         var on = (c.require_when || []).map(String).indexOf(String(r.code)) >= 0;
         return '<option value="' + esc(r.code) + '"' + (on ? " selected" : "") + ">" + esc(rowText(r)) + "</option>";
       }).join("") + "</select></div></div>" +
-      '<div class="st-hint">A required comment blocks Next until it is filled in \\u00B7 ' +
+      '<div class="st-hint">A required comment blocks Next until it is filled in \u00B7 ' +
       (rowModes ? "<b>" + rowModes + " row(s)</b> carry a comment box of their own - set it on the row below."
         : "set <b>Comment</b> on a row below to give that row its own box.") + "</div></div>";
   }
@@ -1545,12 +1552,12 @@
       var mode = typeof rz === "object" ? (rz[name] || "none") : (name === "rows" ? (rz || "none") : "none");
       return '<div class="st-field"><label>Order of ' + what + '</label><select id="' + id + '">' +
         RZ_MODES.map(function (m) {
-          return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + " \\u00B7 " + m[2] + "</option>";
+          return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + " \u00B7 " + m[2] + "</option>";
         }).join("") + "</select></div>";
     }
     return '<div class="st-grid2">' + axis("f-rz-rows", "rows", (ed.rows || []).length ? "rows" : "rows") +
       axis("f-rz-cols", "cols", hasColAxis(ed.type) ? "columns" : "columns (the scale points)") + "</div>" +
-      '<div class="st-hint">Pinned rows and columns keep their place whatever the order \\u00B7 the order each ' +
+      '<div class="st-hint">Pinned rows and columns keep their place whatever the order \u00B7 the order each ' +
       "respondent saw is exported with the data.</div>";
   }
 
@@ -2756,10 +2763,11 @@
           (spec.fmt ? '<select class="st-it-fmt" data-it="' + kind + '" data-k="fmt" data-i="' + i + '" title="How the label is styled">' +
             FMT_MODES.map(function (f) {
               return '<option value="' + f[0] + '"' + ((it.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select>" : "") +
+          '<span class="st-item-acts">' +
           '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>\u25B2</button>' +
           '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down"' + (i === last ? " disabled" : "") + '>\u25BC</button>' +
           (spec.dup === false ? "" : '<button class="st-ibtn" data-act="it-dup" data-kind="' + kind + '" data-i="' + i + '" title="Duplicate this ' + esc(noun) + '">\u2398</button>') +
-          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span>' +
+          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span></span>' +
           ((spec.flags.length || spec.comment) ? '<span class="st-flags">' + (spec.flags.length ? '<span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
             return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") : "") +
             (spec.comment ? '<label class="st-flag st-flag-sel" title="A comment box under this ' + esc(noun) + '">Comment ' +
