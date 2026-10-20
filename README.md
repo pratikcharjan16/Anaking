@@ -140,6 +140,14 @@ in the middle, dark shade at the bottom) — **Theme colours** for text, **Highl
 the highlighter, which uses soft tints so black text sitting on a highlight stays readable — plus
 a **Standard colours** row, the **colours you have used recently** (remembered per browser), and
 **Custom colour …** with a hex box, R / G / B, the browser's own colour picker and a live preview.
+
+**Formatted answer options.** The same controls are available on an **answer option** label, on a
+grid **row** or **column**, and on a rating scale's **scale point** — for every question type that
+has one of those. Hovering a row reveals a compact **B / I / U** strip with the two colour pickers
+and *clear formatting* on top of it; the row's own pipe button stays put. Respondents see the
+formatting, and the plain `label` is always kept in step, so exports, narration, piping, screening
+and the admin dashboard read exactly the text they did before. `label_html` is cleaned by the same
+whitelist that protects the question stem before it can be saved.
 The first entry is **Automatic** (black) for text and **No colour** for a highlight; either takes
 the colour off the selection while leaving bold, italic, size and lists alone, unlike a blanket
 *clear formatting*. A colour respondents would struggle to read — very light text, or a very dark
@@ -371,6 +379,7 @@ python3 scripts/seed_demo.py                    # 7 demo respondents + sample wo
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
 node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
+node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view

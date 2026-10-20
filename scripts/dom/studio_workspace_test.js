@@ -72,7 +72,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const opts=$$('.st-items[data-kind=opt] .st-item:not(.st-item-head)');
   check("+ None of these adds exclusive pinned option 99", opts.length===3 && opts[2].querySelector("[data-k=code]").value==="99" && opts[2].querySelector(".st-flag.on"));
   check("preview shows the new option", /None of these/.test($("#st-prev-body").textContent));
-  const lbl=$("#f-opt-0"); lbl.value="Chemotherapy"; fire(lbl,"input"); await sleep(20);
+  // the label is a contenteditable now (so it can be formatted), so drive it the same way
+  const lbl=$("#f-opt-0"); lbl.innerHTML="Chemotherapy"; fire(lbl,"input"); await sleep(20);
   check("option label edit -> preview", /Chemotherapy/.test($("#st-prev-body").textContent));
   $$("[data-act=it-del]")[0].click(); await sleep(20);
   check("remove option", $$('.st-items[data-kind=opt] .st-item:not(.st-item-head)').length===2 && !/Chemotherapy/.test($("#st-prev-body").textContent));

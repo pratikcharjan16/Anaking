@@ -328,6 +328,21 @@ a{color:var(--accent2)}
 .st-linkbox code{flex:1;background:transparent;font-size:13px}
 
 /* rich text */
+/* the compact strip on an answer option / row / column label - revealed on hover or focus so a
+   long list stays scannable, but always there when the row is actually being worked on */
+.st-toolbar.st-toolbar-mini{flex-wrap:nowrap;padding:2px 3px;border-radius:6px;border-bottom:1px solid var(--line);opacity:0;transition:opacity .1s}
+.st-richlabel{position:relative;min-width:0;display:flex;flex-direction:column;gap:0}
+.st-richlabel:hover .st-toolbar-mini,.st-richlabel:focus-within .st-toolbar.st-toolbar-mini{opacity:1}
+.st-toolbar.st-toolbar-mini:focus-within{opacity:1}
+.st-toolbar.st-toolbar-mini .st-tb{min-width:22px;height:22px;padding:0 4px;font-size:12px}
+.st-toolbar.st-toolbar-mini .st-tb-sep{height:14px;margin:0 2px}
+.st-toolbar.st-toolbar-mini .st-tb-color{padding:0 4px}
+.st-richlabel .st-rich{border-radius:0 0 6px 6px;padding:4px 8px;min-height:30px;font-size:13px;line-height:1.35}
+.st-richlabel .st-rich:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
+/* the pipe button floats over the bottom-right of the label so it never costs the row width, and
+   is inert while it is invisible so it cannot swallow a text selection */
+.st-richlabel .st-pipe-btn{position:absolute;bottom:4px;right:4px;opacity:0;pointer-events:none;background:#fff;margin-left:0}
+.st-richlabel:hover .st-pipe-btn,.st-richlabel:focus-within .st-pipe-btn,.st-richlabel .st-pipe-btn:focus-visible{opacity:1;pointer-events:auto}
 .st-toolbar{display:flex;flex-wrap:wrap;gap:3px;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 6px;background:#f7f9fb}
 .st-tb{border:1px solid transparent;background:transparent;border-radius:6px;min-width:28px;height:26px;padding:0 7px;font-size:12.5px;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .st-tb:hover{background:#fff;border-color:var(--line)}

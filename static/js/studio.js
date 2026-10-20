@@ -1411,8 +1411,8 @@
     var out = [];
     for (var v = r[0]; v <= r[1]; v++) {
       var p = have[v] || {};
-      out.push({ v: v, label: p.label || faceLabel(q, v) || "", fmt: p.fmt || "", media: p.media,
-                 comment: p.comment || "" });
+      out.push({ v: v, label: p.label || faceLabel(q, v) || "", label_html: p.label_html || "",
+                 fmt: p.fmt || "", media: p.media, comment: p.comment || "" });
     }
     return out;
   }
@@ -1423,10 +1423,11 @@
     list.forEach(function (p, i) {
       var e = { v: min + i };
       if (String(p.label || "").trim()) e.label = p.label;
+      if (p.label_html) e.label_html = p.label_html;
       if (p.fmt) e.fmt = p.fmt;
       if (p.media && p.media.src) e.media = p.media;
       if (p.comment && p.comment !== "none") e.comment = p.comment;
-      if (e.label || e.fmt || e.media || e.comment) pts.push(e);
+      if (e.label || e.label_html || e.fmt || e.media || e.comment) pts.push(e);
     });
     ed.scale.min = min;
     ed.scale.max = min + list.length - 1;
@@ -1464,9 +1465,7 @@
       html += '<div class="st-item" data-i="' + i + '">' +
         '<span class="st-seq" title="Position ' + (i + 1) + " of " + pts.length + '">' + (i + 1) + ".</span>" +
         '<span class="st-pt-val" title="The number stored for this point">' + p.v + "</span>" +
-        '<div class="st-with-pipe"><input id="' + pid + '" data-pt="label" data-i="' + i + '" value="' + esc(p.label || "") +
-        '" placeholder="' + (i === 0 ? "e.g. Not at all" : i === pts.length - 1 ? "e.g. Extremely" : "optional") + '">' +
-        pipeButton(pid, true, true) + "</div>" +
+        richLabelCell("pt", i, p, i === 0 ? "e.g. Not at all" : i === pts.length - 1 ? "e.g. Extremely" : "optional", "pt") +
         '<select data-pt="fmt" data-i="' + i + '" title="How the label is styled">' + FMT_MODES.map(function (f) {
           return '<option value="' + f[0] + '"' + ((p.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>";
         }).join("") + "</select>" +
@@ -2019,7 +2018,10 @@
   // The rich-text toolbar mirrors the reference editor: size and font, B/I/U, a "more"
   // row, colours, alignment, lists, link, table, superscript, image, pipe, fullscreen and a
   // source view.  Everything it can produce survives core/sanitize.py + BeaconQ.sanitize.
-  function richToolbar(target, small) {
+  // richToolbar(target, small, mini): the same controls in three sizes. `mini` is the strip that
+  // sits on an answer option / row / column label - bold, italic, underline and the two colour
+  // pickers, nothing that would swamp a one-line label.
+  function richToolbar(target, small, mini) {
     var b = function (cmd, label, title, val) {
       return '<button type="button" class="st-tb" data-cmd="' + cmd + '" data-val="' + (val || "") + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
     };
@@ -2038,6 +2040,15 @@
     // next; clicking either opens the standard palette (injected beside the toolbar).
     function colorBtn(kind, title, swatch) {
       return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true" aria-expanded="false">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000000") + '"></span></button>';
+    }
+    if (mini) {
+      return '<div class="st-toolbar st-toolbar-mini" data-for="' + target + '">' +
+        b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
+        '<span class="st-tb-sep"></span>' +
+        colorBtn("foreColor", "Text colour — Automatic is black", "A") +
+        colorBtn("hiliteColor", "Highlight colour", "&#9639;") +
+        b("removeFormat", "T&#818;", "Clear formatting") +
+        "</div>";
     }
     return '<div class="st-toolbar" data-for="' + target + '">' +
       '<select class="st-tb-sel" data-size-for="' + target + '" title="Text size" aria-label="Text size">' + sizeOpts + '</select>' + (small ? "" : pick("fontName", "Font", fonts)) +
@@ -2609,6 +2620,16 @@
     });
     var d = document.createElement("div"); d.appendChild(tpl.content); return d.innerHTML;
   }
+  function placeCaretAtEnd(host) {
+    try {
+      var r = document.createRange();
+      r.selectNodeContents(host);
+      r.collapse(false);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch (e) { host.focus(); }
+  }
   function unchip(html) { return html.replace(/<span class="pipe">(\{[^}]+\})<\/span>(?:&nbsp;|\u00a0)?/g, "$1 "); }
 
   // `compact` drops the words and keeps only the arrow - used inside the option / row list, where
@@ -2708,6 +2729,30 @@
   // One row per option / row / column: a drag grip, its position, the stored code, the label and
   // an always-visible tool strip (image, move up, move down, delete).  Behaviour chips (Pin /
   // Exclusive / Other) sit on a second line so they can never push the buttons out of the pane.
+  // A label the author can format. The plain text is kept in step in `label`, so exports, TTS,
+  // voice commands, piping and screening all keep reading exactly what they did before - only
+  // what the respondent sees gains the markup.
+  // `attr` names the marker the [data-it] / [data-pt] writer looks for: `label_html` on the
+  // option / row / column lists, `pt` on a rating scale's points.
+  function richLabelCell(kind, i, it, ph, attr) {
+    var id = "f-" + kind + "-" + i;
+    var mark = attr === "pt" ? ' data-pt="label"' : ' data-it="' + kind + '" data-k="label_html"';
+    return '<div class="st-richlabel">' +
+      richToolbar(id, true, true) +
+      '<div class="st-rich it-rich" id="' + id + '" contenteditable="true"' + mark +
+      ' data-i="' + i + '" data-placeholder="' + esc(ph || "Label") + '"' +
+      ' role="textbox" aria-label="' + esc(ph || "Label") + '">' +
+      chipify(Q.sanitize(it.label_html || esc(it.label || ""))) + "</div>" +
+      pipeButton(id, true, true) + "</div>";
+  }
+  function syncRichLabel(it, html) {
+    // `label` stays in step and is the one every consumer (exports, TTS, piping, screening, the
+    // dashboard) reads, so nothing about their behaviour changes. `label_html` is stored only
+    // when the author actually applied markup, keeping plain labels plain.
+    if (/[<>]/.test(html)) { it.label_html = html; it.label = Q.stripTags(html); }
+    // unchip() leaves a space where the chip's </span> was, which an <input> never did
+    else { delete it.label_html; it.label = html.trim(); }
+  }
   function itemTable(kind, items, spec) {
     var noun = spec.noun || "item";
     var last = items.length - 1;
@@ -2715,12 +2760,11 @@
       '<div class="st-item st-item-head"><span></span><span>#</span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
       (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + "<span>Actions</span></div>" +
       items.map(function (it, i) {
-        var idl = "f-" + kind + "-" + i;
         return '<div class="st-item" data-i="' + i + '">' +
           '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder ' + esc(noun) + " " + (i + 1) + '" title="Drag to reorder \u00B7 focus and press \u2191 / \u2193 to swap">\u283F</span>' +
           '<span class="st-seq" title="Position ' + (i + 1) + ' of ' + items.length + '">' + (i + 1) + ".</span>" +
           '<input class="st-it-code" data-it="' + kind + '" data-k="code" data-i="' + i + '" value="' + esc(it.code) + '" title="Code stored in the data">' +
-          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true, true) + "</div>" +
+          richLabelCell(kind, i, it, spec.ph) +
           (spec.left ? '<input data-it="' + kind + '" data-k="left" data-i="' + i + '" value="' + esc(it.left || "") + '" placeholder="e.g. Poor">' +
                        '<input data-it="' + kind + '" data-k="right" data-i="' + i + '" value="' + esc(it.right || "") + '" placeholder="e.g. Excellent">' : "") +
           '<span class="st-item-tools">' +
@@ -4021,6 +4065,7 @@
       var k = n.getAttribute("data-k");
       if (n.type === "checkbox") setOrDel(it, k, n.checked);
       else if (k === "code") it.code = n.getAttribute("data-it") === "opt" && n.value.trim() !== "" && !isNaN(Number(n.value)) ? Number(n.value) : n.value.trim();
+      else if (k === "label_html") syncRichLabel(it, unchip(Q.sanitize(n.innerHTML)));
       else it[k] = n.value;
     });
     if (t === "multi_select") setOrDel(ed, "max_select", num("f-maxselect"));
@@ -4086,7 +4131,8 @@
       $$("#st-editor [data-pt]").forEach(function (n) {
         var pi2 = Number(n.getAttribute("data-i"));
         if (!spts[pi2]) return;
-        if (n.getAttribute("data-pt") === "label") spts[pi2].label = n.value; else spts[pi2].fmt = n.value;
+        if (n.getAttribute("data-pt") === "label") syncRichLabel(spts[pi2], unchip(Q.sanitize(n.innerHTML)));
+        else spts[pi2].fmt = n.value;
       });
       if (spts.length >= 2) writeScalePoints(spts);
     }
@@ -4564,7 +4610,8 @@
         if (ed.type === "semantic_diff") { it.left = ""; it.right = ""; }
       }
       list.push(it); rerenderCard("answers"); markChanged(); renderPreview(); refreshOutlineRow();
-      var last = $('#st-editor .st-items[data-kind="' + k2 + '"] .st-item:last-child input[data-k=label]'); if (last) { last.focus(); last.select(); }
+      var last = $('#st-editor .st-items[data-kind="' + k2 + '"] .st-item:last-child .st-rich[data-k=label_html]');
+      if (last) { last.focus(); placeCaretAtEnd(last); }
       return;
     }
     if (act === "it-del") { syncFromForm(); ed[LIST_KEY[kind]].splice(i, 1); rerenderCard("answers"); changed(); return; }

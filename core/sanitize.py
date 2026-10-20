@@ -110,6 +110,34 @@ def strip_tags(html: str | None) -> str:
     return unescape(text).strip()
 
 
+# fields that hold one rich label next to the plain label consumers have always read
+RICH_LABEL_FIELDS = (("options", "label", "label_html"),
+                     ("rows", "label", "label_html"),
+                     ("cols", "label", "label_html"),
+                     ("scale_points", "label", "label_html"))
+
+
+def _clean_rich_list(items, plain_key: str, rich_key: str) -> None:
+    """Clean the rich label of every entry of an option / row / column / scale-point list."""
+    if not isinstance(items, list):
+        return
+    for it in items:
+        if not isinstance(it, dict):
+            continue
+        rich = it.get(rich_key)
+        if not rich:
+            continue
+        rich = clean_html(rich)
+        if strip_tags(rich):
+            it[rich_key] = rich
+            # the plain label stays in step so exports, TTS, piping, screening and the
+            # dashboard keep seeing exactly the text they saw before
+            if not strip_tags(it.get(plain_key) or ""):
+                it[plain_key] = strip_tags(rich)
+        else:
+            it.pop(rich_key, None)
+
+
 def sanitize_question(q: dict) -> dict:
     """Clean the rich-text fields of one question config in place and return it."""
     for key in ("stem_html", "help_html"):
@@ -122,4 +150,7 @@ def sanitize_question(q: dict) -> dict:
         plain = strip_tags(q["stem_html"])
         if plain:
             q["stem"] = plain
+    # answer options, grid rows / columns and scale points can be formatted too
+    for key, plain_key, rich_key in RICH_LABEL_FIELDS:
+        _clean_rich_list(q.get(key), plain_key, rich_key)
     return q

@@ -1628,7 +1628,7 @@
         label = sc.faces ? (sc.faces[v - min] || "")
           : (max - min + 1 === EMOJI_FACES.length ? EMOJI_FACES[v - min] : "");
       }
-      out.push({ v: v, label: label, fmt: p.fmt, media: p.media,
+      out.push({ v: v, label: label, label_html: p.label_html || "", fmt: p.fmt, media: p.media,
                  tip: (q.type === "emoji_grid" && sc.face_labels ? sc.face_labels[v - min] : "") || "" });
     }
     return out;
@@ -1653,6 +1653,13 @@
     box.appendChild(line);
     var m = it.media || (it.image ? { kind: "image", src: it.image } : null);
     if (m && m.src) box.appendChild(renderMedia(m, "qmedia-sm"));
+    return box;
+  }
+  // A scale point caption: the author's formatting when there is any, otherwise the plain text.
+  function scaleLabelNode(p, cls) {
+    var box = el("div", cls || "grid-plabel");
+    if (p.label_html && window.BeaconQ) window.BeaconQ.richInto(box, p.label_html, logicCtx(), p.label || "");
+    else box.appendChild(fmtNode(pipeText(p.label || ""), p.fmt));
     return box;
   }
   // The exclusive N/A on one row: ticking it clears the rating, rating clears the tick.
@@ -1702,8 +1709,8 @@
     if (g.col_label) cells.appendChild(el("div", "grid-colname", pipeText(g.col_label)));
     var strip = el("div", "grid-plabels");
     pts.forEach(function (p) {
-      var c = el("div", "grid-plabel");
-      if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
+      if (!p.label && !p.label_html && !(p.media && p.media.src)) return;
+      var c = scaleLabelNode(p, "grid-plabel");
       if (p.tip) c.title = p.tip;
       if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
       strip.appendChild(c);
@@ -1737,9 +1744,9 @@
     if (pts && pts.some(function (p) { return p.label || (p.media && p.media.src); })) {
       var labs = el("div", "sp-labels");
       pts.forEach(function (p) {
-        var c = el("div", "sp-label");
+        if (!p.label && !p.label_html && !(p.media && p.media.src)) return;
+        var c = scaleLabelNode(p, "sp-label");
         c.style.left = pct(p.v) + "%";
-        if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
         if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
         labs.appendChild(c);
       });
@@ -2516,7 +2523,7 @@
       pts.forEach(function (p) {
         var b = el("button", "emoji-btn");
         b.type = "button";
-        b.appendChild(el("span", "emoji-face", pipeText(p.label || String(p.v))));
+        b.appendChild(el("span", "emoji-face", p.label_html ? (window.BeaconQ ? BeaconQ.stripTags(p.label_html) : p.label) || String(p.v) : pipeText(p.label || String(p.v))));
         if (p.media && p.media.src) b.appendChild(renderMedia(p.media, "qmedia-xs"));
         if (p.tip) b.title = p.tip;
         b.classList.toggle("on", String(getAns(q.id, r.code)) === String(p.v));

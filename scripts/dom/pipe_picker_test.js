@@ -52,11 +52,16 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   // option label pipe on a select question (Q2)
   $$(".st-qi")[1].click(); await sleep(100);
   check("pipe buttons beside each option label", $$("[data-pipe-for^=f-opt-]").length===2);
-  const inp=$("#f-opt-0"); inp.focus(); inp.setSelectionRange(5,5);          // after "Chemo"
+  // the label is a contenteditable now, so place the caret in its text node instead of an input
+  const inp=$("#f-opt-0");
+  const walk=w.document.createTreeWalker(inp,4); let node=null;
+  while(walk.nextNode()){ if(walk.currentNode.nodeValue && walk.currentNode.nodeValue.indexOf("Chemo")===0) node=walk.currentNode; }
+  if(node){ const cr=w.document.createRange(); cr.setStart(node,5); cr.collapse(true); sel.removeAllRanges(); sel.addRange(cr); }
+  else throw new Error("option label text node not found: "+inp.innerHTML);
   const b0=$("[data-pipe-for=f-opt-0]"); mdown(b0); b0.click(); await sleep(30);
   check("picker for option shows only Q1", $$(".st-pipe-q").length===1);
   $$(".st-pipe-item").find(b=>b.getAttribute("data-token")==="{Q1}").click(); await sleep(30);
-  check("token inserted into option label at caret", $("#f-opt-0").value==="Chemo{Q1}", $("#f-opt-0").value);
+  check("token inserted into option label at caret", /Chemo\{Q1\}/.test(inp.textContent), inp.innerHTML);
   check("preview option shows piped 'ChemoOncology'", /ChemoOncology/.test($("#st-prev-body").textContent));
   // re-open Q3; wait for autosave; check stored HTML is plain (no chips)
   $$(".st-qi")[2].click(); await sleep(100);
@@ -64,7 +69,8 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   await sleep(1600);
   const saved=JSON.parse(await get("/api/studio/study?slug="+slug)).cfg;
   check("saved Q3 stem_html holds plain tokens, no chip markup", /Tell \{Q1\}/.test(saved.questions[2].stem_html) && !/class="pipe"/.test(saved.questions[2].stem_html) && saved.questions[2].stem.includes("{Q2.opt:2}"), saved.questions[2].stem_html);
-  check("saved Q2 option label carries token", saved.questions[1].options[0].label==="Chemo{Q1}");
+  const savedOpt = saved.questions[1].options[0];
+  check("saved Q2 option label carries token", savedOpt.label==="Chemo{Q1}", JSON.stringify(savedOpt));
   check("no JS errors", errs.length===0, errs.join("; "));
   await req("POST","/api/studio/delete",JSON.stringify({slug}));
   process.exit(fails?1:0);
