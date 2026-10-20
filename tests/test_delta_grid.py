@@ -122,6 +122,26 @@ def test_a_cell_nobody_answered_is_absent_not_zero():
     assert "r2_c1" not in v["cells"] and "r1_c2" not in v["cells"]
 
 
+def test_an_answer_still_in_progress_is_carried():
+    # A study is answered while it runs, so a respondent who has reached G1 but has not
+    # finished yet has already told us what they chose.  Their cells are reference too.
+    from core.reporting import delta_source_values
+    recs = [
+        _respondent(1, {"G1": {"r1_c1": "10", "r1_c2": "90", "r2_c1": "25", "r2_c2": "75"}},
+                    SRC_CFG, status="in_progress"),
+        _respondent(2, {"G1": {"r1_c1": "20", "r1_c2": "80", "r2_c1": "35", "r2_c2": "65"}},
+                    SRC_CFG, status="in_progress"),
+        _respondent(3, {"G1": {"r1_c1": "30", "r1_c2": "70", "r2_c1": "45", "r2_c2": "55"}},
+                    SRC_CFG, status="in_progress"),
+        _respondent(4, {}, SRC_CFG, status="complete"),
+    ]
+    for r in recs:
+        r["flat"] = flatten(r, r["answers"], SRC_CFG)
+    v = delta_source_values(recs, SRC_CFG["questions"][0])
+    assert v["n"] == 3 and v["numeric"] is True
+    assert v["cells"] == {"r1_c1": 20.0, "r1_c2": 80.0, "r2_c1": 35.0, "r2_c2": 65.0}
+
+
 def test_a_scale_source_offers_one_value_column_per_row_mean():
     from core.reporting import delta_source_columns, delta_source_values
     q = SRC_CFG["questions"][2]

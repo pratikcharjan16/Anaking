@@ -2,7 +2,8 @@
  *   Studio  - a new Delta starts empty; the source picker only offers grid / matrix
  *             questions; Carry forward copies their columns exactly and all their rows;
  *             carried columns can be renamed, new columns added and named, new rows
- *             added, reference values typed per row, and a carried column deleted.
+ *             added, a carried column deleted, and the reference values it holds are
+ *             read back out of the source question's answers and shown greyed, not typed.
  *   Survey  - the rendered table puts the carried columns and the new ones side by side
  *             on every row: reference cells read-only, new cells open for entry, plus
  *             N/A and the total row.
@@ -86,6 +87,8 @@ const deltaId = async slug => {
 const colNames = s => s.$$(".st-dl-colname").map(n => n.value);
 const rowNames = s => s.$$(".st-dl-rowname").map(n => n.value);
 const kinds = s => s.$$(".st-dl-kind").map(n => n.textContent);
+// a carried cell is greyed reference text, so it is read, not read from
+const refVals = s => s.$$(".st-dl-ref").map(n => n.textContent.trim());
 const rows = s => s.$$(".st-dl-tr[data-dri]");
 
 // ---------------------------------------------------------------- a respondent session
@@ -211,10 +214,12 @@ const CFG = {
     " new=" + s.$$('.st-dl-tr[data-dri] .st-dl-td.st-dl-new').length);
 
   check("a carried cell is a reference value, a new cell is where the answer goes",
-    s.$$(".st-dl-tr[data-dri] .st-dl-src input").length === 4 &&
+    s.$$(".st-dl-tr[data-dri] .st-dl-src input").length === 0 &&
+    s.$$(".st-dl-tr[data-dri] .st-dl-src .st-dl-ref").length === 4 &&
     s.$$(".st-dl-tr[data-dri] .st-dl-new input").length === 0 &&
     s.$$(".st-dl-tr[data-dri] .st-dl-new .st-dl-ph").length === 2,
-    "ref inputs=" + s.$$(".st-dl-tr[data-dri] .st-dl-src input").length);
+    "ref spans=" + s.$$(".st-dl-tr[data-dri] .st-dl-src .st-dl-ref").length +
+    " ph=" + s.$$(".st-dl-tr[data-dri] .st-dl-new .st-dl-ph").length);
 
   check("+ Add row and + Add column are both still there",
     !!s.$('[data-act="delta-row-add"]') && !!s.$('[data-act="delta-col-add"]'));
@@ -229,16 +234,11 @@ const CFG = {
     JSON.stringify(dqSaved.cols) + " " + JSON.stringify(dqSaved.rows));
 
   // =============================================================== reference values
-  const refs = s.$$(".st-dl-ref");
-  refs[0].value = "10"; s.fire(refs[0], "input");
-  refs[1].value = "90"; s.fire(refs[1], "input");
-  refs[2].value = "25"; s.fire(refs[2], "input");
-  await sleep(600);
-  dqSaved = await s.savedQ(dqid, q => (q.rows || []).length === 2 &&
-    Object.keys(q.rows[0].ref || {}).length >= 2);
-  check("a reference value is stored against its row and its carried column",
-    dqSaved.rows[0].ref && dqSaved.rows[0].ref.dscc1 === "10" && dqSaved.rows[1].ref.dscc1 === "25",
-    JSON.stringify(dqSaved.rows));
+  check("a carried cell holds no input at all - it is shown, not offered",
+    s.$$(".st-dl-tr[data-dri] .st-dl-src input").length === 0 &&
+    s.$$(".st-dl-ref").length === 4 &&
+    s.$$(".st-dl-ref").every(n => n.classList.contains("empty") && n.textContent.trim() === "\u2014"),
+    refVals(s).join("|"));
 
   // =============================================================== rename both kinds
   const colInp = s.$$(".st-dl-colname");
@@ -273,9 +273,8 @@ const CFG = {
     rows(s).every(r => r.querySelectorAll(".st-dl-ref").length === 1),
     colNames(s).join("|") + " / " + kinds(s).join() + " / " +
     rows(s)[0].querySelectorAll(".st-dl-ref").length + " ref cells");
-  dqSaved = await s.savedQ(dqid, q => (q.cols || []).length === 3 &&
-    (q.rows || []).every(r => !Object.prototype.hasOwnProperty.call(r.ref || {}, "dscc1")));
-  check("the reference values of a deleted carried column are gone from the save",
+  dqSaved = await s.savedQ(dqid, q => (q.cols || []).length === 3);
+  check("a deleted carried column leaves nothing behind in the save",
     dqSaved.rows.every(r => !Object.prototype.hasOwnProperty.call(r.ref || {}, "dscc1")),
     JSON.stringify(dqSaved.rows.map(r => r.ref)));
 
@@ -498,11 +497,15 @@ const CFG = {
   R2.click(R2.$('[data-act="delta-carry"]'));
   await sleep(1100);
   check("Carry forward fills the reference cells from the source's answers",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "20|80|35|65",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
-  check("the note says where the reference values came from",
-    /mean of the 3 answers to G1/.test(R2.$(".st-dl-note").textContent),
-    R2.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 200));
+    refVals(R2).join("|") === "20|80|35|65", refVals(R2).join("|"));
+  check("a filled reference cell is greyed text with no input in it",
+    R2.$$(".st-dl-ref").length === 4 && R2.$$(".st-dl-ref").every(n => !n.querySelector("input")) &&
+    R2.$$(".st-dl-ref").every(n => !n.classList.contains("empty")),
+    refVals(R2).join("|"));
+  check("the note says where the reference values came from, and that they are fixed",
+    /mean of the 3 answers to G1/.test(R2.$(".st-dl-note").textContent) &&
+    /not editable/.test(R2.$(".st-dl-note").textContent),
+    R2.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 240));
   check("Refresh reference values is offered once there is a source",
     !!R2.$('[data-act="delta-refresh"]') && !R2.$('[data-act="delta-refresh"]').disabled);
 
@@ -511,31 +514,22 @@ const CFG = {
     rq.rows[0].ref.dscc1 === "20" && rq.rows[1].ref.dscc2 === "65",
     JSON.stringify(rq.rows));
 
-  // a cell the author typed over is theirs, and a Refresh does not move it
-  const over = R2.$$(".st-dl-ref")[0];
-  over.value = "999"; R2.fire(over, "input");
-  await sleep(750);
-  R2.click(R2.$('[data-act="delta-refresh"]'));
-  await sleep(1100);
-  check("a typed-over reference cell survives a Refresh, and the rest still move",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|80|35|65",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
-
-  // more data arrives: a Refresh picks up the new mean on the cells left to the data
+  // more data arrives: a Refresh moves every carried cell, because none of them is the
+  // author's to keep
   await answerSource(rslug, "G1", [{ r1_c1: "40", r1_c2: "60", r2_c1: "55", r2_c2: "45" }]);
   R2.click(R2.$('[data-act="delta-refresh"]'));
   await sleep(1100);
-  check("a Refresh after more answers picks up the new mean",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|75|40|60",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|") +
-    " (r1_c2 mean of 90,80,70,60 = 75; r2_c1 mean of 25,35,45,55 = 40; r2_c2 = 60)");
+  check("a Refresh after more answers moves every carried cell to the new mean",
+    refVals(R2).join("|") === "25|75|40|60",
+    refVals(R2).join("|") +
+    " (r1_c1 mean of 10,20,30,40 = 25; r1_c2 of 90,80,70,60 = 75; r2_c1 of 25,35,45,55 = 40; " +
+    "r2_c2 of 75,65,55,45 = 60)");
 
-  // reopening the card re-reads the answers without moving anything the author typed
+  // reopening the card re-reads the answers too
   await R2.open("G1"); await sleep(260);
   await R2.open(rid); await sleep(1200);
-  check("reopening the card re-reads the source and leaves the override alone",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|75|40|60",
-    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
+  check("reopening the card re-reads the source and shows the same means",
+    refVals(R2).join("|") === "25|75|40|60", refVals(R2).join("|"));
   check("the reference section produced no script errors", !R2.errs.length, R2.errs.join(" | "));
 
   // ---------------------------------------------------------------- nothing answered yet
@@ -565,11 +559,10 @@ const CFG = {
   await sleep(180);
   E.click(E.$('[data-act="delta-carry"]'));
   await sleep(1100);
-  check("a source with no answers leaves the reference cells empty and says so",
-    E.$$(".st-dl-ref").every(n => n.value === "") &&
-    /no complete answers yet/.test(E.$(".st-dl-note").textContent),
-    E.$$(".st-dl-ref").map(n => n.value).join("|") + " / " +
-    E.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 160));
+  check("a source with no answers leaves dashes and says so",
+    refVals(E).every(v => v === "\u2014") && /Nobody has answered/.test(E.$(".st-dl-note").textContent),
+    refVals(E).join("|") + " / " +
+    E.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 200));
 
   // ---------------------------------------------------------------- a non-numeric source
   const TCFG = {

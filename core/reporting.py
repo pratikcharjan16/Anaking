@@ -680,16 +680,19 @@ NUMERIC_SOURCE_TYPES = ("numeric_matrix", "sum_to_100", "rating_scale",
 def delta_source_values(records: list, q: dict) -> dict:
     """What a Delta can show as reference for one source question.
 
-    ``cells`` is keyed ``"<row code>_<col code>"`` and holds the mean of every respondent who
-    answered that cell; ``rows`` and ``cols`` hold the means across a whole row or a whole
-    column.  ``n`` is how many complete respondents answered it, so the author can tell a real
-    reference from a guess, and a cell nobody answered is absent rather than zero.  A question
-    whose answers are not numbers - a choice grid, a text grid - reports ``numeric: False``
-    and no values, because averaging a word or a pick tells the respondent nothing.
+    ``cells`` is keyed ``"<row code>_<col code>"`` and holds the mean of everyone who answered
+    that cell; ``rows`` and ``cols`` hold the means across a whole row or a whole column.
+    ``n`` is how many people answered it, so the author can tell a real reference from a guess,
+    and a cell nobody answered is absent rather than zero.  A question whose answers are not
+    numbers - a choice grid, a text grid - reports ``numeric: False`` and no values, because
+    averaging a word or a pick tells the respondent nothing.
+
+    This deliberately counts a respondent still in the field, not only those who reached the
+    end.  A Delta is built while a study is running, and "what people said so far" is the
+    whole point of the reference - an author who answered G1 in the test view and stopped
+    there has still told the study something.
     """
     from core.research import numeric
-
-    complete = [r for r in records if r.get("status") == "complete"]
     qid, t = q["id"], q.get("type")
     cols, rows = delta_source_columns(q), delta_source_rows(q)
     out = {"qid": qid, "type": t, "n": 0, "numeric": t in NUMERIC_SOURCE_TYPES,
@@ -699,7 +702,7 @@ def delta_source_values(records: list, q: dict) -> dict:
 
     def vals(key):
         got = []
-        for r in complete:
+        for r in records:
             x = numeric((r.get("answers") or {}).get(qid, {}).get(key))
             if x is not None:
                 got.append(x)

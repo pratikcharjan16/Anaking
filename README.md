@@ -359,16 +359,17 @@ it.
 
 **The reference values are not typed by hand.** They are read back out of the answers the
 source question actually collected: the mean of every respondent who answered that row and
-that column. The line under the source picker says exactly that - *the reference values are
-the mean of the N answers to G1* - so nobody has to guess where a number came from.
+that column, whether or not they have finished the study - a Delta is built while it runs.
+The line under the source picker says exactly that - *the reference values are the mean of
+the N answers to G1* - so nobody has to guess where a number came from.
 
-Type over any cell to show something else instead; a cell the author has changed is theirs,
-and neither a **Refresh reference values** nor reopening the study moves it. Refresh
-re-reads the source and updates only the cells still holding what the data said, which is
-how a Delta picks up answers that arrived after it was built. A source nobody has answered
-yet leaves the cells empty and says so; one answered with words or picks rather than numbers
-- a text grid, a choice grid - says that too, because averaging a word tells a respondent
-nothing.
+A carried column is **reference, and not a field to type in**: it is shown as greyed text
+with no input in it, so nobody can accidentally write over what respondents said. Press
+**Refresh reference values** to re-read the source, which is how a Delta picks up answers
+that arrived after it was built; reopening the study does the same. A source nobody has
+answered yet leaves dashes and says so - *Nobody has answered G1 yet* - and points at the
+test view; one answered with words or picks rather than numbers - a text grid, a choice
+grid - says that too, because averaging a word tells a respondent nothing.
 
 A **Validation rule** of *Each new column adds up to* puts a live total row under the new
 columns; it follows the cells as they are typed and turns red the moment a column is off,
@@ -533,7 +534,8 @@ node scripts/dom/studio_options_test.js        # formatting on answer option / r
 node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
 node scripts/dom/studio_scale_row_test.js          # the six-column scale-point row: track sizes, the SVG attach control, no literal escape text
 node scripts/dom/studio_delta_grid_test.js         # Delta: carry-forward, reference values from the source's answers,
-                                                 #   side-by-side columns, renames, add / delete / reorder, N/A and totals
+                                                 #   read-only greyed carried cells, side-by-side columns, renames,
+                                                 #   add / delete / reorder, N/A and totals
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view

@@ -954,7 +954,13 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-dl-rowlabel{ min-width:0 }
 .st-dl-rowname{ width:100%; min-width:0; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px; background:#fff; font-weight:600 }
 .st-dl-td{ min-width:0 }
-.st-dl-td.st-dl-src .st-dl-ref{ width:100%; min-width:0; border:1px solid #e6d9a8; border-radius:7px; padding:6px 8px; font-size:12.5px; background:#fffdf4; color:#5c4a12 }
+/* a carried cell is reference: greyed, no border that invites a click, no caret */
+.st-dl-td.st-dl-src{ padding:0 2px }
+.st-dl-ref{ display:block; width:100%; min-width:0; box-sizing:border-box; padding:6px 8px;
+  border:1px solid #dfe3e6; border-radius:7px; background:#f2f3f4; color:#6b7280;
+  font-size:12.5px; font-variant-numeric:tabular-nums; text-align:center; cursor:default;
+  -webkit-user-select:none; user-select:none }
+.st-dl-ref.empty{ color:#a8adb3; background:#f7f8f9; border-style:dashed }
 .st-dl-td.st-dl-new{ text-align:center }
 .st-dl-ph{ font-size:11.5px; color:var(--faint); font-style:italic }
 .st-dl-acts{ text-align:right; white-space:nowrap }
