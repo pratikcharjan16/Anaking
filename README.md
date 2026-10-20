@@ -345,6 +345,17 @@ Flags raised: `ai_generated_<qid>` (likely) and `ai_suspect_<qid>` (possible), p
 respondent-level `ai_generated_verbatim`. Nothing is ever deleted or blocked after the fact - a
 flagged answer stays in the data, marked, so the team can decide what to do with it.
 
+**Every written answer, not just open-text ones.** A *written answer* is one question plus the
+answer item it writes to, and `core.ai_detect.text_fields()` is the single place that enumerates
+them: an `open_text` box, **every cell of a `text_grid`**, a row comment (`c_<row>`), the
+question comment (`_comment`) and a "please specify" box (`other_text`). Because the live check,
+the submit flags, the Admin queue, the export and duplicate detection all read that one list, a
+surface added there is covered everywhere at once. Each cell or comment carries its **own**
+telemetry and verdict (`_meta:<item>` / `_ai:<item>` on the record, `Q3|r1_c1` in the verdict
+map), so one honest cell cannot mask a pasted one next to it, and the export names the box it
+scored (`<qid>_<item>_ai_verdict`). `ai_skip_items` on a question leaves one box unscored without
+switching the check off for the rest.
+
 Settings live in Studio → **Settings & quality control** ("Written-answer AI check": what the
 respondent sees, warn-from / flag-from thresholds, and whether every open-text answer or only
 the listed verbatim ids are checked) with a per-question override on each open-text question
@@ -387,7 +398,8 @@ node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the t
 node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored labels/levels/images, group inclusion, none
 node scripts/dom/studio_actions_test.js         # dashboard actions: preview / duplicate / launch / pause / relaunch / reminder
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
-node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/survey_ai_check_test.js
+node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)

@@ -7,7 +7,8 @@ from __future__ import annotations
 import json
 import time
 
-from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
+from .ai_detect import (VERDICT_LIKELY, ai_item, duplicate_verbatims, MAIN_ITEM,
+                        field_key, text_fields, verdict_of)
 from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
 from . import screening
@@ -252,15 +253,25 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             n_tasks = (cfg.get("conjoint") or {}).get("n_tasks", 0)
             for i in range(1, n_tasks + 1):
                 out[f"{qid}_T{i}"] = a.get(f"T{i}", "")
-        if qid in ai:      # any free-text box, including a "please specify" box
-            out[qid + "_ai_score"] = ai[qid]["score"]
-            out[qid + "_ai_verdict"] = ai[qid]["verdict"]
-            meta = a.get("_meta") or {}
-            ack = (a.get("_ai") or {}).get("ack")
-            out[qid + "_ai_confirmed_own_words"] = ("yes" if ack else
-                                                    "no" if ack is False else "")
-            out[qid + "_pasted_chars"] = meta.get("pasted_chars", "")
-            out[qid + "_keystrokes"] = meta.get("keystrokes", "")
+        # any written answer on this question: its own box, a "please specify" box, a text-grid
+        # cell or a comment. The main box keeps the plain column names it always had; a second
+        # written answer gets its own, so nothing a spreadsheet already reads moves.
+        for fqid, item in text_fields(cfg):
+            if fqid != qid:
+                continue
+            res = ai.get(field_key(fqid, item))
+            if not res:
+                continue
+            sfx = "" if item == MAIN_ITEM else "_" + str(item)
+            out[qid + sfx + "_ai_score"] = res["score"]
+            out[qid + sfx + "_ai_verdict"] = res["verdict"]
+            ack = (a.get(ai_item(item)) or {}).get("ack")
+            out[qid + sfx + "_ai_confirmed_own_words"] = ("yes" if ack else
+                                                          "no" if ack is False else "")
+            if item == MAIN_ITEM:                 # one telemetry snapshot per question
+                meta = a.get("_meta") or {}
+                out[qid + "_pasted_chars"] = meta.get("pasted_chars", "")
+                out[qid + "_keystrokes"] = meta.get("keystrokes", "")
         # comment boxes: one for the whole question, one under any row that asked for one
         if (q.get("comments") or {}).get("mode") and (q.get("comments") or {}).get("mode") != "none":
             out[qid + "_comment"] = a.get("_comment", "")
@@ -399,7 +410,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
     for r in records:
         scored = score_free_text(r["answers"], cfg, _verbatim_qs(cfg))
         for f in free_text(r["answers"], cfg, _verbatim_qs(cfg)):
-            res = scored.get(f["qid"]) or {}
+            res = scored.get(field_key(f["qid"], f["item"])) or {}
             meta = f["meta"] or {}
             typed = (meta.get("typed_ms") or 0) / 1000.0
             cps = round(len(f["text"]) / typed, 1) if typed else ""
@@ -407,7 +418,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 r["respondent_code"], "test" if r["is_test"] else "real", f["qid"],
                 (f["question"].get("stem") or "")[:90], len(f["text"].split()),
                 res.get("score", ""), res.get("verdict", "too_short"),
-                "yes" if (r["answers"].get(f["qid"], {}).get("_ai") or {}).get("ack") else "",
+                "yes" if verdict_of(r["answers"], f["qid"], f["item"]).get("ack") else "",
                 meta.get("pasted_chars", ""), meta.get("keystrokes", ""), cps,
                 ";".join(dups.get((r["respondent_code"], f["qid"]), [])),
                 "; ".join(res.get("signals", [])), "; ".join(res.get("proofread", [])),

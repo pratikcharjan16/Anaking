@@ -80,7 +80,7 @@ def validation_rows(study, scope='all'):
     all_answers = {}
     for answer in db.execute('SELECT a.* FROM answers a JOIN respondents r ON r.id=a.respondent_id WHERE r.study_id=?', (study.id,)):
         value = answer['value']
-        if answer['item'] in ('codes', 'order', '_meta', '_ai'):
+        if answer['item'] in ('codes', 'order', '_meta', '_ai') or answer['item'].startswith('_ai:') or answer['item'].startswith('_meta:'):
             try:
                 value = json.loads(value)
             except (ValueError, TypeError):

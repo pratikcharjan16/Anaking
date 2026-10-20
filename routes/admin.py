@@ -25,7 +25,8 @@ from flask import (Blueprint, Response, current_app, jsonify, render_template, r
 
 from core import xlsx_export
 from core.research import numeric
-from core.ai_detect import VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings, duplicate_verbatims
+from core.ai_detect import (VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings,
+                            duplicate_verbatims, field_key, field_split, verdict_of)
 from core.qc import free_text, qc_flags, score_free_text
 from core.reporting import build_sheets
 from models import Respondent, Study, StudyError
@@ -50,13 +51,14 @@ def ai_summary(recs: list, cfg: dict) -> dict:
     per_q: dict = {}
     for r in recs:
         scored = score_free_text(r["answers"], cfg, _verbatim_qs(cfg))
-        for qid, res in scored.items():
+        for key, res in scored.items():
+            qid, item = field_split(key)
             answers_total += 1
             if res["verdict"] == VERDICT_LIKELY:
                 likely += 1
             elif res["verdict"] == VERDICT_POSSIBLE:
                 possible += 1
-            if (r["answers"].get(qid, {}).get("_ai") or {}).get("ack"):
+            if verdict_of(r["answers"], qid, item).get("ack"):
                 confirmed += 1
             q = per_q.setdefault(qid, {"id": qid, "answers": 0, "likely": 0, "possible": 0})
             q["answers"] += 1
@@ -143,7 +145,7 @@ def verbatims():
     for r in recs:
         scored = score_free_text(r["answers"], cfg, _verbatim_qs(cfg))
         for f in free_text(r["answers"], cfg, _verbatim_qs(cfg)):
-            res = scored.get(f["qid"])
+            res = scored.get(field_key(f["qid"], f["item"]))
             verdict = (res or {}).get("verdict", "too_short")
             if want_q and f["qid"] != want_q:
                 continue
@@ -161,7 +163,7 @@ def verbatims():
                 "stem": (f["question"].get("stem") or "")[:120],
                 "text": f["text"][:2000], "words": len(f["text"].split()),
                 "score": (res or {}).get("score"), "verdict": verdict,
-                "confirmed": bool((r["answers"].get(f["qid"], {}).get("_ai") or {}).get("ack")),
+                "confirmed": bool(verdict_of(r["answers"], f["qid"], f["item"]).get("ack")),
                 "signals": (res or {}).get("signals", []),
                 "proofread": (res or {}).get("proofread", []),
                 "pasted_chars": meta.get("pasted_chars", 0),

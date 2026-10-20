@@ -330,9 +330,65 @@
   // says. /api/check_text runs exactly the rules the QC engine applies after the field
   // closes, so the warning a respondent sees and the flag on their record can never
   // disagree - and a client that skipped the call would still be scored on submit.
-  var textMeta = {};        // qid -> telemetry collected in the browser
-  var aiState = {};         // qid -> latest server verdict (with the text it scored)
+  var textMeta = {};        // field id -> telemetry collected in the browser
+  var aiState = {};         // field id -> latest server verdict (with the text it scored)
   var proofreadSeen = false;
+
+  // ---- one written answer = one question plus the answer item it writes to ---------------
+  // An open-text question writes to "_"; a text-grid cell writes to "<row>_<col>", a row
+  // comment to "c_<row>", the question comment to "_comment" and a "please specify" box to
+  // "other_text".  One question can therefore hold several written answers, so the live check,
+  // its telemetry and its verdict are all keyed by field rather than by question - otherwise
+  // the second cell of a grid would overwrite the first one's verdict.
+  // Mirrors core/ai_detect.py: text_fields / ai_item / field_key.
+  var MAIN_ITEM = "_";
+  function aiItemName(item) { return item === MAIN_ITEM ? "_ai" : "_ai:" + item; }
+  function metaItemName(item) { return item === MAIN_ITEM ? "_meta" : "_meta:" + item; }
+  function fieldId(qid, item) { return item === MAIN_ITEM ? qid : qid + "|" + item; }
+  function fieldText(qid, item) {
+    var v = (answers[qid] || {})[item];
+    return typeof v === "string" ? v : "";
+  }
+  // Every written answer a question can collect, as [question, item] - the same enumeration
+  // the server makes, so the live warning and the flags on submit can never disagree.
+  function textFieldsOf(q) {
+    var out = [];
+    if (q.type === "open_text") out.push(MAIN_ITEM);
+    if (q.type === "text_grid") {
+      var rows = (q.rows || []).map(function (r) { return String(r.code); });
+      var cols = (q.cols || []).map(function (c) { return String(c.code); });
+      rows.forEach(function (r) { cols.forEach(function (c) { out.push(r + "_" + c); }); });
+    }
+    (q.options || []).forEach(function (o) { if (o.other) out.push("other_text"); });
+    (q.rows || []).forEach(function (r) { if ((r.comment || "none") !== "none") out.push("c_" + String(r.code)); });
+    var cm = (q.comments || {}).mode;
+    if (cm && cm !== "none") out.push("_comment");
+    return out;
+  }
+
+  // A human name for one written answer, so several boxes on the same question are told apart.
+  function fieldLabel(q, item) {
+    if (item === MAIN_ITEM) return "";
+    if (item === "other_text") return "your \u201cplease specify\u201d answer";
+    if (item === "_comment") return "your comment";
+    if (item.indexOf("c_") === 0) {
+      var r = (q.rows || []).filter(function (x) { return String(x.code) === item.slice(2); })[0];
+      return r && r.label ? "your comment on \u201c" + pipeText(r.label) + "\u201d" : "your comment";
+    }
+    var parts = String(item).split("_");
+    if (parts.length >= 2) {
+      var row = (q.rows || []).filter(function (x) { return String(x.code) === parts[0]; })[0];
+      var col = (q.cols || []).filter(function (x) { return String(x.code) === parts[1]; })[0];
+      if (row && col) return pipeText(row.label) + " \u00b7 " + pipeText(col.label);
+    }
+    return item;
+  }
+
+  function questionById(qid) {
+    var qs = (SPEC && SPEC.questions) || [];
+    for (var i = 0; i < qs.length; i++) if (qs[i].id === qid) return qs[i];
+    return null;
+  }
 
   function escHtml(t) {
     return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) {
@@ -340,12 +396,12 @@
     });
   }
 
-  function metaFor(qid) {
-    if (!textMeta[qid]) {
-      textMeta[qid] = { keystrokes: 0, pastes: 0, pasted_chars: 0, input_events: 0,
+  function metaFor(fid) {
+    if (!textMeta[fid]) {
+      textMeta[fid] = { keystrokes: 0, pastes: 0, pasted_chars: 0, input_events: 0,
                         typed_ms: 0, blur_ms: 0 };
     }
-    return textMeta[qid];
+    return textMeta[fid];
   }
 
   // "off" | "warn" | "confirm" - mirrors core.ai_detect.ai_settings() on the server
@@ -389,16 +445,16 @@
     });
   }
 
-  function checkText(qid, text, meta, cb) {
+  function checkText(fid, qid, item, text, meta, cb) {
     fetch("/api/check_text", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ study: STUDY.slug, qid: qid, text: text, meta: meta })
+      body: JSON.stringify({ study: STUDY.slug, qid: qid, item: item, text: text, meta: meta })
     }).then(function (r) { return r.json(); }).then(function (res) {
       res.text = text;
-      aiState[qid] = res;
-      var prev = (answers[qid] || {})._ai || {};
-      setAns(qid, "_ai", { score: res.score, verdict: res.verdict, ack: !!prev.ack,
-                           checked: Date.now() });
+      aiState[fid] = res;
+      var prev = (answers[qid] || {})[aiItemName(item)] || {};
+      setAns(qid, aiItemName(item), { score: res.score, verdict: res.verdict, ack: !!prev.ack,
+                                      checked: Date.now() });
       if (cb) cb(res);
     }).catch(function () { if (cb) cb(null); });
   }
@@ -409,9 +465,13 @@
     return out;
   }
 
-  // Wires one textarea: telemetry, live gibberish check, live AI check, confirm action.
-  function wireTextWatch(q, ta, chip, actions) {
-    var meta = metaFor(q.id);
+  // The shared core: telemetry, the offline gibberish check and the live AI check for one text
+  // box.  `chip` / `actions` are the open-text affordances; a grid cell or a comment box has
+  // nowhere to put a chip, so it passes none and is still scored - the verdict lands on the
+  // record, raises the QC flags, and is put to the respondent at the proofreading step.
+  function watchField(q, ta, item, chip, actions) {
+    var fid = fieldId(q.id, item);
+    var meta = metaFor(fid);
     var action = aiActionOf(q);
     var deb = null, awayAt = 0, praised = false;
 
@@ -423,7 +483,8 @@
     }
 
     function paint(res, txt) {
-      var acked = !!((answers[q.id] || {})._ai || {}).ack;
+      var acked = !!((answers[q.id] || {})[aiItemName(item)] || {}).ack;
+      if (!chip) return;                     // scored all the same, but there is no chip here
       if (!res || !res.scored || res.verdict === "human") {
         chip.className = "oq-chip" + (res && res.scored ? " ok" : "");
         chip.innerHTML = res && res.scored ? "&#10003; Reads like your own words - thank you." : "";
@@ -457,9 +518,9 @@
         var mine = el("button", "g-btn", "&#10003; I wrote this myself");
         mine.type = "button";
         mine.addEventListener("click", function () {
-          var prev = (answers[q.id] || {})._ai || {};
-          setAns(q.id, "_ai", { score: res.score, verdict: res.verdict, ack: true,
-                                confirmed: Date.now() });
+          var prev = (answers[q.id] || {})[aiItemName(item)] || {};
+          setAns(q.id, aiItemName(item), { score: res.score, verdict: res.verdict, ack: true,
+                                           confirmed: Date.now() });
           paint(res, ta.value.trim());
           coachSay("Thank you for confirming - that is noted on your record.", "info");
         });
@@ -473,25 +534,27 @@
 
     function runCheck() {
       var txt = ta.value.trim();
-      setAns(q.id, "_meta", snapshot());
+      setAns(q.id, metaItemName(item), snapshot());
       if (txt.length < 20) {
-        chip.className = "oq-chip"; chip.innerHTML = ""; actions.innerHTML = "";
+        if (chip) chip.className = "oq-chip";
+        if (chip) chip.innerHTML = "";
+        if (actions) actions.innerHTML = "";      // a grid cell has no chip or actions
         return;
       }
       var bad = textQuality(txt);            // instant, offline: keyboard mashes and filler
-      if (bad) {
+      if (bad && chip) {
         chip.className = "oq-chip warn";
         chip.innerHTML = "&#9888; This reads as " + bad + ". A sentence or two in your own " +
           "words makes sure your insight counts - or record it with the microphone.";
         actions.innerHTML = "";
       }
       if (action === "off") return;
-      checkText(q.id, txt, snapshot(), function (res) { if (res) paint(res, txt); });
+      checkText(fid, q.id, item, txt, snapshot(), function (res) { if (res) paint(res, txt); });
     }
 
     trackKeys(meta, ta);
     ta.addEventListener("keydown", function () {
-      if (meta.keystrokes % 20 === 0) setAns(q.id, "_meta", snapshot());
+      if (meta.keystrokes % 20 === 0) setAns(q.id, metaItemName(item), snapshot());
     });
     ta.addEventListener("paste", function () {
       clearTimeout(deb);
@@ -499,27 +562,37 @@
     });
     ta.addEventListener("drop", function () { meta.pastes++; meta.input_events++; });
     ta.addEventListener("input", function () {
-      setAns(q.id, "_", ta.value); hideErr();
+      setAns(q.id, item, ta.value);
+      if (chip) hideErr();
       clearTimeout(deb);
-      deb = setTimeout(runCheck, 650);
+      deb = setTimeout(runCheck, item === MAIN_ITEM ? 650 : 1200);
     });
     ta.addEventListener("blur", function () {
       awayAt = Date.now();
-      setAns(q.id, "_meta", snapshot());
-      ansChanged();                          // screening on text waits until the box is left
+      setAns(q.id, metaItemName(item), snapshot());
+      if (chip) ansChanged();                // screening on text waits until the box is left
     });
     ta.addEventListener("focus", function () {
       if (awayAt) { meta.blur_ms += Date.now() - awayAt; awayAt = 0; }
     });
-
+    runCheck();
     // coming back to an answered question: show the verdict we already have, or re-score
     var init = ta.value.trim();
     if (init.length >= 20 && action !== "off") {
-      var cached = aiState[q.id];
+      var cached = aiState[fid];
       if (cached && cached.text === init) paint(cached, init);
       else setTimeout(runCheck, 80);
     }
   }
+
+  // Wires one textarea: telemetry, live gibberish check, live AI check, confirm action.
+  function wireTextWatch(q, ta, chip, actions) { watchField(q, ta, MAIN_ITEM, chip, actions); }
+
+  // The same scoring for a box with no chip of its own: a text-grid cell, a comment box, a
+  // "please specify" field.  Scored and recorded all the same - the respondent is told at the
+  // proofreading step and the reviewer sees it in the Admin queue.
+  function watchQuietField(q, ta, item) { watchField(q, ta, item, null, null); }
+
 
   // ============================================================ voice verbatims
   // Optional recorded answer via MediaRecorder; uploaded to /api/voice and referenced
@@ -1589,6 +1662,7 @@
         otherBox.placeholder = "Please specify";
         otherBox.value = getAns(q.id, "other_text") || "";
         otherBox.addEventListener("input", function () { setAns(q.id, "other_text", otherBox.value); });
+        watchQuietField(q, otherBox, "other_text");
         wrap.appendChild(otherBox);
       }
     });
@@ -1682,6 +1756,8 @@
     ta.placeholder = placeholder || "Add a comment";
     ta.value = getAns(qid, key) || "";
     ta.addEventListener("input", function () { setAns(qid, key, ta.value); if (ta.value.trim()) hideErr(); });
+    var cq = questionById(qid);
+    if (cq) watchQuietField(cq, ta, key);
     return ta;
   }
   // One comment box under a row, spanning the whole grid.
@@ -1934,6 +2010,7 @@
           setAns(q.id, key, ta.value);
           hideErr(); ansChanged();
         });
+        watchQuietField(q, ta, key);          // every cell is checked like an open-text box
         cell.appendChild(ta);
         try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
         row.appendChild(cell);
@@ -3417,12 +3494,17 @@
         showErr("Please write at least " + q.min_words + " words."); return false;
       }
     }
-    if (q.type === "open_text" && aiActionOf(q) === "confirm") {
-      var ai = (answers[q.id] || {})._ai;
-      if (ai && ai.verdict === "likely_ai" && !ai.ack) {
-        showErr("Our quality check reads this answer as AI-written or pasted. Please write it " +
-                "in your own words, or confirm that you wrote it yourself.");
-        return false;
+    if (aiActionOf(q) === "confirm") {
+      // any written answer on this question can hold the respondent up: its own box, a
+      // text-grid cell, a comment, a "please specify"
+      for (var fi = 0; fi < textFieldsOf(q).length; fi++) {
+        var it2 = textFieldsOf(q)[fi];
+        var ai = (answers[q.id] || {})[aiItemName(it2)];
+        if (ai && ai.verdict === "likely_ai" && !ai.ack) {
+          showErr("Our quality check reads this answer as AI-written or pasted. Please write " +
+                  "it in your own words, or confirm that you wrote it yourself.");
+          return false;
+        }
       }
     }
     return true;
@@ -3753,17 +3835,19 @@
   function freeTextAnswers() {
     var out = [];
     (SPEC.questions || []).forEach(function (q) {
-      if (q.type !== "open_text" || aiActionOf(q) === "off") return;
-      var txt = String((answers[q.id] || {})._ || "").trim();
-      if (txt.length >= 20) out.push({ q: q, text: txt });
+      if (aiActionOf(q) === "off") return;
+      textFieldsOf(q).forEach(function (item) {
+        var txt = fieldText(q.id, item).trim();
+        if (txt.length >= 20) out.push({ q: q, item: item, text: txt });
+      });
     });
     return out;
   }
 
   function flaggedFor(item) {
-    var res = aiState[item.q.id];
+    var res = aiState[fieldId(item.q.id, item.item)];
     if (!res || res.text !== item.text) return null;           // not scored (yet)
-    if (((answers[item.q.id] || {})._ai || {}).ack) return null;   // already confirmed
+    if (((answers[item.q.id] || {})[aiItemName(item.item)] || {}).ack) return null;   // confirmed
     var notes = (res.proofread || []).filter(function (n) {
       return SERIOUS_NOTES.indexOf(n.key) >= 0;
     });
@@ -3774,7 +3858,10 @@
   function proofRow(row) {
     var q = row.item.q, res = row.res;
     var box = el("div", "proof-row");
-    box.appendChild(el("div", "proof-head", "<b>" + q.id + ".</b> " + escHtml(pipeText(q.stem))));
+    // a text grid can put several flagged boxes on one question, so say which one this is
+    var where = fieldLabel(q, row.item.item);
+    box.appendChild(el("div", "proof-head", "<b>" + q.id + ".</b> " + escHtml(pipeText(q.stem)) +
+      (where ? ' <span class="proof-where">' + escHtml(where) + "</span>" : "")));
     var chips = el("div", "proof-chips");
     var head = res.verdict === "likely_ai" ? "Looks AI-written"
              : res.verdict === "possible_ai" ? "May be AI-written" : "Worth a fix";
@@ -3788,7 +3875,7 @@
 
     var ta = el("textarea", "proof-text");
     ta.value = row.item.text;
-    trackKeys(metaFor(q.id), ta);            // rewriting here counts as typing
+    trackKeys(metaFor(fieldId(q.id, row.item.item)), ta);   // rewriting here counts as typing
     box.appendChild(ta);
     row.ta = ta;
 
@@ -3809,8 +3896,9 @@
       mine.innerHTML = "&#10003; I wrote this myself";
       re.disabled = true;
       re.textContent = "Checking\u2026";
-      setAns(q.id, "_meta", metaFor(q.id));
-      checkText(q.id, row.item.text, metaFor(q.id), function (fresh) {
+      var fid2 = fieldId(q.id, row.item.item);
+      setAns(q.id, metaItemName(row.item.item), metaFor(fid2));
+      checkText(fid2, q.id, row.item.item, row.item.text, metaFor(fid2), function (fresh) {
         re.disabled = false;
         re.innerHTML = "&#8635; Re-check this answer";
         if (!fresh) return;
@@ -3853,10 +3941,11 @@
 
     var waiting = 0;
     items.forEach(function (it) {
-      var cached = aiState[it.q.id];
+      var fid3 = fieldId(it.q.id, it.item);
+      var cached = aiState[fid3];
       if (cached && cached.text === it.text) return;
       waiting++;
-      checkText(it.q.id, it.text, metaFor(it.q.id), function () {
+      checkText(fid3, it.q.id, it.item, it.text, metaFor(fid3), function () {
         if (--waiting === 0) draw();
       });
     });
@@ -3887,7 +3976,7 @@
       done.addEventListener("click", function () {
         rows.forEach(function (r) {
           setAns(r.item.q.id, "_", r.ta.value);
-          setAns(r.item.q.id, "_ai", { score: r.res.score, verdict: r.res.verdict,
+          setAns(r.item.q.id, aiItemName(r.item.item), { score: r.res.score, verdict: r.res.verdict,
                                        ack: !!r.mine, reviewed: Date.now() });
         });
         submitSurvey();

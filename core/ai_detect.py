@@ -425,19 +425,53 @@ def score_text(text: str, meta: dict | None = None, ai_cfg: dict | None = None) 
 # ======================================================================================
 # STUDY WIDE HELPERS
 # ======================================================================================
+# The answer item a question's own text box writes to.
+MAIN_ITEM = "_"
+
+#: Question types whose answers are one text box per grid cell.
+GRID_TEXT_TYPES = ("text_grid",)
+
+
+def grid_text_items(q: dict) -> list[str]:
+    """The answer items a text grid's cells write to: ``"<row code>_<col code>"``.
+
+    Mirrors the key the survey client builds in ``renderTextGrid``.  A grid with no rows or
+    columns yet has no boxes to check, which is what the guard below is for.
+    """
+    rows = [r.get("code") for r in (q.get("rows") or []) if isinstance(r, dict) and r.get("code")]
+    cols = [c.get("code") for c in (q.get("cols") or []) if isinstance(c, dict) and c.get("code")]
+    return [f"{r}_{c}" for r in rows for c in cols]
+
+
 def text_fields(cfg: dict) -> list[tuple[str, str]]:
     """Every free-text answer a study can collect, as ``(question_id, item)`` pairs.
 
-    That is every ``open_text`` question plus every "please specify" box hanging off a
-    select question - so the checks cover all the questions, not just a hand-picked list.
+    That is every ``open_text`` box, every cell of a ``text_grid``, every "please specify"
+    box hanging off a select question, and every comment box - so the checks cover all the
+    places a respondent can write, not just a hand-picked list.  One function is the whole
+    point: the live warning, the QC flags on submit, the Admin review queue, the export
+    workbook and cross-respondent duplicate detection all enumerate this, so a surface added
+    here is covered everywhere at once.
     """
     out: list[tuple[str, str]] = []
     for q in cfg.get("questions", []) or []:
+        if not isinstance(q, dict) or not q.get("id"):
+            continue
+        qid = q["id"]
         if q.get("type") == "open_text":
-            out.append((q["id"], "_"))
+            out.append((qid, MAIN_ITEM))
+        if q.get("type") in GRID_TEXT_TYPES:
+            out.extend((qid, item) for item in grid_text_items(q))
         for o in q.get("options", []) or []:
-            if o.get("other"):
-                out.append((q["id"], "other_text"))
+            if isinstance(o, dict) and o.get("other"):
+                out.append((qid, "other_text"))
+        # comment boxes: one under any row that asked for one, plus one for the question
+        for r in q.get("rows") or []:
+            if isinstance(r, dict) and (r.get("comment") or "none") != "none":
+                out.append((qid, "c_" + str(r.get("code"))))
+        cm = (q.get("comments") or {}).get("mode")
+        if cm and cm != "none":
+            out.append((qid, "_comment"))
     seen, dedup = set(), []
     for pair in out:
         if pair not in seen:
@@ -446,9 +480,46 @@ def text_fields(cfg: dict) -> list[tuple[str, str]]:
     return dedup
 
 
-def ai_settings(cfg: dict, qid: str | None = None) -> dict:
+def ai_item(item: str) -> str:
+    """The answer item a field's verdict is stored under.
+
+    The main box keeps the plain ``_ai`` every existing consumer reads.  A grid cell or a
+    comment box shares the question, so its verdict goes next to it under ``_ai:<item>`` -
+    one question can have several written answers and each needs its own verdict.
+    """
+    return "_ai" if item == MAIN_ITEM else "_ai:" + str(item)
+
+
+def field_key(qid: str, item: str) -> str:
+    """One written answer as a single string key: ``"Q3"`` for a question's own box,
+    ``"Q3|r1_c1"`` for a second written answer on the same question.
+
+    Verdict maps travel through ``jsonify``, so they cannot be keyed by a tuple.  The
+    separator is ``|`` because a question id is ``[A-Za-z0-9_-]`` and an answer item is
+    ``[A-Za-z0-9_:.-]`` - neither can contain it, so the split is unambiguous.
+    """
+    return str(qid) if item == MAIN_ITEM else f"{qid}|{item}"
+
+
+def field_split(key: str) -> tuple[str, str]:
+    """The inverse of :func:`field_key`."""
+    qid, _, item = str(key).partition("|")
+    return qid, item or MAIN_ITEM
+
+
+def verdict_of(answers: dict, qid: str, item: str = MAIN_ITEM) -> dict:
+    """The stored verdict for one text field, or ``{}`` when it was never scored."""
+    return ((answers or {}).get(qid) or {}).get(ai_item(item)) or {}
+
+
+def ai_settings(cfg: dict, qid: str | None = None, item: str | None = None) -> dict:
     """Effective AI-check settings: study defaults from ``cfg["qc"]["ai"]``, per-question
-    overrides from the question config (``ai_check``, ``ai_action``)."""
+    overrides from the question config (``ai_check``, ``ai_action``).
+
+    ``item`` is the answer item being scored.  ``qc["ai"]["skip_items"]`` lists items the
+    study does not want scored - a grid of one-word cells, say - and it is the one place a
+    whole surface can be left out without switching the check off for the question.
+    """
     out = dict(cfg.get("qc", {}).get("ai", {}) or {})
     out.setdefault("enabled", True)
     out.setdefault("action", "confirm")           # "warn" | "confirm" | "off"
@@ -460,6 +531,9 @@ def ai_settings(cfg: dict, qid: str | None = None) -> dict:
             out["enabled"] = False
         if q.get("ai_action"):
             out["action"] = q["ai_action"]
+        skip = set(q.get("ai_skip_items") or []) | set((out.get("skip_items") or []))
+        if item is not None and (item in skip or "*" in skip):
+            out["enabled"] = False
     if out.get("action") == "off":
         out["enabled"] = False
     return out

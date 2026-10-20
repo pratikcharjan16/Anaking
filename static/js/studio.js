@@ -5558,7 +5558,7 @@
       f("f-uniq", "Uniform conjoint choices", "id of the choice task", qc.uniform_q, "e.g. CT1") +
       f("f-verb", "Verbatim quality checks", "open-text ids, comma separated", (qc.verbatim_qs || []).join(", "), "e.g. Q20, Q21") +
       "</div>" +
-      '<h4 class="st-h4">Written-answer AI check <span class="st-opt">AI-generated / pasted text in open boxes</span></h4>' +
+      '<h4 class="st-h4">Written-answer AI check <span class="st-opt">AI-generated / pasted text in any written answer</span></h4>' +
       '<div class="st-grid3">' +
       '<div class="st-field"><label>What the respondent sees</label><select id="f-aiaction" data-set="1">' +
       [["confirm", "Warn, and ask them to confirm the answer is their own"],
@@ -5570,7 +5570,7 @@
       f("f-aiflag", "Flag from score", "0-100 - raised as a QC flag, listed for review", ai.flag_at == null ? 60 : ai.flag_at, "", "number") +
       "</div>" +
       '<div class="st-field"><label>Which written answers are checked</label><select id="f-aiall" data-set="1">' +
-      [["all", "Every open-text and \u201cplease specify\u201d answer"],
+      [["all", "Every written answer - open text, text grids, \u201cplease specify\u201d and comments"],
        ["listed", "Only the verbatim ids listed above"]].map(function (o) {
         return '<option value="' + o[0] + '"' + (checkAll === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
       }).join("") + "</select></div>" +
