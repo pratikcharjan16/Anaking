@@ -132,7 +132,23 @@ the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not sav
 Rich text: text size and font, bold / italic / underline / strike / superscript / subscript,
 text & highlight colour, alignment, bullet & numbered lists, links, tables, "…" for the rarer
 controls, a `</>` source view, full screen, and **+ Add Image & Video Attachments** straight
-under the question text. **Piping:** every text field has a **➔ Pipe in answer**
+under the question text.
+
+**Colour.** The **A** and highlighter buttons each open a standard palette rather than a single
+fixed colour. Both offer the same ten hues as a 10 × 5 grid (light tint at the top, the pure hue
+in the middle, dark shade at the bottom) — **Theme colours** for text, **Highlight colours** for
+the highlighter, which uses soft tints so black text sitting on a highlight stays readable — plus
+a **Standard colours** row, the **colours you have used recently** (remembered per browser), and
+**Custom colour …** with a hex box, R / G / B, the browser's own colour picker and a live preview.
+The first entry is **Automatic** (black) for text and **No colour** for a highlight; either takes
+the colour off the selection while leaving bold, italic, size and lists alone, unlike a blanket
+*clear formatting*. A colour respondents would struggle to read — very light text, or a very dark
+highlight — earns a warning in the palette, never a refusal. The toolbar swatch and underline
+always show what the next click would apply. Everything the palettes produce survives
+`core/sanitize.py` and the client-side whitelist, so the colour and the highlight reach the
+respondent's browser exactly as authored.
+
+**Piping:** every text field has a **➔ Pipe in answer**
 button - click where the answer should appear, press it, pick from a searchable list grouped by
 earlier question ("Their answer (as text)", "Answer code", "First / last option they ticked",
 "Text typed in Other", a fixed option label, a row's rating, the question wording), each with an
@@ -354,6 +370,8 @@ python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset 
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
+node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
+                                               #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
 node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the tab only showing for conjoint studies

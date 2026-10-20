@@ -461,6 +461,30 @@ def test_rich_text_is_sanitised_on_save(client):
     assert spec["questions"][0]["options"][1]["exclusive"] is True
 
 
+def test_standard_colour_palette_survives_saving(client):
+    """Font colour, text highlight and the custom-colour area all write whitelisted styles."""
+    stem = ('Which <b style="font-size:18px">therapy</b>, and '
+            '<span style="color: #4472c4">why</span>? '
+            '<span style="background-color: #fff2cc">Note this</span> '
+            '<span style="color: inherit">plain again</span>')
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [{"id": "Q1", "section": "S1", "type": "open_text",
+                          "stem": "old", "stem_html": stem}]}
+    r = client.post("/api/studio/save", json={"title": "Colours", "cfg": cfg})
+    assert r.get_json()["ok"]
+    saved = client.get("/api/studio/study", query_string={"slug": "colours"}).get_json()["cfg"]
+    q = saved["questions"][0]
+    assert '<span style="color: #4472c4">why</span>' in q["stem_html"]
+    assert '<span style="background-color: #fff2cc">Note this</span>' in q["stem_html"]
+    assert '<b style="font-size: 18px">therapy</b>' in q["stem_html"]
+    # the palettes never hand back anything outside the whitelist, so nothing is stripped
+    assert "invisible" not in q["stem_html"]
+    assert q["stem"] == "Which therapy, and why? Note this plain again"
+    # a respondent gets the same markup back out of the public spec
+    spec = client.get("/api/spec/colours").get_json()
+    assert '<span style="color: #4472c4">why</span>' in spec["questions"][0]["stem_html"]
+
+
 def test_media_upload_serve_delete(client):
     q = {"study": "beacon"}
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 64

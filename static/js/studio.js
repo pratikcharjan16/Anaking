@@ -2034,11 +2034,10 @@
       .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
     var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
       .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
-    // Colour palette: Automatic (black) is the default selected; full RGB/hex picker included
+    // Colour buttons: the swatch and the underline show the colour that would be applied
+    // next; clicking either opens the standard palette (injected beside the toolbar).
     function colorBtn(kind, title, swatch) {
-      var tid = target + (kind === "foreColor" ? "_fg" : "_bg");
-      // Palette HTML is injected outside toolbar and toggled; button only holds trigger
-      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000") + '"></span></button>';
+      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true" aria-expanded="false">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000000") + '"></span></button>';
     }
     return '<div class="st-toolbar" data-for="' + target + '">' +
       '<select class="st-tb-sel" data-size-for="' + target + '" title="Text size" aria-label="Text size">' + sizeOpts + '</select>' + (small ? "" : pick("fontName", "Font", fonts)) +
@@ -2061,46 +2060,358 @@
         act("fullscreen", "\u26F6", "Full screen") +
       "</span></div>";
   }
-  // --- rich text helpers: font size (8px+ + custom) and colour palette (Automatic black) ---
-  var ST_COLORS = ["#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#ffffff","#b3261e","#cc4125","#e06666","#f6b26b","#ffd966","#38761d","#274e13","#6aa84f","#1155cc","#0b5394","#3c78d8","#9900ff","#b45f06","#bf9000","#783f04","#a61c00","#cc0000"];
+  // --- rich text helpers: standard colour palettes (font colour + text highlight) ----------
+  // Both pickers offer the same standard palette, so a question reads consistently whichever
+  // is used: a 10-hue grid (light tint at the top, the pure hue in the middle, dark shade at
+  // the bottom), the classic 10 "standard colours" row, the colours most recently used in
+  // this browser, and a custom area - hex, R/G/B and the browser's own colour picker.
+  // The highlight palette uses soft tints of the same 10 hues so black text on a highlight
+  // stays legible, and its first entry is "No colour" (remove the highlight).
+  var ST_HUES = [["#000000", "Black"], ["#44546a", "Blue grey"], ["#4472c4", "Blue"],
+                 ["#5b9bd5", "Sky blue"], ["#00838f", "Teal"], ["#70ad47", "Green"],
+                 ["#ffc000", "Gold"], ["#ed7d31", "Orange"], ["#c00000", "Red"],
+                 ["#7030a0", "Purple"]];
+  var ST_STANDARD = [["#c00000", "Dark red"], ["#ff0000", "Red"], ["#ffc000", "Orange"],
+                     ["#ffff00", "Yellow"], ["#92d050", "Light green"], ["#00b050", "Green"],
+                     ["#00b0f0", "Cyan"], ["#0070c0", "Blue"], ["#002060", "Dark blue"],
+                     ["#7030a0", "Purple"]];
+  // Font-colour rows: how much white is mixed in, then the hue itself, then how much black.
+  var ST_FONT_ROWS = [[0.80, "white", "lighter 80%"], [0.60, "white", "lighter 60%"],
+                      [0.40, "white", "lighter 40%"], [0, null, ""], [0.40, "black", "darker 40%"]];
+  // Highlight rows: five soft strengths of every hue - readable under black text.
+  var ST_HL_ROWS = [[0.92, "softest"], [0.84, "soft"], [0.76, "medium"], [0.68, "strong"], [0.60, "strongest"]];
+  var ST_RECENT_KEY = { foreColor: "st-recent:foreColor", hiliteColor: "st-recent:hiliteColor" };
+  var ST_RECENT_MAX = 10;
+  var ST_NAME_CACHE = null;
+
+  // --- colour maths -----------------------------------------------------------------------
+  function stToRgb(hex) {
+    var h = String(hex == null ? "" : hex).trim();
+    if (h[0] === "#") h = h.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    var n = parseInt(h, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, hex: "#" + h.toLowerCase() };
+  }
+  function stToHex(r, g, b) {
+    return "#" + [r, g, b].map(function (v) {
+      var s = Math.max(0, Math.min(255, Math.round(Number(v) || 0))).toString(16);
+      return s.length < 2 ? "0" + s : s;
+    }).join("");
+  }
+  function stMix(base, amount, withWhite) {
+    var c = stToRgb(base);
+    if (!c) return base;
+    var m = withWhite ? 255 : 0;
+    return stToHex(c.r + (m - c.r) * amount, c.g + (m - c.g) * amount, c.b + (m - c.b) * amount);
+  }
+  // WCAG relative luminance, 0 = black .. 1 = white - only used for the legibility warning
+  function stLum(hex) {
+    var c = stToRgb(hex);
+    if (!c) return 0;
+    return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+  }
+  function stFontGrid() {
+    return ST_FONT_ROWS.map(function (row) {
+      return ST_HUES.map(function (h) {
+        var hex = row[1] === null ? h[0] : stMix(h[0], row[0], row[1] === "white");
+        return [hex, h[1] + (row[2] ? ", " + row[2] : "")];
+      });
+    });
+  }
+  function stHighlightGrid() {
+    return ST_HL_ROWS.map(function (row) {
+      return ST_HUES.map(function (h) {
+        return [stMix(h[0], row[0], true), h[1] + " highlight, " + row[1]];
+      });
+    });
+  }
+  function stNameMap() {
+    if (ST_NAME_CACHE) return ST_NAME_CACHE;
+    var m = {};
+    stFontGrid().forEach(function (row) { row.forEach(function (x) { m[x[0]] = x[1]; }); });
+    stHighlightGrid().forEach(function (row) { row.forEach(function (x) { m[x[0]] = x[1]; }); });
+    ST_STANDARD.forEach(function (x) { m[x[0]] = x[1]; });
+    ST_HUES.forEach(function (x) { m[x[0]] = x[1]; });
+    ST_NAME_CACHE = m;
+    return m;
+  }
+  // A friendly name for a swatch - "Gold, lighter 60%" rather than "#f6c945"
+  function stColorName(hex) {
+    var c = stToRgb(hex);
+    if (!c) return String(hex == null ? "" : hex);
+    return stNameMap()[c.hex] || c.hex;
+  }
+  // Nothing is ever blocked - a poor-contrast choice only earns a warning the author can ignore
+  function stColorWarning(hex, isFore) {
+    var l = stLum(hex);
+    if (isFore) return l > 0.45 ? "Very light text - hard to read on the survey's white background." : "";
+    return l < 0.34 ? "Very dark highlight - black text on it will be hard to read." : "";
+  }
+
+  // --- recently used (in the browser, so it survives the card re-rendering itself) ---------
+  function stRecent(kind) {
+    try {
+      var arr = JSON.parse(window.localStorage.getItem(ST_RECENT_KEY[kind]) || "[]");
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(stToRgb).map(function (x) { return stToRgb(x).hex; }).slice(0, ST_RECENT_MAX);
+    } catch (e) { return []; }
+  }
+  function stRemember(kind, hex) {
+    var c = stToRgb(hex);
+    if (!c) return;
+    try {
+      var list = stRecent(kind).filter(function (x) { return x !== c.hex; });
+      list.unshift(c.hex);
+      window.localStorage.setItem(ST_RECENT_KEY[kind], JSON.stringify(list.slice(0, ST_RECENT_MAX)));
+    } catch (e) { /* private mode: recent colours are a nicety, never a requirement */ }
+  }
+
+  // --- palette markup ---------------------------------------------------------------------
+  function stCells(list) {
+    return list.map(function (c) {
+      return '<button type="button" class="st-color-cell" data-color="' + c[0] + '"' +
+        ' title="' + esc(c[1]) + '" aria-label="' + esc(c[1]) + '" style="background:' + c[0] + '"></button>';
+    }).join("");
+  }
+  function stGrid(rows) {
+    return '<div class="st-color-grid">' +
+      stCells(rows.reduce(function (a, r) { return a.concat(r); }, [])) + "</div>";
+  }
   function stPaletteHTML(target, kind) {
     var isFore = kind === "foreColor";
     var title = isFore ? "Text colour" : "Highlight colour";
-    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '" role="dialog" aria-label="' + title + '">';
-    html += '<div class="st-color-head"><strong>' + title + '</strong><button type="button" class="st-color-close" data-color-close>&times;</button></div>';
-    html += '<button type="button" class="st-color-auto' + (isFore ? ' on' : '') + '" data-color="automatic" title="Automatic (black) = remove colour"><span class="st-color-auto-swatch"></span> Automatic <em>(black)</em> <span class="st-color-check">\u2713</span></button>';
-    html += '<div class="st-color-grid">';
-    ST_COLORS.forEach(function(c){ html += '<button type="button" class="st-color-cell" data-color="' + c + '" title="' + c + '" style="background:' + c + '"></button>'; });
-    html += '</div>';
-    html += '<div class="st-color-custom"><label>Hex <input type="text" class="st-color-hex" placeholder="#000000" maxlength="7" pattern="#?[0-9a-fA-F]{6}"></label><label>RGB <input type="color" class="st-color-picker" value="#000000"></label></div>';
-    html += '<div class="st-color-rgbrow"><label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label><label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label><label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label><button type="button" class="st-btn sm" data-color-apply>Apply</button></div>';
-    html += '<div class="st-color-hint">Automatic is black. Pick a swatch or enter Hex/RGB.</div></div>';
+    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '"' +
+      ' role="dialog" aria-label="' + title + '">' +
+      '<div class="st-color-head"><strong>' + title + '</strong>' +
+      '<button type="button" class="st-color-close" data-color-close title="Close">&times;</button></div>';
+    // the reset entry: Automatic (black) for text, No colour (no highlight) for a highlight
+    html += '<button type="button" class="st-color-none ' + (isFore ? "auto" : "none") + ' on" data-color="automatic">' +
+      '<span class="st-color-none-swatch"></span><span class="st-color-none-label">' +
+      (isFore ? "Automatic" : "No colour") + '</span><em>' +
+      (isFore ? "black, as the survey shows it" : "no highlight") + '</em>' +
+      '<span class="st-color-check">\u2713</span></button>';
+    // the recently-used strip is re-rendered every time the palette opens, so a colour picked
+    // a moment ago in another field is there straight away
+    html += '<div class="st-color-recent" hidden></div>';
+    html += '<div class="st-color-group">' + (isFore ? "Theme colours" : "Highlight colours") + "</div>";
+    html += stGrid(isFore ? stFontGrid() : stHighlightGrid());
+    if (isFore) {
+      html += '<div class="st-color-group">Standard colours</div>';
+      html += '<div class="st-color-grid">' + stCells(ST_STANDARD) + "</div>";
+    }
+    // custom colour: hex, R/G/B, the browser's own picker and a live preview
+    html += '<button type="button" class="st-color-more" data-color-more>' +
+      (isFore ? "Custom colour" : "Custom highlight colour") + " \u2026</button>";
+    html += '<div class="st-color-custom" hidden>' +
+      '<div class="st-color-preview">' +
+      '<span class="st-color-preview-a' + (isFore ? "" : " hl") + '" style="' +
+      (isFore ? "color:#000000" : "background-color:#fff3a3") + '">Aa</span>' +
+      '<output class="st-color-preview-val">#000000</output></div>' +
+      '<label class="st-color-hex-l">Hex <input type="text" class="st-color-hex" placeholder="#1a2b3c"' +
+      ' maxlength="7" spellcheck="false" autocomplete="off"></label>' +
+      '<label class="st-color-pick-l">Picker <input type="color" class="st-color-picker" value="#000000"' +
+      ' aria-label="' + title + ' picker"></label>' +
+      '<div class="st-color-rgbrow">' +
+      '<label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label>' +
+      '<label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label>' +
+      '<label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label>' +
+      '<button type="button" class="st-btn sm on" data-color-apply>Apply</button></div></div>';
+    html += '<div class="st-color-warn" hidden></div>';
+    html += '<div class="st-color-hint">' + (isFore
+      ? "Pick a swatch, type a hex code, or use the picker. Colours you use are remembered here."
+      : "Pick a swatch, type a hex code, or use the picker. Soft tints keep the text readable.") +
+      "</div></div>";
     return html;
   }
-  function stEnsurePalette(target, kind) {
+  function stEnsurePalette(target, kind, trig) {
     var sel = '.st-color-pop[data-palette-for="' + target + '"][data-palette-kind="' + kind + '"]';
     var pop = document.querySelector(sel);
-    if (pop) return pop;
-    var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
-    if (!tb) return null;
-    var wrap = document.createElement("div");
-    wrap.innerHTML = stPaletteHTML(target, kind);
-    pop = wrap.firstChild;
-    tb.parentElement.insertBefore(pop, tb.nextSibling);
-    // sync RGB/hex interactions inside this palette only
-    (function bindPalette(p){
-      var hex = p.querySelector(".st-color-hex"), pick = p.querySelector(".st-color-picker");
-      var rI = p.querySelector(".st-color-r"), gI = p.querySelector(".st-color-g"), bI = p.querySelector(".st-color-b");
-      function fromHex(h){ if(!h) return null; h=h.trim(); if(h[0]!=='#') h='#'+h; if(!/^#[0-9a-fA-F]{6}$/.test(h)) return null; var n=parseInt(h.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255,hex:h.toLowerCase()}; }
-      function toHex(r,g,b){ return '#' + [r,g,b].map(function(v){ var s=Number(v).toString(16); return s.length===1?'0'+s:s; }).join(''); }
-      function syncFromPicker(){ var c=fromHex(pick.value); if(!c) return; hex.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
-      function syncFromHex(){ var c=fromHex(hex.value); if(!c) return; pick.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
-      function syncFromRGB(){ var r=Math.max(0,Math.min(255, parseInt(rI.value,10)||0)), g=Math.max(0,Math.min(255, parseInt(gI.value,10)||0)), b=Math.max(0,Math.min(255, parseInt(bI.value,10)||0)); var h=toHex(r,g,b); hex.value=h; pick.value=h; }
-      if(pick) pick.addEventListener("input", syncFromPicker);
-      if(hex) hex.addEventListener("input", syncFromHex);
-      if(rI) rI.addEventListener("input", syncFromRGB); if(gI) gI.addEventListener("input", syncFromRGB); if(bI) bI.addEventListener("input", syncFromRGB);
-    })(pop);
+    if (!pop) {
+      var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
+      if (!tb) return null;
+      var wrap = document.createElement("div");
+      wrap.innerHTML = stPaletteHTML(target, kind);
+      pop = wrap.firstChild;
+      tb.parentElement.insertBefore(pop, tb.nextSibling);
+    }
+    // flip the palette to the left when its button sits near the right edge of the window
+    if (trig && trig.getBoundingClientRect) {
+      var r = trig.getBoundingClientRect();
+      pop.classList.toggle("right", !!r.left && r.left + 300 > (window.innerWidth || 1024));
+    }
+    stRefreshRecent(pop, kind);
     return pop;
+  }
+  // keep hex / R / G / B / picker / preview in step while the author edits the custom area
+  function stSyncCustom(pop, src, raw) {
+    var c = stToRgb(raw);
+    if (!c) return;
+    var pick = pop.querySelector(".st-color-picker"), hexI = pop.querySelector(".st-color-hex");
+    var rI = pop.querySelector(".st-color-r"), gI = pop.querySelector(".st-color-g"), bI = pop.querySelector(".st-color-b");
+    var prev = pop.querySelector(".st-color-preview-a"), val = pop.querySelector(".st-color-preview-val");
+    if (pick && src !== pick) pick.value = c.hex;
+    if (hexI && src !== hexI) hexI.value = c.hex;
+    if (rI && src !== rI) rI.value = c.r;
+    if (gI && src !== gI) gI.value = c.g;
+    if (bI && src !== bI) bI.value = c.b;
+    if (prev) {
+      var isFore = pop.getAttribute("data-palette-kind") === "foreColor";
+      prev.style.color = isFore ? c.hex : "";
+      prev.style.backgroundColor = isFore ? "" : c.hex;
+    }
+    if (val) val.textContent = c.hex;
+    var warn = pop.querySelector(".st-color-warn");
+    var msg = stColorWarning(c.hex, pop.getAttribute("data-palette-kind") === "foreColor");
+    if (warn) {
+      warn.textContent = msg;
+      if (msg) warn.removeAttribute("hidden"); else warn.setAttribute("hidden", "");
+    }
+  }
+  // redraw the "Recently used" strip of an open palette from the browser's memory
+  function stRefreshRecent(pop, kind) {
+    var box = pop.querySelector(".st-color-recent");
+    if (!box) return;
+    var recent = stRecent(kind);
+    if (!recent.length) { box.setAttribute("hidden", ""); box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="st-color-group">Recently used</div><div class="st-color-grid sm">' +
+      recent.map(function (c) {
+        return '<button type="button" class="st-color-cell" data-color="' + c + '" title="' +
+          stColorName(c) + ' (recent)" aria-label="' + stColorName(c) + ' (recent)" style="background:' + c + '"></button>';
+      }).join("") + "</div>";
+    box.removeAttribute("hidden");
+  }
+  function stMarkActive(pop, hex) {
+    var c = hex ? stToRgb(hex) : null;
+    pop.querySelectorAll("[data-color]").forEach(function (el) {
+      var v = (el.getAttribute("data-color") || "").toLowerCase();
+      el.classList.toggle("on", (!c && v === "automatic") || (!!c && v === c.hex));
+    });
+  }
+  // mirror the chosen colour back onto the toolbar button (swatch, underline, tooltip)
+  function stSyncToolbar(target, kind, hex) {
+    var btn = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' +
+      (kind === "hiliteColor" ? ".hl" : ":not(.hl)"));
+    if (!btn) return;
+    var isFore = kind === "foreColor";
+    var col = hex || (isFore ? "#000000" : "#fff3a3");
+    var sw = btn.querySelector(".st-color-swatch");
+    if (sw) sw.style.background = col;
+    btn.style.borderBottomColor = col;
+    btn.setAttribute("title", (isFore ? "Text colour" : "Highlight colour") + " \u2014 " +
+      (hex ? stColorName(hex) : (isFore ? "Automatic (black)" : "No colour")));
+  }
+
+  // --- apply / remove a colour, keeping every other format intact -------------------------
+  function stUnwrap(el) {
+    var p = el.parentNode;
+    if (!p) return;
+    while (el.firstChild) p.insertBefore(el.firstChild, el);
+    p.removeChild(el);
+  }
+  function stColourNodes(host, range) {
+    var out = [];
+    (function walk(n) {
+      for (var c = n.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType !== 1) continue;
+        if (typeof range.intersectsNode === "function" && !range.intersectsNode(c)) continue;
+        out.push(c);
+        walk(c);
+      }
+    })(host);
+    return out;
+  }
+  // Is there a colour on the caret or on anything it sits inside?
+  function stHasColorAround(node, host, isFore) {
+    for (var n = node; n && n !== host; n = n.parentNode) {
+      if (n.nodeType !== 1) continue;
+      if (!isFore && n.tagName === "MARK") return true;
+      if (isFore && n.tagName === "FONT" && n.getAttribute("color")) return true;
+      if (n.style && ((isFore && n.style.color) || (!isFore && n.style.backgroundColor))) return true;
+    }
+    return false;
+  }
+  // Take the colour off the selection. Unlike removeFormat this leaves bold, italic, size and
+  // lists alone, so choosing Automatic never wipes the rest of the author's formatting.
+  function stStripColor(host, isFore) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      var anchor = range.startContainer;
+      // nothing selected: only intervene when the caret sits inside coloured text, so the
+      // next characters the author types come out plain. Elsewhere they already do.
+      if (!stHasColorAround(anchor, host, isFore)) return;
+      var s = document.createElement("span");
+      s.setAttribute("style", isFore ? "color: inherit" : "background-color: transparent");
+      range.insertNode(s);
+      var nr = document.createRange();
+      nr.setStart(s, 0); nr.collapse(true);
+      sel.removeAllRanges(); sel.addRange(nr);
+      return;
+    }
+    stColourNodes(host, range).forEach(function (el) {
+      var tag = el.tagName;
+      if (tag === "FONT") {
+        if (isFore && el.hasAttribute("color")) el.removeAttribute("color");
+        return;
+      }
+      if (tag === "MARK" && !isFore) { stUnwrap(el); return; }
+      if (!el.style) return;
+      if (isFore) el.style.color = "";
+      else el.style.backgroundColor = "";
+      // drop the style attribute once it is empty so no bare <span style=""> is left behind
+      if (!(el.getAttribute("style") || "").trim()) el.removeAttribute("style");
+      if (tag === "SPAN" && el.attributes.length === 0) stUnwrap(el);
+    });
+  }
+  // Wrap the selection in a span carrying the colour - the fallback for engines where
+  // execCommand is unavailable, and what lets this be exercised outside a browser.
+  function stPaintColor(host, hex, isFore) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    var style = (isFore ? "color: " : "background-color: ") + hex;
+    if (range.collapsed) {
+      var s = document.createElement("span");
+      s.setAttribute("style", style);
+      range.insertNode(s);
+      var nr = document.createRange();
+      nr.setStart(s, 0); nr.collapse(true);
+      sel.removeAllRanges(); sel.addRange(nr);
+      return;
+    }
+    var frag = range.extractContents();
+    var w = document.createElement("span");
+    w.setAttribute("style", style);
+    w.appendChild(frag);
+    range.insertNode(w);
+    var nr2 = document.createRange();
+    nr2.selectNodeContents(w);
+    sel.removeAllRanges(); sel.addRange(nr2);
+  }
+  function stApplyColor(target, color, kind) {
+    var host = document.getElementById(target);
+    if (!host) return;
+    var isFore = kind === "foreColor";
+    var remove = !color || color === "automatic" || color === "transparent";
+    host.focus();
+    try { document.execCommand("styleWithCSS", false, true); } catch (e) {}
+    if (remove) {
+      stStripColor(host, isFore);
+      stSyncToolbar(target, kind, null);
+      changed();
+      return;
+    }
+    var hex = (stToRgb(color) || {}).hex || color;
+    var ok = false;
+    try { ok = document.execCommand(kind, false, hex); } catch (e) { ok = false; }
+    // Safari answers hiliteColor with false - backColor is the same job there
+    if (!ok && !isFore) { try { ok = document.execCommand("backColor", false, hex); } catch (e) { ok = false; } }
+    if (!ok) stPaintColor(host, hex, isFore);
+    stRemember(kind, hex);
+    stSyncToolbar(target, kind, hex);
+    changed();
   }
   function stApplyFontSize(target, px) {
     var host = document.getElementById(target); if (!host) return;
@@ -2130,75 +2441,85 @@
     }
     changed();
   }
-  function stApplyForeColor(target, color, kind) {
-    var host = document.getElementById(target); if (!host) return;
-    host.focus();
-    document.execCommand("styleWithCSS", false, true);
-    if (!color || color === "automatic") {
-      // Automatic = black (remove colour to inherit black)
-      document.execCommand("removeFormat", false, null);
-      // ensure future typing is black
-      document.execCommand("foreColor", false, "#000000");
-      // remove to keep automatic intent: black is default
-      var sel = window.getSelection(); if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
-        // Remove the just-set black by clearing again so new text is automatic black
-        // (browser keeps black as explicit, but visual is same)
-      }
-    } else {
-      document.execCommand(kind, false, color);
-    }
-    var sw = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' + (kind==="hiliteColor"?".hl":"") + ' .st-color-swatch');
-    if (sw) sw.style.background = (color==="automatic" ? (kind==="hiliteColor"?"#fff3a3":"#000") : color);
-    changed();
+  function stClosePops() {
+    document.querySelectorAll(".st-color-pop.open").forEach(function (p) { p.classList.remove("open"); });
+    document.querySelectorAll("[data-color-trigger][aria-expanded=true]").forEach(function (b) {
+      b.setAttribute("aria-expanded", "false");
+    });
   }
 
-
-
-  // -- Question card: font-size (8+ custom) and colour palette (Automatic black) wiring --
-  document.addEventListener("change", function(e){
-    var sel = e.target.closest("select[data-size-for]");
-    if (sel) { e.preventDefault(); stApplyFontSize(sel.getAttribute("data-size-for"), sel.value); sel.selectedIndex = 0; }
+  // --- palette wiring ---------------------------------------------------------------------
+  document.addEventListener("input", function (e) {
+    if (!e.target.closest) return;
+    var pop = e.target.closest(".st-color-pop");
+    if (!pop) return;
+    var t = e.target;
+    if (t.classList.contains("st-color-picker") || t.classList.contains("st-color-hex")) {
+      stSyncCustom(pop, t, t.value);
+      return;
+    }
+    if (t.classList.contains("st-color-r") || t.classList.contains("st-color-g") || t.classList.contains("st-color-b")) {
+      var r = pop.querySelector(".st-color-r"), g = pop.querySelector(".st-color-g"), b = pop.querySelector(".st-color-b");
+      stSyncCustom(pop, t, stToHex(parseInt(r.value, 10) || 0, parseInt(g.value, 10) || 0, parseInt(b.value, 10) || 0));
+    }
   });
-  document.addEventListener("click", function(e){
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && document.querySelector(".st-color-pop.open")) stClosePops();
+  });
+  document.addEventListener("click", function (e) {
     var trig = e.target.closest("[data-color-trigger]");
     if (trig) {
       e.preventDefault(); e.stopPropagation();
       var tgt = trig.getAttribute("data-target"), kind = trig.getAttribute("data-color-trigger");
-      var pop = stEnsurePalette(tgt, kind);
+      var pop = stEnsurePalette(tgt, kind, trig);
       if (!pop) return;
-      // close other palettes
-      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ if(p!==pop) p.classList.remove("open"); });
-      pop.classList.toggle("open");
+      var wasOpen = pop.classList.contains("open");
+      stClosePops();
+      if (!wasOpen) { pop.classList.add("open"); trig.setAttribute("aria-expanded", "true"); }
       return;
     }
-    var cell = e.target.closest(".st-color-cell");
-    if (cell && cell.closest(".st-color-pop")) {
-      var pop2 = cell.closest(".st-color-pop"); var col = cell.getAttribute("data-color");
-      stApplyForeColor(pop2.getAttribute("data-palette-for"), col, pop2.getAttribute("data-palette-kind"));
-      pop2.classList.remove("open"); return;
+    var inPop = e.target.closest(".st-color-pop");
+    if (inPop) {
+      var picked = e.target.closest("[data-color]");
+      if (picked) {
+        var hex = picked.getAttribute("data-color");
+        stApplyColor(inPop.getAttribute("data-palette-for"), hex, inPop.getAttribute("data-palette-kind"));
+        stMarkActive(inPop, hex);
+        stClosePops();
+        return;
+      }
+      var more = e.target.closest("[data-color-more]");
+      if (more) {
+        var box = inPop.querySelector(".st-color-custom");
+        var opening = box.hasAttribute("hidden");
+        if (opening) box.removeAttribute("hidden"); else box.setAttribute("hidden", "");
+        more.classList.toggle("on", opening);
+        if (opening) {
+          var pick = inPop.querySelector(".st-color-picker");
+          stSyncCustom(inPop, null, (pick && pick.value) || "#000000");
+          var first = inPop.querySelector(".st-color-hex");
+          if (first) first.focus();
+        }
+        return;
+      }
+      if (e.target.closest("[data-color-close]")) { stClosePops(); return; }
+      var apply = e.target.closest("[data-color-apply]");
+      if (apply) {
+        var hexI = inPop.querySelector(".st-color-hex");
+        var v = (hexI && hexI.value.trim()) || "";
+        if (v && v[0] !== "#") v = "#" + v;
+        if (!stToRgb(v)) {
+          var pickI = inPop.querySelector(".st-color-picker");
+          v = pickI ? pickI.value : "#000000";
+        }
+        stApplyColor(inPop.getAttribute("data-palette-for"), v, inPop.getAttribute("data-palette-kind"));
+        stMarkActive(inPop, v);
+        // stays open, so the author can fine-tune hex / R / G / B and watch the preview
+        return;
+      }
+      return;                                     // clicks inside the palette never fall through
     }
-    var auto = e.target.closest(".st-color-auto");
-    if (auto && auto.closest(".st-color-pop")) {
-      var pop3 = auto.closest(".st-color-pop");
-      stApplyForeColor(pop3.getAttribute("data-palette-for"), "automatic", pop3.getAttribute("data-palette-kind"));
-      pop3.classList.remove("open"); return;
-    }
-    var close = e.target.closest("[data-color-close]");
-    if (close) { var p4=close.closest(".st-color-pop"); if(p4) p4.classList.remove("open"); return; }
-    // click on Apply in custom RGB/hex row
-    var apply = e.target.closest("[data-color-apply]");
-    if (apply && apply.closest(".st-color-pop")) {
-      var pop5 = apply.closest(".st-color-pop");
-      var hexI = pop5.querySelector(".st-color-hex"); var hexV = hexI ? hexI.value.trim() : "";
-      if (hexV && hexV[0] !== "#") hexV = "#" + hexV;
-      if (!/^#[0-9a-fA-F]{6}$/.test(hexV)) { var pickI = pop5.querySelector(".st-color-picker"); if (pickI) hexV = pickI.value; }
-      stApplyForeColor(pop5.getAttribute("data-palette-for"), hexV, pop5.getAttribute("data-palette-kind"));
-      pop5.classList.remove("open"); return;
-    }
-    // click outside closes palettes
-    if (!e.target.closest(".st-color-pop")) {
-      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ p.classList.remove("open"); });
-    }
+    stClosePops();
   });
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
