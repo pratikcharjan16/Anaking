@@ -14,8 +14,8 @@ from __future__ import annotations
 
 import re
 
-from .ai_detect import (VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings, score_text,
-                        text_fields)
+from .ai_detect import (MAIN_ITEM, VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings,
+                        field_key, field_split, score_text, text_fields)
 
 def _gibberish(t: str) -> bool:
     s = t.strip().lower()
@@ -73,7 +73,8 @@ def free_text(answers: dict, cfg: dict, extra: list | None = None) -> list[dict]
         txt = a.get(item)
         if not isinstance(txt, str) or not txt.strip():
             continue
-        meta = a.get("_meta")
+        # telemetry is stored per written answer; the question's own box keeps the plain _meta
+        meta = a.get("_meta:" + str(item)) if item != MAIN_ITEM else a.get("_meta")
         out.append({"qid": qid, "item": item, "text": txt.strip(),
                     "meta": meta if isinstance(meta, dict) else None,
                     "question": by_id.get(qid, {})})
@@ -81,7 +82,12 @@ def free_text(answers: dict, cfg: dict, extra: list | None = None) -> list[dict]
 
 
 def score_free_text(answers: dict, cfg: dict, extra: list | None = None) -> dict:
-    """AI suspicion per question: ``{qid: {score, verdict, words, signals, proofread}}``.
+    """AI suspicion per written answer: ``{(qid, item): {score, verdict, words, ...}}``.
+
+    Keyed by :func:`~core.ai_detect.field_key` rather than by question, because one question
+    can hold several written answers - a text grid has one box per cell, and comments add
+    more - and each of them is scored in its own right.  The key is a string, not a tuple,
+    because the map is handed straight to ``jsonify``.
 
     ``check_all_text: false`` narrows the check back to the ids listed in
     ``qc["verbatim_qs"]``; ``qc["ai"]["enabled"]: false`` switches it off entirely.
@@ -99,11 +105,11 @@ def score_free_text(answers: dict, cfg: dict, extra: list | None = None) -> dict
         res = score_text(f["text"], f["meta"], st)
         if not res["scored"]:
             continue
-        out[f["qid"]] = {"score": res["score"], "verdict": res["verdict"],
-                         "words": res["words"],
-                         "signals": [s["label"] for s in res["signals"] if s["weight"] > 0],
-                         "proofread": [n["note"] for n in res["proofread"]],
-                         "action": st.get("action", "confirm")}
+        out[field_key(f["qid"], f["item"])] = {"score": res["score"], "verdict": res["verdict"],
+                                      "words": res["words"],
+                                      "signals": [s["label"] for s in res["signals"] if s["weight"] > 0],
+                                      "proofread": [n["note"] for n in res["proofread"]],
+                                      "action": st.get("action", "confirm")}
     return out
 
 
@@ -145,12 +151,18 @@ def qc_flags(answers: dict, elapsed: float, cfg: dict, status: str = "complete")
             if _gibberish(f["text"]):
                 flags.append(f"gibberish_verbatim_{qid}")
 
-    ai = score_free_text(answers, cfg, [(q, "_") for q in verbatim_qs])
-    for qid, res in ai.items():
+    ai = score_free_text(answers, cfg, [(q, MAIN_ITEM) for q in verbatim_qs])
+    # one flag per question, not per written answer: a respondent who pasted into one cell of
+    # a text grid has written that answer by AI, and the flag names stay as they were
+    flagged_q = set()
+    for key, res in ai.items():
+        qid = field_split(key)[0]
         if res["verdict"] == VERDICT_LIKELY:
-            flags.append(f"ai_generated_{qid}")
+            flagged_q.add((qid, "ai_generated"))
         elif res["verdict"] == VERDICT_POSSIBLE:
-            flags.append(f"ai_suspect_{qid}")
+            flagged_q.add((qid, "ai_suspect"))
+    for qid, kind in sorted(flagged_q):
+        flags.append(f"{kind}_{qid}")
     if any(r["verdict"] == VERDICT_LIKELY for r in ai.values()):
         flags.append("ai_generated_verbatim")     # respondent-level roll-up for the dashboard
     return {"flags": flags, "clean": not flags, "ai": ai}

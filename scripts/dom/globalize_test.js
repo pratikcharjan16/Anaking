@@ -156,7 +156,7 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
     /Survey flow/.test(groups.join("|")) && /Objects/.test(groups.join("|")), groups.join(" | "));
   const items = $$("#st-modal .st-type b").map(b => b.textContent.trim());
   ["Single Select", "Grid", "Rating Scale",
-    "Rank Order", "Scale", "Text Entry", "Numeric Entry", "Net Promoter", "Constant Sum", "Max Diff",
+    "Rank Order", "Scale", "Text Entry", "Numeric Entry", "NPS", "Constant Sum", "Max Diff",
     "Numeric Matrix", "Date", "Delta", "Conjoint", "Concept Test", "Heatmap",
     "Welcome Page", "Thank You Page", "Question Page", "Question Loop", "Page Randomizer",
     "Embedded Variable", "Text Block"  ].forEach(x => check("library item: " + x, items.includes(x), items.join(" | ")));

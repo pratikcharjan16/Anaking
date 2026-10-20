@@ -392,20 +392,23 @@
 
   // Which family of controls the condition needs, per question type:
   //   choice      - options / codes
-  //   number      - one number (numeric entry, scale, NPS, date, delta)
+  //   number      - one number (numeric entry, scale, date, delta)
   //   alloc       - an allocation split across rows (constant sum)
   //   numrows     - a number per row, with no forced total (a numeric matrix without columns)
   //   nummatrix   - a numeric matrix of rows x columns, one number per cell
-  //   grid        - a scale value per row (rating scale, word pairs, heat map, concept test,
+  //   grid        - a scale value per row (rating scale, NPS, heat map, concept test,
   //                 and older scale-based grids)
   //   choicegrid  - a grid of rows x columns where each row picks one or several columns
   var TYPE_KIND = {
     single_select: "choice", multi_select: "choice",
-    numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
+    numeric: "number", slider: "number", date: "number", delta: "number",
     open_text: "text", loop: "text",
     rank: "rank",
     rating_grid: "grid", rating_scale: "grid", semantic_diff: "grid", emoji_grid: "grid",
     heatmap: "grid", concept_test: "grid",
+    // presented, never answered: a walkthrough is watched, so it owns no answer slot
+    // and no screening operator may be applied to it
+    walk_through: "any", text_block: "any",
     sum_to_100: "alloc", numeric_matrix: "numrows"
   };
   function qKind(q) {
@@ -445,6 +448,14 @@
     if (a.delta !== undefined && a.before !== undefined) return Number(a.delta);
     return a._ === undefined || a._ === null || a._ === "" ? NaN : Number(a._);
   }
+  // A delta grid has no single number: its values live under row_code_col_code, so a
+  // condition reads the first new column it finds.
+  function deltaNumOf(q, a) {
+    var cols = (q.cols || []).filter(function (c) { return c.kind !== "src"; });
+    if (!cols.length || !(q.rows || []).length) return NaN;
+    var r = q.rows[0], v = a[r.code + "_" + cols[0].code];
+    return v === undefined || v === null || v === "" ? NaN : Number(v);
+  }
   function textOf(q, a) {
     a = a || {};
     if (q && q.type === "loop") {
@@ -481,7 +492,8 @@
     var a = (ctx && ctx.answers && ctx.answers[r.q]) || {};
     var codes = pickedCodes(q, a);
     var want = codeList(r.value);
-    var num = numOf(a);
+    // a delta grid keeps its numbers under row_code_col_code, so it needs its own read
+    var num = q && q.type === "delta" && (q.cols || []).length ? deltaNumOf(q, a) : numOf(a);
     switch (r.op) {
       case "selected": return codes.indexOf(want[0]) >= 0;
       case "not_selected": return codes.indexOf(want[0]) < 0;
@@ -655,12 +667,23 @@
     a = a || {};
     if (!q) return false;
     switch (q.type) {
-      case "single_select": case "numeric": case "slider": case "nps":
+      case "single_select": case "numeric": case "slider":
       case "open_text": case "date":
         return a._ !== undefined && a._ !== null && String(a._) !== "";
       case "multi_select": return (a.codes || []).length > 0;
       case "rank": return (a.order || []).length === (q.rows || []).length && (q.rows || []).length > 0;
-      case "delta": return a.before !== undefined && a.after !== undefined;
+      case "delta":
+        if ((q.cols || []).length) {              // a grid: every new cell on every row
+          return (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;  // N/A stands in for the row
+            return (q.cols || []).every(function (c) {
+              if (c.kind === "src") return true;  // carried columns are reference only
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v) !== "";
+            });
+          });
+        }
+        return a.before !== undefined && a.after !== undefined;
       case "sum_to_100": return (q.rows || []).some(function (r) { return a[r.code] !== undefined; });
       case "numeric_matrix":
         if ((q.cols || []).length) return (q.rows || []).every(function (r) {
@@ -836,7 +859,7 @@
       if (q.id === uptoId) break;
       var a = {};
       switch (q.type) {
-        case "single_select": case "nps": a._ = q.options && q.options.length ? q.options[0].code : 7; break;
+        case "single_select": a._ = q.options && q.options.length ? q.options[0].code : 7; break;
         case "multi_select": a.codes = (q.options || []).slice(0, 2).map(function (o) { return o.code; }); break;
         case "numeric": case "slider": a._ = Math.round(((q.min || 0) + (q.max || 100)) / 2); break;
         case "open_text": a._ = "(sample answer to " + q.id + ")"; break;
@@ -863,7 +886,17 @@
           });
           break;
         }
-        case "delta": a.before = 40; a.after = 60; a.delta = 20; break;
+        case "delta":
+          if ((q.cols || []).length) {            // a grid: fill the new columns, row by row
+            (q.rows || []).forEach(function (r, ri) {
+              (q.cols || []).forEach(function (c) {
+                if (c.kind === "src") return;
+                var base = r.code === "a" || ri === 0 ? 60 : 40;
+                a[r.code + "_" + c.code] = String(base + ri);
+              });
+            });
+          } else { a.before = 40; a.after = 60; a.delta = 20; }
+          break;
         case "concept_test":
           (q.rows || []).forEach(function (r) { a[r.code] = q.scale ? Math.ceil((q.scale.min + q.scale.max) / 2) : 4; }); break;
         case "loop":
@@ -878,6 +911,8 @@
           }
           break;
         case "text_block": break;
+        // a walkthrough stores nothing: it is shown, not answered
+        case "walk_through": break;
         default: break;
       }
       out[q.id] = a;

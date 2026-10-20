@@ -330,9 +330,65 @@
   // says. /api/check_text runs exactly the rules the QC engine applies after the field
   // closes, so the warning a respondent sees and the flag on their record can never
   // disagree - and a client that skipped the call would still be scored on submit.
-  var textMeta = {};        // qid -> telemetry collected in the browser
-  var aiState = {};         // qid -> latest server verdict (with the text it scored)
+  var textMeta = {};        // field id -> telemetry collected in the browser
+  var aiState = {};         // field id -> latest server verdict (with the text it scored)
   var proofreadSeen = false;
+
+  // ---- one written answer = one question plus the answer item it writes to ---------------
+  // An open-text question writes to "_"; a text-grid cell writes to "<row>_<col>", a row
+  // comment to "c_<row>", the question comment to "_comment" and a "please specify" box to
+  // "other_text".  One question can therefore hold several written answers, so the live check,
+  // its telemetry and its verdict are all keyed by field rather than by question - otherwise
+  // the second cell of a grid would overwrite the first one's verdict.
+  // Mirrors core/ai_detect.py: text_fields / ai_item / field_key.
+  var MAIN_ITEM = "_";
+  function aiItemName(item) { return item === MAIN_ITEM ? "_ai" : "_ai:" + item; }
+  function metaItemName(item) { return item === MAIN_ITEM ? "_meta" : "_meta:" + item; }
+  function fieldId(qid, item) { return item === MAIN_ITEM ? qid : qid + "|" + item; }
+  function fieldText(qid, item) {
+    var v = (answers[qid] || {})[item];
+    return typeof v === "string" ? v : "";
+  }
+  // Every written answer a question can collect, as [question, item] - the same enumeration
+  // the server makes, so the live warning and the flags on submit can never disagree.
+  function textFieldsOf(q) {
+    var out = [];
+    if (q.type === "open_text") out.push(MAIN_ITEM);
+    if (q.type === "text_grid") {
+      var rows = (q.rows || []).map(function (r) { return String(r.code); });
+      var cols = (q.cols || []).map(function (c) { return String(c.code); });
+      rows.forEach(function (r) { cols.forEach(function (c) { out.push(r + "_" + c); }); });
+    }
+    (q.options || []).forEach(function (o) { if (o.other) out.push("other_text"); });
+    (q.rows || []).forEach(function (r) { if ((r.comment || "none") !== "none") out.push("c_" + String(r.code)); });
+    var cm = (q.comments || {}).mode;
+    if (cm && cm !== "none") out.push("_comment");
+    return out;
+  }
+
+  // A human name for one written answer, so several boxes on the same question are told apart.
+  function fieldLabel(q, item) {
+    if (item === MAIN_ITEM) return "";
+    if (item === "other_text") return "your \u201cplease specify\u201d answer";
+    if (item === "_comment") return "your comment";
+    if (item.indexOf("c_") === 0) {
+      var r = (q.rows || []).filter(function (x) { return String(x.code) === item.slice(2); })[0];
+      return r && r.label ? "your comment on \u201c" + pipeText(r.label) + "\u201d" : "your comment";
+    }
+    var parts = String(item).split("_");
+    if (parts.length >= 2) {
+      var row = (q.rows || []).filter(function (x) { return String(x.code) === parts[0]; })[0];
+      var col = (q.cols || []).filter(function (x) { return String(x.code) === parts[1]; })[0];
+      if (row && col) return pipeText(row.label) + " \u00b7 " + pipeText(col.label);
+    }
+    return item;
+  }
+
+  function questionById(qid) {
+    var qs = (SPEC && SPEC.questions) || [];
+    for (var i = 0; i < qs.length; i++) if (qs[i].id === qid) return qs[i];
+    return null;
+  }
 
   function escHtml(t) {
     return String(t == null ? "" : t).replace(/[&<>"]/g, function (c) {
@@ -340,12 +396,12 @@
     });
   }
 
-  function metaFor(qid) {
-    if (!textMeta[qid]) {
-      textMeta[qid] = { keystrokes: 0, pastes: 0, pasted_chars: 0, input_events: 0,
+  function metaFor(fid) {
+    if (!textMeta[fid]) {
+      textMeta[fid] = { keystrokes: 0, pastes: 0, pasted_chars: 0, input_events: 0,
                         typed_ms: 0, blur_ms: 0 };
     }
-    return textMeta[qid];
+    return textMeta[fid];
   }
 
   // "off" | "warn" | "confirm" - mirrors core.ai_detect.ai_settings() on the server
@@ -389,16 +445,16 @@
     });
   }
 
-  function checkText(qid, text, meta, cb) {
+  function checkText(fid, qid, item, text, meta, cb) {
     fetch("/api/check_text", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ study: STUDY.slug, qid: qid, text: text, meta: meta })
+      body: JSON.stringify({ study: STUDY.slug, qid: qid, item: item, text: text, meta: meta })
     }).then(function (r) { return r.json(); }).then(function (res) {
       res.text = text;
-      aiState[qid] = res;
-      var prev = (answers[qid] || {})._ai || {};
-      setAns(qid, "_ai", { score: res.score, verdict: res.verdict, ack: !!prev.ack,
-                           checked: Date.now() });
+      aiState[fid] = res;
+      var prev = (answers[qid] || {})[aiItemName(item)] || {};
+      setAns(qid, aiItemName(item), { score: res.score, verdict: res.verdict, ack: !!prev.ack,
+                                      checked: Date.now() });
       if (cb) cb(res);
     }).catch(function () { if (cb) cb(null); });
   }
@@ -409,9 +465,13 @@
     return out;
   }
 
-  // Wires one textarea: telemetry, live gibberish check, live AI check, confirm action.
-  function wireTextWatch(q, ta, chip, actions) {
-    var meta = metaFor(q.id);
+  // The shared core: telemetry, the offline gibberish check and the live AI check for one text
+  // box.  `chip` / `actions` are the open-text affordances; a grid cell or a comment box has
+  // nowhere to put a chip, so it passes none and is still scored - the verdict lands on the
+  // record, raises the QC flags, and is put to the respondent at the proofreading step.
+  function watchField(q, ta, item, chip, actions) {
+    var fid = fieldId(q.id, item);
+    var meta = metaFor(fid);
     var action = aiActionOf(q);
     var deb = null, awayAt = 0, praised = false;
 
@@ -423,7 +483,8 @@
     }
 
     function paint(res, txt) {
-      var acked = !!((answers[q.id] || {})._ai || {}).ack;
+      var acked = !!((answers[q.id] || {})[aiItemName(item)] || {}).ack;
+      if (!chip) return;                     // scored all the same, but there is no chip here
       if (!res || !res.scored || res.verdict === "human") {
         chip.className = "oq-chip" + (res && res.scored ? " ok" : "");
         chip.innerHTML = res && res.scored ? "&#10003; Reads like your own words - thank you." : "";
@@ -457,9 +518,9 @@
         var mine = el("button", "g-btn", "&#10003; I wrote this myself");
         mine.type = "button";
         mine.addEventListener("click", function () {
-          var prev = (answers[q.id] || {})._ai || {};
-          setAns(q.id, "_ai", { score: res.score, verdict: res.verdict, ack: true,
-                                confirmed: Date.now() });
+          var prev = (answers[q.id] || {})[aiItemName(item)] || {};
+          setAns(q.id, aiItemName(item), { score: res.score, verdict: res.verdict, ack: true,
+                                           confirmed: Date.now() });
           paint(res, ta.value.trim());
           coachSay("Thank you for confirming - that is noted on your record.", "info");
         });
@@ -473,25 +534,27 @@
 
     function runCheck() {
       var txt = ta.value.trim();
-      setAns(q.id, "_meta", snapshot());
+      setAns(q.id, metaItemName(item), snapshot());
       if (txt.length < 20) {
-        chip.className = "oq-chip"; chip.innerHTML = ""; actions.innerHTML = "";
+        if (chip) chip.className = "oq-chip";
+        if (chip) chip.innerHTML = "";
+        if (actions) actions.innerHTML = "";      // a grid cell has no chip or actions
         return;
       }
       var bad = textQuality(txt);            // instant, offline: keyboard mashes and filler
-      if (bad) {
+      if (bad && chip) {
         chip.className = "oq-chip warn";
         chip.innerHTML = "&#9888; This reads as " + bad + ". A sentence or two in your own " +
           "words makes sure your insight counts - or record it with the microphone.";
         actions.innerHTML = "";
       }
       if (action === "off") return;
-      checkText(q.id, txt, snapshot(), function (res) { if (res) paint(res, txt); });
+      checkText(fid, q.id, item, txt, snapshot(), function (res) { if (res) paint(res, txt); });
     }
 
     trackKeys(meta, ta);
     ta.addEventListener("keydown", function () {
-      if (meta.keystrokes % 20 === 0) setAns(q.id, "_meta", snapshot());
+      if (meta.keystrokes % 20 === 0) setAns(q.id, metaItemName(item), snapshot());
     });
     ta.addEventListener("paste", function () {
       clearTimeout(deb);
@@ -499,27 +562,37 @@
     });
     ta.addEventListener("drop", function () { meta.pastes++; meta.input_events++; });
     ta.addEventListener("input", function () {
-      setAns(q.id, "_", ta.value); hideErr();
+      setAns(q.id, item, ta.value);
+      if (chip) hideErr();
       clearTimeout(deb);
-      deb = setTimeout(runCheck, 650);
+      deb = setTimeout(runCheck, item === MAIN_ITEM ? 650 : 1200);
     });
     ta.addEventListener("blur", function () {
       awayAt = Date.now();
-      setAns(q.id, "_meta", snapshot());
-      ansChanged();                          // screening on text waits until the box is left
+      setAns(q.id, metaItemName(item), snapshot());
+      if (chip) ansChanged();                // screening on text waits until the box is left
     });
     ta.addEventListener("focus", function () {
       if (awayAt) { meta.blur_ms += Date.now() - awayAt; awayAt = 0; }
     });
-
+    runCheck();
     // coming back to an answered question: show the verdict we already have, or re-score
     var init = ta.value.trim();
     if (init.length >= 20 && action !== "off") {
-      var cached = aiState[q.id];
+      var cached = aiState[fid];
       if (cached && cached.text === init) paint(cached, init);
       else setTimeout(runCheck, 80);
     }
   }
+
+  // Wires one textarea: telemetry, live gibberish check, live AI check, confirm action.
+  function wireTextWatch(q, ta, chip, actions) { watchField(q, ta, MAIN_ITEM, chip, actions); }
+
+  // The same scoring for a box with no chip of its own: a text-grid cell, a comment box, a
+  // "please specify" field.  Scored and recorded all the same - the respondent is told at the
+  // proofreading step and the reviewer sees it in the Admin queue.
+  function watchQuietField(q, ta, item) { watchField(q, ta, item, null, null); }
+
 
   // ============================================================ voice verbatims
   // Optional recorded answer via MediaRecorder; uploaded to /api/voice and referenced
@@ -1165,9 +1238,10 @@
       "</div>";
   }
 
-  function runExplainer(scenes, onDone) {
+  function runExplainer(scenes, onDone, opts) {
     var ov = $("#explainer");
-    $("#ex-badge").textContent = scenes.length > 1 ? "Product profile" : "How the choices work";
+    opts = opts || {};
+    $("#ex-badge").textContent = opts.badge || (scenes.length > 1 ? "Product profile" : "How the choices work");
     ov.hidden = false;
     explainerOnDone = onDone;
     var mounted = false;
@@ -1177,7 +1251,7 @@
           scenes: scenes,
           narration: NARR,
           muted: !soundOn,
-          tts: !!SPEC.use_tts,
+          tts: opts.tts === undefined ? !!SPEC.use_tts : !!opts.tts,
           onDone: function () { explainer = null; dismissExplainer(); }
         });
         explainer.start();
@@ -1250,6 +1324,29 @@
       }
     }
     return items;
+  }
+  // ---------------------------------------------------------------- walk-through
+  // The steps of a Walk Through, normalised for the explainer: each one has a label, a
+  // piece of narration and either an attachment or one of the built-in animated scenes.
+  function walkStepsOf(q){
+    var raw = Array.isArray(q.walk_steps) ? q.walk_steps
+            : (Array.isArray(q.walkthrough_steps) ? q.walkthrough_steps : []);
+    return raw.filter(function(st){ return st && typeof st === "object"; }).map(function(st, i){
+      return {
+        id: st.id || (q.id + "_W" + (i + 1)),
+        art: (st.media && st.media.src) ? "" : (st.art || "generic"),
+        media: (st.media && st.media.src) ? st.media : null,
+        title: st.label || st.title || ("Step " + (i + 1)),
+        caption: st.narration || st.caption || "",
+        clip: null, src: st.src || "", seconds: st.seconds || 0,
+        at: 0, allow_replay: !!st.allow_replay
+      };
+    });
+  }
+  function walkQuestionsOf(q){
+    var raw = Array.isArray(q.walk_questions) ? q.walk_questions
+            : (Array.isArray(q.walkthrough_questions) ? q.walkthrough_questions : []);
+    return raw.filter(function(x){ return x && typeof x === "object"; });
   }
   function conceptListFor(q){
     var concepts = (q.concepts || []).slice();
@@ -1344,9 +1441,11 @@
       } else if (q.type === "concept_test") {
         var concepts = conceptListFor(q);
         var cqs = (q.concept_questions && q.concept_questions.length) ? q.concept_questions.slice() : [];
-        // legacy fallback: if no new structure, treat as single question
+        // Nothing to show: a Concept Test with no concepts and no questions would leave
+        // the respondent on an empty screen, so leave it out. An older single-question
+        // concept test (concept text + rating rows) still plays.
         if(!concepts.length && !cqs.length){
-          steps.push({ kind: "q", q: q });
+          if(q.rows && q.rows.length) steps.push({ kind: "q", q: q });
         } else if(concepts.length && cqs.length){
           concepts.forEach(function(concept){
             var cIdx = concepts.indexOf(concept);
@@ -1399,6 +1498,28 @@
             synth3._concept_parent = q.id;
             synth3.section = q.section;
             steps.push({ kind: "q", q: synth3 });
+          });
+        }
+      } else if (q.type === "walk_through") {
+        // A Walk Through stores nothing: it plays its narrated steps, then the questions
+        // asked about it (if any) follow as ordinary steps.  With no steps it is skipped
+        // entirely rather than shown as an empty screen.
+        var wsteps = walkStepsOf(q);
+        var wqs = walkQuestionsOf(q);
+        if (wsteps.length) {
+          steps.push({ kind: "wt", q: q });
+          wqs.forEach(function(cq){
+            var synth = JSON.parse(JSON.stringify(cq));
+            synth._concept_parent = q.id;          // the "back to <parent>" chip on the card
+            synth.section = q.section;
+            steps.push({ kind: "q", q: synth });
+          });
+        } else {
+          wqs.forEach(function(cq2){
+            var synth2 = JSON.parse(JSON.stringify(cq2));
+            synth2._concept_parent = q.id;
+            synth2.section = q.section;
+            steps.push({ kind: "q", q: synth2 });
           });
         }
       } else {
@@ -1476,6 +1597,16 @@
         return (q.rows || []).length > 0 && (q.rows || []).every(function (r) { return a[r.code] !== undefined && String(a[r.code]).trim() !== ""; });
       }
       case "delta":
+        if ((q.cols || []).length) {          // a grid: every new cell on every row
+          return (q.rows || []).length > 0 && (q.rows || []).every(function (r) {
+            if (a[r.code] === "NA") return true;
+            return (q.cols || []).every(function (c) {
+              if (c.kind === "src") return true;
+              var v = a[r.code + "_" + c.code];
+              return v !== undefined && String(v) !== "";
+            });
+          });
+        }
         return !!(a && a.before !== undefined && a.before !== "" && a.after !== undefined && a.after !== "");
       case "concept_test": case "emoji_grid":
         return (q.rows || []).every(function (r) { return a[r.code] !== undefined; });
@@ -1589,6 +1720,7 @@
         otherBox.placeholder = "Please specify";
         otherBox.value = getAns(q.id, "other_text") || "";
         otherBox.addEventListener("input", function () { setAns(q.id, "other_text", otherBox.value); });
+        watchQuietField(q, otherBox, "other_text");
         wrap.appendChild(otherBox);
       }
     });
@@ -1628,7 +1760,7 @@
         label = sc.faces ? (sc.faces[v - min] || "")
           : (max - min + 1 === EMOJI_FACES.length ? EMOJI_FACES[v - min] : "");
       }
-      out.push({ v: v, label: label, fmt: p.fmt, media: p.media,
+      out.push({ v: v, label: label, label_html: p.label_html || "", fmt: p.fmt, media: p.media,
                  tip: (q.type === "emoji_grid" && sc.face_labels ? sc.face_labels[v - min] : "") || "" });
     }
     return out;
@@ -1655,6 +1787,13 @@
     if (m && m.src) box.appendChild(renderMedia(m, "qmedia-sm"));
     return box;
   }
+  // A scale point caption: the author's formatting when there is any, otherwise the plain text.
+  function scaleLabelNode(p, cls) {
+    var box = el("div", cls || "grid-plabel");
+    if (p.label_html && window.BeaconQ) window.BeaconQ.richInto(box, p.label_html, logicCtx(), p.label || "");
+    else box.appendChild(fmtNode(pipeText(p.label || ""), p.fmt));
+    return box;
+  }
   // The exclusive N/A on one row: ticking it clears the rating, rating clears the tick.
   function naCell(q, key, label, onRate) {
     var lab = el("label", "na-cell");
@@ -1675,6 +1814,8 @@
     ta.placeholder = placeholder || "Add a comment";
     ta.value = getAns(qid, key) || "";
     ta.addEventListener("input", function () { setAns(qid, key, ta.value); if (ta.value.trim()) hideErr(); });
+    var cq = questionById(qid);
+    if (cq) watchQuietField(cq, ta, key);
     return ta;
   }
   // One comment box under a row, spanning the whole grid.
@@ -1702,8 +1843,8 @@
     if (g.col_label) cells.appendChild(el("div", "grid-colname", pipeText(g.col_label)));
     var strip = el("div", "grid-plabels");
     pts.forEach(function (p) {
-      var c = el("div", "grid-plabel");
-      if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
+      if (!p.label && !p.label_html && !(p.media && p.media.src)) return;
+      var c = scaleLabelNode(p, "grid-plabel");
       if (p.tip) c.title = p.tip;
       if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
       strip.appendChild(c);
@@ -1737,9 +1878,9 @@
     if (pts && pts.some(function (p) { return p.label || (p.media && p.media.src); })) {
       var labs = el("div", "sp-labels");
       pts.forEach(function (p) {
-        var c = el("div", "sp-label");
+        if (!p.label && !p.label_html && !(p.media && p.media.src)) return;
+        var c = scaleLabelNode(p, "sp-label");
         c.style.left = pct(p.v) + "%";
-        if (p.label) c.appendChild(fmtNode(pipeText(p.label), p.fmt));
         if (p.media && p.media.src) c.appendChild(renderMedia(p.media, "qmedia-xs"));
         labs.appendChild(c);
       });
@@ -1820,7 +1961,7 @@
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
   function numInput(q, key, onType) {
-    var inp = el("input", "nm-input");
+    var inp = el("input", "nm-input dg-input");
     inp.type = "number";
     if (q.min !== undefined) inp.min = q.min;
     if (q.max !== undefined) inp.max = q.max;
@@ -1927,6 +2068,7 @@
           setAns(q.id, key, ta.value);
           hideErr(); ansChanged();
         });
+        watchQuietField(q, ta, key);          // every cell is checked like an open-text box
         cell.appendChild(ta);
         try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
         row.appendChild(cell);
@@ -1938,7 +2080,216 @@
     return wrap;
   }
 
+  // A Delta either duplicates the shape of an earlier grid / matrix question - columns
+  // and rows carried across, answered in the new columns - or it is the original two-cell
+  // before / after / change box. Which one it is depends on whether it carries columns.
   function renderDelta(q) {
+    if (q.cols && q.cols.length) return renderDeltaGrid(q);
+    return renderDeltaPair(q);
+  }
+
+  // The rows and columns of a carried-forward source question, with the new columns open
+  // for entry alongside the ones already stated.
+  function renderDeltaGrid(q) {
+    var wrap = el("div", "deltagrid");
+    var cols = orderedList(q.cols || [], q, "cols");
+    var rows = orderedList(q.rows || [], q, "rows");
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+    var naOn = q.delta_na !== false;
+    // a target typed into the validation rule is enough to ask for the totals
+    var totalOn = q.delta_rule === "total" || (q.delta_total !== undefined && q.delta_total !== "");
+    var unit = q.delta_percentage ? "%" : "";
+    var naLabel = "N/A";
+
+    if (!rows.length) {
+      wrap.appendChild(el("div", "dg-empty",
+        "This question has no rows yet — the person who built it needs to add some."));
+      return wrap;
+    }
+
+    var tbl = el("div", "dg-table");
+    tbl.style.setProperty("--dg-cols",
+      "minmax(150px,1.5fr) " +
+      srcCols.map(function () { return "minmax(104px,1fr)"; }).join(" ") + " " +
+      newCols.map(function () { return "minmax(118px,1fr)"; }).join(" ") +
+      (naOn ? " 70px" : ""));
+
+    // ---- header: one column per carried and new column, grouped so the two read apart ----
+    var head = el("div", "dg-tr dg-head");
+    head.appendChild(el("div", "dg-th dg-corner", ""));
+    srcCols.forEach(function (c) { head.appendChild(itemLabelNode(c, "dg-th dg-src")); });
+    newCols.forEach(function (c) { head.appendChild(itemLabelNode(c, "dg-th dg-new")); });
+    if (naOn) head.appendChild(el("div", "dg-th dg-th-na", naLabel));
+    tbl.appendChild(head);
+
+    if (srcCols.length && newCols.length) {
+      var grp = el("div", "dg-tr dg-groups");
+      grp.appendChild(el("div", "dg-group dg-group-src",
+        "Already stated · " + srcCols.length + " column" + (srcCols.length === 1 ? "" : "s")));
+      grp.appendChild(el("div", "dg-group dg-group-new",
+        "To enter · " + newCols.length + " column" + (newCols.length === 1 ? "" : "s")));
+      grp.querySelectorAll(".dg-group").forEach(function (g) {
+        g.style.gridColumn = "1 / -1";
+      });
+      // the two bands sit on their own line, one under the other
+      var first = grp.firstChild;
+      first.style.gridColumn = "2 / " + (srcCols.length + 2);
+      grp.lastChild.style.gridColumn = (srcCols.length + 2) + " / " +
+        (srcCols.length + newCols.length + 2);
+      tbl.appendChild(grp);
+    }
+
+    // What a carried cell shows is not typed by anyone on this screen: it is what the
+    // source question was answered with.  The studio fills the reference from the mean of
+    // everyone who has answered it, and where that is still empty - a study is answered
+    // while it runs, so the first person through has nobody to average - the cell falls
+    // back to what this respondent themselves gave to that question earlier in this very
+    // session.  Either way it is reference text and cannot be changed here.
+    var allQ = SPEC.questions || [];
+    function srcOf(c) {
+      return allQ.filter(function (x) { return String(x.id) === String(c.src_q); })[0] || null;
+    }
+    function ownAnswer(r, c) {
+      var a = answers[String(c.src_q)] || {};
+      var sq = srcOf(c);
+      var keys = [];
+      if (sq && (sq.cols || []).length > 1) keys.push(String(r.code) + "_" + String(c.src_code));
+      if (!sq || (sq.rows || sq.items || []).length) keys.push(String(r.code));
+      if (!sq || !(sq.rows || sq.items || []).length) keys.push("_");
+      for (var i = 0; i < keys.length; i++) {
+        var v = a[keys[i]];
+        if (v !== undefined && v !== null && v !== "" && v !== "NA") return v;
+      }
+      return null;
+    }
+    var fromData = 0, fromSelf = 0;
+
+    // ---- one row per carried row: reference on the left, entry on the right -------------
+    rows.forEach(function (r) {
+      var row = el("div", "dg-tr");
+      row.appendChild(itemLabelNode(r, "dg-th dg-rowlabel"));
+      srcCols.forEach(function (c) {
+        var td = el("div", "dg-td dg-td-src");
+        var v = (r.ref || {})[c.code];
+        var self = false;
+        if (v === undefined || v === null || String(v) === "") {
+          v = ownAnswer(r, c);
+          if (v !== null) self = true;
+        }
+        if (v === undefined || v === null || v === "") {
+          td.appendChild(el("span", "dg-ref", "—"));
+        } else {
+          if (self) fromSelf++; else fromData++;
+          var sp = el("span", "dg-ref", escHtml(String(v) + unit));
+          sp.title = PREVIEW
+            ? "What " + (c.src_q || "the earlier question") +
+              " was answered with — sample answers in this preview. Shown for reference; it cannot be changed here."
+            : (self
+              ? "Your answer to " + (c.src_q || "the earlier question") +
+                ", shown for reference. It cannot be changed here."
+              : "The mean of what everyone has answered in " + (c.src_q || "the earlier question") +
+                ", shown for reference. It cannot be changed here.");
+          td.appendChild(sp);
+        }
+        row.appendChild(td);
+      });
+      var naKey = r.code;
+      var clearNa = (function (rowEl) {
+        return function () {
+          if ((answers[q.id] || {})[naKey] !== "NA") return;
+          setAns(q.id, naKey, "");
+          var nb = rowEl.querySelector(".dg-na input");
+          if (nb) nb.checked = false;
+        };
+      })(row);
+      newCols.forEach(function (c) {
+        var td = el("div", "dg-td dg-td-new");
+        td.appendChild(numInput(q, r.code + "_" + c.code, function () {
+          clearNa(); refreshTotals();
+        }));
+        row.appendChild(td);
+      });
+      if (naOn) {
+        var nc = el("div", "dg-td dg-td-na");
+        nc.classList.add("dg-na");
+        nc.appendChild(naCell(q, naKey, naLabel, function (checked) {
+          if (!checked) return;
+          newCols.forEach(function (c) { setAns(q.id, r.code + "_" + c.code, ""); });
+          row.querySelectorAll(".dg-input").forEach(function (ni) { ni.value = ""; });
+        }));
+        row.appendChild(nc);
+      }
+      tbl.appendChild(row);
+    });
+
+    // ---- the validation row, when the author asked for one ------------------------------
+    // Every total follows the cells as they are typed, so a respondent sees a wrong total
+    // while they are still on the question.
+    var totalCells = [];
+    function refreshTotals() {
+      totalCells.forEach(function (tc) {
+        var sum = 0, any = false;
+        rows.forEach(function (r) {
+          var v = parseFloat((answers[q.id] || {})[r.code + "_" + tc.code]);
+          if (isFinite(v)) { sum += v; any = true; }
+        });
+        var want = q.delta_total === undefined || q.delta_total === "" ? null : Number(q.delta_total);
+        var off = any && want !== null && Math.abs(sum - want) > 0.001;
+        tc.node.textContent = any ? String(Math.round(sum * 100) / 100) + unit : "\u2014";
+        tc.node.classList.toggle("bad", off);
+      });
+    }
+    if (totalOn && newCols.length) {
+      var tot = el("div", "dg-tr dg-total");
+      var lbl = el("div", "dg-th dg-rowlabel", "Total");
+      lbl.style.gridColumn = "1 / " + (srcCols.length + 2);
+      tot.appendChild(lbl);
+      newCols.forEach(function (c, ci) {
+        var td = el("div", "dg-td dg-td-new");
+        td.style.gridColumn = (srcCols.length + 2 + ci) + " / " + (srcCols.length + 3 + ci);
+        var sp = el("span", "dg-sum");
+        totalCells.push({ code: c.code, node: sp });
+        td.appendChild(sp);
+        tot.appendChild(td);
+      });
+      tbl.appendChild(tot);
+    }
+    refreshTotals();
+
+    wrap.appendChild(tbl);
+    // One line saying where the reference numbers came from, so nobody has to guess.
+    if (srcCols.length) {
+      var srcId = String(srcCols[0].src_q || "");
+      var prov;
+      if (PREVIEW) {
+        prov = "The reference column shows what " + srcId +
+          " was answered with — sample answers here, since this is a preview.";
+      } else if (fromData && fromSelf) {
+        prov = "The reference column shows the mean of what everyone has answered in " + srcId +
+          " so far, and your own answer to it where nothing else is there yet.";
+      } else if (fromSelf) {
+        prov = "These are the values you gave in " + srcId +
+          ", shown here for reference. They cannot be changed on this question.";
+      } else if (fromData) {
+        prov = "These are the mean of what everyone has answered in " + srcId +
+          ", shown here for reference. They cannot be changed on this question.";
+      } else {
+        prov = "Nobody has answered " + srcId +
+          " yet, so there is nothing to refer to here. It fills in once answers arrive.";
+      }
+      wrap.appendChild(el("div", "dg-hint", escHtml(prov)));
+    }
+    if (q.delta_total !== undefined && q.delta_total !== "" && totalOn) {
+      wrap.appendChild(el("div", "dg-hint",
+        "Each column should add up to " + q.delta_total + unit + "."));
+    }
+    if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    return wrap;
+  }
+
+  // The original two-cell Delta: a number before, a number after, and the change between.
+  function renderDeltaPair(q) {
     var wrap = el("div", "delta");
     var a = answers[q.id] || {};
     var out = el("div", "delta-out");
@@ -1981,7 +2332,7 @@
 
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
-    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
+    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length || !(q.rows && q.rows.length)){
       var concepts = conceptListFor(q);
       var cqs = q.concept_questions || [];
       if(!concepts.length || !cqs.length){
@@ -2056,6 +2407,35 @@
     var grid = renderGrid(q, false);
     if (grid) wrap.appendChild(grid);
     return wrap;
+  }
+
+  // The Walk Through screen the respondent lands on.  It holds nothing to answer: it names
+  // the walkthrough and starts it, and the questions that follow are separate steps.  If the
+  // explainer cannot run at all the static list underneath is what they read instead.
+  function renderWalkThrough(q) {
+    var card = el("div", "card walkthrough-intro");
+    card.appendChild(el("h1", "stem", q.stem || q.title || "A short walkthrough"));
+    if (q.walk_description_html && window.BeaconQ) {
+      var d = el("div", "walkthrough-desc");
+      window.BeaconQ.richInto(d, q.walk_description_html, logicCtx(), "\u2026");
+      card.appendChild(d);
+    } else if (q.walk_description) {
+      card.appendChild(el("p", "walkthrough-desc", pipeText(q.walk_description)));
+    }
+    var steps = walkStepsOf(q);
+    var list = el("ol", "walkthrough-steps");
+    steps.forEach(function(st){
+      var li = el("li");
+      li.appendChild(el("b", null, st.title));
+      if (st.caption) li.appendChild(el("span", "walkthrough-cap", st.caption));
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+    var note = el("div", "st-note", steps.length > 1
+      ? "This plays through " + steps.length + " steps with narration. There is nothing to read or answer."
+      : "This plays with narration. There is nothing to read or answer.");
+    card.appendChild(note);
+    return card;
   }
 
   function renderLoop(q) {
@@ -2516,7 +2896,7 @@
       pts.forEach(function (p) {
         var b = el("button", "emoji-btn");
         b.type = "button";
-        b.appendChild(el("span", "emoji-face", pipeText(p.label || String(p.v))));
+        b.appendChild(el("span", "emoji-face", p.label_html ? (window.BeaconQ ? BeaconQ.stripTags(p.label_html) : p.label) || String(p.v) : pipeText(p.label || String(p.v))));
         if (p.media && p.media.src) b.appendChild(renderMedia(p.media, "qmedia-xs"));
         if (p.tip) b.title = p.tip;
         b.classList.toggle("on", String(getAns(q.id, r.code)) === String(p.v));
@@ -3020,6 +3400,7 @@
       case "emoji_grid": body = renderEmojiGrid(q); break;
       case "delta": body = renderDelta(q); break;
       case "concept_test": body = renderConceptTest(q); break;
+      case "walk_through": body = renderWalkThrough(q); break;
       case "loop": body = renderLoop(q); break;
       case "text_block": body = renderTextBlock(q); break;
       case "rating_grid": body = renderGrid(q, false); break;
@@ -3342,6 +3723,8 @@
 
   function validateStep() {
     var st = steps[cur];
+    // a Walk Through asks nothing, so there is nothing to check - it just has to have played
+    if (st.kind === "wt") return true;
     if (st.kind === "task") {
       if (getAns(st.q.id, "T" + st.taskId) === undefined) {
         showErr("Please choose one of the treatments, or choose to continue current standard of care.");
@@ -3410,12 +3793,17 @@
         showErr("Please write at least " + q.min_words + " words."); return false;
       }
     }
-    if (q.type === "open_text" && aiActionOf(q) === "confirm") {
-      var ai = (answers[q.id] || {})._ai;
-      if (ai && ai.verdict === "likely_ai" && !ai.ack) {
-        showErr("Our quality check reads this answer as AI-written or pasted. Please write it " +
-                "in your own words, or confirm that you wrote it yourself.");
-        return false;
+    if (aiActionOf(q) === "confirm") {
+      // any written answer on this question can hold the respondent up: its own box, a
+      // text-grid cell, a comment, a "please specify"
+      for (var fi = 0; fi < textFieldsOf(q).length; fi++) {
+        var it2 = textFieldsOf(q)[fi];
+        var ai = (answers[q.id] || {})[aiItemName(it2)];
+        if (ai && ai.verdict === "likely_ai" && !ai.ack) {
+          showErr("Our quality check reads this answer as AI-written or pasted. Please write " +
+                  "it in your own words, or confirm that you wrote it yourself.");
+          return false;
+        }
       }
     }
     return true;
@@ -3574,7 +3962,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}
@@ -3589,7 +3977,23 @@
     pendingDwell = null;
     if (dwellTimer) { clearInterval(dwellTimer); dwellTimer = null; }
 
-    var node = st.kind === "task" ? renderConjoint(st) : renderQuestion(locQ(st.q));
+    var node;
+    if (st.kind === "task") node = renderConjoint(st);
+    else if (st.kind === "wt") {
+      node = renderWalkThrough(st.q);
+      var wtSteps = walkStepsOf(st.q);
+      if (wtSteps.length && !window.BEACON_PREVIEW_MODE) {
+        // the card is only the label for what is about to play: the walkthrough itself runs
+        // in the overlay, and Next is what continues once it has been watched or skipped
+        setTimeout(function () {
+          runExplainer(wtSteps, null, {
+            badge: st.q.stem || st.q.title || "Walkthrough",
+            tts: st.q.walk_tts !== false
+          });
+        }, 150);
+      }
+    }
+    else node = renderQuestion(locQ(st.q));
     var chip = st.kind === "task" ? null : langChip(st.q);
     if (chip && node.insertBefore) {
       var stemH = node.querySelector(".stem");
@@ -3746,17 +4150,19 @@
   function freeTextAnswers() {
     var out = [];
     (SPEC.questions || []).forEach(function (q) {
-      if (q.type !== "open_text" || aiActionOf(q) === "off") return;
-      var txt = String((answers[q.id] || {})._ || "").trim();
-      if (txt.length >= 20) out.push({ q: q, text: txt });
+      if (aiActionOf(q) === "off") return;
+      textFieldsOf(q).forEach(function (item) {
+        var txt = fieldText(q.id, item).trim();
+        if (txt.length >= 20) out.push({ q: q, item: item, text: txt });
+      });
     });
     return out;
   }
 
   function flaggedFor(item) {
-    var res = aiState[item.q.id];
+    var res = aiState[fieldId(item.q.id, item.item)];
     if (!res || res.text !== item.text) return null;           // not scored (yet)
-    if (((answers[item.q.id] || {})._ai || {}).ack) return null;   // already confirmed
+    if (((answers[item.q.id] || {})[aiItemName(item.item)] || {}).ack) return null;   // confirmed
     var notes = (res.proofread || []).filter(function (n) {
       return SERIOUS_NOTES.indexOf(n.key) >= 0;
     });
@@ -3767,7 +4173,10 @@
   function proofRow(row) {
     var q = row.item.q, res = row.res;
     var box = el("div", "proof-row");
-    box.appendChild(el("div", "proof-head", "<b>" + q.id + ".</b> " + escHtml(pipeText(q.stem))));
+    // a text grid can put several flagged boxes on one question, so say which one this is
+    var where = fieldLabel(q, row.item.item);
+    box.appendChild(el("div", "proof-head", "<b>" + q.id + ".</b> " + escHtml(pipeText(q.stem)) +
+      (where ? ' <span class="proof-where">' + escHtml(where) + "</span>" : "")));
     var chips = el("div", "proof-chips");
     var head = res.verdict === "likely_ai" ? "Looks AI-written"
              : res.verdict === "possible_ai" ? "May be AI-written" : "Worth a fix";
@@ -3781,7 +4190,7 @@
 
     var ta = el("textarea", "proof-text");
     ta.value = row.item.text;
-    trackKeys(metaFor(q.id), ta);            // rewriting here counts as typing
+    trackKeys(metaFor(fieldId(q.id, row.item.item)), ta);   // rewriting here counts as typing
     box.appendChild(ta);
     row.ta = ta;
 
@@ -3802,8 +4211,9 @@
       mine.innerHTML = "&#10003; I wrote this myself";
       re.disabled = true;
       re.textContent = "Checking\u2026";
-      setAns(q.id, "_meta", metaFor(q.id));
-      checkText(q.id, row.item.text, metaFor(q.id), function (fresh) {
+      var fid2 = fieldId(q.id, row.item.item);
+      setAns(q.id, metaItemName(row.item.item), metaFor(fid2));
+      checkText(fid2, q.id, row.item.item, row.item.text, metaFor(fid2), function (fresh) {
         re.disabled = false;
         re.innerHTML = "&#8635; Re-check this answer";
         if (!fresh) return;
@@ -3846,10 +4256,11 @@
 
     var waiting = 0;
     items.forEach(function (it) {
-      var cached = aiState[it.q.id];
+      var fid3 = fieldId(it.q.id, it.item);
+      var cached = aiState[fid3];
       if (cached && cached.text === it.text) return;
       waiting++;
-      checkText(it.q.id, it.text, metaFor(it.q.id), function () {
+      checkText(fid3, it.q.id, it.item, it.text, metaFor(fid3), function () {
         if (--waiting === 0) draw();
       });
     });
@@ -3880,7 +4291,7 @@
       done.addEventListener("click", function () {
         rows.forEach(function (r) {
           setAns(r.item.q.id, "_", r.ta.value);
-          setAns(r.item.q.id, "_ai", { score: r.res.score, verdict: r.res.verdict,
+          setAns(r.item.q.id, aiItemName(r.item.item), { score: r.res.score, verdict: r.res.verdict,
                                        ack: !!r.mine, reviewed: Date.now() });
         });
         submitSurvey();

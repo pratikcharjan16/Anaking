@@ -461,6 +461,103 @@ def test_rich_text_is_sanitised_on_save(client):
     assert spec["questions"][0]["options"][1]["exclusive"] is True
 
 
+def test_standard_colour_palette_survives_saving(client):
+    """Font colour, text highlight and the custom-colour area all write whitelisted styles."""
+    stem = ('Which <b style="font-size:18px">therapy</b>, and '
+            '<span style="color: #4472c4">why</span>? '
+            '<span style="background-color: #fff2cc">Note this</span> '
+            '<span style="color: inherit">plain again</span>')
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [{"id": "Q1", "section": "S1", "type": "open_text",
+                          "stem": "old", "stem_html": stem}]}
+    r = client.post("/api/studio/save", json={"title": "Colours", "cfg": cfg})
+    assert r.get_json()["ok"]
+    saved = client.get("/api/studio/study", query_string={"slug": "colours"}).get_json()["cfg"]
+    q = saved["questions"][0]
+    assert '<span style="color: #4472c4">why</span>' in q["stem_html"]
+    assert '<span style="background-color: #fff2cc">Note this</span>' in q["stem_html"]
+    assert '<b style="font-size: 18px">therapy</b>' in q["stem_html"]
+    # the palettes never hand back anything outside the whitelist, so nothing is stripped
+    assert "invisible" not in q["stem_html"]
+    assert q["stem"] == "Which therapy, and why? Note this plain again"
+    # a respondent gets the same markup back out of the public spec
+    spec = client.get("/api/spec/colours").get_json()
+    assert '<span style="color: #4472c4">why</span>' in spec["questions"][0]["stem_html"]
+
+
+def test_answer_option_labels_can_be_formatted(client):
+    """Bold / italic / underline / colour / highlight on an answer option, with the plain
+    label kept in step so exports, TTS, piping, screening and the dashboard never change."""
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [
+               {"id": "Q1", "section": "S1", "type": "single_select",
+                "options": [{"code": 1,
+                             "label": "Blue one",
+                             "label_html": '<b><span style="color: #4472c4">Blue</span> one</b>'},
+                            {"code": 2, "label": "Plain two"}]},
+               {"id": "Q2", "section": "S1", "type": "rating_grid",
+                "rows": [{"code": "r1", "label": "Row one",
+                          "label_html": '<u><span style="background-color: #fff2cc">Row</span> one</u>'}],
+                "cols": [{"code": "c1", "label": "Col one"}]},
+               {"id": "Q3", "section": "S1", "type": "emoji_grid",
+                "rows": [{"code": "r1", "label": "Row one"}],
+                "scale": {"min": 1, "max": 3,
+                          "points": [{"v": 1, "label": "Bad",
+                                      "label_html": '<i style="color: #c00000">Bad</i>'}]}}]}
+    r = client.post("/api/studio/save", json={"title": "Formatted options", "cfg": cfg})
+    assert r.get_json()["ok"]
+    saved = client.get("/api/studio/study", query_string={"slug": "formatted-options"}).get_json()["cfg"]
+
+    opt = saved["questions"][0]["options"][0]
+    assert opt["label_html"] == '<b><span style="color: #4472c4">Blue</span> one</b>'
+    assert opt["label"] == "Blue one"                      # plain label stays in step
+    assert saved["questions"][0]["options"][1] == {"code": 2, "label": "Plain two"}
+
+    row = saved["questions"][1]["rows"][0]
+    assert row["label_html"] == '<u><span style="background-color: #fff2cc">Row</span> one</u>'
+    assert row["label"] == "Row one"
+
+    pt = saved["questions"][2]["scale"]["points"][0]
+    assert pt["label_html"] == '<i style="color: #c00000">Bad</i>'
+    assert pt["label"] == "Bad"
+
+    # the respondent spec carries the same markup
+    spec = client.get("/api/spec/formatted-options").get_json()
+    assert '<span style="color: #4472c4">Blue</span>' in spec["questions"][0]["options"][0]["label_html"]
+    assert '<span style="background-color: #fff2cc">Row</span>' in spec["questions"][1]["rows"][0]["label_html"]
+
+    # ...and the plain label is what every downstream consumer reads, so nothing about
+    # the export, the narration, the piping or the admin dashboard changes
+    assert spec["questions"][0]["options"][0]["label"] == "Blue one"
+
+
+def test_option_label_html_is_sanitised_on_save(client):
+    """A hostile option label is reduced to the whitelist before it can be served."""
+    evil = ('<script>evil()</script><span style="color:#f00" onclick="x()" '
+            'onmouseover="y()">Bad</span><iframe src="//evil"></iframe>')
+    cfg = {"sections": [{"id": "S1", "title": "A"}],
+           "questions": [{"id": "Q1", "section": "S1", "type": "multi_select",
+                          "options": [{"code": 1, "label": "Bad", "label_html": evil},
+                                      {"code": 2, "label": "Good",
+                                       "label_html": '<img src=x onerror="boom()">'}]}]}
+    r = client.post("/api/studio/save", json={"title": "Evil options", "cfg": cfg})
+    assert r.get_json()["ok"]
+    saved = client.get("/api/studio/study", query_string={"slug": "evil-options"}).get_json()["cfg"]
+    opts = saved["questions"][0]["options"]
+    for o in opts:
+        assert "script" not in o.get("label_html", "")
+        assert "onclick" not in o.get("label_html", "")
+        assert "onmouseover" not in o.get("label_html", "")
+        assert "onerror" not in o.get("label_html", "")
+        assert "iframe" not in o.get("label_html", "")
+        assert "img" not in o.get("label_html", "")
+    assert '<span style="color: #f00">Bad</span>' in opts[0]["label_html"]
+    assert opts[0]["label"] == "Bad"
+    # the same is true of the page a respondent would fetch
+    spec = client.get("/api/spec/evil-options").get_json()
+    assert "onclick" not in spec["questions"][0]["options"][0].get("label_html", "")
+
+
 def test_media_upload_serve_delete(client):
     q = {"study": "beacon"}
     png = b"\x89PNG\r\n\x1a\n" + b"0" * 64

@@ -131,7 +131,7 @@ a{color:var(--accent2)}
 .st-page-head h2{margin:0 0 4px;font-size:19px}
 .st-page-head p{margin:0;color:var(--muted);max-width:760px}
 .st-h3{margin:20px 0 8px;font-size:15px;display:flex;align-items:center;gap:8px}
-.st-h4{margin:18px 0 8px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
+.st-h4{margin:24px 0 12px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.06em;color:var(--muted)}
 .st-h4:first-child{margin-top:0}
 
 /* ---------- questions workspace ---------- */
@@ -284,41 +284,44 @@ a{color:var(--accent2)}
 .st-editor-empty{max-width:420px;margin:80px auto;text-align:center;color:var(--muted)}
 .st-editor-empty-ic{font-size:44px;color:var(--faint);margin-bottom:8px}
 .st-editor-empty h3{margin:0 0 6px;color:var(--ink)}
-.st-ehead{display:flex;gap:12px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:12px 14px;margin:18px 0 10px;box-shadow:var(--shadow)}
+.st-ehead{display:flex;gap:14px;align-items:flex-start;background:#fff;border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;margin:20px 0 14px;box-shadow:var(--shadow)}
 .st-ehead-ic{flex:0 0 40px;height:40px;border-radius:10px;background:var(--accent);color:#fff;display:grid;place-items:center;font-size:19px;font-weight:700}
 .st-ehead-main{flex:1;min-width:0}
-.st-ehead-row{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap}
+.st-ehead-row{display:flex;gap:18px;align-items:flex-start;flex-wrap:wrap}
 /* ID with the question Title stacked underneath it */
-.st-ehead-idcol{display:flex;flex-direction:column;gap:6px}
+.st-ehead-idcol{display:flex;flex-direction:column;gap:9px}
 #f-title{width:236px;font-family:inherit;font-weight:600}
 @media (max-width:1180px){#f-title{width:170px}}
 .st-mini{display:inline-flex;align-items:center;gap:6px;font-size:11.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-.st-mini input,.st-mini select{font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:5px 8px;background:#fff}
+.st-mini input,.st-mini select{font-size:13px;font-weight:600;text-transform:none;letter-spacing:0;color:var(--ink);border:1px solid var(--line);border-radius:7px;padding:7px 10px;background:#fff}
 .st-mini input{width:76px;font-family:ui-monospace,Menlo,monospace}
 .st-mini input.bad{border-color:var(--bad);background:#fdf0ef}
 .st-ehead-tools{display:inline-flex;gap:2px}
-.st-jump{position:sticky;top:0;z-index:5;display:flex;gap:2px;flex-wrap:wrap;background:var(--bg);padding:6px 0 8px;margin:0 0 4px}
+.st-jump{position:sticky;top:0;z-index:5;display:flex;gap:3px;flex-wrap:wrap;background:var(--bg);padding:9px 0 12px;margin:0 0 8px}
 .st-jump a{font-size:12px;font-weight:700;color:var(--muted);text-decoration:none;padding:4px 10px;border-radius:999px}
 .st-jump a:hover{background:var(--soft);color:var(--accent)}
 
 .st-ecard{background:#fff;border:1px solid var(--line);border-radius:var(--radius);margin-bottom:10px;box-shadow:var(--shadow);scroll-margin-top:52px}
-.st-ecard>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:12px 16px;font-weight:800;font-size:14px;color:var(--ink);user-select:none}
+.st-ecard>summary{list-style:none;cursor:pointer;display:flex;align-items:center;gap:10px;padding:14px 18px;font-weight:800;font-size:14px;color:var(--ink);user-select:none}
 .st-ecard>summary::-webkit-details-marker{display:none}
 .st-ecard>summary::before{content:"\25B8";color:var(--faint);font-size:12px;transition:transform .15s;width:12px}
 .st-ecard[open]>summary::before{transform:rotate(90deg)}
 .st-ecard>summary small{font-weight:500;color:var(--faint);font-size:12px;margin-left:auto}
-.st-ecard-body{padding:2px 16px 16px;border-top:1px solid var(--line2)}
-.st-ecard-body>*:first-child{margin-top:12px}
+.st-ecard-body{padding:4px 18px 20px;border-top:1px solid var(--line2)}
+.st-ecard-body>*:first-child{margin-top:16px}
 
 /* fields */
-.st-field{margin-bottom:12px}
+.st-field{margin-bottom:15px}
+.st-field:last-child{margin-bottom:0}
+/* the grid's row gap is the spacing inside a grid; a field must not stack its own on top */
+.st-grid2>.st-field,.st-grid3>.st-field,.st-grid4>.st-field{margin-bottom:0}
 .st-field label{display:block;font-size:11.5px;font-weight:800;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:5px}
 .st-field input:not([type=checkbox]):not([type=radio]),.st-field textarea,.st-field select{width:100%;border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:13px;background:#fff}
 .st-field input:focus,.st-field textarea:focus,.st-field select:focus,.st-item input:focus{outline:none;border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
 .st-field textarea{min-height:64px;resize:vertical}
-.st-grid2{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
-.st-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:0 14px}
-.st-grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:0 12px}
+.st-grid2{display:grid;grid-template-columns:1fr 1fr;gap:18px 16px}
+.st-grid3{display:grid;grid-template-columns:repeat(3,1fr);gap:18px 16px}
+.st-grid4{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:18px 14px}
 .st-toggles{display:flex;gap:18px;flex-wrap:wrap;margin:6px 0 4px}
 .st-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:8px}
 .st-inline{display:inline-flex;align-items:center;gap:6px;font-weight:600;font-size:12.5px}
@@ -328,7 +331,27 @@ a{color:var(--accent2)}
 .st-linkbox code{flex:1;background:transparent;font-size:13px}
 
 /* rich text */
-.st-toolbar{display:flex;flex-wrap:wrap;gap:3px;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 6px;background:#f7f9fb}
+/* the compact strip on an answer option / row / column label - revealed on hover or focus so a
+   long list stays scannable, but always there when the row is actually being worked on */
+.st-toolbar.st-toolbar-mini{flex-wrap:nowrap;padding:2px 3px;border-radius:6px;border-bottom:1px solid var(--line);opacity:0;transition:opacity .1s}
+.st-richlabel{position:relative;min-width:0;display:flex;flex-direction:column;gap:0}
+.st-richlabel:hover .st-toolbar-mini,.st-richlabel:focus-within .st-toolbar.st-toolbar-mini{opacity:1}
+.st-toolbar.st-toolbar-mini:focus-within{opacity:1}
+.st-toolbar.st-toolbar-mini .st-tb{min-width:22px;height:22px;padding:0 4px;font-size:12px}
+.st-toolbar.st-toolbar-mini .st-tb-sep{height:14px;margin:0 2px}
+.st-toolbar.st-toolbar-mini .st-tb-color{padding:0 4px}
+.st-richlabel .st-rich{border-radius:0 0 6px 6px;padding:4px 8px;min-height:30px;font-size:13px;line-height:1.35}
+.st-richlabel .st-rich:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
+/* the pipe button floats over the bottom-right of the label so it never costs the row width, and
+   is inert while it is invisible so it cannot swallow a text selection */
+.st-richlabel .st-pipe-btn{position:absolute;bottom:4px;right:4px;opacity:0;pointer-events:none;background:#fff;margin-left:0}
+.st-richlabel:hover .st-pipe-btn,.st-richlabel:focus-within .st-pipe-btn,.st-richlabel .st-pipe-btn:focus-visible{opacity:1;pointer-events:auto}
+/* position:relative is what makes the colour palette work. .st-color-pop is
+   position:absolute with top:calc(100% + 8px), and without this its containing block is the
+   nearest positioned ancestor - .st-editor, which is also overflow-y:auto. The palette then
+   anchors to the bottom of the whole editor pane and is clipped away, so the picker looks
+   broken. Anchoring it to its own toolbar puts it directly under the button that opened it. */
+.st-toolbar{position:relative;display:flex;flex-wrap:wrap;gap:3px;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 6px;background:#f7f9fb}
 .st-tb{border:1px solid transparent;background:transparent;border-radius:6px;min-width:28px;height:26px;padding:0 7px;font-size:12.5px;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .st-tb:hover{background:#fff;border-color:var(--line)}
 .st-tb-sep{width:1px;height:18px;background:var(--line);margin:0 3px}
@@ -336,34 +359,62 @@ a{color:var(--accent2)}
 .st-tb-color.hl{border-bottom-color:#ffd966}
 .st-tb-color input[type=color]{position:absolute;inset:0;opacity:0;width:100%;height:100%;cursor:pointer;border:0;padding:0}
 .st-color-swatch{display:inline-block;width:12px;height:12px;border-radius:3px;border:1px solid rgba(0,0,0,.15);vertical-align:middle;margin-left:2px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.6)}
-/* Colour palette pop */
-.st-color-pop{position:absolute;z-index:30;top:calc(100% + 8px);left:0;min-width:260px;max-width:320px;background:#fff;border:1px solid var(--line);border-radius:12px;box-shadow:0 12px 32px rgba(16,32,46,.18);padding:10px;display:none}
+/* Colour palette pop - shared by the font-colour and the highlight picker */
+.st-color-pop{position:absolute;z-index:30;top:calc(100% + 8px);left:0;width:296px;background:#fff;border:1px solid var(--line);
+  border-radius:12px;box-shadow:0 12px 32px rgba(16,32,46,.18);padding:11px 12px 10px;display:none;max-height:72vh;overflow:auto}
+.st-color-pop.right{left:auto;right:0}
 .st-color-pop.open{display:block}
-.st-color-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;font-size:12px}
+.st-color-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:9px;font-size:12px}
 .st-color-head strong{font-size:13px}
 .st-color-close{border:0;background:transparent;font-size:18px;line-height:1;cursor:pointer;color:var(--muted);padding:0 4px}
 .st-color-close:hover{color:var(--ink)}
-.st-color-auto{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;padding:7px 10px;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
-.st-color-auto em{font-style:normal;color:var(--muted);font-weight:500}
-.st-color-auto.on{border-color:var(--accent2);background:var(--soft)}
-.st-color-auto-swatch{width:18px;height:18px;border-radius:50%;background:#000;border:2px solid #fff;box-shadow:0 0 0 1px var(--line), inset 0 0 0 1px rgba(0,0,0,.1)}
+/* the reset entry: Automatic (black) for text, No colour for a highlight */
+.st-color-none{display:flex;align-items:center;gap:8px;width:100%;border:1px solid var(--line);border-radius:8px;background:#fff;
+  padding:7px 10px;font-size:12.5px;font-weight:600;cursor:pointer;text-align:left}
+.st-color-none em{font-style:normal;color:var(--muted);font-weight:500;font-size:11.5px}
+.st-color-none-swatch{width:16px;height:16px;border-radius:50%;flex:0 0 16px;background:#000;
+  box-shadow:0 0 0 1px var(--line), inset 0 0 0 2px #fff, inset 0 0 0 3px rgba(0,0,0,.06);position:relative}
+/* the diagonal "none" mark belongs on the highlighter's No colour, not on Automatic */
+.st-color-none.none .st-color-none-swatch::after{content:"";position:absolute;left:-2px;top:-2px;width:16px;height:2px;
+  border-radius:1px;background:#b3261e;transform:rotate(-45deg)}
+.st-color-none.none .st-color-none-swatch{background:#fff}
+.st-color-none.on{border-color:var(--accent2);background:var(--soft)}
 .st-color-check{margin-left:auto;color:var(--accent);font-weight:800}
-.st-color-grid{display:grid;grid-template-columns:repeat(8,1fr);gap:6px;margin:10px 0}
-.st-color-cell{width:100%;aspect-ratio:1;border-radius:7px;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);cursor:pointer;transition:transform .1s, box-shadow .1s}
-.st-color-cell:hover{transform:scale(1.08);box-shadow:0 0 0 1px var(--accent2), 0 2px 6px rgba(0,0,0,.12)}
-.st-color-custom{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0}
-.st-color-custom label{flex:1;min-width:120px;display:flex;align-items:center;gap:6px;font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.04em}
-.st-color-custom input[type=text]{flex:1;min-width:80px;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12.5px;font-family:ui-monospace, Menlo, monospace;text-transform:lowercase}
-.st-color-custom input[type=color]{width:36px;height:28px;border:1px solid var(--line);border-radius:7px;padding:2px;background:#fff;cursor:pointer}
-.st-color-rgbrow{display:flex;gap:6px;align-items:center;flex-wrap:wrap;border-top:1px solid var(--line2);padding-top:8px;margin-top:6px}
-.st-color-rgbrow label{flex:1;min-width:60px;display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;color:var(--muted)}
-.st-color-rgbrow input[type=number]{width:56px;border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px}
-.st-color-rgbrow .st-btn{margin-left:auto}
-.st-color-hint{font-size:11px;color:var(--muted);margin-top:6px;line-height:1.4}
+.st-color-group{font-size:10px;font-weight:800;letter-spacing:.06em;text-transform:uppercase;color:var(--faint);margin:11px 0 5px}
+.st-color-grid{display:grid;grid-template-columns:repeat(10,1fr);gap:5px}
+.st-color-grid.sm{grid-template-columns:repeat(10,1fr)}
+.st-color-cell{width:100%;aspect-ratio:1;border-radius:6px;border:2px solid #fff;box-shadow:0 0 0 1px var(--line);
+  cursor:pointer;transition:transform .1s, box-shadow .1s;padding:0}
+.st-color-cell:hover{transform:scale(1.1);box-shadow:0 0 0 1px var(--accent2), 0 2px 6px rgba(0,0,0,.14);z-index:1;position:relative}
+.st-color-cell.on{box-shadow:0 0 0 2px var(--accent2), 0 2px 6px rgba(0,0,0,.14)}
+/* custom colour */
+.st-color-more{width:100%;margin-top:11px;border:1px dashed var(--line);border-radius:8px;background:#fff;padding:6px 10px;
+  font-size:12px;font-weight:700;color:var(--accent);cursor:pointer;text-align:center}
+.st-color-more:hover{border-color:var(--accent2);background:var(--soft2)}
+.st-color-more.on{border-style:solid;border-color:var(--accent2);background:var(--soft)}
+.st-color-custom{margin-top:8px;padding:9px 10px;border:1px solid var(--line2);border-radius:9px;background:var(--soft2);
+  display:flex;flex-wrap:wrap;align-items:center;gap:8px}
+.st-color-preview{display:flex;align-items:center;gap:9px;flex:1 0 100%}
+.st-color-preview-a{font-size:19px;font-weight:800;line-height:1;width:34px;height:30px;display:inline-flex;align-items:center;
+  justify-content:center;border-radius:7px;border:1px solid var(--line);background:#fff}
+.st-color-preview-a.hl{color:#16232e}
+.st-color-preview-val{font-family:ui-monospace, Menlo, monospace;font-size:12px;color:var(--muted);text-transform:uppercase}
+.st-color-custom label{display:flex;align-items:center;gap:6px;font-size:10.5px;font-weight:800;color:var(--muted);
+  text-transform:uppercase;letter-spacing:.04em}
+.st-color-hex-l{flex:1 1 auto;min-width:0}
+.st-color-hex-l input{flex:1;min-width:0;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:12.5px;
+  font-family:ui-monospace, Menlo, monospace;background:#fff}
+.st-color-pick-l{flex:0 0 auto}
+.st-color-picker{width:38px;height:30px;border:1px solid var(--line);border-radius:7px;padding:2px;background:#fff;cursor:pointer}
+.st-color-rgbrow{display:flex;gap:5px;align-items:center;flex-wrap:wrap;flex:1 0 100%}
+.st-color-rgbrow label{flex:0 0 auto}
+.st-color-rgbrow input[type=number]{width:50px;border:1px solid var(--line);border-radius:7px;padding:5px 6px;font-size:12.5px;background:#fff}
+.st-color-rgbrow .st-btn{margin-left:auto;padding:5px 12px}
+.st-color-warn{margin-top:8px;font-size:11.5px;line-height:1.4;color:var(--warn);background:#fdf5e7;border:1px solid #f2e2c0;
+  border-radius:8px;padding:6px 9px}
+.st-color-hint{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.4}
 /* size select refinement */
 .st-toolbar select[data-size-for]{min-width:72px;max-width:90px}
-/* ensure toolbar palette positioning context */
-.st-toolbar{position:relative}
 .st-rich{border:1px solid var(--line);border-radius:0 0 8px 8px;padding:10px 12px;min-height:74px;font-size:15px;line-height:1.5;background:#fff;outline:none}
 .st-rich.sm{min-height:44px;font-size:13px}
 .st-rich:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}
@@ -374,14 +425,14 @@ a{color:var(--accent2)}
   font-family:ui-monospace,Menlo,monospace;font-size:.85em;font-weight:700;user-select:all;cursor:default}
 
 /* item lists (options / rows / columns) */
-.st-items{display:flex;flex-direction:column;gap:4px}
+.st-items{display:flex;flex-direction:column;gap:7px}
 /* one row = grip | position | code | label | [poles] | tools, with the behaviour chips on their
    own line underneath.  The label track is minmax(0,1fr) on purpose: the row can always shrink
    to the pane, so the delete / reorder buttons can never be pushed out of view. */
-.st-item{display:grid;grid-template-columns:20px 26px 58px minmax(0,1fr) auto;gap:6px 8px;align-items:center;padding:5px 6px;border-radius:8px;background:#fff;border:1px solid transparent}
+.st-item{display:grid;grid-template-columns:20px 26px 58px minmax(0,1fr) auto;gap:8px 10px;align-items:center;padding:9px 8px;border-radius:8px;background:#fff;border:1px solid transparent}
 .st-items.has-poles .st-item,.st-item:has(input[data-k=left]){grid-template-columns:20px 26px 58px minmax(0,1fr) minmax(56px,.6fr) minmax(56px,.6fr) auto}
 .st-item:hover{border-color:var(--line);background:var(--soft2)}
-.st-item-head{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:0 6px 2px;pointer-events:none}
+.st-item-head{font-size:10.5px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);padding:2px 6px 6px;pointer-events:none}
 .st-item-head:hover{border-color:transparent;background:transparent}
 .st-item-head>span:last-child{text-align:right}
 .st-grip{color:#c4cfd8;font-size:14px;line-height:1;text-align:center;cursor:grab;user-select:none;border-radius:5px;padding:2px 0}
@@ -389,17 +440,22 @@ a{color:var(--accent2)}
 .st-grip:active{cursor:grabbing}
 .st-grip:focus-visible{outline:2px solid var(--accent2);outline-offset:1px}
 .st-seq{font-size:12px;font-weight:700;color:var(--faint);text-align:center;user-select:none;font-variant-numeric:tabular-nums}
-.st-item input:not([type=checkbox]){width:100%;border:1px solid var(--line);border-radius:7px;padding:6px 8px;font-size:13px;background:#fff;min-width:0}
+.st-item input:not([type=checkbox]){width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font-size:13px;background:#fff;min-width:0}
 .st-it-code{font-family:ui-monospace,Menlo,monospace;font-size:12px !important;text-align:center}
 .st-with-pipe{display:flex;gap:6px;align-items:center;min-width:0}
 .st-with-pipe input{flex:1}
 .st-flags{grid-column:4/-1;display:flex;flex-wrap:wrap;gap:4px;align-items:center}
 .st-flags-lbl{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.05em;color:var(--faint);margin-right:3px}
-.st-flag{font-size:11px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:3px 8px;cursor:pointer;white-space:nowrap;background:#fff;user-select:none}
+.st-flag{font-size:11px;font-weight:700;color:var(--faint);border:1px solid var(--line);border-radius:999px;padding:5px 11px;cursor:pointer;white-space:nowrap;background:#fff;user-select:none}
 .st-flag input{position:absolute;opacity:0;width:0;height:0}
 .st-flag:hover{border-color:var(--accent2);color:var(--accent)}
 .st-flag.on{background:var(--soft);border-color:var(--accent2);color:var(--accent)}
-.st-item-tools{display:inline-flex;gap:1px;align-items:center;opacity:.9}
+.st-item-tools{display:inline-flex;gap:3px;align-items:center;opacity:.9}
+/* the attach + format controls edit the row; move / duplicate / delete act on it. Keeping
+   them in their own group, with a hairline between, means a six-control row still reads as
+   two jobs instead of one smear of buttons */
+.st-item-acts{display:inline-flex;gap:2px;align-items:center;margin-left:8px;
+  padding-left:8px;border-left:1px solid var(--line2)}
 .st-item:hover .st-item-tools,.st-item:focus-within .st-item-tools{opacity:1}
 .st-item-tools .st-ibtn{width:24px;height:24px;font-size:11px}
 .st-item-tools .st-ibtn.danger{color:var(--bad);opacity:.7}
@@ -409,6 +465,11 @@ a{color:var(--accent2)}
 .st-item.drop-before{box-shadow:inset 0 3px 0 -1px var(--accent2)}
 .st-items.drop-end::after{content:"";display:block;height:3px;border-radius:2px;background:var(--accent2);margin-top:2px}
 .st-item-tools label.st-ibtn{cursor:pointer}
+/* the attach control: a real 28px target, centred, so it is obvious what to press */
+.st-ibtn-media{width:28px;height:28px;display:inline-flex;align-items:center;justify-content:center;
+  color:var(--faint);border-color:transparent}
+.st-ibtn-media:hover{color:var(--accent);background:var(--soft);border-color:var(--line)}
+.st-ic-svg{display:block;flex:0 0 auto}
 .st-thumb{position:relative;display:inline-block;width:30px;height:24px;margin-right:2px}
 .st-thumb img{width:30px;height:24px;object-fit:cover;border-radius:5px;border:1px solid var(--line)}
 .st-thumb .st-x{position:absolute;top:-8px;right:-6px;background:#fff;border-radius:50%;font-size:12px;box-shadow:0 1px 3px rgba(0,0,0,.3)}
@@ -598,7 +659,14 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .qtest-box .st-note{margin:0}
 
 /* ---------- responsive ---------- */
-@media (max-width:1180px){.st-ws{grid-template-columns:260px minmax(380px,1fr) minmax(300px,.8fr)}}
+@media (max-width:1180px){.st-ws{grid-template-columns:260px minmax(380px,1fr) minmax(300px,.8fr)}
+  /* the editor pane is only ~400px wide here, so three or four long-labelled inputs across
+     it are unreadable; two-up gives each label and input room to breathe */
+  .st-grid3,.st-grid4{grid-template-columns:1fr 1fr}
+  /* a six-column editor row does not fit a narrow pane; trim the fixed tracks so the
+     label still has room and the action buttons are never clipped off the edge */
+  .st-pts .st-item{grid-template-columns:18px 28px minmax(0,1fr) 66px 52px auto}
+  .st-item-tools .st-ibtn{width:22px;height:22px}}
 @media (max-width:980px){
   .st-ws{grid-template-columns:1fr;height:auto}
   .st-outline{border-right:0;border-bottom:1px solid var(--line);max-height:40vh}
@@ -770,9 +838,13 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
    The scale points are a table of their own (position | value | label | format | media |
    tools), and the N/A + comment + order settings sit in their own boxes under the rows. */
 .st-h4-n{font-weight:700;font-size:11px;letter-spacing:0;text-transform:none;color:var(--faint)}
-.st-pts .st-item{grid-template-columns:26px 44px minmax(0,1fr) 88px 38px auto}
+/* sized for what actually sits in each track, so nothing overhangs its neighbour */
+.st-pts .st-item{grid-template-columns:20px 32px minmax(0,1fr) 76px 58px auto}
+/* the media cell is centred in its own track, so the thumbnail and its remove button both
+   stay inside it instead of drifting into the format or actions column */
+.st-pts .st-item>.st-thumb,.st-pts .st-item>.st-ibtn{justify-self:center;margin:0}
 .st-pt-val{font-family:ui-monospace,Menlo,monospace;font-size:12px;font-weight:700;text-align:center;color:var(--muted)}
-.st-it-fmt,.st-pts select{border:1px solid var(--line);border-radius:6px;padding:3px 4px;font-size:11px;
+.st-it-fmt,.st-pts select{border:1px solid var(--line);border-radius:6px;padding:6px 6px;font-size:11px;
   background:#fff;max-width:100%}
 .st-thumb-ic{display:inline-flex;align-items:center;justify-content:center;width:30px;height:24px;
   border:1px solid var(--line);border-radius:5px;background:var(--soft2);font-size:13px}
@@ -839,6 +911,70 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-loop-opt{ display:flex; gap:6px; align-items:center }
 .st-loop-opt input{ border:1px solid var(--line); border-radius:7px; padding:5px 8px; font-size:12.5px; background:#fff }
 .st-loop-q-meta{ margin-top:8px; padding-left:26px }
+/* ---------- Delta (carried grid + new columns) ---------- */
+.st-dl-wrap{ background:#eef2f6; border:1px solid #ccd6e0; border-radius:12px; padding:10px; margin:6px 0 10px }
+.st-dl-head{ display:flex; justify-content:space-between; align-items:center; padding:6px 8px 8px; font-weight:800; color:var(--accent); font-size:14px }
+.st-dl-title{ display:flex; align-items:center; gap:7px }
+.st-dl-title i{ font-style:normal; font-weight:900; color:#2f6fd0; font-size:16px; line-height:1 }
+.st-dl-card{ background:#fff; border:1px solid var(--line); border-radius:10px; overflow:hidden; box-shadow:0 2px 8px rgba(0,0,0,.06) }
+.st-dl-tabs{ display:flex; border-bottom:1px solid var(--line); background:#f8fafb }
+.st-dl-tab{ flex:0 0 auto; padding:10px 16px; font-weight:700; font-size:12.5px; border:0; background:transparent; cursor:pointer; border-bottom:3px solid transparent; color:var(--muted) }
+.st-dl-tab.on{ color:#2f6fd0; border-bottom-color:#2f6fd0; background:#fff }
+.st-dl-body{ padding:12px }
+.st-dl-source-head{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 6px }
+.st-dl-body > .st-dl-source-head:first-child{ margin-top:0 }
+.st-dl-source-bar{ background:#f0f4f7; border:1px solid var(--line); border-radius:8px; padding:10px 12px; display:flex; align-items:center; gap:10px; flex-wrap:wrap }
+.st-dl-source-bar span{ font-weight:700; font-size:12.5px; color:var(--ink); white-space:nowrap }
+.st-dl-source-bar select{ flex:1; min-width:200px; border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:13px; background:#fff }
+.st-dl-note{ font-size:12.5px; color:var(--muted); margin:8px 0 12px; line-height:1.5 }
+.st-dl-note b{ color:var(--ink) }
+.st-dl-togs{ display:flex; flex-direction:column; gap:8px; margin:10px 0 }
+.st-dl-tog{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fff }
+.st-dl-tog-l{ display:flex; align-items:center; gap:8px; font-weight:600; font-size:13px; color:var(--ink) }
+.st-dl-togs-flat{ flex-direction:row; flex-wrap:wrap; gap:8px 18px; padding:10px 12px; border:1px solid var(--line); border-radius:8px; background:#fbfcfd }
+.st-dl-togs-flat .st-dl-tog{ border:0; background:transparent; padding:0; flex:0 1 240px }
+
+/* the one table that is both the side-by-side view and the editor */
+.st-dl-table{ border:1px solid var(--line); border-radius:10px; overflow:hidden; background:#fff }
+.st-dl-tr{ display:grid; grid-template-columns:var(--st-dl-cols); gap:0 10px; align-items:center; padding:8px 10px; border-top:1px solid var(--line2) }
+.st-dl-tr:first-child{ border-top:0 }
+.st-dl-head{ background:#f8fafb; align-items:end; padding-bottom:10px }
+.st-dl-corner{ font-size:11px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); padding-bottom:4px }
+.st-dl-th{ display:flex; flex-direction:column; gap:4px; min-width:0 }
+.st-dl-kind{ font-size:9.5px; font-weight:800; text-transform:uppercase; letter-spacing:.07em; color:var(--faint) }
+.st-dl-th.st-dl-src .st-dl-kind{ color:#8a6d1f }
+.st-dl-th.st-dl-new .st-dl-kind{ color:#1d6f45 }
+.st-dl-colname{ width:100%; min-width:0; border:1px solid var(--line); border-radius:7px; padding:6px 8px; font-size:12.5px; background:#fff; font-weight:700 }
+.st-dl-th.st-dl-src .st-dl-colname{ background:#fffdf4; border-color:#e6d9a8 }
+.st-dl-th.st-dl-new .st-dl-colname{ background:#f4fbf7; border-color:#bfe3cd }
+.st-dl-coldel{ flex:0 0 auto; align-self:flex-end; border:1px solid transparent; background:transparent; color:var(--muted); cursor:pointer; border-radius:5px; padding:1px 5px; font-size:11px; line-height:1.2 }
+.st-dl-coldel:hover:not(:disabled){ background:#fdecea; color:#c0392b; border-color:#f5c6c0 }
+.st-dl-coldel:disabled{ opacity:.35; cursor:not-allowed }
+.st-dl-empty{ padding:16px 12px; text-align:center; font-size:12.5px; color:var(--faint); border-top:1px solid var(--line2) }
+.st-dl-rowlabel{ min-width:0 }
+.st-dl-rowname{ width:100%; min-width:0; border:1px solid var(--line); border-radius:7px; padding:7px 9px; font-size:13px; background:#fff; font-weight:600 }
+.st-dl-td{ min-width:0 }
+/* a carried cell is reference: greyed, no border that invites a click, no caret */
+.st-dl-td.st-dl-src{ padding:0 2px }
+.st-dl-ref{ display:block; width:100%; min-width:0; box-sizing:border-box; padding:6px 8px;
+  border:1px solid #dfe3e6; border-radius:7px; background:#f2f3f4; color:#6b7280;
+  font-size:12.5px; font-variant-numeric:tabular-nums; text-align:center; cursor:default;
+  -webkit-user-select:none; user-select:none }
+.st-dl-ref.empty{ color:#a8adb3; background:#f7f8f9; border-style:dashed }
+.st-dl-td.st-dl-new{ text-align:center }
+.st-dl-ph{ font-size:11.5px; color:var(--faint); font-style:italic }
+.st-dl-acts{ text-align:right; white-space:nowrap }
+.st-dl-acts .st-item-tools{ display:inline-flex; gap:2px }
+.st-dl-acts .st-item-tools .st-ibtn{ padding:3px 7px; font-size:11px; line-height:1.3 }
+.st-dl-settings{ border:1px solid var(--line); border-radius:10px; padding:12px; background:#fbfcfd }
+.st-dl-rulerow{ display:flex; gap:8px; align-items:center; flex-wrap:wrap }
+.st-dl-rulerow select{ border:1px solid var(--line); border-radius:7px; padding:7px 10px; font-size:12.5px; background:#fff }
+.st-dl-rulerow input{ border:1px solid var(--line); border-radius:7px; padding:7px 8px; font-size:12.5px; background:#fff }
+.st-dl-settings .st-hint{ margin-top:10px }
+.st-dl-settings .st-hint code{ background:#eef2f6; border-radius:4px; padding:1px 5px; font-size:11.5px }
+.st-dl-settings .st-dl-togs{ margin-top:4px }
+.st-dl-wrap .st-item-actions{ margin-top:10px }
+
 /* ---------- Concept Test (snip-matched) ---------- */
 .st-ct-wrap{ background:#f5f7f8; border:1px solid #dfe6ec; border-radius:12px; padding:10px; margin:6px 0 10px }
 .st-ct-head{ display:flex; justify-content:space-between; align-items:center; padding:6px 8px 8px; font-weight:800; color:var(--accent); font-size:14px }
@@ -894,5 +1030,10 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-ct-concept-mid .st-ct-text{ font-size:12.5px; color:var(--muted); flex:1; min-width:160px }
 .st-ct-concept-bottom{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
 .st-ct-concept-bottom select{ border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:12.5px; background:#fff }
+.st-wt-narr{ display:flex; flex-direction:column; gap:5px }
+.st-wt-narr label{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+.st-wt-narr textarea{ width:100%; min-height:62px; padding:9px 11px; font-size:13.5px; line-height:1.5;
+  border:1px solid var(--line); border-radius:8px; background:#fff; resize:vertical; font-family:inherit }
+.st-wt-narr textarea:focus{ outline:none; border-color:var(--accent2) }
 .st-ct-add-btn{ align-self:flex-start; background:#e53935; color:#fff; border-color:#e53935; padding:7px 14px; font-weight:700; margin-top:2px }
 .st-ct-add-btn:hover{ background:#c62828; border-color:#c62828 }

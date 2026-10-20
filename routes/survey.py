@@ -23,7 +23,7 @@ import re
 from flask import (Blueprint, abort, current_app, jsonify, render_template, request,
                    send_from_directory)
 
-from core.ai_detect import MAX_TEXT, ai_settings, score_text
+from core.ai_detect import MAX_TEXT, ai_settings, score_text, MAIN_ITEM, field_key
 from core.conjoint import assignment_for
 from core.i18n import (LANG_BY_CODE, apply_language, default_language, extract_strings,
                        valid_language)
@@ -257,13 +257,17 @@ def check_text():
     """
     body = json_body()
     qid = str(body.get("qid") or "")[:40]
+    # the answer item this box writes to: "_" for a question's own box, "<row>_<col>" for a
+    # text-grid cell, "_comment" / "c_<row>" for a comment, "other_text" for a "please specify"
+    item = str(body.get("item") or MAIN_ITEM)[:60]
     text = str(body.get("text") or "")[:MAX_TEXT]
     meta = body.get("meta") if isinstance(body.get("meta"), dict) else None
     study = Study.get(body.get("study") or "beacon") or Study.get("beacon")
     cfg = study.cfg if study else {}
-    settings = ai_settings(cfg, qid)
+    settings = ai_settings(cfg, qid, item)
     res = score_text(text, meta, settings)
-    return jsonify({"ok": True, "qid": qid, "enabled": settings.get("enabled", True),
+    return jsonify({"ok": True, "qid": qid, "item": item, "field": field_key(qid, item),
+                    "enabled": settings.get("enabled", True),
                     "action": settings.get("action", "confirm"),
                     "warn_at": settings.get("warn_at"), "flag_at": settings.get("flag_at"),
                     **res})

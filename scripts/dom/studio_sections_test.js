@@ -77,7 +77,9 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
     !!cards[0].querySelector(".st-tcard-body .st-tb-opts") && $$(".st-tb-opt").length>=3,
     cards[0].querySelector(".st-tcard-body").innerHTML.slice(0,60));
   check("a choice thumbnail draws radio dots", $$(".st-tb-radio").length>=3);
-  check("a rating thumbnail draws a scale", $$(".st-tb-cell").length>=5, $$(".st-tb-cell").length);
+  // Q3 is a Scale question: it draws its own numeric-field thumbnail, not scale cells
+  check("a Scale thumbnail draws a value field", !!cards[2].querySelector(".st-tb-num .st-tb-input"),
+    cards[2].querySelector(".st-tcard-body").innerHTML.slice(0,60));
   check("an open-text thumbnail draws a text box", $$(".st-tb-text").length>=1);
   check("thumbnails keep the badge/type footer", !!cards[0].querySelector(".st-tcard-foot"));
   check("the view choice is remembered for next time",

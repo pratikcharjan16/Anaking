@@ -7,7 +7,8 @@ from __future__ import annotations
 import json
 import time
 
-from .ai_detect import VERDICT_LIKELY, duplicate_verbatims
+from .ai_detect import (VERDICT_LIKELY, ai_item, duplicate_verbatims, MAIN_ITEM,
+                        field_key, text_fields, verdict_of)
 from .conjoint import profile_levels, task_list
 from .qc import free_text, qc_flags, score_free_text
 from . import screening
@@ -16,6 +17,59 @@ from .heatmap import summarize_heatmap
 
 def _verbatim_qs(cfg: dict) -> list:
     return [(q, "_") for q in (cfg.get("qc", {}) or {}).get("verbatim_qs", [])]
+
+
+# A Concept Test and a Walk Through both keep their answers under a synthetic id built from
+# the inner question's own id.  One place flattens either, so the two cannot drift apart.
+_INNER_SINGLE = ("single_select", "numeric", "slider", "rating_scale", "gauge_meter")
+_INNER_GRID = ("rating_grid", "rating_scale", "semantic_diff", "sum_to_100")
+
+
+def _flatten_inner(ct, cq, sid, sa, out):
+    """Write one inner answer `sa` of question `cq` (type `ct`) under key `sid`."""
+    if not sa:
+        return
+    if ct in _INNER_SINGLE:
+        out[sid] = sa.get("_", "")
+        if ct == "single_select":
+            opt = next((o for o in cq.get("options", []) if str(o["code"]) == str(sa.get("_"))), None)
+            if opt:
+                out[sid + "_text"] = opt["label"]
+    elif ct == "open_text":
+        out[sid] = sa.get("_", "")
+    elif ct == "multi_select":
+        out[sid] = ";".join(str(c) for c in sorted(sa.get("codes", []), key=str))
+    elif ct in _INNER_GRID or (ct == "gauge_meter" and cq.get("rows")):
+        for r in cq.get("rows") or []:
+            out[f"{sid}_{r['code']}"] = sa.get(r["code"], "")
+    elif ct == "loop":
+        pass
+    else:
+        if "_" in sa:
+            out[sid] = sa.get("_", "")
+        else:
+            for kk, vv in sa.items():
+                if not kk.startswith("_"):
+                    out[f"{sid}_{kk}"] = vv
+
+
+def _flatten_synthetic(qid, answers, out):
+    """Sweep up answer keys under `qid_` that the config loop did not reach."""
+    for ak, av in answers.items():
+        if not ak.startswith(qid + "_") or ak in out:
+            continue
+        if isinstance(av, dict):
+            if "_" in av:
+                out[ak] = av.get("_", "")
+            elif "codes" in av:
+                out[ak] = ";".join(str(c) for c in av.get("codes", []))
+            else:
+                for kk, vv in av.items():
+                    if not kk.startswith("_"):
+                        out[f"{ak}_{kk}"] = vv
+        else:
+            out[ak] = av
+
 
 
 def flatten(respondent, answers: dict, cfg: dict) -> dict:
@@ -77,15 +131,6 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 for c in q.get("cols", []):
                     key = f"{r['code']}_{c['code']}"
                     out[f"{qid}_{key}"] = a.get(key, "")
-        elif t == "nps":
-            raw = a.get("_", "")
-            out[qid] = raw
-            try:
-                n = int(raw)
-                out[qid + "_segment"] = ("Promoter" if n >= 9 else "Passive" if n >= 7
-                                         else "Detractor")
-            except (ValueError, TypeError):
-                out[qid + "_segment"] = ""
         elif t == "rating_grid" and q.get("cols"):
             # a rows x columns choice grid: one column code per row, plus its wording
             col_labels = {str(c["code"]): c.get("label", "") for c in q["cols"]}
@@ -147,6 +192,28 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                         out[f"{qid}_{r['code']}_{c['code']}"] = a.get(str(r["code"]) + "_" + str(c["code"]), "")
                 else:
                     out[f"{qid}_{r['code']}"] = a.get(r["code"], "")
+        elif t == "delta" and q.get("cols"):
+            # a delta grid: one number per row x new column. The carried columns are
+            # reference only, so they never carry an answer.
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
+                        str(r["code"]) + "_" + str(c["code"]), "")
+                if a.get(str(r["code"])) == "NA":
+                    out[f"{qid}_{r['code']}"] = "NA"
+        elif t == "delta" and q.get("cols"):
+            # a delta grid: one number per row x new column. The carried columns are
+            # reference only, so they never carry an answer.
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    out[f"{qid}_{r['code']}_{c['code']}"] = a.get(
+                        str(r["code"]) + "_" + str(c["code"]), "")
+                if a.get(str(r["code"])) == "NA":
+                    out[f"{qid}_{r['code']}"] = "NA"
         elif t == "delta":
             out[qid + "_before"] = a.get("before", "")
             out[qid + "_after"] = a.get("after", "")
@@ -165,54 +232,19 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 for c in concepts:
                     for cq in cqs:
                         sid = f"{qid}_{c.get('id')}_{cq.get('id')}"
-                        sa = answers.get(sid, {})
-                        if not sa:
-                            continue
-                        # flatten based on cq type
-                        ct = cq.get("type")
-                        if ct in ("single_select","numeric","slider","nps","rating_scale","gauge_meter"):
-                            out[sid] = sa.get("_","")
-                            if ct=="single_select":
-                                opt = next((o for o in cq.get("options",[]) if str(o["code"])==str(sa.get("_"))), None)
-                                if opt: out[sid+"_text"]=opt["label"]
-                        elif ct=="open_text":
-                            out[sid]=sa.get("_","")
-                        elif ct in ("multi_select",):
-                            out[sid]=";".join(str(c) for c in sorted(sa.get("codes",[]), key=str))
-                        elif ct in ("rating_grid","rating_scale","semantic_diff","sum_to_100") or (ct=="gauge_meter" and cq.get("rows")):
-                            for r in cq.get("rows") or []:
-                                out[f"{sid}_{r['code']}"]=sa.get(r["code"],"")
-                        elif ct=="loop":
-                            pass
-                        else:
-                            # fallback: store raw _ or whole dict
-                            if "_" in sa: out[sid]=sa.get("_","")
-                            else:
-                                for kk, vv in sa.items():
-                                    if not kk.startswith("_"): out[f"{sid}_{kk}"]=vv
-                # also handle synthetic keys that may include randomize/limit subset not in cfg iteration (e.g., per respondent subset)
-                # include any extra answer keys starting with qid+"_"
-                for ak, av in answers.items():
-                    if ak.startswith(qid+"_") and ak not in out:
-                        if isinstance(av, dict):
-                            if "_" in av: out[ak]=av.get("_","")
-                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
-                            else:
-                                for kk, vv in av.items():
-                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
-                        else:
-                            out[ak]=av
+                        _flatten_inner(cq.get("type"), cq, sid, answers.get(sid, {}), out)
+                # a per-respondent subset may not be in the config order: sweep up the rest
+                _flatten_synthetic(qid, answers, out)
             else:
-                # if only one side present, still include synthetic keys
-                for ak, av in answers.items():
-                    if ak.startswith(qid+"_") and ak not in out:
-                        if isinstance(av, dict):
-                            if "_" in av: out[ak]=av.get("_","")
-                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
-                            else:
-                                for kk, vv in av.items():
-                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
-                        else: out[ak]=av
+                _flatten_synthetic(qid, answers, out)
+        elif t == "walk_through":
+            # a Walk Through stores nothing itself; the questions asked about it do, each
+            # under its own id
+            for cq in q.get("walk_questions") or []:
+                sid = str(cq.get("id") or "")
+                if sid:
+                    _flatten_inner(cq.get("type"), cq, sid, answers.get(sid, {}), out)
+            _flatten_synthetic(qid, answers, out)
         elif t == "loop":
             for it in q.get("items", []) or []:
                 out[f"{qid}_{it['code']}"] = a.get(it["code"], "")
@@ -252,15 +284,25 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             n_tasks = (cfg.get("conjoint") or {}).get("n_tasks", 0)
             for i in range(1, n_tasks + 1):
                 out[f"{qid}_T{i}"] = a.get(f"T{i}", "")
-        if qid in ai:      # any free-text box, including a "please specify" box
-            out[qid + "_ai_score"] = ai[qid]["score"]
-            out[qid + "_ai_verdict"] = ai[qid]["verdict"]
-            meta = a.get("_meta") or {}
-            ack = (a.get("_ai") or {}).get("ack")
-            out[qid + "_ai_confirmed_own_words"] = ("yes" if ack else
-                                                    "no" if ack is False else "")
-            out[qid + "_pasted_chars"] = meta.get("pasted_chars", "")
-            out[qid + "_keystrokes"] = meta.get("keystrokes", "")
+        # any written answer on this question: its own box, a "please specify" box, a text-grid
+        # cell or a comment. The main box keeps the plain column names it always had; a second
+        # written answer gets its own, so nothing a spreadsheet already reads moves.
+        for fqid, item in text_fields(cfg):
+            if fqid != qid:
+                continue
+            res = ai.get(field_key(fqid, item))
+            if not res:
+                continue
+            sfx = "" if item == MAIN_ITEM else "_" + str(item)
+            out[qid + sfx + "_ai_score"] = res["score"]
+            out[qid + sfx + "_ai_verdict"] = res["verdict"]
+            ack = (a.get(ai_item(item)) or {}).get("ack")
+            out[qid + sfx + "_ai_confirmed_own_words"] = ("yes" if ack else
+                                                          "no" if ack is False else "")
+            if item == MAIN_ITEM:                 # one telemetry snapshot per question
+                meta = a.get("_meta") or {}
+                out[qid + "_pasted_chars"] = meta.get("pasted_chars", "")
+                out[qid + "_keystrokes"] = meta.get("keystrokes", "")
         # comment boxes: one for the whole question, one under any row that asked for one
         if (q.get("comments") or {}).get("mode") and (q.get("comments") or {}).get("mode") != "none":
             out[qid + "_comment"] = a.get("_comment", "")
@@ -399,7 +441,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
     for r in records:
         scored = score_free_text(r["answers"], cfg, _verbatim_qs(cfg))
         for f in free_text(r["answers"], cfg, _verbatim_qs(cfg)):
-            res = scored.get(f["qid"]) or {}
+            res = scored.get(field_key(f["qid"], f["item"])) or {}
             meta = f["meta"] or {}
             typed = (meta.get("typed_ms") or 0) / 1000.0
             cps = round(len(f["text"]) / typed, 1) if typed else ""
@@ -407,7 +449,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 r["respondent_code"], "test" if r["is_test"] else "real", f["qid"],
                 (f["question"].get("stem") or "")[:90], len(f["text"].split()),
                 res.get("score", ""), res.get("verdict", "too_short"),
-                "yes" if (r["answers"].get(f["qid"], {}).get("_ai") or {}).get("ack") else "",
+                "yes" if verdict_of(r["answers"], f["qid"], f["item"]).get("ack") else "",
                 meta.get("pasted_chars", ""), meta.get("keystrokes", ""), cps,
                 ";".join(dups.get((r["respondent_code"], f["qid"]), [])),
                 "; ".join(res.get("signals", [])), "; ".join(res.get("proofread", [])),
@@ -508,9 +550,6 @@ def build_sheets(records: list, scope: str, cfg: dict):
             n_tasks = (cfg.get("conjoint") or {}).get("n_tasks", 0)
             dd_rows.append([q["id"], q["section"], q["type"], stem, "T1..T" + str(n_tasks),
                             "chosen alternative per task", "1-3 chosen, 0 = opt-out"])
-        elif q["type"] == "nps":
-            dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "0-10 NPS",
-                            "9-10 promoter, 7-8 passive, 0-6 detractor"])
         elif q["type"] == "date":
             dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "calendar date",
                             "YYYY-MM-DD"])
@@ -525,6 +564,26 @@ def build_sheets(records: list, scope: str, cfg: dict):
                 else:
                     dd_rows.append([q["id"], q["section"], q["type"], stem, r["code"], r["label"],
                                     f"{q.get('min', 0)}-{q.get('max', 100)} per row"])
+        elif q["type"] == "delta" and q.get("cols"):
+            # carried columns are named too, so the export says what the reference was
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    dd_rows.append([q["id"], q.get("section", ""), q["type"], stem,
+                                    f"{r['code']}_{c['code']}",
+                                    f"{r['label']} \u00D7 {c['label']} (carried from {q.get('delta_source', '')})".strip(),
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
+        elif q["type"] == "delta" and q.get("cols"):
+            # carried columns are named too, so the export says what the reference was
+            for r in q.get("rows") or []:
+                for c in q.get("cols") or []:
+                    if c.get("kind") == "src":
+                        continue
+                    dd_rows.append([q["id"], q.get("section", ""), q["type"], stem,
+                                    f"{r['code']}_{c['code']}",
+                                    f"{r['label']} \u00D7 {c['label']} (carried from {q.get('delta_source', '')})".strip(),
+                                    f"{q.get('min', 0)}-{q.get('max', 100)} per cell"])
         elif q["type"] == "delta":
             dd_rows.append([q["id"], q["section"], q["type"], stem,
                             "before/after/delta", "two values and their difference",
@@ -540,6 +599,18 @@ def build_sheets(records: list, scope: str, cfg: dict):
             for cq in q.get("concept_questions", []) or []:
                 for c in q.get("concepts", []) or []:
                     dd_rows.append([q["id"], q.get("section",""), q["type"]+" question", cq.get("stem","")[:80], f"{c.get('id')}_{cq.get('id')}", f"{c.get('label')} · {cq.get('type')} {cq.get('stem','')[:40]}", f"per concept {cq.get('type')}"])
+        elif q["type"] == "walk_through":
+            for wst in q.get("walk_steps", []) or []:
+                media = wst.get("media") or {}
+                kind = media.get("kind") if media.get("src") else "animated scene"
+                dd_rows.append([q["id"], q.get("section",""), q["type"], stem, wst.get("id",""),
+                                wst.get("label",""),
+                                "step · " + str(kind) + " · " + (wst.get("narration","") or "")[:60]])
+            for wcq in q.get("walk_questions", []) or []:
+                dd_rows.append([q["id"], q.get("section",""), q["type"]+" question",
+                                wcq.get("stem","")[:80], wcq.get("id",""),
+                                f"{wcq.get('type')} · asked once, after the walkthrough",
+                                "after walkthrough"])
         elif q["type"] == "loop":
             for it in q.get("items", []) or []:
                 dd_rows.append([q["id"], q["section"], q["type"], stem, it["code"], it["label"],
@@ -568,6 +639,112 @@ def build_sheets(records: list, scope: str, cfg: dict):
     ]
 
 
+# ---------------------------------------------------------------- Delta source values
+# A Delta question reproduces an earlier question so a respondent can see what was said
+# before and answer against it.  What it shows as reference is not authored by hand - it
+# comes from the answers the source question actually collected.  This reads those back:
+# a mean per row x column for a matrix, a mean per row for a scale, the allocated points
+# for a constant sum, the rank position for a rank, and the single value for a number.
+# Everything is rounded to one decimal, and a cell nobody answered is simply absent.
+
+GRID_SOURCE_TYPES = ("numeric_matrix", "text_grid", "rating_grid", "semantic_diff",
+                     "emoji_grid", "sum_to_100", "rating_scale", "rank",
+                     "numeric", "slider")
+
+
+def delta_source_columns(q: dict) -> list:
+    """The columns an earlier question can offer a Delta, in the order they should appear.
+
+    A question with a column list of its own offers exactly that.  One that scores each row
+    on a scale - a rating scale, word pairs, emoji grid - has no comparable columns, so it
+    offers a single Value column and the reference becomes the row's mean.
+    """
+    cols = q.get("cols") or []
+    if cols:
+        return cols
+    if q.get("rows") or q.get("items") or q.get("type") in ("sum_to_100", "rank", "numeric", "slider"):
+        return [{"code": "v", "label": "Value"}]
+    return []
+
+
+def delta_source_rows(q: dict) -> list:
+    """The rows an earlier question can offer a Delta."""
+    return q.get("rows") or q.get("items") or []
+
+
+# A source question whose answers are numbers, so a Delta can read them back as reference.
+NUMERIC_SOURCE_TYPES = ("numeric_matrix", "sum_to_100", "rating_scale",
+                        "semantic_diff", "emoji_grid", "rank", "numeric", "slider")
+
+
+def delta_source_values(records: list, q: dict) -> dict:
+    """What a Delta can show as reference for one source question.
+
+    ``cells`` is keyed ``"<row code>_<col code>"`` and holds the mean of everyone who answered
+    that cell; ``rows`` and ``cols`` hold the means across a whole row or a whole column.
+    ``n`` is how many people answered it, so the author can tell a real reference from a guess,
+    and a cell nobody answered is absent rather than zero.  A question whose answers are not
+    numbers - a choice grid, a text grid - reports ``numeric: False`` and no values, because
+    averaging a word or a pick tells the respondent nothing.
+
+    This deliberately counts a respondent still in the field, not only those who reached the
+    end.  A Delta is built while a study is running, and "what people said so far" is the
+    whole point of the reference - an author who answered G1 in the test view and stopped
+    there has still told the study something.
+    """
+    from core.research import numeric
+    qid, t = q["id"], q.get("type")
+    cols, rows = delta_source_columns(q), delta_source_rows(q)
+    out = {"qid": qid, "type": t, "n": 0, "numeric": t in NUMERIC_SOURCE_TYPES,
+           "rows": {}, "cols": {}, "cells": {}}
+    if not out["numeric"]:
+        return out
+
+    def vals(key):
+        got = []
+        for r in records:
+            x = numeric((r.get("answers") or {}).get(qid, {}).get(key))
+            if x is not None:
+                got.append(x)
+        return got
+
+    def mean(got):
+        return round(sum(got) / len(got), 1) if got else None
+
+    # a plain number answers once, under no row or column
+    if t in ("numeric", "slider") and not rows:
+        got = vals("_")
+        out["n"] = len(got)
+        if got:
+            out["cells"]["_v"] = mean(got)
+        return out
+
+    many = len(cols) > 1
+    answered = 0
+    for r in rows:
+        rc = str(r["code"])
+        for c in cols:
+            cc = str(c["code"])
+            got = vals(rc + "_" + cc) if many else vals(rc)
+            if got:
+                answered = max(answered, len(got))
+                out["cells"][rc + "_" + cc] = mean(got)
+    out["n"] = answered
+
+    # the same read across a whole row, and down a whole column
+    for r in rows:
+        rc = str(r["code"])
+        got = [v for k, v in out["cells"].items() if k.startswith(rc + "_")]
+        if got:
+            out["rows"][rc] = mean(got)
+    for c in cols:
+        cc = str(c["code"])
+        got = [v for k, v in out["cells"].items() if k.endswith("_" + cc)]
+        if got:
+            out["cols"][cc] = mean(got)
+    return out
+
+
 def _picked(v, code) -> bool:
     """Whether a choice-grid row's answer contains the column's code (single or multi)."""
     if isinstance(v, list):
@@ -581,7 +758,7 @@ def analysis_for(records: list, cfg: dict) -> dict:
            "n_screened": sum(1 for r in records if r["status"] == "screened_out"),
            "mean_minutes": round(sum(r["elapsed_seconds"] or 0 for r in complete) / 60 /
                                  len(complete), 1) if complete else 0,
-           "ratings": [], "nps": None, "maxdiff": [], "heatmap": [], "emoji": [],
+           "ratings": [], "maxdiff": [], "heatmap": [], "emoji": [],
            "choice_share": None}
 
     def mean(vals):
@@ -613,18 +790,6 @@ def analysis_for(records: list, cfg: dict) -> dict:
                 rows.append({"label": r["label"], "cells": cells})
             out.setdefault("choice_grids", []).append(
                 {"id": q["id"], "stem": q["stem"][:60], "rows": rows})
-        elif t == "nps":
-            seg = {"Promoter": 0, "Passive": 0, "Detractor": 0}
-            for rec in complete:
-                v = rec["answers"].get(q["id"], {}).get("_")
-                try:
-                    n = int(v)
-                except (TypeError, ValueError):
-                    continue
-                seg["Promoter" if n >= 9 else "Passive" if n >= 7 else "Detractor"] += 1
-            tot = sum(seg.values()) or 1
-            out["nps"] = {"id": q["id"], "segments": seg,
-                          "score": round(100 * (seg["Promoter"] - seg["Detractor"]) / tot)}
         elif t == "gauge_meter":
             if q.get("rows"):
                 rows = []

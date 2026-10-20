@@ -316,34 +316,6 @@
 .survey-skin .alt-card:hover{transform:translateY(-3px);box-shadow:0 12px 28px rgba(11,79,108,.16)}
 .survey-skin .opt{transition:transform .15s ease,background .15s ease}
 .survey-skin .opt:hover{transform:translateX(3px)}
-.survey-skin .nps{padding:6px 4px 0}
-.survey-skin .nps-zones{display:flex;justify-content:space-between;font-size:10.5px;font-weight:800;
-  letter-spacing:.04em;margin-bottom:6px}
-.survey-skin .nz.det{color:var(--bad)}
-.survey-skin .nz.pas{color:var(--warn)}
-.survey-skin .nz.pro{color:var(--good)}
-.survey-skin .nps-track{position:relative;height:16px;border-radius:10px;cursor:pointer;
-  background:linear-gradient(90deg,#b3261e 0%,#d9662a 54%,#e09b2d 63%,#ecd6a8 72%,#9fd3ae 82%,#1a7f4b 100%);
-  box-shadow:inset 0 1px 3px rgba(26,39,51,.25)}
-.survey-skin .nps-detent{position:absolute;top:50%;width:4px;height:4px;border-radius:50%;
-  background:rgba(255,255,255,.75);transform:translate(-50%,-50%)}
-.survey-skin .nps-fill{position:absolute;left:0;top:0;bottom:0;border-radius:10px;background:rgba(255,255,255,.28);
-  width:0;transition:width .18s}
-.survey-skin .nps-thumb{position:absolute;top:50%;left:50%;width:30px;height:30px;border-radius:50%;background:#fff;
-  border:4px solid var(--accent);box-shadow:0 4px 12px rgba(26,39,51,.35);
-  transform:translate(-50%,-50%);cursor:grab;transition:left .18s cubic-bezier(.2,1,.3,1);padding:0}
-.survey-skin .nps-thumb.idle{border-style:dashed;animation:idlePulse 1.6s ease-in-out infinite}
-.survey-skin .nps-bubble{position:absolute;bottom:24px;left:50%;transform:translateX(-50%);background:var(--ink);
-  color:#fff;font-weight:800;font-size:12px;padding:3px 10px;border-radius:10px;
-  transition:left .18s;pointer-events:none}
-.survey-skin .nps-bubble:after{content:"";position:absolute;top:100%;left:50%;transform:translateX(-50%);
-  border:5px solid transparent;border-top-color:var(--ink)}
-.survey-skin .nps-cat{margin-top:12px;text-align:center;font-weight:800;font-size:14px;color:var(--muted)}
-.survey-skin .nps-cat.det{color:var(--bad)}
-.survey-skin .nps-cat.pas{color:var(--warn)}
-.survey-skin .nps-cat.pro{color:var(--good)}
-.survey-skin .nps-cat.pop{animation:bump .35s ease}
-.survey-skin .egrid{display:flex;flex-direction:column;gap:8px}
 .survey-skin .egrid-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
 .survey-skin .egrid-row .rlabel{flex:1 1 180px}
 .survey-skin .faces{display:flex;gap:6px}

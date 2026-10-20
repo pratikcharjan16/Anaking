@@ -118,43 +118,43 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   check("+ Add column grows the grid", colsOf(s).length === 4, colsOf(s).length);
   s.click(s.$$('[data-act="it-dup"][data-kind="col"]')[0]); await sleep(240);
   check("a column can be duplicated in place", colsOf(s).length === 5 &&
-    /\(copy\)$/.test(s.$$('[data-it="col"][data-k="label"]')[1].value),
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    /\(copy\)$/.test(s.$$('[data-it="col"][data-k="label_html"]')[1].textContent),
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
   check("the copy gets a code of its own",
     s.$$('[data-it="col"][data-k="code"]')[0].value !== s.$$('[data-it="col"][data-k="code"]')[1].value,
     s.$$('[data-it="col"][data-k="code"]').map(n => n.value).join(","));
   s.click(s.$$('[data-act="it-down"][data-kind="col"]')[1]); await sleep(240);
   check("a column can be moved along the header",
-    /\(copy\)/.test(s.$$('[data-it="col"][data-k="label"]')[2].value),
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    /\(copy\)/.test(s.$$('[data-it="col"][data-k="label_html"]')[2].textContent),
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
   s.click(s.$$('[data-act="it-del"][data-kind="col"]')[2]); await sleep(240);
   check("a column can be deleted", colsOf(s).length === 4 &&
-    !s.$$('[data-it="col"][data-k="label"]').some(n => /\(copy\)/.test(n.value)));
+    !s.$$('[data-it="col"][data-k="label_html"]').some(n => /\(copy\)/.test(n.textContent)));
   s.click(s.$$('[data-act="it-del"][data-kind="col"]')[3]); await sleep(240);
   check("...and the grid is back to its three columns", colsOf(s).length === 3, colsOf(s).length);
-  const col0 = s.$$('[data-it="col"][data-k="label"]')[0];
-  col0.value = "Not good"; s.fire(col0, "change"); await sleep(240);
+  const col0 = s.$$('[data-it="col"][data-k="label_html"]')[0];
+  col0.textContent = "Not good"; s.fire(col0, "input"); await sleep(240);
   check("each column keeps its own label",
-    s.$$('[data-it="col"][data-k="label"]')[0].value === "Not good",
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    s.$$('[data-it="col"][data-k="label_html"]')[0].textContent === "Not good",
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
 
   // ---- rows
   s.click(s.$('[data-act="it-add"][data-kind="row"]')); await sleep(240);
   check("+ Add row grows the grid", rowsOf(s).length === 4, rowsOf(s).length);
   s.click(s.$$('[data-act="it-dup"][data-kind="row"]')[1]); await sleep(240);
   check("a row can be duplicated in place", rowsOf(s).length === 5 &&
-    /\(copy\)$/.test(s.$$('[data-it="row"][data-k="label"]')[2].value),
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|"));
+    /\(copy\)$/.test(s.$$('[data-it="row"][data-k="label_html"]')[2].textContent),
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|"));
   check("the copy gets a code of its own",
     s.$$('[data-it="row"][data-k="code"]')[1].value !== s.$$('[data-it="row"][data-k="code"]')[2].value,
     s.$$('[data-it="row"][data-k="code"]').map(n => n.value).join(","));
   s.click(s.$$('[data-act="it-up"][data-kind="row"]')[2]); await sleep(240);
   check("a row can be moved up the grid",
-    /\(copy\)/.test(s.$$('[data-it="row"][data-k="label"]')[1].value),
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|"));
+    /\(copy\)/.test(s.$$('[data-it="row"][data-k="label_html"]')[1].textContent),
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|"));
   s.click(s.$$('[data-act="it-del"][data-kind="row"]')[1]); await sleep(240);
   check("a row can be deleted", rowsOf(s).length === 4 &&
-    !s.$$('[data-it="row"][data-k="label"]').some(n => /\(copy\)/.test(n.value)));
+    !s.$$('[data-it="row"][data-k="label_html"]').some(n => /\(copy\)/.test(n.textContent)));
 
   // ---- the title and the two group names
   const gt = s.$("#f-gtitle"); gt.value = "How well does each describe it?"; s.fire(gt, "change"); await sleep(200);
@@ -184,22 +184,22 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
 
   // ---- Swap rows / columns: the two lists change places
   const before = {
-    rows: s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|"),
-    cols: s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"),
+    rows: s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|"),
+    cols: s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"),
   };
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
   check("Swap turns the rows into columns and the columns into rows",
     colsOf(s).length === 4 && rowsOf(s).length === 3,
     colsOf(s).length + " cols / " + rowsOf(s).length + " rows");
   check("...and the wording travels with them",
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") === before.cols &&
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|") === before.rows,
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") + " / " +
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|") === before.cols &&
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|") === before.rows,
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|") + " / " +
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
   check("swapping again puts it back the way it was",
     rowsOf(s).length === 4 && colsOf(s).length === 3 &&
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") === before.rows,
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|") === before.rows,
     rowsOf(s).length + " / " + colsOf(s).length);
 
   // ---- comments for the whole question
@@ -226,24 +226,24 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
   check("a numeric matrix opens with a column list of its own", !!s.$('[data-act="it-add"][data-kind="col"]'));
   s.click(s.$('[data-act="it-add"][data-kind="col"]')); await sleep(240);
   s.click(s.$('[data-act="it-add"][data-kind="col"]')); await sleep(240);
-  const colLab = s.$$('[data-it="col"][data-k="label"]')[0];
-  colLab.value = "This year"; s.fire(colLab, "change"); await sleep(240);
-  const colLab2 = s.$$('[data-it="col"][data-k="label"]')[1];
-  colLab2.value = "Next year"; s.fire(colLab2, "change"); await sleep(240);
+  const colLab = s.$$('[data-it="col"][data-k="label_html"]')[0];
+  colLab.textContent = "This year"; s.fire(colLab, "input"); await sleep(240);
+  const colLab2 = s.$$('[data-it="col"][data-k="label_html"]')[1];
+  colLab2.textContent = "Next year"; s.fire(colLab2, "input"); await sleep(240);
   check("columns can be added and labelled", colsOf(s).length === 2 &&
-    s.$$('[data-it="col"][data-k="label"]')[0].value === "This year",
+    s.$$('[data-it="col"][data-k="label_html"]')[0].textContent === "This year",
     colsOf(s).length);
   s.click(s.$$('[data-act="it-dup"][data-kind="col"]')[0]); await sleep(240);
   s.click(s.$$('[data-act="it-del"][data-kind="col"]')[2]); await sleep(240);
   check("a column can be duplicated and deleted", colsOf(s).length === 2);
-  const g2rows = s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|");
-  const g2cols = s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|");
+  const g2rows = s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|");
+  const g2cols = s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|");
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
   check("Swap swaps the two lists over on a matrix with two axes",
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") === g2cols &&
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|") === g2rows,
-    s.$$('[data-it="row"][data-k="label"]').map(n => n.value).join("|") + " / " +
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|") === g2cols &&
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|") === g2rows,
+    s.$$('[data-it="row"][data-k="label_html"]').map(n => n.textContent).join("|") + " / " +
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
   s.click(s.$('[data-act="mtx-swap"]')); await sleep(320);
 
   // ---------------------------------------------------------------- the heat map
@@ -263,8 +263,8 @@ const ptsOf = s => s.$$('[data-kind="pt"] .st-item:not(.st-item-head)');
     colsOf(s).length === 3 && rowsOf(s).length === 2 && !s.$("#f-smin"),
     colsOf(s).length + " cols / " + rowsOf(s).length + " rows");
   check("...and its scale points become labelled columns",
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|") === "Low|2|High",
-    s.$$('[data-it="col"][data-k="label"]').map(n => n.value).join("|"));
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|") === "Low|2|High",
+    s.$$('[data-it="col"][data-k="label_html"]').map(n => n.textContent).join("|"));
 
   // ---------------------------------------------------------------- the rating scale
   await s.open("R1");

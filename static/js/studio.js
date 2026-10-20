@@ -70,8 +70,7 @@
     text_grid: { name: "Text Grid", icon: "\u229E", desc: "Rows \u00D7 columns of text boxes – flexible, images on rows & columns, voice to text", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
-    semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
-    nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
+    semantic_diff: { name: "NPS", icon: "\u2194", desc: "Score rows between two opposite anchors", group: "Questions" },
     emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
     numeric: { name: "Numeric Entry", icon: "#", desc: "Type a number - %, $, count", group: "Questions" },
     slider: { name: "Scale", icon: "\u2696", desc: "Drag to a value", group: "Questions" },
@@ -79,8 +78,9 @@
     open_text: { name: "Text Entry", icon: "\u00B6", desc: "Free text, with optional voice note", group: "Questions" },
     date: { name: "Date", icon: "\uD83D\uDCC5", desc: "Pick a calendar date", group: "Questions" },
     numeric_matrix: { name: "Numeric Matrix", icon: "\u25A4", desc: "A number for every row", group: "Questions" },
-    delta: { name: "Delta", icon: "\u0394", desc: "Before / after values and the change", group: "Questions" },
+    delta: { name: "Delta", icon: "\u0394", desc: "Carry a grid forward, fill in the new columns", group: "Questions" },
     concept_test: { name: "Concept Test", icon: "\uD83D\uDCA1", desc: "Show a concept, rate it on rows", group: "Methodologies" },
+    walk_through: { name: "Walk Through", icon: "\u25B6\uFE0F", desc: "Narrated animated walkthrough - no answer stored", group: "Methodologies" },
     heatmap: { name: "Heatmap", icon: "\u25A9", desc: "Intensity per row \u00D7 column", group: "Methodologies" },
     maxdiff: { name: "Max Diff", icon: "\u2194", desc: "Best / worst trade-offs - the Max Diff experiment", group: "Methodologies", noprev: true },
     choice_task: { name: "Conjoint", icon: "\u21C4", desc: "Choice tasks from the conjoint design", group: "Methodologies" },
@@ -128,7 +128,6 @@
       q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" },
                 { code: "c", label: "Third item" }];
     }
-    if (type === "nps") { q.scale = { min: 0, max: 10 }; }
     if (type === "choice_task") q.conjoint = conjointTemplate();
     if (type === "emoji_grid") {
       q.scale = { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE41", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"],
@@ -152,35 +151,38 @@
       q.rows = [{ code: "r1", label: "Row 1" }, { code: "r2", label: "Row 2" }];
       q.cols = [{ code: "c1", label: "Column 1" }, { code: "c2", label: "Column 2" }];
     }
-    if (type === "delta") { q.min = 0; q.max = 100; q.before_label = "Before"; q.after_label = "After"; }
+    // A new Delta starts as a grid: one empty column to hold the answers, no rows until
+    // the author carries them forward from an earlier question or adds their own. Studies
+    // saved before this had before_label / after_label instead, and still render that way.
+    if (type === "delta") {
+      q.min = 0; q.max = 100; q.step = 1;
+      q.cols = [{ code: "d1", label: "New column", kind: "delta" }];
+      q.rows = [];
+    }
     if (type === "concept_test") {
       q.concept = "Describe the concept here.";
       q.scale = { min: 1, max: 7, min_label: "Strongly disagree", max_label: "Strongly agree" };
-      q.rows = [{ code: "a", label: "It is easy to understand" }, { code: "b", label: "It is relevant to me" }];
       q.concept_execution = "";
       q.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
       q.concept_show_desc_first_only = true;
-      q.concept_concepts_per_enabled = true;
+      q.concept_concepts_per_enabled = false;
       q.concept_concepts_per = 3;
       q.concept_randomize = false;
-      q.concepts = [
-        { id: q.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
-        { id: q.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
-        { id: q.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
-      ];
-      q.concept_questions = [
-        { id: q.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: true, placeholder: "Type your answer" },
-        { id: q.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient — KEY DIAGNOSTIC", required: true, options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
-        { id: q.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
-        { id: q.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
-        { id: q.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
-      ];
+      q.concepts = [];
+      q.concept_questions = [];
     }
     if (type === "loop") {
       q.child = "open_text"; q.prompt_template = "{label}"; q.text_rows = 2;
       q.items = [{ code: "i1", label: "First item" }, { code: "i2", label: "Second item" }];
       q.loop_mode = "create"; q.loop_source = ""; q.limit_loops = false; q.loop_limit = 3; q.loop_randomize = false; q.loop_override = false;
       q.loop_questions = [{ id: q.id + "_LQ1", type: "open_text", stem: "What do you think about {label}?", placeholder: "Type your answer", required: true }];
+    }
+    if (type === "walk_through") {
+      q.required = false;                 // nothing is asked, so nothing can be required
+      q.walk_tts = true;                  // speak each step with the browser voice
+      q.walk_description_html = "";
+      q.walk_steps = [];
+      q.walk_questions = [];
     }
     if (type === "text_block") { q.required = false; q.body = "Add instructions, an introduction or a story here."; }
     return q;
@@ -194,7 +196,7 @@
       questions: [
         qTemplate("single_select", "Q1", "S1"),
         qTemplate("rating_grid", "Q2", "S1"),
-        qTemplate("nps", "Q3", "S1"),
+        qTemplate("slider", "Q3", "S1"),
         qTemplate("open_text", "Q4", "S1")
       ],
       tpp: { patient: "", mechanism: "", trial: "", efficacy: "", safety: "",
@@ -819,11 +821,14 @@
         return thumbRows(q, 3);
       case "rating_scale":
       case "semantic_diff":
-      case "nps":
         return thumbScale(q);
       case "concept_test":
         var cc = (q.concepts||[]).length, cq = (q.concept_questions||[]).length;
         return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+cc+' concepts</b><i></i></span><span class="st-tb-row"><b>'+cq+' questions</b><i></i></span>'+(cq? '<span class="st-tb-more">'+cc*cq+' steps</span>':'')+'</div>';
+      case "walk_through":
+        var ws = (q.walk_steps||[]).length, wq = (q.walk_questions||[]).length;
+        var attached = (q.walk_steps||[]).filter(function(st){ return st.media && st.media.src; }).length;
+        return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+ws+' steps</b><i></i></span><span class="st-tb-row"><b>'+wq+' questions</b><i></i></span>'+(attached? '<span class="st-tb-more">'+attached+' attached</span>':'')+'</div>';
       case "heatmap":
         var hm = q.heatmap || {};
         if (hm.image_src) return '<div class="st-tb-hm"><img src="' + esc(hm.image_src) + '" alt=""><span>' + esc(hm.image_title || "Heatmap") + ' \u00B7 ' + ((hm.reactions||[]).length||0) + ' reactions</span></div>';
@@ -1310,6 +1315,7 @@
   // ------------------------------------------------------------ question editor pane
   var ed = null;           // live reference to cur.cfg.questions[sel]
   var ctInnerQi = null;    // when editing a question inside Concept Test: index in ed.concept_questions
+  var wtInnerQi = null;    // ... inside a Walk Through: index in ed.walk_questions
   var OPS = [["selected", "has selected"], ["not_selected", "has not selected"],
     ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
     ["eq", "equals"], ["ne", "does not equal"], ["gt", "is greater than"], ["gte", "is at least"], ["lt", "is less than"], ["lte", "is at most"],
@@ -1363,6 +1369,57 @@
   function hasScale(t) { return SCALE_TYPES.indexOf(t) >= 0; }
   function hasColAxis(t) { return AXIS_TYPES.indexOf(t) >= 0; }
 
+  // ---- delta questions ------------------------------------------------------------------
+  // A Delta duplicates the shape of an earlier grid / matrix question. Its rows and its
+  // columns are carried across, so the author starts from exactly what respondents already
+  // saw instead of retyping it. The carried columns stay as reference; the new columns are
+  // where the values get entered - and both sit side by side on every row, so "what we said
+  // before" and "what we are asking now" read as one table.
+  //
+  // Shape: cols[] carries kind:"src" for a carried column and kind:"delta" for a new one;
+  // rows[] carries label plus ref{} - the reference value shown under each carried column.
+  // Answers are rowCode_colCode on the delta columns only.
+  //
+  // A delta saved before this had before_label / after_label and no cols; that shape is
+  // still rendered, unchanged, so existing studies keep working.
+  //
+  // "<qid>|<source qid>" last read for the reference cells, so opening the card re-reads
+  // the source once per question rather than on every render
+  var dlRefsRead = "";
+  var DELTA_SOURCE_TYPES = ["numeric_matrix", "text_grid", "rating_grid", "semantic_diff",
+                            "emoji_grid", "sum_to_100", "rating_scale", "rank",
+                            "numeric", "slider"];
+  function isDeltaSourceType(t) { return DELTA_SOURCE_TYPES.indexOf(t) >= 0; }
+  function deltaSources() {
+    return (cur.cfg.questions || []).slice(0, sel)
+      .filter(function (q) { return isDeltaSourceType(q.type); });
+  }
+  function deltaSourceQ() {
+    if (!ed.delta_source) return null;
+    return deltaSources().filter(function (q) { return q.id === ed.delta_source; })[0] || null;
+  }
+  // The columns an earlier question can offer: its own column list, its scale points, or a
+  // single derived column when it has neither (a rating scale, a rank, a plain number).
+  function sourceColumns(q) {
+    if (!q) return [];
+    if (q.cols && q.cols.length) return q.cols;
+    if (hasScale(q.type)) return scalePoints(q);
+    if (q.rows && q.rows.length &&
+        (q.type === "rating_scale" || q.type === "rank" || q.type === "sum_to_100"))
+      return [{ code: "v", label: "Value" }];
+    if (q.type === "numeric" || q.type === "slider") return [{ code: "v", label: "Value" }];
+    return [];
+  }
+  function sourceRows(q) {
+    if (!q) return [];
+    if (q.rows && q.rows.length) return q.rows;
+    if (q.items && q.items.length) return q.items;
+    return [];
+  }
+  function deltaCols() { return ed.cols || []; }
+  function deltaRows() { return ed.rows || []; }
+  function deltaIsGrid() { return !!(ed.cols && ed.cols.length); }
+
   // Older studies carried grids with a scale (one rating per row).  A grid is now rows x
   // columns with a pick per row, so the first time such a question is opened its scale
   // points become the columns - codes and labels travel with them, nothing is thrown away.
@@ -1411,8 +1468,8 @@
     var out = [];
     for (var v = r[0]; v <= r[1]; v++) {
       var p = have[v] || {};
-      out.push({ v: v, label: p.label || faceLabel(q, v) || "", fmt: p.fmt || "", media: p.media,
-                 comment: p.comment || "" });
+      out.push({ v: v, label: p.label || faceLabel(q, v) || "", label_html: p.label_html || "",
+                 fmt: p.fmt || "", media: p.media, comment: p.comment || "" });
     }
     return out;
   }
@@ -1423,10 +1480,11 @@
     list.forEach(function (p, i) {
       var e = { v: min + i };
       if (String(p.label || "").trim()) e.label = p.label;
+      if (p.label_html) e.label_html = p.label_html;
       if (p.fmt) e.fmt = p.fmt;
       if (p.media && p.media.src) e.media = p.media;
       if (p.comment && p.comment !== "none") e.comment = p.comment;
-      if (e.label || e.fmt || e.media || e.comment) pts.push(e);
+      if (e.label || e.label_html || e.fmt || e.media || e.comment) pts.push(e);
     });
     ed.scale.min = min;
     ed.scale.max = min + list.length - 1;
@@ -1439,18 +1497,25 @@
     if (it.image) return { kind: "image", src: it.image };
     return null;
   }
+  // A paperclip rather than an emoji: the attachment control has to be legible on
+  // every machine, and an emoji glyph is not something this app can guarantee.
+  var MEDIA_CLIP_SVG = '<svg class="st-ic-svg" viewBox="0 0 24 24" width="15" height="15" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true"><path ' +
+    'd="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>';
+
   function mediaCell(it, kind, i) {
     var m = mediaOf(it);
     if (m) {
       return '<span class="st-thumb" title="' + esc(String(m.src).split("/").pop()) + '">' +
         (m.kind === "video" ? '<video src="' + esc(m.src) + '" muted></video>'
-          : m.kind === "audio" ? '<span class="st-thumb-ic" title="Audio clip">\\u266B</span>'
+          : m.kind === "audio" ? '<span class="st-thumb-ic" title="Audio clip">\u266B</span>'
             : '<img src="' + esc(m.src) + '" alt="">') +
         '<button class="st-x" data-act="it-media-del" data-kind="' + kind + '" data-i="' + i +
-        '" title="Remove this attachment">\\u00D7</button></span>';
+        '" title="Remove this attachment">\u00D7</button></span>';
     }
-    return '<label class="st-ibtn" title="Attach an image, video or audio clip to this ' + esc(kind === "pt" ? "point" : kind) + '">' +
-      "\\uD83D\\uDCE5" + '<input type="file" accept="image/*,video/*,audio/*" data-act="it-media" data-kind="' +
+    return '<label class="st-ibtn st-ibtn-media" title="Attach an image, video or audio clip to this ' + esc(kind === "pt" ? "point" : kind) + '">' +
+      MEDIA_CLIP_SVG + '<input type="file" accept="image/*,video/*,audio/*" data-act="it-media" data-kind="' +
       kind + '" data-i="' + i + '" hidden></label>';
   }
   // The scale points: one row per value, each with its own label, format and media.
@@ -1458,32 +1523,30 @@
     var pts = scalePoints(ed);
     var html = '<div class="st-items st-pts" data-kind="pt">' +
       '<div class="st-item st-item-head"><span>#</span><span>Value</span><span>Label respondents read</span>' +
-      "<span>Format</span><span>Attachment</span><span>Actions</span></div>";
+      "<span>Format</span><span>Media</span><span>Actions</span></div>";
     pts.forEach(function (p, i) {
       var pid = "f-pt-" + i;
       html += '<div class="st-item" data-i="' + i + '">' +
         '<span class="st-seq" title="Position ' + (i + 1) + " of " + pts.length + '">' + (i + 1) + ".</span>" +
         '<span class="st-pt-val" title="The number stored for this point">' + p.v + "</span>" +
-        '<div class="st-with-pipe"><input id="' + pid + '" data-pt="label" data-i="' + i + '" value="' + esc(p.label || "") +
-        '" placeholder="' + (i === 0 ? "e.g. Not at all" : i === pts.length - 1 ? "e.g. Extremely" : "optional") + '">' +
-        pipeButton(pid, true, true) + "</div>" +
+        richLabelCell("pt", i, p, i === 0 ? "e.g. Not at all" : i === pts.length - 1 ? "e.g. Extremely" : "optional", "pt") +
         '<select data-pt="fmt" data-i="' + i + '" title="How the label is styled">' + FMT_MODES.map(function (f) {
           return '<option value="' + f[0] + '"' + ((p.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>";
         }).join("") + "</select>" +
         mediaCell(p, "pt", i) +
         '<span class="st-item-tools">' +
         '<button class="st-ibtn" data-act="pt-up" data-i="' + i + '" title="Move this label up one point"' +
-        (i === 0 ? " disabled" : "") + ">\\u25B2</button>" +
+        (i === 0 ? " disabled" : "") + ">\u25B2</button>" +
         '<button class="st-ibtn" data-act="pt-down" data-i="' + i + '" title="Move this label down one point"' +
-        (i === pts.length - 1 ? " disabled" : "") + ">\\u25BC</button>" +
-        '<button class="st-ibtn" data-act="pt-dup" data-i="' + i + '" title="Duplicate this point">\\u2398</button>' +
+        (i === pts.length - 1 ? " disabled" : "") + ">\u25BC</button>" +
+        '<button class="st-ibtn" data-act="pt-dup" data-i="' + i + '" title="Duplicate this point">\u2398</button>' +
         '<button class="st-ibtn danger" data-act="pt-del" data-i="' + i + '" title="Delete this point"' +
-        (pts.length <= 2 ? " disabled" : "") + ">\\uD83D\\uDDD1</button></span></div>";
+        (pts.length <= 2 ? " disabled" : "") + ">\uD83D\uDDD1</button></span></div>";
     });
     html += "</div>" +
       '<div class="st-item-actions"><button class="st-btn sm on" data-act="pt-add">+ Add column</button>' +
-      '<button class="st-btn sm ghost" data-act="pt-paste">Enter multiple\\u2026</button>' +
-      '<span class="st-meta">Adding a column extends the scale \\u00B7 deleting one shortens it. ' +
+      '<button class="st-btn sm ghost" data-act="pt-paste">Enter multiple\u2026</button>' +
+      '<span class="st-meta">Adding a column extends the scale \u00B7 deleting one shortens it. ' +
       "The numbers stored stay in step.</span></div>";
     return html;
   }
@@ -1531,12 +1594,12 @@
       '<div class="st-field"><label>Prompt <span class="st-opt">what the box says</span></label>' +
       '<input id="f-cmt-label" value="' + esc(c.label || "Any other comments?") + '"></div>' +
       '<div class="st-field"><label>Mandatory for <span class="st-opt">rows that must be explained</span></label>' +
-      '<select id="f-cmt-rows" multiple size="3" title="Hold Ctrl / \\u2318 to pick several rows">' +
+      '<select id="f-cmt-rows" multiple size="3" title="Hold Ctrl / \u2318 to pick several rows">' +
       (ed.rows || []).map(function (r) {
         var on = (c.require_when || []).map(String).indexOf(String(r.code)) >= 0;
         return '<option value="' + esc(r.code) + '"' + (on ? " selected" : "") + ">" + esc(rowText(r)) + "</option>";
       }).join("") + "</select></div></div>" +
-      '<div class="st-hint">A required comment blocks Next until it is filled in \\u00B7 ' +
+      '<div class="st-hint">A required comment blocks Next until it is filled in \u00B7 ' +
       (rowModes ? "<b>" + rowModes + " row(s)</b> carry a comment box of their own - set it on the row below."
         : "set <b>Comment</b> on a row below to give that row its own box.") + "</div></div>";
   }
@@ -1547,12 +1610,12 @@
       var mode = typeof rz === "object" ? (rz[name] || "none") : (name === "rows" ? (rz || "none") : "none");
       return '<div class="st-field"><label>Order of ' + what + '</label><select id="' + id + '">' +
         RZ_MODES.map(function (m) {
-          return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + " \\u00B7 " + m[2] + "</option>";
+          return '<option value="' + m[0] + '"' + (mode === m[0] ? " selected" : "") + ">" + m[1] + " \u00B7 " + m[2] + "</option>";
         }).join("") + "</select></div>";
     }
     return '<div class="st-grid2">' + axis("f-rz-rows", "rows", (ed.rows || []).length ? "rows" : "rows") +
       axis("f-rz-cols", "cols", hasColAxis(ed.type) ? "columns" : "columns (the scale points)") + "</div>" +
-      '<div class="st-hint">Pinned rows and columns keep their place whatever the order \\u00B7 the order each ' +
+      '<div class="st-hint">Pinned rows and columns keep their place whatever the order \u00B7 the order each ' +
       "respondent saw is exported with the data.</div>";
   }
 
@@ -1822,7 +1885,7 @@
   function answersTitle() {
     var t = ed.type;
     return hasOptions(t) ? "Answer options" : hasRows(t) ? "Rows & scale" : t === "open_text" ? "Text box" :
-      t === "numeric" || t === "slider" ? "Number range" : t === "nps" ? "Scale" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
+      t === "numeric" || t === "slider" ? "Number range" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
   }
 
   // The question editor follows the reference design: a strip with Content & Settings and
@@ -1850,44 +1913,14 @@
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
     ed = sel >= 0 ? cur.cfg.questions[sel] : null;
-    if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
-      var parentQ = ed;
-      var innerQ = parentQ.concept_questions && parentQ.concept_questions[ctInnerQi];
-      if (innerQ) {
-        ed = innerQ;
-        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
-        var ti = tinfo(ed.type);
-        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="ct-inner-back" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(ctInnerQi+1)+' of '+parentQ.concept_questions.length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentQ.concept_execution||'Concept Test')+')</span><span class="st-count">'+(ctInnerQi+1)+'/'+parentQ.concept_questions.length+'</span></div>';
-        host.innerHTML =
-          backHead +
-          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
-          '<div class="st-ehead">' +
-            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
-            '<div class="st-ehead-main"><div class="st-ehead-row">' +
-              '<div class="st-ehead-idcol">' +
-                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
-                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
-              '</div>' +
-              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
-              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
-              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
-            '</div></div>' +
-            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="ct-inner-dup" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="ct-inner-del" title="Delete">✕</button></div>' +
-          '</div>' +
-          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
-          edStrip() +
-          (edTab==="screen" ? "" : scrLineHtml()) +
-          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
-           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
-           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
-             card("q","Question","What respondents read", qCard()) +
-             card("answers",answersTitle(),"", answersCard()) +
-             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
-             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
-             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
-        renderPreview(); return;
-      } else { ctInnerQi=null; ed = parentQ; }
+    var innerHtml = null;
+    if (ed && ed.type === "walk_through" && wtInnerQi !== null) {
+      innerHtml = renderInnerQuestion("walk_questions", wtInnerQi, "cq", "wt-inner-back", "Walk Through");
+    } else if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
+      innerHtml = renderInnerQuestion("concept_questions", ctInnerQi, "cq", "ct-inner-back",
+                                      ed.concept_execution || "Concept Test");
     }
+    if (innerHtml) { host.innerHTML = innerHtml; renderPreview(); return; }
     if (!ed) {
       host.innerHTML = '<div class="st-editor-empty"><div class="st-editor-empty-ic">\u270E</div><h3>' +
         (cur.cfg.questions.length ? "Pick a question on the left to edit it" : "This study has no questions yet") +
@@ -2004,6 +2037,320 @@
     markChanged(); renderOutline(); renderEditorPane(); toast('Suggestion applied — review before publishing');
   }
 
+  // Pull the rows and columns off the chosen source question. Carried columns keep their
+  // own codes and labels so the two line up; anything already authored is left alone, so
+  // re-carrying after adding rows does not throw that work away.
+  // prevSrc is the question the Delta was carrying from before this click, so a re-carry
+  // from the same source can prune columns the source has lost, while carrying from a new
+  // source only ever adds.
+  function carryDeltaForward(prevSrc) {
+    var src = deltaSourceQ();
+    if (!src) return null;
+    var sCols = sourceColumns(src), sRows = sourceRows(src);
+    var cols = ed.cols || [], rows = ed.rows || [];
+
+    // a carried column already present keeps its (possibly renamed) label; the rest are added
+    sCols.forEach(function (c, i) {
+      var code = String(c.code != null ? c.code : "c" + (i + 1));
+      var there = cols.filter(function (x) { return x.kind === "src" && String(x.src_code) === code; })[0];
+      if (there) return;
+      // insert ahead of any new columns, so carried and new stay grouped
+      var firstNew = cols.map(function (x) { return x.kind; }).indexOf("delta");
+      var at = firstNew < 0 ? cols.length : firstNew;
+      cols.splice(at, 0, { code: "dsc" + code, label: String(c.label || ("Column " + (i + 1))),
+                           kind: "src", src_code: code, src_q: src.id });
+    });
+    // A carried column only goes away when the question it came from has lost it. Columns
+    // carried from any other question stay put, so re-carrying from a new source adds to
+    // what is here and never removes the columns or reference values already authored.
+    var live = sCols.map(function (c) { return String(c.code != null ? c.code : ""); });
+    for (var k = cols.length - 1; k >= 0; k--) {
+      if (cols[k].kind === "src" && cols[k].src_q === src.id &&
+          live.indexOf(String(cols[k].src_code)) < 0) cols.splice(k, 1);
+    }
+    sRows.forEach(function (r, i) {
+      var code = String(r.code != null ? r.code : "r" + (i + 1));
+      if (rows.some(function (x) { return String(x.code) === code; })) return;
+      rows.push({ code: code, label: String(r.label || ("Row " + (i + 1))), ref: {} });
+    });
+    ed.cols = cols;
+    ed.rows = rows;
+    if (!cols.length) ed.cols = [{ code: "d1", label: "New column", kind: "delta" }];
+
+    // The reference cells are not typed by hand: they are what the source question was
+    // actually answered with. Fill the empty ones, leave any the author has already
+    // overridden, and say where the numbers came from.
+    return fillDeltaRefs(src);
+  }
+
+  // Read the source question's answers back and drop them into the reference cells.  Only
+  // cells the author has left empty are filled, unless `force` is set - which is what the
+  // Refresh button does once more data has arrived.
+  // Put what the source question was answered with into the carried cells.  Nothing here is
+  // the author's to keep - a carried cell is reference, so the data always wins, and the
+  // only thing that changes it is a question being answered by more people.
+  function fillDeltaRefs(src) {
+    if (!src || !cur) return Promise.resolve();
+    var url = "/api/studio/delta-source?study=" + encodeURIComponent(cur.slug) +
+      "&q=" + encodeURIComponent(src.id);
+    return fetch(url, { credentials: "same-origin" }).then(function (r) {
+      return r.json();
+    }).then(function (d) {
+      if (!d || d.error) return;
+      ed.delta_ref_n = d.n || 0;
+      ed.delta_ref_numeric = d.numeric !== false;
+      if (!d.numeric || !d.cells) return;
+      var cells = d.cells;
+      var cols = ed.cols || [], rows = ed.rows || [];
+      rows.forEach(function (r) {
+        r.ref = r.ref || {};
+        cols.forEach(function (c) {
+          if (c.kind !== "src") return;
+          var v = cells[String(r.code) + "_" + String(c.src_code)];
+          if (v === undefined || v === null) return;
+          r.ref[c.code] = String(v);
+        });
+      });
+    }).catch(function () { /* nothing to read yet - the carried cells stay as dashes */ });
+  }
+
+  // Read the delta card's inputs. Called from syncFromForm, so every other path that saves
+  // (markChanged, the action handlers) sees the same values.
+  function syncDeltaForm() {
+    if (!ed || ed.type !== "delta" || !deltaIsGrid()) return;
+    var srcSel = document.getElementById("f-delta-source");
+    if (srcSel) setOrDel(ed, "delta_source", srcSel.value);
+    var cols = ed.cols || [];
+    $$("#st-editor [data-dcol]").forEach(function (nd) {
+      var c = cols[Number(nd.getAttribute("data-dci"))]; if (!c) return;
+      c.label = nd.value;
+    });
+    var rows = ed.rows || [];
+    $$("#st-editor [data-drow]").forEach(function (nd) {
+      var r = rows[Number(nd.getAttribute("data-dri"))]; if (!r) return;
+      r.label = nd.value;
+    });
+    // The carried cells are read-only reference text, so there is nothing to read back:
+    // their values only ever come from the source question's answers.
+    if (val("f-dl-rule") !== undefined) setOrDel(ed, "delta_rule", val("f-dl-rule"));
+    if (val("f-dl-rule-total") !== undefined) setOrDel(ed, "delta_total", num("f-dl-rule-total"));
+    setOrDel(ed, "delta_na", chk("f-dl-na"));
+    setOrDel(ed, "delta_randomize", chk("f-dl-rand"));
+    setOrDel(ed, "delta_nochange", chk("f-dl-nochange"));
+    setOrDel(ed, "delta_percentage", val("f-dl-unit") === "percentage");
+    setOrDel(ed, "min", num("f-dl-min"));
+    setOrDel(ed, "max", num("f-dl-max"));
+    setOrDel(ed, "step", num("f-dl-step"));
+  }
+
+  // ---- card: delta ----------------------------------------------------------------------
+  function deltaTog(label, info, id, on) {
+    return '<div class="st-dl-tog"><div class="st-dl-tog-l"><span>' + esc(label) + "</span>" +
+      (info ? '<span class="st-info" title="' + esc(info) + '">&#9432;</span>' : "") + "</div>" +
+      '<label class="st-switch"><input type="checkbox" id="' + id + '"' + (on ? " checked" : "") +
+      "><i></i></label></div>";
+  }
+
+  // The one line under the source picker that says what is carried across.
+  // A Delta written before the grid had two number boxes and a computed change.  It is
+  // kept exactly as it was: the same fields, the same hint, the same answer keys.
+  function deltaPairBlock() {
+    return '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label>' +
+      '<input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' +
+      (ed.max != null ? ed.max : "") + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' +
+      (ed.step != null ? ed.step : "") + '"></div>' +
+      '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' +
+      esc(ed.id) + '_delta</code>.</div></div></div>' +
+      '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label>' +
+      '<input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
+      '<div class="st-field"><label>\u201CAfter\u201D label</label>' +
+      '<input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
+  }
+
+  // A Delta written before the grid had two number boxes and a computed change.  It is
+  // kept exactly as it was: the same fields, the same hint, the same answer keys.
+  function deltaPairBlock() {
+    return '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label>' +
+      '<input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
+      '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' +
+      (ed.max != null ? ed.max : "") + '"></div>' +
+      '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' +
+      (ed.step != null ? ed.step : "") + '"></div>' +
+      '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' +
+      esc(ed.id) + '_delta</code>.</div></div></div>' +
+      '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label>' +
+      '<input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
+      '<div class="st-field"><label>\u201CAfter\u201D label</label>' +
+      '<input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
+  }
+
+  function refBlank(r, c) {
+    var v = (r.ref || {})[c.code];
+    return v === undefined || v === null || String(v).trim() === "";
+  }
+
+  function deltaNote(src) {
+    var cols = deltaCols(), rows = deltaRows();
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+    if (!src) {
+      return "Pick a grid or matrix question above and press <b>Carry forward</b>. Its rows and columns " +
+        "are copied in, and you can add more of either afterwards.";
+    }
+    var head = "Carried from <b>" + esc(src.id) + "</b> — " + srcCols.length + " column" +
+      (srcCols.length === 1 ? "" : "s") + " and " + rows.length + " row" +
+      (rows.length === 1 ? "" : "s") + ". Carried columns are shown to respondents for " +
+      "reference; the values go in the " + newCols.length + " new column" +
+      (newCols.length === 1 ? "" : "s") + ".";
+
+    // The reference cells are read out of the source question's own answers, so the note
+    // says where the numbers came from - and says so plainly when there are none.
+    if (srcCols.length) {
+      if (ed.delta_ref_numeric === false) {
+        return head + " <b>" + esc(src.id) + "</b> is answered with words or picks, not numbers, " +
+          "so there is nothing to show against it.";
+      }
+      var n = ed.delta_ref_n;
+      if (!n) {
+        return head + " Nobody has answered <b>" + esc(src.id) + "</b> yet, so the carried " +
+          "columns are showing dashes. Answer it - in the survey or in the test view - and " +
+          "press <b>Refresh reference values</b>.";
+      }
+      return head + " The carried columns show the mean of the <b>" + n + "</b> answer" +
+        (n === 1 ? "" : "s") + " to <b>" + esc(src.id) + "</b>, and are not editable. Press " +
+        "<b>Refresh reference values</b> once more people have answered it.";
+    }
+    return head;
+  }
+
+  function deltaBlock() {
+    var srcs = deltaSources(), src = deltaSourceQ();
+    var cols = deltaCols(), rows = deltaRows();
+    var srcCols = cols.filter(function (c) { return c.kind === "src"; });
+    var newCols = cols.filter(function (c) { return c.kind !== "src"; });
+
+    var html = '<div class="st-dl-wrap"><div class="st-dl-card">';
+    html += '<div class="st-dl-head"><span class="st-dl-title"><i>&#916;</i> ' + esc(ed.id) +
+      " Delta</span></div>";
+    html += '<div class="st-dl-tabs"><button class="st-dl-tab on" type="button">Questions</button>' +
+      '<button class="st-dl-tab" type="button" data-act="delta-tab-logic">Conditional Display</button></div>';
+
+    html += '<div class="st-dl-body">';
+    html += '<div class="st-dl-source-head">Select source question</div>';
+    html += '<div class="st-dl-source-bar"><span>Populate rows from:</span>' +
+      '<select id="f-delta-source" title="The grid or matrix question this Delta copies its rows and columns from">' +
+      '<option value="">Select a question to carry forward</option>' +
+      srcs.map(function (q) {
+        var n = sourceColumns(q).length, m = sourceRows(q).length;
+        return '<option value="' + esc(q.id) + '"' + (ed.delta_source === q.id ? " selected" : "") + ">" +
+          esc(q.id + " — " + (q.stem || q.title || "").slice(0, 46) +
+              " (" + m + " row" + (m === 1 ? "" : "s") + " × " + n + " col" + (n === 1 ? "" : "s") + ")") +
+          "</option>";
+      }).join("") + "</select>" +
+      '<button class="st-btn sm on" type="button" data-act="delta-carry">Carry forward</button>' +
+      '<button class="st-btn sm ghost" type="button" data-act="delta-refresh"' +
+      (src ? "" : " disabled") +
+      ' title="Re-read the source question&rsquo;s answers and show the new means.">Refresh ' +
+      'reference values</button>' +
+      "</div>";
+
+    html += '<div class="st-dl-togs">' +
+      deltaTog("Validate per row", "Check each row on its own rather than the whole table", "f-dl-nochange", !!ed.delta_nochange) +
+      deltaTog("Add “No change” option", "Let a respondent mark a row as unchanged instead of typing a number", "f-dl-perow", !!ed.delta_per_row) +
+      "</div>";
+
+    html += '<div class="st-dl-note">' + deltaNote(src) + "</div>";
+
+    // ---- the table: existing and new columns side by side, on every row ----
+    html += '<div class="st-dl-table"' +
+      ' style="--st-dl-cols:minmax(150px,1.4fr) ' +
+      cols.map(function () { return "minmax(96px,1fr)"; }).join(" ") + ' auto">';
+    html += '<div class="st-dl-tr st-dl-head">' +
+      '<div class="st-dl-th st-dl-corner">Row</div>';
+    cols.forEach(function (c, ci) {
+      var isSrc = c.kind === "src";
+      html += '<div class="st-dl-th ' + (isSrc ? "st-dl-src" : "st-dl-new") + '">' +
+        '<span class="st-dl-kind">' + (isSrc ? "Source" : "New") + "</span>" +
+        '<input class="st-dl-colname" data-dcol="label" data-dci="' + ci + '" value="' + esc(c.label || "") +
+        '" placeholder="' + (isSrc ? "Carried column" : "New column name") + '">' +
+        '<button class="st-ibtn danger st-dl-coldel" type="button" data-act="delta-col-del" data-dci="' + ci +
+        '" title="Delete this column"' + (cols.length <= 1 ? " disabled" : "") + ">&#10005;</button></div>";
+    });
+    html += '<div class="st-dl-th st-dl-acts">Actions</div></div>';
+
+    if (!rows.length) {
+      html += '<div class="st-dl-empty">No rows yet — carry them forward from the source question, or add your own below.</div>';
+    }
+    rows.forEach(function (r, ri) {
+      html += '<div class="st-dl-tr" data-dri="' + ri + '">';
+      html += '<div class="st-dl-td st-dl-rowlabel"><input class="st-dl-rowname" data-drow="label" data-dri="' +
+        ri + '" value="' + esc(r.label || "") + '" placeholder="Row label"></div>';
+      cols.forEach(function (c, ci) {
+        var isSrc = c.kind === "src";
+        html += '<div class="st-dl-td ' + (isSrc ? "st-dl-src" : "st-dl-new") + '">' +
+          // A carried column is reference, so it is shown and not offered: greyed text
+          // with no input in it.  What it holds is whatever the source question was
+          // answered with, and only Refresh reference values moves it.
+          (isSrc
+            ? '<span class="st-dl-ref' + (refBlank(r, c) ? " empty" : "") + '" title="' + esc(
+                "What respondents answered " + src.id + " here. Shown to them for reference, " +
+                "and not something you type.") + '">' +
+              esc(refBlank(r, c) ? "—" : String((r.ref || {})[c.code])) + "</span>"
+            : '<span class="st-dl-ph">Value</span>') +
+          "</div>";
+      });
+      html += '<div class="st-dl-td st-dl-acts"><span class="st-item-tools">' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-up" data-dri="' + ri + '"' +
+        (ri === 0 ? " disabled" : "") + ' title="Move this row up">&#9650;</button>' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-down" data-dri="' + ri + '"' +
+        (ri === rows.length - 1 ? " disabled" : "") + ' title="Move this row down">&#9660;</button>' +
+        '<button class="st-ibtn" type="button" data-act="delta-row-dup" data-dri="' + ri +
+        '" title="Duplicate this row">&#9104;</button>' +
+        '<button class="st-ibtn danger" type="button" data-act="delta-row-del" data-dri="' + ri +
+        '" title="Delete this row">&#128465;</button></span></div>';
+      html += "</div>";
+    });
+    html += "</div>";
+
+    html += '<div class="st-item-actions">' +
+      '<button class="st-btn sm on" type="button" data-act="delta-row-add">+ Add row</button>' +
+      '<button class="st-btn sm" type="button" data-act="delta-col-add">+ Add column</button>' +
+      '<span class="st-meta">A new column is where respondents type. A carried column is shown to them for reference.</span></div>';
+
+    // ---- general settings ----
+    html += '<div class="st-dl-source-head">General settings</div>';
+    html += '<div class="st-dl-settings">' +
+      '<div class="st-field"><label>Validation rule <span class="st-opt">optional</span></label>' +
+      '<div class="st-dl-rulerow"><select id="f-dl-rule">' +
+      [["", "None"], ["total", "Each new column adds up to"]].map(function (o) {
+        return '<option value="' + o[0] + '"' + (ed.delta_rule === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
+      }).join("") + "</select>" +
+      '<select id="f-dl-op"><option>Equal to</option><option>At least</option><option>At most</option></select>' +
+      '<input id="f-dl-rule-total" type="number" value="' + (ed.delta_total != null ? ed.delta_total : "") +
+      '" placeholder="100" style="width:90px"></div></div>' +
+      '<div class="st-dl-togs st-dl-togs-flat">' +
+      deltaTog("Allow N/A", "Adds an N/A tick so a row can be skipped", "f-dl-na", !!ed.delta_na) +
+      deltaTog("Randomize rows", "Shuffle the row order per respondent", "f-dl-rand", !!ed.delta_randomize) +
+      "</div>" +
+      '<div class="st-field"><label>Numeric inputs</label><div class="st-dl-rulerow">' +
+      '<select id="f-dl-unit"><option value="normal"' + (ed.delta_percentage ? "" : " selected") +
+      '>Normal</option><option value="percentage"' + (ed.delta_percentage ? " selected" : "") +
+      ">Percentage</option></select>" +
+      '<input id="f-dl-min" type="number" value="' + (ed.min != null ? ed.min : 0) +
+      '" style="width:84px" title="Minimum">' +
+      '<input id="f-dl-max" type="number" value="' + (ed.max != null ? ed.max : 100) +
+      '" style="width:84px" title="Maximum">' +
+      '<input id="f-dl-step" type="number" value="' + (ed.step != null ? ed.step : 1) +
+      '" style="width:70px" title="Step"></div></div>' +
+      '<div class="st-hint">Answers are stored as <code>' + esc(ed.id) + '_&lt;row&gt;_&lt;column&gt;</code> on the new columns.</div>' +
+      "</div>";
+
+    html += "</div></div></div>";
+    return html;
+  }
+
   // ---- card: question text -------------------------------------------------------------
   function qCard() {
     return '<div class="st-field"><label>Question text</label>' + richToolbar("f-stem-rich") +
@@ -2019,7 +2366,10 @@
   // The rich-text toolbar mirrors the reference editor: size and font, B/I/U, a "more"
   // row, colours, alignment, lists, link, table, superscript, image, pipe, fullscreen and a
   // source view.  Everything it can produce survives core/sanitize.py + BeaconQ.sanitize.
-  function richToolbar(target, small) {
+  // richToolbar(target, small, mini): the same controls in three sizes. `mini` is the strip that
+  // sits on an answer option / row / column label - bold, italic, underline and the two colour
+  // pickers, nothing that would swamp a one-line label.
+  function richToolbar(target, small, mini) {
     var b = function (cmd, label, title, val) {
       return '<button type="button" class="st-tb" data-cmd="' + cmd + '" data-val="' + (val || "") + '" data-target="' + target + '" title="' + title + '">' + label + "</button>";
     };
@@ -2034,11 +2384,19 @@
       .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
     var fonts = [["", "Sans Serif"], ["Arial, Helvetica, sans-serif", "Arial"], ["Georgia, serif", "Georgia"], ["'Times New Roman', serif", "Times New Roman"], ["'Courier New', monospace", "Courier New"]]
       .map(function (o) { return '<option value="' + esc(o[0]) + '">' + o[1] + "</option>"; }).join("");
-    // Colour palette: Automatic (black) is the default selected; full RGB/hex picker included
+    // Colour buttons: the swatch and the underline show the colour that would be applied
+    // next; clicking either opens the standard palette (injected beside the toolbar).
     function colorBtn(kind, title, swatch) {
-      var tid = target + (kind === "foreColor" ? "_fg" : "_bg");
-      // Palette HTML is injected outside toolbar and toggled; button only holds trigger
-      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000") + '"></span></button>';
+      return '<button type="button" class="st-tb st-tb-color ' + (kind==="hiliteColor"?"hl":"") + '" data-color-trigger="' + kind + '" data-target="' + target + '" title="' + title + '" aria-haspopup="true" aria-expanded="false">' + swatch + '<span class="st-color-swatch" style="background:' + (kind==="hiliteColor" ? "#fff3a3" : "#000000") + '"></span></button>';
+    }
+    if (mini) {
+      return '<div class="st-toolbar st-toolbar-mini" data-for="' + target + '">' +
+        b("bold", "<b>B</b>", "Bold") + b("italic", "<i>I</i>", "Italic") + b("underline", "<u>U</u>", "Underline") +
+        '<span class="st-tb-sep"></span>' +
+        colorBtn("foreColor", "Text colour — Automatic is black", "A") +
+        colorBtn("hiliteColor", "Highlight colour", "&#9639;") +
+        b("removeFormat", "T&#818;", "Clear formatting") +
+        "</div>";
     }
     return '<div class="st-toolbar" data-for="' + target + '">' +
       '<select class="st-tb-sel" data-size-for="' + target + '" title="Text size" aria-label="Text size">' + sizeOpts + '</select>' + (small ? "" : pick("fontName", "Font", fonts)) +
@@ -2061,46 +2419,433 @@
         act("fullscreen", "\u26F6", "Full screen") +
       "</span></div>";
   }
-  // --- rich text helpers: font size (8px+ + custom) and colour palette (Automatic black) ---
-  var ST_COLORS = ["#000000","#434343","#666666","#999999","#b7b7b7","#cccccc","#ffffff","#b3261e","#cc4125","#e06666","#f6b26b","#ffd966","#38761d","#274e13","#6aa84f","#1155cc","#0b5394","#3c78d8","#9900ff","#b45f06","#bf9000","#783f04","#a61c00","#cc0000"];
+  // --- rich text helpers: standard colour palettes (font colour + text highlight) ----------
+  // Both pickers offer the same standard palette, so a question reads consistently whichever
+  // is used: a 10-hue grid (light tint at the top, the pure hue in the middle, dark shade at
+  // the bottom), the classic 10 "standard colours" row, the colours most recently used in
+  // this browser, and a custom area - hex, R/G/B and the browser's own colour picker.
+  // The highlight palette uses soft tints of the same 10 hues so black text on a highlight
+  // stays legible, and its first entry is "No colour" (remove the highlight).
+  var ST_HUES = [["#000000", "Black"], ["#44546a", "Blue grey"], ["#4472c4", "Blue"],
+                 ["#5b9bd5", "Sky blue"], ["#00838f", "Teal"], ["#70ad47", "Green"],
+                 ["#ffc000", "Gold"], ["#ed7d31", "Orange"], ["#c00000", "Red"],
+                 ["#7030a0", "Purple"]];
+  var ST_STANDARD = [["#c00000", "Dark red"], ["#ff0000", "Red"], ["#ffc000", "Orange"],
+                     ["#ffff00", "Yellow"], ["#92d050", "Light green"], ["#00b050", "Green"],
+                     ["#00b0f0", "Cyan"], ["#0070c0", "Blue"], ["#002060", "Dark blue"],
+                     ["#7030a0", "Purple"]];
+  // Font-colour rows: how much white is mixed in, then the hue itself, then how much black.
+  var ST_FONT_ROWS = [[0.80, "white", "lighter 80%"], [0.60, "white", "lighter 60%"],
+                      [0.40, "white", "lighter 40%"], [0, null, ""], [0.40, "black", "darker 40%"]];
+  // Highlight rows: five soft strengths of every hue - readable under black text.
+  var ST_HL_ROWS = [[0.92, "softest"], [0.84, "soft"], [0.76, "medium"], [0.68, "strong"], [0.60, "strongest"]];
+  var ST_RECENT_KEY = { foreColor: "st-recent:foreColor", hiliteColor: "st-recent:hiliteColor" };
+  var ST_RECENT_MAX = 10;
+  var ST_NAME_CACHE = null;
+
+  // --- colour maths -----------------------------------------------------------------------
+  function stToRgb(hex) {
+    var h = String(hex == null ? "" : hex).trim();
+    if (h[0] === "#") h = h.slice(1);
+    if (h.length === 3) h = h[0] + h[0] + h[1] + h[1] + h[2] + h[2];
+    if (!/^[0-9a-fA-F]{6}$/.test(h)) return null;
+    var n = parseInt(h, 16);
+    return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255, hex: "#" + h.toLowerCase() };
+  }
+  function stToHex(r, g, b) {
+    return "#" + [r, g, b].map(function (v) {
+      var s = Math.max(0, Math.min(255, Math.round(Number(v) || 0))).toString(16);
+      return s.length < 2 ? "0" + s : s;
+    }).join("");
+  }
+  function stMix(base, amount, withWhite) {
+    var c = stToRgb(base);
+    if (!c) return base;
+    var m = withWhite ? 255 : 0;
+    return stToHex(c.r + (m - c.r) * amount, c.g + (m - c.g) * amount, c.b + (m - c.b) * amount);
+  }
+  // WCAG relative luminance, 0 = black .. 1 = white - only used for the legibility warning
+  function stLum(hex) {
+    var c = stToRgb(hex);
+    if (!c) return 0;
+    return (0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b) / 255;
+  }
+  function stFontGrid() {
+    return ST_FONT_ROWS.map(function (row) {
+      return ST_HUES.map(function (h) {
+        var hex = row[1] === null ? h[0] : stMix(h[0], row[0], row[1] === "white");
+        return [hex, h[1] + (row[2] ? ", " + row[2] : "")];
+      });
+    });
+  }
+  function stHighlightGrid() {
+    return ST_HL_ROWS.map(function (row) {
+      return ST_HUES.map(function (h) {
+        return [stMix(h[0], row[0], true), h[1] + " highlight, " + row[1]];
+      });
+    });
+  }
+  function stNameMap() {
+    if (ST_NAME_CACHE) return ST_NAME_CACHE;
+    var m = {};
+    stFontGrid().forEach(function (row) { row.forEach(function (x) { m[x[0]] = x[1]; }); });
+    stHighlightGrid().forEach(function (row) { row.forEach(function (x) { m[x[0]] = x[1]; }); });
+    ST_STANDARD.forEach(function (x) { m[x[0]] = x[1]; });
+    ST_HUES.forEach(function (x) { m[x[0]] = x[1]; });
+    ST_NAME_CACHE = m;
+    return m;
+  }
+  // A friendly name for a swatch - "Gold, lighter 60%" rather than "#f6c945"
+  function stColorName(hex) {
+    var c = stToRgb(hex);
+    if (!c) return String(hex == null ? "" : hex);
+    return stNameMap()[c.hex] || c.hex;
+  }
+  // Nothing is ever blocked - a poor-contrast choice only earns a warning the author can ignore
+  function stColorWarning(hex, isFore) {
+    var l = stLum(hex);
+    if (isFore) return l > 0.45 ? "Very light text - hard to read on the survey's white background." : "";
+    return l < 0.34 ? "Very dark highlight - black text on it will be hard to read." : "";
+  }
+
+  // --- recently used (in the browser, so it survives the card re-rendering itself) ---------
+  function stRecent(kind) {
+    try {
+      var arr = JSON.parse(window.localStorage.getItem(ST_RECENT_KEY[kind]) || "[]");
+      if (!Array.isArray(arr)) return [];
+      return arr.filter(stToRgb).map(function (x) { return stToRgb(x).hex; }).slice(0, ST_RECENT_MAX);
+    } catch (e) { return []; }
+  }
+  function stRemember(kind, hex) {
+    var c = stToRgb(hex);
+    if (!c) return;
+    try {
+      var list = stRecent(kind).filter(function (x) { return x !== c.hex; });
+      list.unshift(c.hex);
+      window.localStorage.setItem(ST_RECENT_KEY[kind], JSON.stringify(list.slice(0, ST_RECENT_MAX)));
+    } catch (e) { /* private mode: recent colours are a nicety, never a requirement */ }
+  }
+
+  // --- palette markup ---------------------------------------------------------------------
+  function stCells(list) {
+    return list.map(function (c) {
+      return '<button type="button" class="st-color-cell" data-color="' + c[0] + '"' +
+        ' title="' + esc(c[1]) + '" aria-label="' + esc(c[1]) + '" style="background:' + c[0] + '"></button>';
+    }).join("");
+  }
+  function stGrid(rows) {
+    return '<div class="st-color-grid">' +
+      stCells(rows.reduce(function (a, r) { return a.concat(r); }, [])) + "</div>";
+  }
   function stPaletteHTML(target, kind) {
     var isFore = kind === "foreColor";
     var title = isFore ? "Text colour" : "Highlight colour";
-    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '" role="dialog" aria-label="' + title + '">';
-    html += '<div class="st-color-head"><strong>' + title + '</strong><button type="button" class="st-color-close" data-color-close>&times;</button></div>';
-    html += '<button type="button" class="st-color-auto' + (isFore ? ' on' : '') + '" data-color="automatic" title="Automatic (black) = remove colour"><span class="st-color-auto-swatch"></span> Automatic <em>(black)</em> <span class="st-color-check">\u2713</span></button>';
-    html += '<div class="st-color-grid">';
-    ST_COLORS.forEach(function(c){ html += '<button type="button" class="st-color-cell" data-color="' + c + '" title="' + c + '" style="background:' + c + '"></button>'; });
-    html += '</div>';
-    html += '<div class="st-color-custom"><label>Hex <input type="text" class="st-color-hex" placeholder="#000000" maxlength="7" pattern="#?[0-9a-fA-F]{6}"></label><label>RGB <input type="color" class="st-color-picker" value="#000000"></label></div>';
-    html += '<div class="st-color-rgbrow"><label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label><label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label><label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label><button type="button" class="st-btn sm" data-color-apply>Apply</button></div>';
-    html += '<div class="st-color-hint">Automatic is black. Pick a swatch or enter Hex/RGB.</div></div>';
+    var html = '<div class="st-color-pop" data-palette-for="' + target + '" data-palette-kind="' + kind + '"' +
+      ' role="dialog" aria-label="' + title + '">' +
+      '<div class="st-color-head"><strong>' + title + '</strong>' +
+      '<button type="button" class="st-color-close" data-color-close title="Close">&times;</button></div>';
+    // the reset entry: Automatic (black) for text, No colour (no highlight) for a highlight
+    html += '<button type="button" class="st-color-none ' + (isFore ? "auto" : "none") + ' on" data-color="automatic">' +
+      '<span class="st-color-none-swatch"></span><span class="st-color-none-label">' +
+      (isFore ? "Automatic" : "No colour") + '</span><em>' +
+      (isFore ? "black, as the survey shows it" : "no highlight") + '</em>' +
+      '<span class="st-color-check">\u2713</span></button>';
+    // the recently-used strip is re-rendered every time the palette opens, so a colour picked
+    // a moment ago in another field is there straight away
+    html += '<div class="st-color-recent" hidden></div>';
+    html += '<div class="st-color-group">' + (isFore ? "Theme colours" : "Highlight colours") + "</div>";
+    html += stGrid(isFore ? stFontGrid() : stHighlightGrid());
+    if (isFore) {
+      html += '<div class="st-color-group">Standard colours</div>';
+      html += '<div class="st-color-grid">' + stCells(ST_STANDARD) + "</div>";
+    }
+    // custom colour: hex, R/G/B, the browser's own picker and a live preview
+    html += '<button type="button" class="st-color-more" data-color-more>' +
+      (isFore ? "Custom colour" : "Custom highlight colour") + " \u2026</button>";
+    html += '<div class="st-color-custom" hidden>' +
+      '<div class="st-color-preview">' +
+      '<span class="st-color-preview-a' + (isFore ? "" : " hl") + '" style="' +
+      (isFore ? "color:#000000" : "background-color:#fff3a3") + '">Aa</span>' +
+      '<output class="st-color-preview-val">#000000</output></div>' +
+      '<label class="st-color-hex-l">Hex <input type="text" class="st-color-hex" placeholder="#1a2b3c"' +
+      ' maxlength="7" spellcheck="false" autocomplete="off"></label>' +
+      '<label class="st-color-pick-l">Picker <input type="color" class="st-color-picker" value="#000000"' +
+      ' aria-label="' + title + ' picker"></label>' +
+      '<div class="st-color-rgbrow">' +
+      '<label>R <input type="number" class="st-color-r" min="0" max="255" value="0"></label>' +
+      '<label>G <input type="number" class="st-color-g" min="0" max="255" value="0"></label>' +
+      '<label>B <input type="number" class="st-color-b" min="0" max="255" value="0"></label>' +
+      '<button type="button" class="st-btn sm on" data-color-apply>Apply</button></div></div>';
+    html += '<div class="st-color-warn" hidden></div>';
+    html += '<div class="st-color-hint">' + (isFore
+      ? "Pick a swatch, type a hex code, or use the picker. Colours you use are remembered here."
+      : "Pick a swatch, type a hex code, or use the picker. Soft tints keep the text readable.") +
+      "</div></div>";
     return html;
   }
-  function stEnsurePalette(target, kind) {
+  function stEnsurePalette(target, kind, trig) {
     var sel = '.st-color-pop[data-palette-for="' + target + '"][data-palette-kind="' + kind + '"]';
     var pop = document.querySelector(sel);
-    if (pop) return pop;
-    var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
-    if (!tb) return null;
-    var wrap = document.createElement("div");
-    wrap.innerHTML = stPaletteHTML(target, kind);
-    pop = wrap.firstChild;
-    tb.parentElement.insertBefore(pop, tb.nextSibling);
-    // sync RGB/hex interactions inside this palette only
-    (function bindPalette(p){
-      var hex = p.querySelector(".st-color-hex"), pick = p.querySelector(".st-color-picker");
-      var rI = p.querySelector(".st-color-r"), gI = p.querySelector(".st-color-g"), bI = p.querySelector(".st-color-b");
-      function fromHex(h){ if(!h) return null; h=h.trim(); if(h[0]!=='#') h='#'+h; if(!/^#[0-9a-fA-F]{6}$/.test(h)) return null; var n=parseInt(h.slice(1),16); return {r:(n>>16)&255,g:(n>>8)&255,b:n&255,hex:h.toLowerCase()}; }
-      function toHex(r,g,b){ return '#' + [r,g,b].map(function(v){ var s=Number(v).toString(16); return s.length===1?'0'+s:s; }).join(''); }
-      function syncFromPicker(){ var c=fromHex(pick.value); if(!c) return; hex.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
-      function syncFromHex(){ var c=fromHex(hex.value); if(!c) return; pick.value=c.hex; rI.value=c.r; gI.value=c.g; bI.value=c.b; }
-      function syncFromRGB(){ var r=Math.max(0,Math.min(255, parseInt(rI.value,10)||0)), g=Math.max(0,Math.min(255, parseInt(gI.value,10)||0)), b=Math.max(0,Math.min(255, parseInt(bI.value,10)||0)); var h=toHex(r,g,b); hex.value=h; pick.value=h; }
-      if(pick) pick.addEventListener("input", syncFromPicker);
-      if(hex) hex.addEventListener("input", syncFromHex);
-      if(rI) rI.addEventListener("input", syncFromRGB); if(gI) gI.addEventListener("input", syncFromRGB); if(bI) bI.addEventListener("input", syncFromRGB);
-    })(pop);
+    if (!pop) {
+      var tb = document.querySelector('.st-toolbar[data-for="' + target + '"]');
+      if (!tb) return null;
+      var wrap = document.createElement("div");
+      wrap.innerHTML = stPaletteHTML(target, kind);
+      pop = wrap.firstChild;
+      // Inside the toolbar, not after it. .st-toolbar is position:relative, so as its child the
+      // palette's containing block is the toolbar itself and it opens just under the button.
+      // As a sibling it instead anchored to the nearest positioned ancestor - .st-editor, which
+      // is also overflow-y:auto - so it was placed below the whole editor pane and clipped away.
+      // That is why the picker looked broken on the question and help text while answer options
+      // worked: .st-richlabel happens to be positioned, so those palettes anchored correctly.
+      tb.appendChild(pop);
+    }
+    // flip the palette to the left when its button sits near the right edge of the window
+    if (trig && trig.getBoundingClientRect) {
+      var r = trig.getBoundingClientRect();
+      pop.classList.toggle("right", !!r.left && r.left + 300 > (window.innerWidth || 1024));
+    }
+    stRefreshRecent(pop, kind);
     return pop;
+  }
+  // keep hex / R / G / B / picker / preview in step while the author edits the custom area
+  function stSyncCustom(pop, src, raw) {
+    var c = stToRgb(raw);
+    if (!c) return;
+    var pick = pop.querySelector(".st-color-picker"), hexI = pop.querySelector(".st-color-hex");
+    var rI = pop.querySelector(".st-color-r"), gI = pop.querySelector(".st-color-g"), bI = pop.querySelector(".st-color-b");
+    var prev = pop.querySelector(".st-color-preview-a"), val = pop.querySelector(".st-color-preview-val");
+    if (pick && src !== pick) pick.value = c.hex;
+    if (hexI && src !== hexI) hexI.value = c.hex;
+    if (rI && src !== rI) rI.value = c.r;
+    if (gI && src !== gI) gI.value = c.g;
+    if (bI && src !== bI) bI.value = c.b;
+    if (prev) {
+      var isFore = pop.getAttribute("data-palette-kind") === "foreColor";
+      prev.style.color = isFore ? c.hex : "";
+      prev.style.backgroundColor = isFore ? "" : c.hex;
+    }
+    if (val) val.textContent = c.hex;
+    var warn = pop.querySelector(".st-color-warn");
+    var msg = stColorWarning(c.hex, pop.getAttribute("data-palette-kind") === "foreColor");
+    if (warn) {
+      warn.textContent = msg;
+      if (msg) warn.removeAttribute("hidden"); else warn.setAttribute("hidden", "");
+    }
+  }
+  // redraw the "Recently used" strip of an open palette from the browser's memory
+  function stRefreshRecent(pop, kind) {
+    var box = pop.querySelector(".st-color-recent");
+    if (!box) return;
+    var recent = stRecent(kind);
+    if (!recent.length) { box.setAttribute("hidden", ""); box.innerHTML = ""; return; }
+    box.innerHTML = '<div class="st-color-group">Recently used</div><div class="st-color-grid sm">' +
+      recent.map(function (c) {
+        return '<button type="button" class="st-color-cell" data-color="' + c + '" title="' +
+          stColorName(c) + ' (recent)" aria-label="' + stColorName(c) + ' (recent)" style="background:' + c + '"></button>';
+      }).join("") + "</div>";
+    box.removeAttribute("hidden");
+  }
+  function stMarkActive(pop, hex) {
+    var c = hex ? stToRgb(hex) : null;
+    pop.querySelectorAll("[data-color]").forEach(function (el) {
+      var v = (el.getAttribute("data-color") || "").toLowerCase();
+      el.classList.toggle("on", (!c && v === "automatic") || (!!c && v === c.hex));
+    });
+  }
+  // mirror the chosen colour back onto the toolbar button (swatch, underline, tooltip)
+  function stSyncToolbar(target, kind, hex) {
+    var btn = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' +
+      (kind === "hiliteColor" ? ".hl" : ":not(.hl)"));
+    if (!btn) return;
+    var isFore = kind === "foreColor";
+    var col = hex || (isFore ? "#000000" : "#fff3a3");
+    var sw = btn.querySelector(".st-color-swatch");
+    if (sw) sw.style.background = col;
+    btn.style.borderBottomColor = col;
+    btn.setAttribute("title", (isFore ? "Text colour" : "Highlight colour") + " \u2014 " +
+      (hex ? stColorName(hex) : (isFore ? "Automatic (black)" : "No colour")));
+  }
+
+  // --- apply / remove a colour, keeping every other format intact -------------------------
+  // Typing a hex code has to take focus away from the question text, which throws the
+  // selection away. Remember it when the palette opens and put it back before applying, or
+  // every colour after the first would land on nothing. Note that focus() alone leaves a
+  // collapsed caret at the start of the field, which still looks "inside" the host - so the
+  // saved range is compared rather than merely checked for containment.
+  // The palette is a popover outside the text, so clicking it (or typing in its hex box) moves
+  // focus out of the editable and takes the selection with it - the colour would then be
+  // applied to nothing. Remember the selection when the palette opens and put it back before
+  // applying. Only the endpoints are stored, never the Range itself: browsers hand out a range
+  // that the Selection can rewrite in place, and a stale one is worse than none.
+  var stSavedSel = null;                       // {host, sc, so, ec, eo}
+  function stSelectionIn(host) {
+    var s = window.getSelection();
+    return !!(s && s.rangeCount && host && host.contains(s.anchorNode));
+  }
+  function stRememberSelection(host) {
+    stSavedSel = null;
+    var s = window.getSelection();
+    if (!s || !s.rangeCount || !host) return;
+    if (!host.contains(s.anchorNode)) return;
+    var r = s.getRangeAt(0);
+    stSavedSel = { host: host, sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+  }
+  function stSameAsSaved(s, saved) {
+    return !!s && s.anchorNode === saved.sc && s.anchorOffset === saved.so &&
+      s.focusNode === saved.ec && s.focusOffset === saved.eo;
+  }
+  function stRestoreSelection(host) {
+    var saved = stSavedSel;
+    if (!saved || saved.host !== host) return false;
+    // the editor may have re-rendered the card, or the author may have retyped the field
+    if (!host.contains(saved.sc) || !host.contains(saved.ec)) { stSavedSel = null; return false; }
+    var s = window.getSelection();
+    if (stSameAsSaved(s, saved)) return true;
+    var live = (s && s.rangeCount) ? s.getRangeAt(0).cloneRange() : null;
+    try {
+      host.focus();
+      var r = document.createRange();
+      r.setStart(saved.sc, saved.so);
+      r.setEnd(saved.ec, saved.eo);
+      s.removeAllRanges();
+      s.addRange(r);
+      if (s.rangeCount && stSameAsSaved(s, saved)) return true;
+    } catch (e) { /* fall through and put the live selection back */ }
+    // focus() alone has collapsed the selection to the top of the field, so restore whatever
+    // was selected before we touched it rather than colouring the wrong words
+    try {
+      s.removeAllRanges();
+      if (live) s.addRange(live);
+    } catch (e2) { /* nothing further we can do */ }
+    return false;
+  }
+  // take one colour property off an element, unwrapping it when nothing is left
+  function stDropProp(el, isFore) {
+    var tag = el.tagName;
+    if (tag === "FONT") {
+      if (isFore && el.hasAttribute("color")) el.removeAttribute("color");
+      return;
+    }
+    if (tag === "MARK" && !isFore) { stUnwrap(el); return; }
+    if (!el.style) return;
+    if (isFore) el.style.color = "";
+    else el.style.backgroundColor = "";
+    if (!(el.getAttribute("style") || "").trim()) el.removeAttribute("style");
+    if (tag === "SPAN" && el.attributes.length === 0) stUnwrap(el);
+  }
+  function stUnwrap(el) {
+    var p = el.parentNode;
+    if (!p) return;
+    while (el.firstChild) p.insertBefore(el.firstChild, el);
+    p.removeChild(el);
+  }
+  function stColourNodes(host, range) {
+    var out = [];
+    (function walk(n) {
+      for (var c = n.firstChild; c; c = c.nextSibling) {
+        if (c.nodeType !== 1) continue;
+        if (typeof range.intersectsNode === "function" && !range.intersectsNode(c)) continue;
+        out.push(c);
+        walk(c);
+      }
+    })(host);
+    return out;
+  }
+  // Is there a colour on the caret or on anything it sits inside?
+  function stHasColorAround(node, host, isFore) {
+    for (var n = node; n && n !== host; n = n.parentNode) {
+      if (n.nodeType !== 1) continue;
+      if (!isFore && n.tagName === "MARK") return true;
+      if (isFore && n.tagName === "FONT" && n.getAttribute("color")) return true;
+      if (n.style && ((isFore && n.style.color) || (!isFore && n.style.backgroundColor))) return true;
+    }
+    return false;
+  }
+  // Take the colour off the selection. Unlike removeFormat this leaves bold, italic, size and
+  // lists alone, so choosing Automatic never wipes the rest of the author's formatting.
+  function stStripColor(host, isFore) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    if (range.collapsed) {
+      var anchor = range.startContainer;
+      // nothing selected: only intervene when the caret sits inside coloured text, so the
+      // next characters the author types come out plain. Elsewhere they already do.
+      if (!stHasColorAround(anchor, host, isFore)) return;
+      var s = document.createElement("span");
+      s.setAttribute("style", isFore ? "color: inherit" : "background-color: transparent");
+      range.insertNode(s);
+      var nr = document.createRange();
+      nr.setStart(s, 0); nr.collapse(true);
+      sel.removeAllRanges(); sel.addRange(nr);
+      return;
+    }
+    stColourNodes(host, range).forEach(function (el) { stDropProp(el, isFore); });
+  }
+  // Wrap the selection in a span carrying the colour - the fallback for engines where
+  // execCommand is unavailable, and what lets this be exercised outside a browser.
+  function stPaintColor(host, hex, isFore) {
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount) return;
+    var range = sel.getRangeAt(0);
+    var style = (isFore ? "color: " : "background-color: ") + hex;
+    if (range.collapsed) {
+      var s = document.createElement("span");
+      s.setAttribute("style", style);
+      range.insertNode(s);
+      var nr = document.createRange();
+      nr.setStart(s, 0); nr.collapse(true);
+      sel.removeAllRanges(); sel.addRange(nr);
+      return;
+    }
+    var frag = range.extractContents();
+    var w = document.createElement("span");
+    w.setAttribute("style", style);
+    w.appendChild(frag);
+    range.insertNode(w);
+    // change the colour rather than stacking a new span on top of the old one
+    for (var n = w.parentNode; n && n !== host; n = n.parentNode) {
+      if (n.nodeType === 1) stDropProp(n, isFore);
+    }
+    var nr2 = document.createRange();
+    nr2.selectNodeContents(w);
+    sel.removeAllRanges(); sel.addRange(nr2);
+  }
+  function stApplyColor(target, color, kind) {
+    var host = document.getElementById(target);
+    if (!host) return;
+    var isFore = kind === "foreColor";
+    var remove = !color || color === "automatic" || color === "transparent";
+    // Prefer the selection that is live right now. The palette can stay open across "Apply", so
+    // the author may have selected different words since it opened - the saved range is only a
+    // fallback for when focus really was stolen (by the hex box or the colour picker). Getting
+    // this backwards is what makes the colour look like it does nothing: stRestoreSelection
+    // force-installs the saved range, silently discarding what the author just selected.
+    if (stSelectionIn(host)) stRememberSelection(host);
+    else stRestoreSelection(host);
+    if (!stSelectionIn(host)) {
+      toast(isFore ? "Select the text you want to colour first." : "Select the text you want to highlight first.");
+      return;
+    }
+    try { document.execCommand("styleWithCSS", false, true); } catch (e) {}
+    if (remove) {
+      stStripColor(host, isFore);
+      stSyncToolbar(target, kind, null);
+      changed();
+      stRememberSelection(host);        // the wrap/unwrap re-parented the nodes the range pointed at
+      return;
+    }
+    var hex = (stToRgb(color) || {}).hex || color;
+    var ok = false;
+    try { ok = document.execCommand(kind, false, hex); } catch (e) { ok = false; }
+    // Safari answers hiliteColor with false - backColor is the same job there
+    if (!ok && !isFore) { try { ok = document.execCommand("backColor", false, hex); } catch (e) { ok = false; } }
+    if (!ok) stPaintColor(host, hex, isFore);
+    stRemember(kind, hex);
+    stSyncToolbar(target, kind, hex);
+    changed();
+    stRememberSelection(host);          // keep the same words selected for the next colour
   }
   function stApplyFontSize(target, px) {
     var host = document.getElementById(target); if (!host) return;
@@ -2130,75 +2875,92 @@
     }
     changed();
   }
-  function stApplyForeColor(target, color, kind) {
-    var host = document.getElementById(target); if (!host) return;
-    host.focus();
-    document.execCommand("styleWithCSS", false, true);
-    if (!color || color === "automatic") {
-      // Automatic = black (remove colour to inherit black)
-      document.execCommand("removeFormat", false, null);
-      // ensure future typing is black
-      document.execCommand("foreColor", false, "#000000");
-      // remove to keep automatic intent: black is default
-      var sel = window.getSelection(); if (sel && sel.rangeCount && sel.getRangeAt(0).collapsed) {
-        // Remove the just-set black by clearing again so new text is automatic black
-        // (browser keeps black as explicit, but visual is same)
-      }
-    } else {
-      document.execCommand(kind, false, color);
-    }
-    var sw = document.querySelector('.st-toolbar[data-for="' + target + '"] .st-tb-color' + (kind==="hiliteColor"?".hl":"") + ' .st-color-swatch');
-    if (sw) sw.style.background = (color==="automatic" ? (kind==="hiliteColor"?"#fff3a3":"#000") : color);
-    changed();
+  function stClosePops() {
+    document.querySelectorAll(".st-color-pop.open").forEach(function (p) { p.classList.remove("open"); });
+    document.querySelectorAll("[data-color-trigger][aria-expanded=true]").forEach(function (b) {
+      b.setAttribute("aria-expanded", "false");
+    });
   }
 
-
-
-  // -- Question card: font-size (8+ custom) and colour palette (Automatic black) wiring --
-  document.addEventListener("change", function(e){
-    var sel = e.target.closest("select[data-size-for]");
-    if (sel) { e.preventDefault(); stApplyFontSize(sel.getAttribute("data-size-for"), sel.value); sel.selectedIndex = 0; }
+  // --- palette wiring ---------------------------------------------------------------------
+  document.addEventListener("input", function (e) {
+    if (!e.target.closest) return;
+    var pop = e.target.closest(".st-color-pop");
+    if (!pop) return;
+    var t = e.target;
+    if (t.classList.contains("st-color-picker") || t.classList.contains("st-color-hex")) {
+      stSyncCustom(pop, t, t.value);
+      return;
+    }
+    if (t.classList.contains("st-color-r") || t.classList.contains("st-color-g") || t.classList.contains("st-color-b")) {
+      var r = pop.querySelector(".st-color-r"), g = pop.querySelector(".st-color-g"), b = pop.querySelector(".st-color-b");
+      stSyncCustom(pop, t, stToHex(parseInt(r.value, 10) || 0, parseInt(g.value, 10) || 0, parseInt(b.value, 10) || 0));
+    }
   });
-  document.addEventListener("click", function(e){
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && document.querySelector(".st-color-pop.open")) stClosePops();
+  });
+  document.addEventListener("click", function (e) {
     var trig = e.target.closest("[data-color-trigger]");
     if (trig) {
       e.preventDefault(); e.stopPropagation();
       var tgt = trig.getAttribute("data-target"), kind = trig.getAttribute("data-color-trigger");
-      var pop = stEnsurePalette(tgt, kind);
+      var pop = stEnsurePalette(tgt, kind, trig);
       if (!pop) return;
-      // close other palettes
-      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ if(p!==pop) p.classList.remove("open"); });
-      pop.classList.toggle("open");
+      var wasOpen = pop.classList.contains("open");
+      stClosePops();
+      // Remember on every open, not only the first. "Apply" in the custom area leaves the palette
+      // open, and the author may have moved the caret or selected different words since; a range
+      // saved at the first open would otherwise keep colouring the old words.
+      stRememberSelection(document.getElementById(tgt));
+      if (!wasOpen) {
+        pop.classList.add("open");
+        trig.setAttribute("aria-expanded", "true");
+      }
       return;
     }
-    var cell = e.target.closest(".st-color-cell");
-    if (cell && cell.closest(".st-color-pop")) {
-      var pop2 = cell.closest(".st-color-pop"); var col = cell.getAttribute("data-color");
-      stApplyForeColor(pop2.getAttribute("data-palette-for"), col, pop2.getAttribute("data-palette-kind"));
-      pop2.classList.remove("open"); return;
+    var inPop = e.target.closest(".st-color-pop");
+    if (inPop) {
+      var picked = e.target.closest("[data-color]");
+      if (picked) {
+        var hex = picked.getAttribute("data-color");
+        stApplyColor(inPop.getAttribute("data-palette-for"), hex, inPop.getAttribute("data-palette-kind"));
+        stMarkActive(inPop, hex);
+        stClosePops();
+        return;
+      }
+      var more = e.target.closest("[data-color-more]");
+      if (more) {
+        var box = inPop.querySelector(".st-color-custom");
+        var opening = box.hasAttribute("hidden");
+        if (opening) box.removeAttribute("hidden"); else box.setAttribute("hidden", "");
+        more.classList.toggle("on", opening);
+        if (opening) {
+          var pick = inPop.querySelector(".st-color-picker");
+          stSyncCustom(inPop, null, (pick && pick.value) || "#000000");
+          var first = inPop.querySelector(".st-color-hex");
+          if (first) first.focus();
+        }
+        return;
+      }
+      if (e.target.closest("[data-color-close]")) { stClosePops(); return; }
+      var apply = e.target.closest("[data-color-apply]");
+      if (apply) {
+        var hexI = inPop.querySelector(".st-color-hex");
+        var v = (hexI && hexI.value.trim()) || "";
+        if (v && v[0] !== "#") v = "#" + v;
+        if (!stToRgb(v)) {
+          var pickI = inPop.querySelector(".st-color-picker");
+          v = pickI ? pickI.value : "#000000";
+        }
+        stApplyColor(inPop.getAttribute("data-palette-for"), v, inPop.getAttribute("data-palette-kind"));
+        stMarkActive(inPop, v);
+        // stays open, so the author can fine-tune hex / R / G / B and watch the preview
+        return;
+      }
+      return;                                     // clicks inside the palette never fall through
     }
-    var auto = e.target.closest(".st-color-auto");
-    if (auto && auto.closest(".st-color-pop")) {
-      var pop3 = auto.closest(".st-color-pop");
-      stApplyForeColor(pop3.getAttribute("data-palette-for"), "automatic", pop3.getAttribute("data-palette-kind"));
-      pop3.classList.remove("open"); return;
-    }
-    var close = e.target.closest("[data-color-close]");
-    if (close) { var p4=close.closest(".st-color-pop"); if(p4) p4.classList.remove("open"); return; }
-    // click on Apply in custom RGB/hex row
-    var apply = e.target.closest("[data-color-apply]");
-    if (apply && apply.closest(".st-color-pop")) {
-      var pop5 = apply.closest(".st-color-pop");
-      var hexI = pop5.querySelector(".st-color-hex"); var hexV = hexI ? hexI.value.trim() : "";
-      if (hexV && hexV[0] !== "#") hexV = "#" + hexV;
-      if (!/^#[0-9a-fA-F]{6}$/.test(hexV)) { var pickI = pop5.querySelector(".st-color-picker"); if (pickI) hexV = pickI.value; }
-      stApplyForeColor(pop5.getAttribute("data-palette-for"), hexV, pop5.getAttribute("data-palette-kind"));
-      pop5.classList.remove("open"); return;
-    }
-    // click outside closes palettes
-    if (!e.target.closest(".st-color-pop")) {
-      document.querySelectorAll(".st-color-pop.open").forEach(function(p){ p.classList.remove("open"); });
-    }
+    stClosePops();
   });
 
   // show {Q1} tokens as chips inside the rich editors (plain text again once saved)
@@ -2218,6 +2980,16 @@
       n.parentNode.replaceChild(frag, n);
     });
     var d = document.createElement("div"); d.appendChild(tpl.content); return d.innerHTML;
+  }
+  function placeCaretAtEnd(host) {
+    try {
+      var r = document.createRange();
+      r.selectNodeContents(host);
+      r.collapse(false);
+      var s = window.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch (e) { host.focus(); }
   }
   function unchip(html) { return html.replace(/<span class="pipe">(\{[^}]+\})<\/span>(?:&nbsp;|\u00a0)?/g, "$1 "); }
 
@@ -2318,6 +3090,30 @@
   // One row per option / row / column: a drag grip, its position, the stored code, the label and
   // an always-visible tool strip (image, move up, move down, delete).  Behaviour chips (Pin /
   // Exclusive / Other) sit on a second line so they can never push the buttons out of the pane.
+  // A label the author can format. The plain text is kept in step in `label`, so exports, TTS,
+  // voice commands, piping and screening all keep reading exactly what they did before - only
+  // what the respondent sees gains the markup.
+  // `attr` names the marker the [data-it] / [data-pt] writer looks for: `label_html` on the
+  // option / row / column lists, `pt` on a rating scale's points.
+  function richLabelCell(kind, i, it, ph, attr) {
+    var id = "f-" + kind + "-" + i;
+    var mark = attr === "pt" ? ' data-pt="label"' : ' data-it="' + kind + '" data-k="label_html"';
+    return '<div class="st-richlabel">' +
+      richToolbar(id, true, true) +
+      '<div class="st-rich it-rich" id="' + id + '" contenteditable="true"' + mark +
+      ' data-i="' + i + '" data-placeholder="' + esc(ph || "Label") + '"' +
+      ' role="textbox" aria-label="' + esc(ph || "Label") + '">' +
+      chipify(Q.sanitize(it.label_html || esc(it.label || ""))) + "</div>" +
+      pipeButton(id, true, true) + "</div>";
+  }
+  function syncRichLabel(it, html) {
+    // `label` stays in step and is the one every consumer (exports, TTS, piping, screening, the
+    // dashboard) reads, so nothing about their behaviour changes. `label_html` is stored only
+    // when the author actually applied markup, keeping plain labels plain.
+    if (/[<>]/.test(html)) { it.label_html = html; it.label = Q.stripTags(html); }
+    // unchip() leaves a space where the chip's </span> was, which an <input> never did
+    else { delete it.label_html; it.label = html.trim(); }
+  }
   function itemTable(kind, items, spec) {
     var noun = spec.noun || "item";
     var last = items.length - 1;
@@ -2325,12 +3121,11 @@
       '<div class="st-item st-item-head"><span></span><span>#</span><span>Code</span><span>' + (spec.labelHead || "Label") + "</span>" +
       (spec.left ? "<span>Left pole</span><span>Right pole</span>" : "") + "<span>Actions</span></div>" +
       items.map(function (it, i) {
-        var idl = "f-" + kind + "-" + i;
         return '<div class="st-item" data-i="' + i + '">' +
           '<span class="st-grip" draggable="true" tabindex="0" role="button" aria-label="Reorder ' + esc(noun) + " " + (i + 1) + '" title="Drag to reorder \u00B7 focus and press \u2191 / \u2193 to swap">\u283F</span>' +
           '<span class="st-seq" title="Position ' + (i + 1) + ' of ' + items.length + '">' + (i + 1) + ".</span>" +
           '<input class="st-it-code" data-it="' + kind + '" data-k="code" data-i="' + i + '" value="' + esc(it.code) + '" title="Code stored in the data">' +
-          '<div class="st-with-pipe"><input id="' + idl + '" data-it="' + kind + '" data-k="label" data-i="' + i + '" value="' + esc(it.label) + '" placeholder="' + esc(spec.ph || "Label") + '">' + pipeButton(idl, true, true) + "</div>" +
+          richLabelCell(kind, i, it, spec.ph) +
           (spec.left ? '<input data-it="' + kind + '" data-k="left" data-i="' + i + '" value="' + esc(it.left || "") + '" placeholder="e.g. Poor">' +
                        '<input data-it="' + kind + '" data-k="right" data-i="' + i + '" value="' + esc(it.right || "") + '" placeholder="e.g. Excellent">' : "") +
           '<span class="st-item-tools">' +
@@ -2340,10 +3135,11 @@
           (spec.fmt ? '<select class="st-it-fmt" data-it="' + kind + '" data-k="fmt" data-i="' + i + '" title="How the label is styled">' +
             FMT_MODES.map(function (f) {
               return '<option value="' + f[0] + '"' + ((it.fmt || "") === f[0] ? " selected" : "") + ">" + f[1] + "</option>"; }).join("") + "</select>" : "") +
+          '<span class="st-item-acts">' +
           '<button class="st-ibtn" data-act="it-up" data-kind="' + kind + '" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>\u25B2</button>' +
           '<button class="st-ibtn" data-act="it-down" data-kind="' + kind + '" data-i="' + i + '" title="Move down"' + (i === last ? " disabled" : "") + '>\u25BC</button>' +
           (spec.dup === false ? "" : '<button class="st-ibtn" data-act="it-dup" data-kind="' + kind + '" data-i="' + i + '" title="Duplicate this ' + esc(noun) + '">\u2398</button>') +
-          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span>' +
+          '<button class="st-ibtn danger" data-act="it-del" data-kind="' + kind + '" data-i="' + i + '" title="Delete this ' + esc(noun) + '">\uD83D\uDDD1</button></span></span>' +
           ((spec.flags.length || spec.comment) ? '<span class="st-flags">' + (spec.flags.length ? '<span class="st-flags-lbl">Behaviour</span>' + spec.flags.map(function (f) {
             return '<label class="st-flag' + (it[f] ? " on" : "") + '" title="' + FLAG_INFO[f].tip + '"><input type="checkbox" data-it="' + kind + '" data-k="' + f + '" data-i="' + i + '"' + (it[f] ? " checked" : "") + ">" + FLAG_INFO[f].label + "</label>"; }).join("") : "") +
             (spec.comment ? '<label class="st-flag st-flag-sel" title="A comment box under this ' + esc(noun) + '">Comment ' +
@@ -2428,24 +3224,14 @@
   }
 
   function conceptTestBlock(){
-    if(!ed.concepts) ed.concepts = [
-      { id: ed.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
-      { id: ed.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
-      { id: ed.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
-    ];
+    if(!ed.concepts) ed.concepts = [];
     if(ed.concept_concepts_per===undefined) ed.concept_concepts_per = 3;
-    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = true;
+    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = false;
     if(ed.concept_randomize===undefined) ed.concept_randomize = false;
     if(ed.concept_execution===undefined) ed.concept_execution = "";
     if(ed.concept_description_html===undefined) ed.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
     if(ed.concept_show_desc_first_only===undefined) ed.concept_show_desc_first_only = true;
-    if(!ed.concept_questions) ed.concept_questions = [
-      { id: ed.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: false },
-      { id: ed.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient \u2014 KEY DIAGNOSTIC", options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
-      { id: ed.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
-      { id: ed.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
-      { id: ed.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
-    ];
+    if(!ed.concept_questions) ed.concept_questions = [];
     var html = '<div class="st-ct-wrap st-ct-breathable">';
     html += '<div class="st-ct-section"><div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="e.g. Execution A, B, C"></div></div>';
     html += '<div class="st-ct-section"><div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div></div>';
@@ -2453,6 +3239,7 @@
     html += '<div class="st-ct-section"><div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Concepts</span><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label></div>';
     html += '<div class="st-ct-concepts-controls"><div class="st-ct-select-group"><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></div><span class="st-hint" style="margin:0">How many concepts each respondent sees</span></div></div>';
     html += '<div class="st-ct-concepts">';
+    if(!ed.concepts.length) html += '<div class="st-empty">No concepts yet - add one for each execution you want to show, then give it a label, some text or an image.</div>';
     ed.concepts.forEach(function(c,i){
       var durOpts = ["no-limit","5 sec","10 sec","15 sec","20 sec","25 sec","30 sec","1 min"];
       var durMap = {"no-limit":"no-limit","5s":"5 sec","5 sec":"5 sec","10s":"10 sec","10 sec":"10 sec","15s":"15 sec","15 sec":"15 sec","20s":"20 sec","20 sec":"20 sec","25s":"25 sec","25 sec":"25 sec","30s":"30 sec","30 sec":"30 sec","1 min":"1 min"};
@@ -2469,6 +3256,7 @@
     html += '<button class="st-btn sm st-ct-add-btn" data-act="ct-add">+ Add Concept</button>';
     html += '<div class="st-ct-sep"><span>Concept Test Survey</span></div>';
     html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    if(!ed.concept_questions.length) html += '<div class="st-empty">No questions yet - add the ones you want asked about each concept.</div>';
     ed.concept_questions.forEach(function(qq, qi){
       html += conceptQuestionRow(qq, qi);
     });
@@ -2476,7 +3264,8 @@
     html += '</div>';
     return html;
   }
-  function conceptQuestionRow(qq, qi){
+  function conceptQuestionRow(qq, qi, pfx){
+    pfx = pfx || "ct";                 // "ct" = Concept Test, "wt" = Walk Through
     var icon = tinfo(qq.type).icon || "\u2261";
     var tname = (tinfo(qq.type).name || qq.type);
     var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
@@ -2485,22 +3274,232 @@
     h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
     h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
     h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
-    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="ct-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="ct-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="'+pfx+'-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="'+pfx+'-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="'+pfx+'-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
     h += '</div>';
     return h;
   }
-  function openCtTypePicker(){
-    var html = '<div class="st-modal-head"><strong>Add a question to Concept Test</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+  // ---------------------------------------------------------------- walk-through card
+  // A Walk Through is a Concept Test with the concepts replaced by walk-through steps: each
+  // step carries a piece of narration plus either an animated scene or an attached image or
+  // video, and the respondent watches the sequence instead of reading it.  No answer is
+  // stored - the questions after it are optional and separate.
+  var WT_DURATIONS = ["no-limit", "5 sec", "10 sec", "15 sec", "20 sec", "25 sec", "30 sec", "1 min", "2 min"];
+  function walkSteps() {
+    if (!Array.isArray(ed.walk_steps)) ed.walk_steps = [];
+    ed.walk_steps.forEach(function (st) {
+      if (!st.art) st.art = "generic";
+      if (!st.id) st.id = ed.id + "_W" + (ed.walk_steps.indexOf(st) + 1);
+    });
+    return ed.walk_steps;
+  }
+  function walkQuestions() {
+    if (!Array.isArray(ed.walk_questions)) ed.walk_questions = [];
+    return ed.walk_questions;
+  }
+  function walkThroughBlock() {
+    var steps = walkSteps(), qs = walkQuestions();
+    var html = '<div class="st-ct-wrap st-ct-breathable">';
+
+    // ---- set-up: what the respondent is told before the walkthrough starts
+    html += '<div class="st-ct-section">';
+    html += '<div class="st-field"><label>Walk-through set-up \u2014 shown before it starts</label>' +
+      richToolbar("f-wt-desc") +
+      '<div class="st-rich" id="f-wt-desc" contenteditable="true" data-placeholder="' +
+      'You are about to be taken through this step by step. Sit back and listen - there is nothing to read.">' +
+      chipify(Q.sanitize(ed.walk_description_html || "")) + '</div></div>';
+    html += '<div class="st-ct-toggle-row">' +
+      '<label class="st-switch"><input type="checkbox" id="f-wt-tts"' + (ed.walk_tts !== false ? " checked" : "") +
+      '><i></i>Speak each step with the browser voice</label>' +
+      '<span class="st-ct-toggle-hint">The narration under each step is read out loud, so the respondent ' +
+      'does not have to read it. Attach a recorded clip to any step to use a real voice instead.</span></div>';
+    html += '</div>';
+
+    // ---- the steps
+    html += '<div class="st-ct-section">';
+    html += '<div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Walk-through steps ' +
+      '<span class="st-count">' + (steps.length ? steps.length : "") + '</span></span></div>';
+    html += '<div class="st-ct-concepts">';
+    if (!steps.length) {
+      html += '<div class="st-empty">No steps yet - add one for each thing you want to show, then write what ' +
+        'should be said out loud. A PowerPoint deck can be turned into steps for you.</div>';
+    }
+    steps.forEach(function (st, i) { html += walkStepRow(st, i); });
+    html += '</div>';
+    html += '<div class="st-ct-concepts-controls">' +
+      '<button class="st-btn sm st-ct-add-btn" data-act="wt-add">+ Add step</button>' +
+      '<button class="st-btn play" data-act="wt-preview-all">&#9654; Preview the walkthrough</button>' +
+      '</div>';
+    html += '<div class="st-ct-toggle-row">' +
+      '<label class="st-upload big">&#8679; Build steps from a PowerPoint deck' +
+      '<input type="file" accept=".pptx" data-act="wt-ppt" hidden></label>' +
+      '<span class="st-ct-toggle-hint">One step per slide: the slide title becomes the step name and the ' +
+      'slide text plus its speaker notes become the narration. Replaces the steps above.</span></div>';
+    html += '</div>';
+
+    // ---- questions asked afterwards (optional)
+    html += '<div class="st-ct-sep"><span>Questions about the walkthrough</span></div>';
+    html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    if (!qs.length) {
+      html += '<div class="st-empty">No questions yet - a Walk Through can simply be shown and then left, ' +
+        'or you can ask something about it.</div>';
+    }
+    qs.forEach(function (qq, qi) { html += conceptQuestionRow(qq, qi, "wt"); });
+    html += '</div><button class="st-btn ghost wide" data-act="wt-q-add" style="margin-top:10px">+ Add Item</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function walkStepRow(st, i) {
+    var opts = artLabels().map(function (a) { return a[0]; });
+    var hasMedia = !!(st.media && st.media.src);
+    var h = '<div class="st-ct-concept-card" data-wt-i="' + i + '">';
+
+    h += '<div class="st-ct-concept-top">' +
+      '<span class="st-grip" title="Drag to reorder">\u283F</span>' +
+      '<input data-wt="label" data-i="' + i + '" value="' + esc(st.label || "") +
+      '" placeholder="Step ' + (i + 1) + ' - e.g. Mechanism of action" class="st-ct-label-input">' +
+      '<button class="st-ibtn danger" data-act="wt-del" data-i="' + i + '" title="Delete">\u2715</button>' +
+      '<span class="st-item-tools">' +
+      '<button class="st-btn sm" data-act="wt-up" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>&#8593;</button>' +
+      '<button class="st-btn sm" data-act="wt-down" data-i="' + i + '" title="Move down"' + (i === walkSteps().length - 1 ? " disabled" : "") + '>&#8595;</button>' +
+      '</span></div>';
+
+    // attachment
+    h += '<div class="st-ct-concept-mid">' +
+      '<button class="st-ibtn" data-act="wt-media" data-i="' + i + '" title="Attach an image or a video">&#128206;</button>';
+    if (hasMedia) {
+      h += '<span class="st-thumb">' +
+        (st.media.kind === "video" ? "&#127909;" : '<img src="' + esc(st.media.src) + '" alt="">') +
+        '<button class="st-x" data-act="wt-media-del" data-i="' + i + '">&times;</button></span>' +
+        '<span class="st-ct-text">' + esc(st.media.kind === "video" ? "Video" : "Image") + ' attached</span>';
+    } else {
+      h += '<span class="st-ct-text">No attachment - an animated scene is shown instead</span>';
+    }
+    h += '</div>';
+
+    // narration - the text that gets spoken
+    h += '<div class="st-wt-narr">' +
+      '<label>Narration the respondent hears</label>' +
+      '<textarea data-wt="narration" data-i="' + i + '" rows="3" placeholder="Say this out loud, e.g. ' +
+      '&quot;This drug blocks the target before the tumour can grow.&quot;">' + esc(st.narration || "") + '</textarea>' +
+      (hasMedia ? "" : '<span class="st-ct-toggle-hint">Spoken over the animation chosen below.</span>') +
+      '</div>';
+
+    h += '<div class="st-ct-concept-bottom">';
+    if (!hasMedia) {
+      h += '<label class="st-inline">Animation <select data-wt="art" data-i="' + i + '">' +
+        opts.map(function (a) { return '<option value="' + a + '"' + (a === st.art ? " selected" : "") + '>' +
+          esc(artLabel(a)) + "</option>"; }).join("") + '</select></label>';
+    }
+    h += '<span class="st-inline">' + (st.src
+      ? '<span class="st-clip">&#127911; ' + esc(st.file || "clip") + (st.seconds ? " &middot; " + st.seconds + "s" : "") +
+        ' <button class="st-x" data-act="wt-clip-del" data-i="' + i + '" title="Remove clip">&times;</button></span>'
+      : '<label class="st-upload">&#8679; Recorded clip<input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav,.webm" data-act="wt-clip" data-i="' + i + '" hidden></label>') +
+      '</span>';
+    h += '<label class="st-inline">For <select data-wt="duration" data-i="' + i + '">' +
+      WT_DURATIONS.map(function (d) {
+        var cur = WT_DUR_MAP[st.duration] || st.duration || "no-limit";
+        return '<option value="' + d + '"' + (cur === d ? " selected" : "") + ">" + d + "</option>";
+      }).join("") + '</select></label>';
+    h += '<label class="st-switch"><input type="checkbox" data-wt="allow_replay" data-i="' + i + '"' +
+      (st.allow_replay ? " checked" : "") + '><i></i>Allow replay</label>';
+    h += '<a href="#" class="st-link" data-act="wt-preview" data-i="' + i + '" style="color:#12789e">Preview</a>';
+    h += '</div></div>';
+    return h;
+  }
+
+  var WT_DUR_MAP = { "no-limit": "no-limit", "5s": "5 sec", "10s": "10 sec", "15s": "15 sec",
+    "20s": "20 sec", "25s": "25 sec", "30s": "30 sec", "1 min": "1 min", "2 min": "2 min" };
+
+  function openCtTypePicker(pfx, what){
+    pfx = pfx || "ct";
+    var html = '<div class="st-modal-head"><strong>Add a question to '+esc(what||"Concept Test")+'</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
       '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
     GROUPS.forEach(function(g){
       html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
       TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
         var i = TYPE_INFO[t];
-        html += '<button class="st-type" data-act="ct-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+        html += '<button class="st-type" data-act="'+pfx+'-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
       });
       html += '</div>';
     });
     openModal(html, "st-typepick");
+  }
+
+  function conceptQuestionRow(qq, qi, pfx){
+    pfx = pfx || "ct";                 // "ct" = Concept Test, "wt" = Walk Through
+    var icon = tinfo(qq.type).icon || "\u2261";
+    var tname = (tinfo(qq.type).name || qq.type);
+    var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
+    var reqTxt = qq.required!==false ? "Required" : "Optional";
+    var h = '<div class="st-ct-q" data-qi="'+qi+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;margin-bottom:6px">';
+    h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
+    h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
+    h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="'+pfx+'-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="'+pfx+'-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="'+pfx+'-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '</div>';
+    return h;
+  }
+
+  function openCtTypePicker(pfx, what){
+    pfx = pfx || "ct";
+    var html = '<div class="st-modal-head"><strong>Add a question to '+esc(what||"Concept Test")+'</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+      '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
+    GROUPS.forEach(function(g){
+      html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
+      TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
+        var i = TYPE_INFO[t];
+        html += '<button class="st-type" data-act="'+pfx+'-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+      });
+      html += '</div>';
+    });
+    openModal(html, "st-typepick");
+  }
+
+  // Both a Concept Test and a Walk Through let you edit one of their inner questions in
+  // place.  `field` is the list on the parent (concept_questions / walk_questions), `backAct`
+  // the action prefix stamped on the back / duplicate / delete buttons, and `attr` the data-
+  // attribute prefix those question rows carry.
+  function renderInnerQuestion(field, idx, attr, backAct, parentLabel) {
+      var parentQ = ed;
+      var innerQ = parentQ[field] && parentQ[field][idx];
+      var out = null;
+      if (innerQ) {
+        ed = innerQ;
+        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
+        var ti = tinfo(ed.type);
+        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="' + backAct + '" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(idx+1)+' of '+parentQ[field].length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentLabel)+')</span><span class="st-count">'+(idx+1)+'/'+parentQ[field].length+'</span></div>';
+        out =
+          backHead +
+          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
+          '<div class="st-ehead">' +
+            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
+            '<div class="st-ehead-main"><div class="st-ehead-row">' +
+              '<div class="st-ehead-idcol">' +
+                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
+                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
+              '</div>' +
+              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
+              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
+              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
+            '</div></div>' +
+            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="' + backAct.replace("back","dup") + '" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="' + backAct.replace("back","del") + '" title="Delete">✕</button></div>' +
+          '</div>' +
+          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
+          edStrip() +
+          (edTab==="screen" ? "" : scrLineHtml()) +
+          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
+           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
+           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
+             card("q","Question","What respondents read", qCard()) +
+             card("answers",answersTitle(),"", answersCard()) +
+             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
+             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
+             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
+        return out;
+      }
+      ed = parentQ;
+      return null;
   }
 
   function answersCard() {
@@ -2515,6 +3514,10 @@
       html += conceptTestBlock();
       return html;
     }
+    if (t === "walk_through") {
+      html += walkThroughBlock();
+      return html;
+    }
     if (t === "heatmap") html += heatmapBlock();
     else if (isGrid(t)) html += gridBlock();
     else if (t === "rating_scale") html += ratingScaleBlock();
@@ -2524,17 +3527,37 @@
       html += loopBlock();
     }
 
-    if (t === "nps") html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
-    if (t === "numeric_matrix" || t === "delta") {
+    if (t === "delta") {
+      // a grid Delta carries columns; the older two-cell one does not, and keeps its own card
+      if (!deltaIsGrid()) return html + deltaPairBlock();
+      html += deltaBlock();
+      setTimeout(function () {
+        var ds = document.getElementById("f-delta-source");
+        if (ds && !ds.dataset.dlwatch) {
+          ds.dataset.dlwatch = "1";
+          ds.addEventListener("change", function () {
+            setOrDel(ed, "delta_source", ds.value);
+            markChanged(); renderPreview();
+            var nt = document.querySelector("#st-editor .st-dl-note");
+            if (nt) nt.innerHTML = deltaNote(deltaSourceQ());
+          });
+        }
+        // Answers collected since the Delta was last carried need to reach the reference
+        // cells, so opening the card re-reads them once per source question.
+        var key = ed.id + "|" + ed.delta_source;
+        if (ed.delta_source && dlRefsRead !== key) {
+          dlRefsRead = key;
+          fillDeltaRefs(deltaSourceQ()).then(function () {
+            rerenderCard("answers"); changed();
+          });
+        }
+      }, 0);
+      return html;
+    }
+    if (t === "numeric_matrix") {
       html += '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label><input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
         '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' + (ed.max != null ? ed.max : "") + '"></div>' +
-        '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' + (ed.step != null ? ed.step : "") + '"></div>' +
-        (t === "delta" ? '<div class="st-field"><label>&nbsp;</label><div class="st-meta">The change (after \u2212 before) is stored as <code>' + esc(ed.id) + '_delta</code>.</div></div>' : "") +
-        "</div>";
-      if (t === "delta") {
-        html += '<div class="st-grid2"><div class="st-field"><label>\u201CBefore\u201D label</label><input id="f-beforel" value="' + esc(ed.before_label || "Before") + '"></div>' +
-          '<div class="st-field"><label>\u201CAfter\u201D label</label><input id="f-afterl" value="' + esc(ed.after_label || "After") + '"></div></div>';
-      }
+        '<div class="st-field"><label>Step</label><input id="f-nstep" type="number" value="' + (ed.step != null ? ed.step : "") + '"></div></div>';
     }
     if (t === "date") {
       html += '<div class="st-grid2"><div class="st-field"><label>Earliest date <span class="st-opt">blank = any</span></label><input id="f-datemin" type="date" value="' + esc(ed.min || "") + '"></div>' +
@@ -3570,6 +4593,10 @@
     var answers = (!useSample || useSample.checked) ? Q.sampleAnswers(cur.cfg.questions, ed.id) : {};
     // when editing a question inside Concept Test, preview it as respondent sees: Concept + Question on one screen
     var previewQ = ed;
+    if (wtInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="walk_through") {
+      try { renderPreview(); } catch (e) {}
+      return;
+    }
     if (ctInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="concept_test") {
       var parentP = cur.cfg.questions[sel];
       var conc = (parentP.concepts && parentP.concepts[0]) || {label: parentP.concepts && parentP.concepts[ctInnerQi] ? parentP.concepts[ctInnerQi].label : "Concept", text:"", text_html:"", media:null};
@@ -3618,6 +4645,7 @@
       if (host) host.innerHTML = Q.sanitize(ta.value);
     });
     if (val("f-section") !== undefined) ed.section = val("f-section");
+    if (ed.type === "delta") syncDeltaForm();
     if (ed.type === "choice_task") syncConjointForm();
     if (val("f-title") !== undefined) setOrDel(ed, "title", String(val("f-title")).trim());
     var rich = document.getElementById("f-stem-rich");
@@ -3631,6 +4659,7 @@
       var k = n.getAttribute("data-k");
       if (n.type === "checkbox") setOrDel(it, k, n.checked);
       else if (k === "code") it.code = n.getAttribute("data-it") === "opt" && n.value.trim() !== "" && !isNaN(Number(n.value)) ? Number(n.value) : n.value.trim();
+      else if (k === "label_html") syncRichLabel(it, unchip(Q.sanitize(n.innerHTML)));
       else it[k] = n.value;
     });
     if (t === "multi_select") setOrDel(ed, "max_select", num("f-maxselect"));
@@ -3671,7 +4700,7 @@
       if (!hm.image_src) delete hm.image_src;
       if (!Object.keys(hm).length) delete ed.heatmap;
     }
-    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps") {
+    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff") {
       if (val("f-smin") !== undefined) {
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
@@ -3696,7 +4725,8 @@
       $$("#st-editor [data-pt]").forEach(function (n) {
         var pi2 = Number(n.getAttribute("data-i"));
         if (!spts[pi2]) return;
-        if (n.getAttribute("data-pt") === "label") spts[pi2].label = n.value; else spts[pi2].fmt = n.value;
+        if (n.getAttribute("data-pt") === "label") syncRichLabel(spts[pi2], unchip(Q.sanitize(n.innerHTML)));
+        else spts[pi2].fmt = n.value;
       });
       if (spts.length >= 2) writeScalePoints(spts);
     }
@@ -3743,6 +4773,25 @@
       setOrDel(ed, "ai_action", qaa);
       if (qaa === "off") ed.ai_check = false; else delete ed.ai_check;
     }
+    if (t === "walk_through") {
+      ed.walk_tts = !!chk("f-wt-tts");
+      var wd = document.getElementById("f-wt-desc");
+      if (wd) { var wh = unchip(Q.sanitize(wd.innerHTML)); ed.walk_description_html = wh; if(Q.stripTags(wh)) ed.walk_description = Q.stripTags(wh); else delete ed.walk_description; }
+      if (ed.walk_steps) {
+        ed.walk_steps.forEach(function(st, i){
+          var labEl = document.querySelector('[data-wt="label"][data-i="'+i+'"]');
+          if(labEl) st.label = labEl.value;
+          var narEl = document.querySelector('[data-wt="narration"][data-i="'+i+'"]');
+          if(narEl) { st.narration = narEl.value; st.text = narEl.value; st.text_html = Q.sanitize(esc(narEl.value)); st.caption = narEl.value; }
+          var artEl = document.querySelector('[data-wt="art"][data-i="'+i+'"]');
+          if(artEl) st.art = artEl.value;
+          var durEl = document.querySelector('[data-wt="duration"][data-i="'+i+'"]');
+          if(durEl) st.duration = WT_DUR_MAP[durEl.value] || durEl.value;
+          var repEl = document.querySelector('[data-wt="allow_replay"][data-i="'+i+'"]');
+          if(repEl) st.allow_replay = repEl.checked;
+        });
+      }
+    }
     if (t === "concept_test") {
       setOrDel(ed, "concept_execution", val("f-ct-exec"));
       var cd = document.getElementById("f-ct-desc");
@@ -3762,34 +4811,13 @@
           if(textInput) { c.text = textInput.value; c.text_html = Q.sanitize(esc(textInput.value)); }
         });
       }
-      if (ed.concept_questions) {
-        ed.concept_questions.forEach(function(qq, qi){
-          var stemEl = document.querySelector('[data-cq="stem"][data-qi="'+qi+'"]');
-          if(stemEl) qq.stem = stemEl.value;
-          var typeEl = document.querySelector('[data-cq="type"][data-qi="'+qi+'"]');
-          if(typeEl) qq.type = typeEl.value;
-          if(qq.type==="single_select"||qq.type==="multi_select"){
-            var optCodes = document.querySelectorAll('[data-cq="opt_code"][data-qi="'+qi+'"]');
-            var optLabels = document.querySelectorAll('[data-cq="opt_label"][data-qi="'+qi+'"]');
-            if(optCodes.length){
-              var newOpts=[];
-              optCodes.forEach(function(cEl, oi){
-                var lEl = optLabels[oi];
-                var code = cEl.value.trim(); if(!code) code = oi+1;
-                var lab = lEl ? lEl.value : "";
-                newOpts.push({code: isNaN(Number(code))?code:Number(code), label: lab});
-              });
-              qq.options = newOpts;
-            }
-          }
-        });
-      }
       if (val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
     }
     if (t === "numeric_matrix" || t === "delta") {
       if (val("f-nmin") !== undefined) { setOrDel(ed, "min", num("f-nmin")); setOrDel(ed, "max", num("f-nmax")); setOrDel(ed, "step", num("f-nstep")); }
     }
     if (t === "delta" && val("f-beforel") !== undefined) { setOrDel(ed, "before_label", val("f-beforel")); setOrDel(ed, "after_label", val("f-afterl")); }
+    if (t === "delta" && deltaIsGrid()) syncDeltaForm();
     if (t === "date" && val("f-datemin") !== undefined) { setOrDel(ed, "min", val("f-datemin")); setOrDel(ed, "max", val("f-datemax")); }
     if (t === "loop") {
       setOrDel(ed, "loop_mode", val("f-loop-mode"));
@@ -4035,6 +5063,17 @@
     if (hasRows(newType) && old.rows) fresh.rows = old.rows;
     if (old.items && fresh.items) fresh.items = old.items;
     if (old.cols && fresh.cols) fresh.cols = old.cols;
+    // a Delta's carried columns have to say where they came from, or the carry-forward
+    // cannot tell them apart from a column the author added afterwards
+    if (newType === "delta" && fresh.cols) {
+      fresh.cols = fresh.cols.map(function (c) {
+        var k = Object.assign({}, c);
+        if (!k.kind) k.kind = "src";
+        if (!k.src_code) k.src_code = String(c.code);
+        if (!k.src_q) k.src_q = "retitled";
+        return k;
+      });
+    }
     if (old.scale && fresh.scale) fresh.scale = Object.assign(fresh.scale, old.scale);
     cur.cfg.questions[sel] = fresh; markChanged(); renderOutline(); renderEditorPane();
     toast("Changed to " + tinfo(newType).name);
@@ -4157,6 +5196,65 @@
     if (act === "logic-guide") { openLogicGuide(); return; }
     if (act === "jump") { e.preventDefault(); var c = document.getElementById("card-" + b.getAttribute("data-card")); if (c) { c.open = true; c.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
     if (act === "set-layout") { syncFromForm(); var v = b.getAttribute("data-v"); setOrDel(ed, "layout", v === (ed.type === "multi_select" ? "grid" : "list") ? "" : v); $$("#f-layout-seg .st-seg-btn").forEach(function (x) { x.classList.toggle("on", x === b); }); markChanged(); renderPreview(); return; }
+    // ---- delta: rows, columns and the carry-forward --------------------------------------
+    if (act === "delta-carry" || act === "delta-refresh" || act === "delta-row-add" ||
+        act === "delta-row-del" || act === "delta-row-up" || act === "delta-row-down" ||
+        act === "delta-row-dup" || act === "delta-col-add" || act === "delta-col-del" ||
+        act === "delta-tab-logic") {
+      // remember which question the Delta was carrying from before the click settles
+      // the dropdown's current choice, so a re-carry knows whether it is the same source
+      var prevSrc = ed.delta_source;
+      var dsrc = document.getElementById("f-delta-source");
+      if (dsrc && dsrc.value) setOrDel(ed, "delta_source", dsrc.value);
+      syncFromForm();
+      var dci = Number(b.getAttribute("data-dci")), dri = Number(b.getAttribute("data-dri"));
+      var dcols = ed.cols = ed.cols || [], drows = ed.rows = ed.rows || [];
+
+      if (act === "delta-carry" || act === "delta-refresh") {
+        var done = carryDeltaForward(prevSrc);
+      } else if (act === "delta-row-add") {
+        var used = {};
+        drows.forEach(function (r) { used[String(r.code)] = 1; });
+        var n = drows.length, rc = "r" + (n + 1);
+        while (used[rc]) rc = "r" + (++n + 1);
+        drows.push({ code: rc, label: "New row", ref: {} });
+      } else if (act === "delta-row-del") {
+        drows.splice(dri, 1);
+      } else if (act === "delta-row-up") {
+        if (dri > 0) { var mv = drows[dri - 1]; drows[dri - 1] = drows[dri]; drows[dri] = mv; }
+      } else if (act === "delta-row-down") {
+        if (dri < drows.length - 1) { var mv2 = drows[dri]; drows[dri] = drows[dri + 1]; drows[dri + 1] = mv2; }
+      } else if (act === "delta-row-dup") {
+        var cp = JSON.parse(JSON.stringify(drows[dri] || {}));
+        cp.code = "r" + (drows.length + 1) + "x";
+        while (drows.some(function (r) { return r.code === cp.code; })) cp.code += "x";
+        drows.splice(dri + 1, 0, cp);
+      } else if (act === "delta-col-add") {
+        var cUsed = {};
+        dcols.forEach(function (c) { cUsed[String(c.code)] = 1; });
+        var cn = dcols.length, cc = "d" + (cn + 1);
+        while (cUsed[cc]) cc = "d" + (++cn + 1);
+        dcols.push({ code: cc, label: "New column", kind: "delta" });
+      } else if (act === "delta-col-del") {
+        // a carried column that goes away takes its reference values with it
+        if (dcols.length <= 1) return;
+        var gone = dcols[dci];
+        dcols.splice(dci, 1);
+        if (gone && gone.kind === "src") {
+          drows.forEach(function (r) { if (r.ref) delete r.ref[gone.code]; });
+        }
+      } else if (act === "delta-tab-logic") {
+        rerenderCard("display");
+        var lg = document.getElementById("card-display"); if (lg) lg.scrollIntoView({ behavior: "smooth", block: "start" });
+        return;
+      }
+      if (!dcols.length) dcols.push({ code: "d1", label: "New column", kind: "delta" });
+      rerenderCard("answers"); changed();
+      // the reference values arrive a beat later, so the card is drawn again when they do
+      if (done && done.then) done.then(function () { rerenderCard("answers"); changed(); });
+      return;
+    }
+
     if (act === "it-add" || act === "opt-add-none" || act === "opt-add-na" || act === "opt-add-other") {
       syncFromForm();
       var k2 = act === "it-add" ? kind : "opt", key = LIST_KEY[k2], list = ed[key] = ed[key] || [];
@@ -4174,7 +5272,8 @@
         if (ed.type === "semantic_diff") { it.left = ""; it.right = ""; }
       }
       list.push(it); rerenderCard("answers"); markChanged(); renderPreview(); refreshOutlineRow();
-      var last = $('#st-editor .st-items[data-kind="' + k2 + '"] .st-item:last-child input[data-k=label]'); if (last) { last.focus(); last.select(); }
+      var last = $('#st-editor .st-items[data-kind="' + k2 + '"] .st-item:last-child .st-rich[data-k=label_html]');
+      if (last) { last.focus(); placeCaretAtEnd(last); }
       return;
     }
     if (act === "it-del") { syncFromForm(); ed[LIST_KEY[kind]].splice(i, 1); rerenderCard("answers"); changed(); return; }
@@ -4400,10 +5499,86 @@
     if (act === "ct-media") { var cidx = Number(b.getAttribute("data-i")); var inp = document.createElement("input"); inp.type="file"; inp.accept="image/*,video/*,audio/*"; inp.onchange=function(){ if(inp.files&&inp.files[0]) uploadMedia(inp.files[0], function(r){ syncFromForm(); ed.concepts[cidx].media = {src:r.src, kind:r.kind, external:false}; rerenderCard("answers"); changed(); toast("Attached "+r.file); }); }; inp.click(); return; }
     if (act === "ct-edit-text") { syncFromForm(); var ei = Number(b.getAttribute("data-i")); askText("Concept text", "Text shown with the concept (supports rich formatting via toolbar)", (ed.concepts[ei]&&ed.concepts[ei].text)||"", function(txt){ var c=ed.concepts[ei]; c.text=txt; c.text_html=Q.sanitize(esc(txt)); rerenderCard("answers"); changed(); }); return; }
     if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
+    // ---- Walk Through: the steps themselves -------------------------------------------
+    if (act === "wt-add") { syncFromForm(); ed.walk_steps = ed.walk_steps||[]; ed.walk_steps.push({ id: ed.id+"_W"+(ed.walk_steps.length+1), label: "Step "+(ed.walk_steps.length+1), narration: "", art: "generic", duration: "no-limit", allow_replay: true, media: null }); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-del") { syncFromForm(); var wdi = Number(b.getAttribute("data-i")); ed.walk_steps.splice(wdi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-up" || act === "wt-down") {
+      var wi = Number(b.getAttribute("data-i")), wj = wi + (act === "wt-up" ? -1 : 1);
+      if (wj < 0 || wj >= ed.walk_steps.length) return;
+      syncFromForm(); var tmp = ed.walk_steps[wi]; ed.walk_steps[wi] = ed.walk_steps[wj]; ed.walk_steps[wj] = tmp;
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "wt-media") {
+      var wmi = Number(b.getAttribute("data-i"));
+      var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,video/*";
+      inp.onchange = function () {
+        if (!inp.files || !inp.files[0]) return;
+        uploadMedia(inp.files[0], function (r) {
+          syncFromForm(); var st = ed.walk_steps[wmi]; if (!st) return;
+          st.media = { src: r.src, kind: r.kind, external: false };
+          delete st.art;                              // an attachment replaces the animation
+          rerenderCard("answers"); changed(); toast("Attached " + r.file);
+        });
+      };
+      inp.click(); return;
+    }
+    if (act === "wt-media-del") { syncFromForm(); var mdi = Number(b.getAttribute("data-i")); var mst = ed.walk_steps[mdi];
+      if (mst) { var old = (mst.media || {}).src || ""; if (old) api("/api/studio/media/delete", { study: cur.slug, file: old.split("/").pop() });
+        delete mst.media; mst.art = "generic"; rerenderCard("answers"); changed(); }
+      return;
+    }
+    if (act === "wt-clip") {
+      var wci = Number(b.getAttribute("data-i"));
+      var cinp = document.createElement("input"); cinp.type = "file"; cinp.accept = "audio/*,.mp3,.m4a,.ogg,.wav,.webm";
+      cinp.onchange = function () {
+        if (!cinp.files || !cinp.files[0]) return;
+        uploadClip(wci, cinp.files[0], "walk_steps");
+      };
+      cinp.click(); return;
+    }
+    if (act === "wt-clip-del") { syncFromForm(); var cdi = Number(b.getAttribute("data-i")); var cst = ed.walk_steps[cdi];
+      if (cst) { removeClipFrom(cst, cur.slug); rerenderCard("answers"); changed(); }
+      return;
+    }
+    if (act === "wt-preview") { syncFromForm(); previewWalkThrough(Number(b.getAttribute("data-i"))); return; }
+    if (act === "wt-preview-all") { syncFromForm(); previewWalkThrough(0); return; }
+    if (act === "wt-ppt") {
+      var file = (b.files && b.files[0]) || null;
+      if (!file) return;
+      if (!/\.pptx$/i.test(file.name)) { toast("Upload a .pptx deck (PowerPoint 2007 or newer)"); return; }
+      var fd = new FormData(); fd.append("file", file, file.name);
+      toast("Reading " + file.name + "\u2026");
+      fetch("/api/studio/walkthrough/ppt?study=" + encodeURIComponent(cur.slug), { method: "POST", body: fd, credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (r.error) { toast(r.error); return; }
+          syncFromForm();
+          ed.walk_steps = (r.steps || []).map(function (st, i) {
+            return { id: ed.id + "_W" + (i + 1), label: st.label, narration: st.narration,
+                     title: st.label, caption: st.narration, text: st.narration,
+                     art: "generic", duration: "no-limit", allow_replay: true, media: null };
+          });
+          rerenderCard("answers"); changed();
+          toast((r.steps || []).length + " step(s) built from the deck - review the narration on each one");
+        })
+        .catch(function () { toast("Could not read that deck"); });
+      return;
+    }
+    // ---- Walk Through: the questions asked afterwards ---------------------------------
+    if (act === "wt-inner-back") { syncFromForm(); wtInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "wt-inner-dup") { var pw2 = cur.cfg.questions[sel]; if (!pw2) return; syncFromForm(); var curWq = wtInnerQi;
+      var copyW = JSON.parse(JSON.stringify(pw2.walk_questions[curWq])); copyW.id = pw2.id + "_WQ" + (pw2.walk_questions.length + 1);
+      copyW.stem = (copyW.stem || "") + " (copy)"; pw2.walk_questions.splice(curWq + 1, 0, copyW); wtInnerQi = curWq + 1;
+      renderEditorPane(); changed(); return; }
+    if (act === "wt-inner-del") { var pw3 = cur.cfg.questions[sel]; if (!pw3) return; syncFromForm();
+      pw3.walk_questions.splice(wtInnerQi, 1); wtInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "wt-q-del") { syncFromForm(); var wqd = Number(b.getAttribute("data-qi")); ed.walk_questions.splice(wqd, 1); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-q-dup") { syncFromForm(); var wqs = Number(b.getAttribute("data-qi")); var copyWq = JSON.parse(JSON.stringify(ed.walk_questions[wqs]));
+      copyWq.id = ed.id + "_WQ" + (ed.walk_questions.length + 1); copyWq.stem = (copyWq.stem || "") + " (copy)";
+      ed.walk_questions.splice(wqs + 1, 0, copyWq); rerenderCard("answers"); changed(); return; }
     if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
-    if (act === "ct-q-add") { openCtTypePicker(); return; }
-    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
-      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
+    if (act === "ct-q-add") { openCtTypePicker("ct", "Concept Test"); return; }
+    if (act === "wt-q-add") { openCtTypePicker("wt", "the Walk Through"); return; }
     if (act === "ct-q-edit") { var qei = Number(b.getAttribute("data-qi")); var p = cur.cfg.questions[sel]; if(p && p.type==="concept_test" && p.concept_questions[qei]){ syncFromForm(); ctInnerQi = qei; renderEditorPane(); } return; }
     if (act === "ct-inner-back") { syncFromForm(); ctInnerQi = null; renderEditorPane(); changed(); return; }
     if (act === "ct-inner-dup") { var pp = cur.cfg.questions[sel]; if(!pp) return; syncFromForm(); var curQi = ctInnerQi; var copyI = JSON.parse(JSON.stringify(pp.concept_questions[curQi])); copyI.id = pp.id+"_CQ"+(pp.concept_questions.length+1); copyI.stem = (copyI.stem||"")+" (copy)"; pp.concept_questions.splice(curQi+1,0,copyI); ctInnerQi = curQi+1; renderEditorPane(); changed(); return; }
@@ -4692,7 +5867,8 @@
     if (t.id && t.id.indexOf("f-loop")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-loop-k")) { syncFromForm(); if(t.getAttribute("data-loop-k")==="type") rerenderCard("answers"); changed(); return; }
     if (t.id && t.id.indexOf("f-ct")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
-    if (t.getAttribute && (t.getAttribute("data-ct") || t.getAttribute("data-cq"))) { syncFromForm(); if(t.getAttribute("data-cq")==="type") rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-ct")) { syncFromForm(); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-wt")) { syncFromForm(); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }
@@ -4718,6 +5894,7 @@
       var hold = e.target.closest(".st-rule").querySelector('[data-sf="value"]');
       if (hold) hold.value = String(hold.value).split("=")[0] + "=" + e.target.value;
     }
+    if (e.target.getAttribute && e.target.getAttribute("data-wt")) { syncFromForm(); changed(); return; }
     changed();
     if (sfName) refreshScrPlain();            // the sentence follows the number as it is typed
   });
@@ -4736,7 +5913,11 @@
   });
   // keep selection-based commands working when the toolbar button steals focus
   root.addEventListener("mousedown", function (e) {
-    if (e.target.closest("button.st-tb, .st-tb-color")) e.preventDefault();      // keep the text selection
+    // The palette is a popover outside the text, so a click on any of its buttons would move
+    // focus out of the editable and collapse the selection - the colour would then be applied
+    // to nothing. Stopping the default keeps the selection. The palette's own inputs (hex,
+    // R / G / B, picker) still have to be focusable, which is why only buttons are covered.
+    if (e.target.closest("button.st-tb, .st-tb-color, .st-color-pop button")) e.preventDefault();
     var pb = e.target.closest("[data-pipe-for]");
     if (pb) { e.preventDefault(); pipeCaret = null; rememberCaret(document.getElementById(pb.getAttribute("data-pipe-for"))); }
   });
@@ -4766,6 +5947,23 @@
     if (act === "logic-guide") { closeModal(); openLogicGuide(); }
     if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; if (!((ed.show_if.rules || []).length)) delete ed.show_if.off; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
     if (act === "qadd-type") addQuestion(b.getAttribute("data-type"), b.getAttribute("data-sec"), Number(b.getAttribute("data-after")));
+    // The Concept Test "+ Add Item" picker is a modal, and #st-modal sits outside
+    // #st-root - so unlike the other ct-* actions this one has to be handled here,
+    // alongside qadd-type, or clicking a type does nothing.
+    if (act === "wt-q-add-type") { var wtt = b.getAttribute("data-type"); var parentWt = cur.cfg.questions[sel];
+      if (!parentWt || parentWt.type !== "walk_through") return;
+      syncFromForm(); parentWt.walk_questions = parentWt.walk_questions || [];
+      var wqid = parentWt.id + "_WQ" + (parentWt.walk_questions.length + 1);
+      var wnq = qTemplate(wtt, wqid, parentWt.section);
+      wnq.stem = "New " + tinfo(wtt).name.toLowerCase() + " about the walkthrough";
+      wnq.required = false;
+      parentWt.walk_questions.push(wnq); closeModal(); wtInnerQi = parentWt.walk_questions.length - 1;
+      ed = parentWt; renderEditorPane(); changed(); toast("Added " + tinfo(wtt).name); return;
+    }
+    if (act === "wt-q-edit") { var wqi = Number(b.getAttribute("data-qi")); var pw = cur.cfg.questions[sel];
+      if (pw && pw.type === "walk_through" && pw.walk_questions[wqi]) { syncFromForm(); wtInnerQi = wqi; renderEditorPane(); } return; }
+    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
+      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
     if (act === "ask-ok") { var v = (document.getElementById("st-ask") || {}).value; closeModal(); if (askCb) askCb(v); askCb = null; }
     if (act === "cmd-welcome" || act === "cmd-thanks") {
       closeModal(); tab = "settings"; renderEditor();
@@ -4923,9 +6121,11 @@
     }).join("") + "</div>";
   }
   function sceneThumb(art) { var A = window.BEACON_ART || {}; return A[art] || A.generic || '<svg viewBox="0 0 400 240"></svg>'; }
-  function uploadClip(i, file) {
+  function uploadClip(i, file, field) {
     if (!file) return;
-    var sc = scenes()[i]; if (!sc) return;
+    var sc = field === "walk_steps" ? (ed.walk_steps || [])[i] : scenes()[i];
+    if (!sc) return;
+    var after = field === "walk_steps" ? function(){ rerenderCard("answers"); } : function(){ renderScenePrev(); };
     var fd = new FormData(); fd.append("file", file, file.name);
     toast("Uploading " + file.name + "\u2026");
     fetch("/api/studio/narration?study=" + encodeURIComponent(cur.slug), { method: "POST", body: fd, credentials: "same-origin" })
@@ -4933,17 +6133,22 @@
       .then(function (r) {
         if (r.error) { toast("Upload failed: " + r.error); return; }
         sc.src = r.src; sc.file = r.file; sc.seconds = r.seconds || 0; sc.clipId = r.clip;
-        renderScenePrev(); markChanged();
+        after(); markChanged();
         toast("Clip attached" + (r.seconds ? " (" + r.seconds + "s)" : ""));
       })
       .catch(function () { toast("Upload failed"); });
   }
   function removeClip(i) {
     var sc = scenes()[i]; if (!sc) return;
-    var id = sc.clipId || (sc.src || "").split("/").pop().split(".")[0];
-    if (id) api("/api/studio/narration/delete", { study: cur.slug, clip: id });
-    delete sc.src; delete sc.file; delete sc.seconds; delete sc.clipId;
+    removeClipFrom(sc, cur.slug);
     renderScenePrev(); markChanged();
+  }
+  // the clip lives on the step, not on an index - a Walk Through step and a study-level
+  // scene both carry src / file / seconds / clipId
+  function removeClipFrom(sc, slug) {
+    var id = sc.clipId || (sc.src || "").split("/").pop().split(".")[0];
+    if (id) api("/api/studio/narration/delete", { study: slug, clip: id });
+    delete sc.src; delete sc.file; delete sc.seconds; delete sc.clipId;
   }
 
   // walkthrough preview overlay
@@ -4974,6 +6179,48 @@
     closePreviewer();
     previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
       scenes: JSON.parse(JSON.stringify(list)), narration: cur.cfg.narration || {}, muted: false, tts: tts,
+      onDone: function () { previewer = null; closePreview(); }
+    });
+    previewer.start();
+    if (startAt) previewer.loadScene(startAt);
+  }
+  // The Walk Through plays through the same overlay as the study-level walkthrough, but the
+  // scenes come from the question's own steps: each step's narration is its caption, its
+  // attachment (if any) takes the place of the animation, and a recorded clip wins over the
+  // browser voice.
+  function walkScenesFrom(steps, tts) {
+    return steps.map(function (st, i) {
+      return {
+        id: st.id || ("W" + (i + 1)), art: (st.media && st.media.src) ? "" : (st.art || "generic"),
+        media: st.media || null,
+        title: st.label || ("Step " + (i + 1)),
+        caption: st.narration || "",
+        clip: null, src: st.src || "", seconds: st.seconds || 0,
+        at: 0, allow_replay: !!st.allow_replay
+      };
+    });
+  }
+  function previewWalkThrough(startAt) {
+    if (!window.BeaconExplainer) { toast("Explainer script not loaded"); return; }
+    var steps = walkSteps();
+    var tts = !!document.getElementById("f-wt-tts") && document.getElementById("f-wt-tts").checked;
+    if (!steps.length) { toast("Add at least one step first"); return; }
+    if (!steps.some(function (st) { return (st.narration || "").trim(); })) {
+      toast("Write the narration for at least one step first"); return;
+    }
+    var ov = document.getElementById("explainer");
+    var clips = steps.filter(function (st) { return st.src; }).length;
+    var quiet = steps.filter(function (st) { return !(st.narration || "").trim(); }).length;
+    document.getElementById("ex-hint").textContent = quiet
+      ? quiet + " step(s) with no narration"
+      : (clips === steps.length ? "A recorded clip on every step"
+        : clips ? clips + " recorded clip(s), the rest " + (tts ? "browser voice" : "silent")
+        : (tts ? "Browser voice narration on" : "Silent, timed walkthrough"));
+    ov.hidden = false;
+    closePreviewer();
+    previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
+      scenes: JSON.parse(JSON.stringify(walkScenesFrom(steps, tts))),
+      narration: cur.cfg.narration || {}, muted: false, tts: tts,
       onDone: function () { previewer = null; closePreview(); }
     });
     previewer.start();
@@ -5104,7 +6351,7 @@
       f("f-uniq", "Uniform conjoint choices", "id of the choice task", qc.uniform_q, "e.g. CT1") +
       f("f-verb", "Verbatim quality checks", "open-text ids, comma separated", (qc.verbatim_qs || []).join(", "), "e.g. Q20, Q21") +
       "</div>" +
-      '<h4 class="st-h4">Written-answer AI check <span class="st-opt">AI-generated / pasted text in open boxes</span></h4>' +
+      '<h4 class="st-h4">Written-answer AI check <span class="st-opt">AI-generated / pasted text in any written answer</span></h4>' +
       '<div class="st-grid3">' +
       '<div class="st-field"><label>What the respondent sees</label><select id="f-aiaction" data-set="1">' +
       [["confirm", "Warn, and ask them to confirm the answer is their own"],
@@ -5116,7 +6363,7 @@
       f("f-aiflag", "Flag from score", "0-100 - raised as a QC flag, listed for review", ai.flag_at == null ? 60 : ai.flag_at, "", "number") +
       "</div>" +
       '<div class="st-field"><label>Which written answers are checked</label><select id="f-aiall" data-set="1">' +
-      [["all", "Every open-text and \u201cplease specify\u201d answer"],
+      [["all", "Every written answer - open text, text grids, \u201cplease specify\u201d and comments"],
        ["listed", "Only the verbatim ids listed above"]].map(function (o) {
         return '<option value="' + o[0] + '"' + (checkAll === o[0] ? " selected" : "") + ">" + o[1] + "</option>";
       }).join("") + "</select></div>" +
@@ -5220,7 +6467,6 @@
         html += '<div class="st-kpis">' +
           '<div class="st-kpi"><strong>' + compN + '/' + startN + '</strong><span>completed</span></div>' +
           '<div class="st-kpi"><strong>' + dur + '</strong><span>minutes</span></div>' +
-          (a.nps && a.nps.score != null ? '<div class="st-kpi"><strong>' + (a.nps.score > 0 ? '+' : '') + a.nps.score + '</strong><span>NPS</span></div>' : '') +
         '</div>';
 
         if (a.questions && a.questions.length && window.AnakingCharts) {

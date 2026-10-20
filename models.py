@@ -474,8 +474,11 @@ class Answer:
         for r in rows:
             out.setdefault(r["question_id"], {})
             # structured items: multi-select codes, rank order, and the free-text quality
-            # telemetry / AI verdict the survey client stores next to a written answer
-            if r["item"] in ("codes", "order", "_meta", "_ai", "clicks", "_selected"):
+            # telemetry / AI verdict the survey client stores next to a written answer.
+            # _ai:<item> is the verdict for a second written answer on the same question
+            # (a text-grid cell, a comment box), so it is JSON too.
+            if r["item"] in ("codes", "order", "_meta", "_ai", "clicks", "_selected") \
+                    or r["item"].startswith("_ai:") or r["item"].startswith("_meta:"):
                 try:
                     out[r["question_id"]][r["item"]] = json.loads(r["value"])
                 except (json.JSONDecodeError, TypeError):

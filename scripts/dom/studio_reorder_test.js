@@ -37,7 +37,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   };
   const $=s=>w.document.querySelector(s), $$=s=>[...w.document.querySelectorAll(s)];
   const rows=()=>$$('.st-items[data-kind=opt] .st-item:not(.st-item-head)');
-  const labels=()=>rows().map(r=>r.querySelector("[data-k=label]").value);
+  const labels=()=>rows().map(r=>r.querySelector("[data-k=label_html]").textContent);
   const codes=()=>rows().map(r=>String(r.querySelector("[data-k=code]").value));
   const seqs=()=>rows().map(r=>r.querySelector(".st-seq").textContent.trim());
   const key=(el,k)=>el.dispatchEvent(new w.KeyboardEvent("keydown",{key:k,bubbles:true,cancelable:true}));
@@ -90,7 +90,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   check("focus follows the moved row", w.document.activeElement===rows()[0].querySelector(".st-grip"));
 
   // --- delete removes exactly the row that was clicked
-  const beta=rows().find(r=>r.querySelector("[data-k=label]").value==="Beta");
+  const beta=rows().find(r=>r.querySelector("[data-k=label_html]").textContent==="Beta");
   beta.querySelector("[data-act=it-del]").click(); await sleep(30);
   check("delete button removes only that option",
     labels().join(",")==="Gamma,Alpha", labels().join(","));
@@ -121,7 +121,7 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   // --- the label keeps its width: the in-row pipe button is the icon-only variant
   $$(".st-qi")[0].click(); await sleep(40);
   check("in-row pipe button is icon-only so the label keeps its width",
-    rows().every(r=>{ const b=r.querySelector(".st-with-pipe .st-pipe-btn"); return b && b.classList.contains("icon") && b.textContent.trim()==="\u2794"; }),
+    rows().every(r=>{ const b=r.querySelector(".st-richlabel .st-pipe-btn"); return b && b.classList.contains("icon") && b.textContent.trim()==="\u2794"; }),
     rows().map(r=>r.querySelector(".st-pipe-btn").textContent.trim()).join("|"));
   check("compact pipe button still targets its own label input",
     rows().every((r,i)=>r.querySelector(".st-pipe-btn").getAttribute("data-pipe-for")==="f-opt-"+i));

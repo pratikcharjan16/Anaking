@@ -254,7 +254,7 @@ const check = (l, c, d = "") => { console.log((c ? "PASS  " : "FAIL  ") + l + (c
   for (let r = 0; r < 5; r++) { const b = $('[data-act="it-add"][data-kind="row"]'); if (!b) break;
     click(b); await sleep(120); }
   await sleep(240);
-  const rowCount = $$('[data-it="row"][data-k="label"]').length;
+  const rowCount = $$('[data-it="row"][data-k="label_html"]').length;
   const allocId = $("#f-id").value;
   click($$(".st-etab").find(b => /Screening/.test(b.textContent))); await sleep(150);
   swA = $("#f-scr-on"); swA.checked = true; fire(swA, "change"); await sleep(280);

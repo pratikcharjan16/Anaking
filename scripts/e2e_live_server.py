@@ -95,8 +95,6 @@ def build_answers(profile):
             a[qid] = {"_": profile.get(qid,
                                        "The unmet need is greatest in patients with poor "
                                        "performance status where tolerability drives the decision.")}
-        elif t == "nps":
-            a[qid] = {"_": profile.get(qid, 9)}
         elif t == "emoji_grid":
             a[qid] = {r["code"]: 4 for r in q["rows"]}
         elif t == "heatmap":

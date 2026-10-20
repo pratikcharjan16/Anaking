@@ -92,8 +92,6 @@ def answers_for(is_test=False, q13=2):
             a[qid] = {"order": [r["code"] for r in q["rows"]]}
         elif t == "open_text":
             a[qid] = {"_": "Survival benefit and tolerability drive the decision in this line."}
-        elif t == "nps":
-            a[qid] = {"_": 9}
         elif t == "emoji_grid":
             a[qid] = {r["code"]: 4 for r in q["rows"]}
         elif t == "heatmap":

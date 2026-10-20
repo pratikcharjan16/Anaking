@@ -132,7 +132,31 @@ the bar always shows *All changes saved · 14:02* / *Unsaved changes* / *Not sav
 Rich text: text size and font, bold / italic / underline / strike / superscript / subscript,
 text & highlight colour, alignment, bullet & numbered lists, links, tables, "…" for the rarer
 controls, a `</>` source view, full screen, and **+ Add Image & Video Attachments** straight
-under the question text. **Piping:** every text field has a **➔ Pipe in answer**
+under the question text.
+
+**Colour.** The **A** and highlighter buttons each open a standard palette rather than a single
+fixed colour. Both offer the same ten hues as a 10 × 5 grid (light tint at the top, the pure hue
+in the middle, dark shade at the bottom) — **Theme colours** for text, **Highlight colours** for
+the highlighter, which uses soft tints so black text sitting on a highlight stays readable — plus
+a **Standard colours** row, the **colours you have used recently** (remembered per browser), and
+**Custom colour …** with a hex box, R / G / B, the browser's own colour picker and a live preview.
+
+**Formatted answer options.** The same controls are available on an **answer option** label, on a
+grid **row** or **column**, and on a rating scale's **scale point** — for every question type that
+has one of those. Hovering a row reveals a compact **B / I / U** strip with the two colour pickers
+and *clear formatting* on top of it; the row's own pipe button stays put. Respondents see the
+formatting, and the plain `label` is always kept in step, so exports, narration, piping, screening
+and the admin dashboard read exactly the text they did before. `label_html` is cleaned by the same
+whitelist that protects the question stem before it can be saved.
+The first entry is **Automatic** (black) for text and **No colour** for a highlight; either takes
+the colour off the selection while leaving bold, italic, size and lists alone, unlike a blanket
+*clear formatting*. A colour respondents would struggle to read — very light text, or a very dark
+highlight — earns a warning in the palette, never a refusal. The toolbar swatch and underline
+always show what the next click would apply. Everything the palettes produce survives
+`core/sanitize.py` and the client-side whitelist, so the colour and the highlight reach the
+respondent's browser exactly as authored.
+
+**Piping:** every text field has a **➔ Pipe in answer**
 button - click where the answer should appear, press it, pick from a searchable list grouped by
 earlier question ("Their answer (as text)", "Answer code", "First / last option they ticked",
 "Text typed in Other", a fixed option label, a row's rating, the question wording), each with an
@@ -159,7 +183,7 @@ never fire here), *the condition*, and *the value*. The condition list follows t
 | Question type | Conditions |
 |---|---|
 | Choose one / multi-select | is · is not · **is any of** · **is none of** · **includes all of** · is exactly these · **selects at least / at most / exactly** *n* |
-| Number, slider, NPS, date | equals · does not equal · is more than · at least · less than · at most · is between |
+| Number, slider, date | equals · does not equal · is more than · at least · less than · at most · is between |
 | Open text / loop | mentions · does not mention · is shorter than *n* words |
 | Rating grid, rating scale, semantic, heat map, numeric matrix | row is / is not / is at least / is at most |
 | Ranking | ranks … first · ranks … in the top *n* · includes all of · selects at least … |
@@ -270,13 +294,105 @@ Variables** (names captured from the respondent link, e.g. `?panel=A` → export
 
 Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
 options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
-Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
-Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -
-Max Diff experiment, Conjoint, Concept Test, Heatmap; **Survey flow** - Welcome Page,
+Rank Order, Scale, Text Entry, Numeric Entry, NPS,
+Constant Sum, Numeric Matrix, Date, Delta (carry a grid forward, fill in the new columns); **Methodologies** -
+Max Diff experiment, Conjoint, Concept Test, Walk Through, Heatmap; **Survey flow** - Welcome Page,
 Thank You Page, Question Page, Question Loop, Page Randomizer; **Objects** - Embedded
 Variable, Text Block. Every type is fully editable (rows, scales, ranges, labels,
 placeholders, rich text, logic, media, styling) and every answer type flows into the
 flattened exports and the data dictionary.
+
+**NPS** is the word-pairs tile - rows scored between two opposite anchors, with the
+low-end and high-end labels either side. The dedicated *Net Promoter* type was removed:
+it offered one 0-10 question and nothing else, so it could not be reused, and the same
+answer shape is available as a **Scale** question with a 0-10 range. It is gone from the
+add-item library, the Type dropdown, the starter study and the analysis, export and
+PowerPoint code paths - so a study saved before the removal keeps its data, but its
+Net Promoter question no longer produces a promoter / passive / detractor score.
+
+### Editing a question
+
+The editor is a stack of cards - **Question**, **Rows & scale** (the answers), **Display &
+order**, **Image or video** and **Advanced** - each one collapsible, with a sticky jump
+nav across the top. The spacing follows one rhythm everywhere: a fixed gap between
+stacked fields, the same gap again between grid rows, and no double margin where a field
+sits inside a grid, so nothing crowds whatever is above or below it. Answer rows (options,
+rows, columns, scale points) are the densest part of the editor, so they get the most room -
+a row's own padding, a clear gap between rows, and taller inputs. On a narrow window the
+three- and four-across field grids drop to two-up, because a long label and its input do
+not fit in a third of a 400px pane.
+
+The scale-point row is the tightest of these - six columns (#, value, label, format, media,
+actions) inside a pane that can be under 500px. Its media and action tracks were sized as if
+they were afterthoughts: 38px for a track holding a 30px thumbnail whose remove button
+deliberately overhangs by 6px, which put that button inside the neighbouring column's gap.
+Each fixed track is now sized for what actually sits in it, the media cell is centred so the
+thumbnail and its remove button both stay inside it, and a narrow pane trims the fixed tracks
+rather than clipping the action buttons off the edge. On the options / rows / columns table
+the attach and format controls are grouped apart from the move / duplicate / delete buttons,
+so a six-control row reads as two jobs instead of one smear.
+
+The attach control is an inline SVG paperclip rather than an emoji: an emoji glyph is not
+something the app can guarantee on the reader's machine, and this one had been written with a
+doubled backslash, which put the literal text `\uD83D\uDCE5` into the DOM instead of the
+character. Fifteen such escapes had crept into the matrix / scale-point editor - the reorder,
+duplicate, delete, remove-attachment and audio glyphs, and the · / … / ⌘ separators in the
+hints - so every one of those was rendering as raw escape text. All fifteen are repaired, and
+`studio_scale_row_test.js` fails if any comes back.
+
+### Delta (Studio → + Add question → Delta)
+
+A Delta is a question that reuses what a study already asked. Pick an earlier grid or
+matrix question - Numeric Matrix, Grid, Word Pairs, Emoji Grid, Constant Sum, a Rating
+Scale, a Rank - and press **Carry forward**. Its columns and every one of its rows come
+across exactly as they were written, so nothing is retyped. Carried columns keep a
+**Source** tag and are shown to respondents as reference; new columns are tagged **New**
+and are where the answers go. Both sit side by side on every row, under two labelled
+bands (*Already stated* / *To enter*), so "what we said before" and "what we are asking
+now" read as one table rather than two.
+
+Every column can be renamed - a carried one as readily as a new one - and **+ Add column**
+and **+ Add row** both stay available, so a Delta can grow past the question it came from.
+Carrying forward from a second source *adds* to what is there: the columns and reference
+values already authored are never dropped, only a column whose own source question has lost
+it.
+
+**The reference values are not typed by hand.** They are read back out of the answers the
+source question actually collected: the mean of every respondent who answered that row and
+that column, whether or not they have finished the study - a Delta is built while it runs.
+The line under the source picker says exactly that - *the reference values are the mean of
+the N answers to G1* - so nobody has to guess where a number came from.
+
+A carried column is **reference, and not a field to type in**: it is shown as greyed text
+with no input in it, so nobody can accidentally write over what respondents said. Press
+**Refresh reference values** to re-read the source, which is how a Delta picks up answers
+that arrived after it was built; reopening the study does the same. A source nobody has
+answered yet leaves dashes and says so - *Nobody has answered G1 yet* - and points at the
+test view; one answered with words or picks rather than numbers - a text grid, a choice
+grid - says that too, because averaging a word tells a respondent nothing.
+
+A respondent also sees **their own earlier answer** as the reference where nobody else has
+answered that cell yet. They typed 25 into each row of the constant sum; the Delta carried
+from it shows 25 under each row, greyed and not editable, rather than a dash nobody
+explains - and the line under the table says which of the two it is showing: *These are the
+values you gave in Q1*, or *the mean of what everyone has answered in Q1*. Either way the
+number is never something they can change on this question.
+
+A **Validation rule** of *Each new column adds up to* puts a live total row under the new
+columns; it follows the cells as they are typed and turns red the moment a column is off,
+so an overshoot is visible on the question rather than only after submit. N/A is offered
+per row and empties that row's cells.
+
+Answers are stored per cell as `row_code_col_code` on the new columns only - carried
+columns hold no answer. That flows through the flattened export, the data dictionary
+(which names the question the reference came from), the research summary (a mean per row
+and a mean per new column, which is the movement a Delta exists to measure) and the
+dashboard charts (*New Value by Row*, *Movement by Column*, *Row × Column Table*).
+
+A Delta saved before this had two number boxes - *Before* and *After* - and a computed
+change, stored as `{qid}_before` / `_after` / `_delta`. That shape still opens on its own
+editor and still exports exactly as it did, so an older study keeps its data and its
+columns.
 
 ### Written-answer quality: AI-generated & pasted text (all open-text questions)
 
@@ -321,6 +437,17 @@ Flags raised: `ai_generated_<qid>` (likely) and `ai_suspect_<qid>` (possible), p
 respondent-level `ai_generated_verbatim`. Nothing is ever deleted or blocked after the fact - a
 flagged answer stays in the data, marked, so the team can decide what to do with it.
 
+**Every written answer, not just open-text ones.** A *written answer* is one question plus the
+answer item it writes to, and `core.ai_detect.text_fields()` is the single place that enumerates
+them: an `open_text` box, **every cell of a `text_grid`**, a row comment (`c_<row>`), the
+question comment (`_comment`) and a "please specify" box (`other_text`). Because the live check,
+the submit flags, the Admin queue, the export and duplicate detection all read that one list, a
+surface added there is covered everywhere at once. Each cell or comment carries its **own**
+telemetry and verdict (`_meta:<item>` / `_ai:<item>` on the record, `Q3|r1_c1` in the verdict
+map), so one honest cell cannot mask a pasted one next to it, and the export names the box it
+scored (`<qid>_<item>_ai_verdict`). `ai_skip_items` on a question leaves one box unscored without
+switching the check off for the rest.
+
 Settings live in Studio → **Settings & quality control** ("Written-answer AI check": what the
 respondent sees, warn-from / flag-from thresholds, and whether every open-text answer or only
 the listed verbatim ids are checked) with a per-question override on each open-text question
@@ -337,6 +464,59 @@ and reordered; "Build scenes from text" turns the seven product-profile text fie
 starting set of scenes. Per scene, narration is resolved as: uploaded clip → browser
 text-to-speech (if enabled) → silent timer. **Preview walkthrough** plays the unsaved draft.
 
+### Walk Through (Studio → + Add question → Methodologies)
+
+A **Walk Through** is a question that stores no answer. It plays a narrated, animated sequence
+and then the survey moves on — for showing a respondent something instead of making them read
+it. It starts empty, like a Concept Test: the author adds the steps they actually need.
+
+Each **step** carries:
+
+| field | what it does |
+|---|---|
+| **Narration** | the text that gets *spoken* — the author writes it once and the respondent's browser reads it aloud (`speechSynthesis`), so nothing has to be read on screen |
+| **Attachment** | an image or video, uploaded through the existing media path; it replaces the animation for that step |
+| **Animation** | when there is no attachment, one of the built-in animated scenes (mechanism, efficacy, safety, …) |
+| **Recorded clip** | an mp3 / m4a / ogg / wav / webm narration, which wins over the browser voice for that step |
+| **For** / **Allow replay** | how long the step stays up, and whether the respondent can replay it |
+
+**Build steps from a PowerPoint deck** uploads a `.pptx` and turns it into one step per slide —
+the slide title becomes the step name and the slide body plus its speaker notes become the
+narration. Text only: images inside the deck are left for the author to attach per step,
+because extracting them would mean re-hosting files the Studio already has an upload path for.
+Nothing is stored server-side; the author reviews the steps and saves them with the question.
+
+Steps are added, removed and reordered, and **Preview the walkthrough** plays the unsaved draft
+through the same overlay respondents see. Below the steps, an optional list of **questions about
+the walkthrough** is asked once, after it has played.
+
+On the respondent side the walkthrough is one step of its own: the card names it and lists the
+steps, the overlay plays them, and *Skip* or the end of the last step returns to the survey.
+Nothing is written to the respondent's record — only the questions that follow are.
+
+**How it plays.** The overlay is a small video player, and the narration is its clock. One
+`requestAnimationFrame` loop reads a single elapsed-time source and drives everything visual from
+it, so the picture and the voice cannot drift apart:
+
+| | |
+|---|---|
+| **Karaoke caption** | the step's title and narration are split into one `<span>` per word; the word being spoken is highlighted and the ones already spoken dim. Word positions come from the speech engine's `onboundary` events where they are reported (Chrome, Firefox) and from an elapsed-time estimate everywhere else — Safari never fires them, so the estimate runs by default and the boundary only corrects it. Muted, nothing is lit at all. |
+| **Timeline** | a video-style scrubber for the *whole* walkthrough, with a chapter marker per step at its cumulative offset; click a marker to jump. The readout is `0:12 / 1:04`. |
+| **Letterboxed stage** | 16:9, vignetted, with a slow Ken Burns drift on each artwork layer (a fresh direction per step) and an ambient wash whose colour follows the scene. |
+| **Audio meter** | five bars that breathe with the narration. Synthetic, deliberately: routing the `<audio>` through an `AnalyserNode` would hijack its output and put mute, autoplay policy and CORS at risk for no visible gain at this size. |
+| **Autoplay** | when the browser blocks playback the overlay asks for a click — a large *Play the narration* button — instead of silently running a timer the respondent never asked for. |
+
+The three clock sources are a browser-voice step, an uploaded clip (`timeupdate` against its real
+duration) and a muted or silent step (a plain timer). A step whose audio errors out falls back to
+the timer rather than stalling, and a speech engine that never reports `end` is caught by a
+timeout so the respondent is never stranded. `prefers-reduced-motion` keeps the words and drops
+the movement.
+
+**Honest limits.** The voice is the browser's built-in speech engine, so it needs no audio
+files and no network call, but it is not a studio recording — attach a recorded clip where the
+delivery matters. There is no server-side video render: "animated" means the built-in SVG
+scenes plus the author's own image or video, driven in step with the narration clock.
+
 Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 
 ## Tests
@@ -345,6 +525,8 @@ Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 python3 -m pytest                               # in-process suite, no server needed
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
+python3 -m pytest tests/test_delta_grid.py        # Delta as a carried grid: reference values read back from the
+                                                 #   source, export, data dictionary, research summary, before/after Delta
 python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
 python3 -m pytest tests/test_screening.py       # screening config on save, plain-English logic, outline & export
 
@@ -354,13 +536,25 @@ python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset 
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
+node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
+node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
+node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
+node scripts/dom/studio_scale_row_test.js          # the six-column scale-point row: track sizes, the SVG attach control, no literal escape text
+node scripts/dom/studio_delta_grid_test.js         # Delta: carry-forward, reference values from the source's answers,
+                                                 #   read-only greyed carried cells, side-by-side columns, renames,
+                                                 #   add / delete / reorder, N/A and totals
+                                               #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
 node scripts/dom/studio_conjoint_test.js        # Studio conjoint editor + the tab only showing for conjoint studies
 node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored labels/levels/images, group inclusion, none
 node scripts/dom/studio_actions_test.js         # dashboard actions: preview / duplicate / launch / pause / relaunch / reminder
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
-node scripts/dom/survey_ai_check_test.js        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/survey_ai_check_test.js
+node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes
+node scripts/dom/concept_test_empty_test.js      # a new Concept Test starts empty and an empty one never reaches a respondent
+node scripts/dom/walk_through_test.js            # the Walk Through card, a deck turned into steps, the narrated respondent step        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/explainer_cinematic_test.js     # the narration-as-clock player: karaoke boundaries, timeline + chapters, autoplay, mute, degradation
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)

@@ -636,14 +636,15 @@ Q.append({
 })
 
 # ======================================================================================
-# Q21 - NET PROMOTER - colleague recommendation
+# Q21 - RECOMMENDATION INTENT - colleague recommendation, on a scale
 # ======================================================================================
 Q.append({
-    "id": "Q21", "section": "F", "type": "nps", "required": True,
+    "id": "Q21", "section": "F", "type": "slider", "required": True,
     "stem": "How likely are you to recommend this new therapy to a colleague for the "
             "patient profile described in this study?",
     "help": "0 = not at all likely, 10 = extremely likely.",
-    "scale": {"min": 0, "max": 10},
+    "min": 0, "max": 10, "step": 1,
+    "min_label": "Not at all likely", "max_label": "Extremely likely",
 })
 
 # ======================================================================================

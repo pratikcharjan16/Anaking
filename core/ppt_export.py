@@ -301,7 +301,7 @@ def build_ppt_report(study_title: str, summary_data: dict, questions_to_include:
                     table_rows.append([o["label"], str(o.get("count", 0)), f"{o.get('pct', 0)}%"])
 
         # 2. Rating Scale, Grids, Sum to 100, Emoji Grid, or Gauge with Rows
-        elif (qtype in ("rating_scale", "rating_grid", "semantic_diff", "numeric_matrix", "sum_to_100", "emoji_grid") or (qtype == "gauge_meter" and rows)) and rows:
+        elif (qtype in ("rating_scale", "rating_grid", "semantic_diff", "numeric_matrix", "sum_to_100", "emoji_grid", "delta") or (qtype == "gauge_meter" and rows)) and rows:
             has_chart = True
             cdata.categories = [r["label"][:28] for r in rows]
             if is_cut:
@@ -333,19 +333,6 @@ def build_ppt_report(study_title: str, summary_data: dict, questions_to_include:
             table_rows.append(["Target Benchmark", f"{q.get('target', '—')} {q.get('unit', '%')}"])
             for z in zones:
                 table_rows.append([f"Zone: {z['label']}", f"{z['pct']}% (n={z['count']})"])
-
-        # 4. NPS
-        elif qtype == "nps":
-            has_chart = True
-            nps_obj = q.get("nps") or {}
-            cdata.categories = ["Promoters (9-10)", "Passives (7-8)", "Detractors (0-6)"]
-            cdata.add_series("Share (%)", (nps_obj.get("promoters_pct", 0), nps_obj.get("passives_pct", 0), nps_obj.get("detractors_pct", 0)))
-            table_headers = ["NPS Metric", "Value"]
-            table_rows.append(["Net Promoter Score", f"{nps_obj.get('score', 0):+0.1f}"])
-            table_rows.append(["Promoters", f"{nps_obj.get('promoters_pct', 0)}% (n={nps_obj.get('promoters_count', 0)})"])
-            table_rows.append(["Passives", f"{nps_obj.get('passives_pct', 0)}% (n={nps_obj.get('passives_count', 0)})"])
-            table_rows.append(["Detractors", f"{nps_obj.get('detractors_pct', 0)}% (n={nps_obj.get('detractors_count', 0)})"])
-            table_rows.append(["Mean Rating", f"{q.get('mean', '—')}/10"])
 
         # 5. Open text
         elif qtype == "open_text":

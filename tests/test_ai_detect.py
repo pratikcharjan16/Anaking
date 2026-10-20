@@ -370,3 +370,95 @@ def test_export_carries_the_ai_columns_and_a_review_sheet(client):
     assert sheet[1][head.index("verdict")] == VERDICT_LIKELY
     summary = {r[0]: r[1] for r in wb["Field summary"].iter_rows(values_only=True)}
     assert summary["Written answers flagged as AI-generated"] == 1
+
+
+# ======================================================================================
+# every written answer, not just the ones on an open_text question
+# ======================================================================================
+GRID_CFG = {"sections": [{"id": "S1", "title": "A"}],
+            "questions": [{"id": "G1", "section": "S1", "type": "text_grid",
+                           "rows": [{"code": "r1", "label": "Speed"},
+                                    {"code": "r2", "label": "Price"}],
+                           "cols": [{"code": "c1", "label": "Now"},
+                                    {"code": "c2", "label": "Later"}]}],
+            "qc": {}}
+
+
+def _live(client, slug, cfg):
+    """Save a study and put it live, the way a respondent would find it."""
+    client.post("/api/studio/save", json={"title": slug.title(), "cfg": cfg})
+    client.post("/api/studio/status", json={"slug": slug, "status": "live"})
+
+
+def _answer_once(client, slug, answers, elapsed=900):
+    s = client.post("/api/start", json={"study": slug}).get_json()
+    client.post("/api/save", json={"session_id": s["session_id"],
+                                   "elapsed_seconds": elapsed, "answers": answers})
+    return client.post("/api/submit", json={"session_id": s["session_id"],
+                                            "elapsed_seconds": elapsed}).get_json()
+
+
+def test_every_written_answer_is_a_field():
+    """A text grid has one box per cell, so each cell is a written answer in its own right."""
+    fields = text_fields(GRID_CFG)
+    assert ("G1", "r1_c1") in fields and ("G1", "r2_c2") in fields
+    assert len([f for f in fields if f[0] == "G1"]) == 4
+    # comments and "please specify" boxes are written answers too
+    assert ("C1", "_comment") in text_fields({"questions": [
+        {"id": "C1", "type": "rating_grid", "comments": {"mode": "optional"}}]})
+    assert ("C1", "c_r1") in text_fields({"questions": [
+        {"id": "C1", "type": "rating_grid", "rows": [{"code": "r1", "comment": "require"}]}]})
+    assert ("S1", "other_text") in text_fields({"questions": [
+        {"id": "S1", "type": "single_select", "options": [{"code": 1, "other": True}]}]})
+
+
+def test_a_pasted_grid_cell_is_flagged_like_an_open_text_answer(client):
+    """The check covers text-grid cells: scored, flagged, and named per cell."""
+    answers = {"G1": {"r1_c1": AI[0], "r1_c2": HUMAN[0],
+                      "_meta:r1_c1": {"keystrokes": 0, "pastes": 1,
+                                      "pasted_chars": len(AI[0]), "typed_ms": 400}}}
+    out = qc_flags(answers, 900, GRID_CFG)
+    assert "ai_generated_G1" in out["flags"]
+    assert "ai_generated_verbatim" in out["flags"]
+    # keyed per written answer, so the clean cell cannot overwrite the flagged one
+    assert out["ai"]["G1|r1_c1"]["verdict"] == VERDICT_LIKELY
+    assert out["ai"]["G1|r1_c2"]["verdict"] == VERDICT_HUMAN
+    assert out["ai"]["G1|r1_c1"]["score"] >= 60
+
+
+def test_a_grid_cell_lands_in_the_review_queue_and_the_export(client):
+    _live(client, "ai-grid", GRID_CFG)
+    meta = {"pasted_chars": len(AI[0]), "keystrokes": 0, "pastes": 1}
+    _answer_once(client, "ai-grid", {"G1": {"r1_c1": AI[0], "_meta:r1_c1": meta}})
+    q = client.get("/api/admin/verbatims", query_string={"study": "ai-grid"}).get_json()
+    hit = [r for r in q["rows"] if r["qid"] == "G1"]
+    assert hit and hit[0]["verdict"] == VERDICT_LIKELY
+    # the export names the cell it scored, so a reviewer knows which box to look at
+    txt = client.get("/admin/export.csv", query_string={"study": "ai-grid"}).data.decode()
+    row = next(r for r in csv.DictReader(io.StringIO(txt))
+               if "ai_generated_verbatim" in r["qc_flags"])
+    assert row["G1_r1_c1_ai_verdict"] == VERDICT_LIKELY
+    assert int(row["G1_r1_c1_ai_score"]) >= 60
+
+
+def test_check_text_scores_the_cell_that_sent_it(client):
+    _live(client, "ai-grid-live", GRID_CFG)
+    body = client.post("/api/check_text", json={"study": "ai-grid-live", "qid": "G1",
+                                                "item": "r1_c1", "text": AI[0],
+                                                "meta": {"pasted_chars": len(AI[0])}}).get_json()
+    assert body["field"] == "G1|r1_c1"
+    assert body["verdict"] == VERDICT_LIKELY
+    # the same cell scored honestly comes back clean, so the verdict really is per cell
+    other = client.post("/api/check_text", json={"study": "ai-grid-live", "qid": "G1",
+                                                 "item": "r2_c2",
+                                                 "text": HUMAN[0]}).get_json()
+    assert other["verdict"] == VERDICT_HUMAN
+    assert other["field"] == "G1|r2_c2"
+
+
+def test_a_question_can_opt_one_written_answer_out():
+    """``ai_skip_items`` leaves one box unscored without switching the check off."""
+    cfg = {"questions": [dict(GRID_CFG["questions"][0], ai_skip_items=["r2_c1"])]}
+    assert ai_settings(cfg, "G1", "r2_c1")["enabled"] is False
+    assert ai_settings(cfg, "G1", "r1_c1")["enabled"] is True
+    assert ai_settings(GRID_CFG, "G1", "r2_c1")["enabled"] is True

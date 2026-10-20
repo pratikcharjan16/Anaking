@@ -8,6 +8,8 @@ API (used by static/js/studio.js)
     GET  /api/studio/list                  all studies with respondent counts
     GET  /api/studio/study?slug=           one study incl. config
     GET  /api/studio/analysis?study=       quick analysis aggregates
+    GET  /api/studio/delta-source?study=&q=  what a source question was answered with,
+                                             for a Delta to carry forward as reference
     POST /api/studio/save                  create or update {slug?, title, cfg}
     POST /api/studio/status                {slug, status: draft|live|paused|closed}
     POST /api/studio/delete                {slug}
@@ -21,6 +23,7 @@ API (used by static/js/studio.js)
     POST /api/studio/make_conjoint         {attributes, n_tasks, seed} -> design
     POST /api/studio/narration?study=      multipart upload of a scene clip -> {clip, src, seconds}
     POST /api/studio/narration/delete      {study, clip}
+    POST /api/studio/walkthrough/ppt?study=  multipart .pptx -> one narrated step per slide
     POST /api/studio/media?study=<slug>    multipart image/video attached to a question
     GET  /media/<slug>/<file>              public: respondents load attachments here
     GET  /narration/<study>/<file>         serves an uploaded clip (public - respondents play it)
@@ -48,8 +51,10 @@ from core.i18n import (LANGUAGES, coverage, default_language, extract_strings,
 LANGUAGES_MAP = {c: {"name": n, "native": nv, "dir": d} for c, n, nv, d in LANGUAGES}
 from core.narration import clip_duration
 from core.outline import build_outline
-from core.reporting import analysis_for
+from core.reporting import (analysis_for, delta_source_columns, delta_source_rows,
+                             delta_source_values)
 from core.translator import TranslationError, translate_string
+from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
 from models import Study, StudyError
 
 AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
@@ -78,6 +83,38 @@ def get_study():
         return jsonify({"error": "unknown study"}), 404
     return jsonify({"slug": study.slug, "title": study.title, "status": study.status,
                     "cfg": study.cfg, "updated_at": study.updated_at})
+
+
+@bp.get("/api/studio/delta-source")
+def delta_source():
+    """What a source question has actually been answered with, for a Delta to carry forward.
+
+    The Delta editor asks for this the moment an author picks a source question, so the
+    reference cells are filled from the data rather than typed by hand.  A question nobody
+    has answered yet - or one whose answers are not numbers - comes back with no values,
+    and the editor says so instead of showing a blank it cannot explain.
+    """
+    slug = study_arg()
+    qid = str(request.args.get("q") or "")
+    cfg = Study.cfg_of(slug)
+    q = next((x for x in cfg.get("questions", []) if str(x.get("id")) == qid), None)
+    if q is None:
+        return jsonify({"error": "Unknown question " + qid}), 404
+    data = records(slug, "all")
+    vals = delta_source_values(data, q)
+    return jsonify({
+        "qid": q["id"],
+        "type": q.get("type"),
+        "n": vals["n"],
+        "numeric": vals["numeric"],
+        "rows": vals["rows"],
+        "cols": vals["cols"],
+        "cells": vals["cells"],
+        "columns": [{"code": str(c.get("code")), "label": c.get("label") or ""}
+                    for c in delta_source_columns(q)],
+        "row_list": [{"code": str(r.get("code")), "label": r.get("label") or ""}
+                     for r in delta_source_rows(q)],
+    })
 
 
 @bp.get("/api/studio/analysis")
@@ -623,6 +660,33 @@ def conjoint():
         return jsonify({"error": str(e)}), 400
     design["generated_at"] = stamp()
     return jsonify(design)
+
+
+# ---------------------------------------------------------------- walk-through decks
+@bp.post("/api/studio/walkthrough/ppt")
+def walkthrough_from_ppt():
+    """Turn an uploaded PowerPoint deck into narrated walk-through steps.
+
+    One step per slide: the slide title becomes the step label and the slide body plus its
+    speaker notes become the narration the respondent hears.  Nothing is stored server-side
+    - the author reviews the steps in the Studio and saves them with the question.
+    """
+    slug = request.args.get("study") or ""
+    if not Study.get(slug):
+        return jsonify({"error": "unknown study"}), 404
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    if not f.filename.lower().endswith(".pptx"):
+        return jsonify({"error": "upload a .pptx deck (PowerPoint 2007 or newer)"}), 400
+    data = f.read()
+    if len(data) > DECK_MAX_BYTES:
+        return jsonify({"error": "deck too large (max %d MB)" % (DECK_MAX_BYTES // (1024 * 1024))}), 400
+    try:
+        steps = steps_from_pptx(data)
+    except DeckError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "steps": steps, "slides": len(steps)})
 
 
 # ---------------------------------------------------------------- narration clips
