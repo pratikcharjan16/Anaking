@@ -1382,6 +1382,10 @@
   //
   // A delta saved before this had before_label / after_label and no cols; that shape is
   // still rendered, unchanged, so existing studies keep working.
+  //
+  // "<qid>|<source qid>" last read for the reference cells, so opening the card re-reads
+  // the source once per question rather than on every render
+  var dlRefsRead = "";
   var DELTA_SOURCE_TYPES = ["numeric_matrix", "text_grid", "rating_grid", "semantic_diff",
                             "emoji_grid", "sum_to_100", "rating_scale", "rank",
                             "numeric", "slider"];
@@ -2039,9 +2043,9 @@
   // prevSrc is the question the Delta was carrying from before this click, so a re-carry
   // from the same source can prune columns the source has lost, while carrying from a new
   // source only ever adds.
-  function carryDeltaForward(prevSrc) {
+  function carryDeltaForward(prevSrc, forceRefs) {
     var src = deltaSourceQ();
-    if (!src) return;
+    if (!src) return null;
     var sCols = sourceColumns(src), sRows = sourceRows(src);
     var cols = ed.cols || [], rows = ed.rows || [];
 
@@ -2056,9 +2060,6 @@
       cols.splice(at, 0, { code: "dsc" + code, label: String(c.label || ("Column " + (i + 1))),
                            kind: "src", src_code: code, src_q: src.id });
     });
-    // A carried column only goes away when the question it came from lost it: carrying
-    // forward from a different question adds to what is here, it never removes the
-    // columns and the reference values the author already put together.
     // A carried column only goes away when the question it came from has lost it. Columns
     // carried from any other question stay put, so re-carrying from a new source adds to
     // what is here and never removes the columns or reference values already authored.
@@ -2075,6 +2076,50 @@
     ed.cols = cols;
     ed.rows = rows;
     if (!cols.length) ed.cols = [{ code: "d1", label: "New column", kind: "delta" }];
+
+    // The reference cells are not typed by hand: they are what the source question was
+    // actually answered with. Fill the empty ones, leave any the author has already
+    // overridden, and say where the numbers came from.
+    return fillDeltaRefs(src, !!forceRefs);
+  }
+
+  // Read the source question's answers back and drop them into the reference cells.  Only
+  // cells the author has left empty are filled, unless `force` is set - which is what the
+  // Refresh button does once more data has arrived.
+  function fillDeltaRefs(src, force) {
+    if (!src || !cur) return Promise.resolve();
+    var url = "/api/studio/delta-source?study=" + encodeURIComponent(cur.slug) +
+      "&q=" + encodeURIComponent(src.id);
+    // what the data said last time, so a Refresh can tell "the mean moved" from
+    // "the author typed something else here"
+    var prev = ed.delta_ref_vals || {};
+    return fetch(url, { credentials: "same-origin" }).then(function (r) {
+      return r.json();
+    }).then(function (d) {
+      if (!d || d.error) return;
+      ed.delta_ref_n = d.n || 0;
+      ed.delta_ref_numeric = d.numeric !== false;
+      ed.delta_ref_vals = d.cells || {};
+      if (!d.numeric || !d.cells) return;
+      var cells = ed.delta_ref_vals;
+      var cols = ed.cols || [], rows = ed.rows || [];
+      rows.forEach(function (r) {
+        r.ref = r.ref || {};
+        cols.forEach(function (c) {
+          if (c.kind !== "src") return;
+          var key = String(r.code) + "_" + String(c.src_code);
+          var v = cells[key];
+          if (v === undefined || v === null) return;
+          var cur = r.ref[c.code];
+          var blank = cur === undefined || String(cur).trim() === "";
+          // untouched still holds what the data said last time, so it is safe to move;
+          // anything else is the author's, and stays theirs
+          var untouched = blank ||
+            (prev[key] !== undefined && String(cur) === String(prev[key]));
+          if (force ? untouched : blank) r.ref[c.code] = String(v);
+        });
+      });
+    }).catch(function () { /* no answers to read yet - the author can still type them */ });
   }
 
   // Read the delta card's inputs. Called from syncFromForm, so every other path that saves
@@ -2163,10 +2208,30 @@
       return "Pick a grid or matrix question above and press <b>Carry forward</b>. Its rows and columns " +
         "are copied in, and you can add more of either afterwards.";
     }
-    return "Carried from <b>" + esc(src.id) + "</b> — " + srcCols.length + " column" +
-      (srcCols.length === 1 ? "" : "s") + " and " + rows.length + " row" + (rows.length === 1 ? "" : "s") +
-      ". Carried columns are shown to respondents for reference; the values go in the " +
-      newCols.length + " new column" + (newCols.length === 1 ? "" : "s") + ".";
+    var head = "Carried from <b>" + esc(src.id) + "</b> — " + srcCols.length + " column" +
+      (srcCols.length === 1 ? "" : "s") + " and " + rows.length + " row" +
+      (rows.length === 1 ? "" : "s") + ". Carried columns are shown to respondents for " +
+      "reference; the values go in the " + newCols.length + " new column" +
+      (newCols.length === 1 ? "" : "s") + ".";
+
+    // The reference cells are read out of the source question's own answers, so the note
+    // says where the numbers came from - and says so plainly when there are none.
+    if (srcCols.length) {
+      if (ed.delta_ref_numeric === false) {
+        return head + " <b>" + esc(src.id) + "</b> is answered with words or picks, not numbers, " +
+          "so there is nothing to average into the reference cells — type your own if you want them.";
+      }
+      var n = ed.delta_ref_n;
+      if (!n) {
+        return head + " <b>" + esc(src.id) + "</b> has no complete answers yet, so the reference " +
+          "cells are empty for now. Carry forward again once people have answered it, or type " +
+          "your own values.";
+      }
+      return head + " The reference values are the mean of the <b>" + n + "</b> answer" +
+        (n === 1 ? "" : "s") + " to <b>" + esc(src.id) + "</b>. Type over any of them to show " +
+        "something else.";
+    }
+    return head;
   }
 
   function deltaBlock() {
@@ -2193,7 +2258,12 @@
               " (" + m + " row" + (m === 1 ? "" : "s") + " × " + n + " col" + (n === 1 ? "" : "s") + ")") +
           "</option>";
       }).join("") + "</select>" +
-      '<button class="st-btn sm on" type="button" data-act="delta-carry">Carry forward</button></div>';
+      '<button class="st-btn sm on" type="button" data-act="delta-carry">Carry forward</button>' +
+      '<button class="st-btn sm ghost" type="button" data-act="delta-refresh"' +
+      (src ? "" : " disabled") +
+      ' title="Re-read the source question&rsquo;s answers and put the reference values back. ' +
+      'Anything you typed over stays.">Refresh reference values</button>' +
+      "</div>";
 
     html += '<div class="st-dl-togs">' +
       deltaTog("Validate per row", "Check each row on its own rather than the whole table", "f-dl-nochange", !!ed.delta_nochange) +
@@ -2232,7 +2302,9 @@
           (isSrc
             ? '<input class="st-dl-ref" data-dref="1" data-dri="' + ri + '" data-dci="' + ci +
               '" value="' + esc((r.ref || {})[c.code] != null ? (r.ref || {})[c.code] : "") +
-              '" placeholder="—" title="The value shown to respondents for reference">'
+              '" placeholder="—" title="' + esc(
+                "The value shown to respondents for reference. Filled in from the mean of " +
+                src.id + "'s answers; type over it to show something else.") + '">'
             : '<span class="st-dl-ph">Value</span>') +
           "</div>";
       });
@@ -3475,6 +3547,15 @@
             markChanged(); renderPreview();
             var nt = document.querySelector("#st-editor .st-dl-note");
             if (nt) nt.innerHTML = deltaNote(deltaSourceQ());
+          });
+        }
+        // Answers collected since the Delta was last carried need to reach the reference
+        // cells, so opening the card re-reads them once per source question.
+        var key = ed.id + "|" + ed.delta_source;
+        if (ed.delta_source && dlRefsRead !== key) {
+          dlRefsRead = key;
+          fillDeltaRefs(deltaSourceQ(), false).then(function () {
+            rerenderCard("answers"); changed();
           });
         }
       }, 0);
@@ -5123,9 +5204,10 @@
     if (act === "jump") { e.preventDefault(); var c = document.getElementById("card-" + b.getAttribute("data-card")); if (c) { c.open = true; c.scrollIntoView({ behavior: "smooth", block: "start" }); } return; }
     if (act === "set-layout") { syncFromForm(); var v = b.getAttribute("data-v"); setOrDel(ed, "layout", v === (ed.type === "multi_select" ? "grid" : "list") ? "" : v); $$("#f-layout-seg .st-seg-btn").forEach(function (x) { x.classList.toggle("on", x === b); }); markChanged(); renderPreview(); return; }
     // ---- delta: rows, columns and the carry-forward --------------------------------------
-    if (act === "delta-carry" || act === "delta-row-add" || act === "delta-row-del" ||
-        act === "delta-row-up" || act === "delta-row-down" || act === "delta-row-dup" ||
-        act === "delta-col-add" || act === "delta-col-del" || act === "delta-tab-logic") {
+    if (act === "delta-carry" || act === "delta-refresh" || act === "delta-row-add" ||
+        act === "delta-row-del" || act === "delta-row-up" || act === "delta-row-down" ||
+        act === "delta-row-dup" || act === "delta-col-add" || act === "delta-col-del" ||
+        act === "delta-tab-logic") {
       // remember which question the Delta was carrying from before the click settles
       // the dropdown's current choice, so a re-carry knows whether it is the same source
       var prevSrc = ed.delta_source;
@@ -5135,8 +5217,8 @@
       var dci = Number(b.getAttribute("data-dci")), dri = Number(b.getAttribute("data-dri"));
       var dcols = ed.cols = ed.cols || [], drows = ed.rows = ed.rows || [];
 
-      if (act === "delta-carry") {
-        carryDeltaForward(prevSrc);
+      if (act === "delta-carry" || act === "delta-refresh") {
+        var done = carryDeltaForward(prevSrc, act === "delta-refresh");
       } else if (act === "delta-row-add") {
         var used = {};
         drows.forEach(function (r) { used[String(r.code)] = 1; });
@@ -5174,7 +5256,10 @@
         return;
       }
       if (!dcols.length) dcols.push({ code: "d1", label: "New column", kind: "delta" });
-      rerenderCard("answers"); changed(); return;
+      rerenderCard("answers"); changed();
+      // the reference values arrive a beat later, so the card is drawn again when they do
+      if (done && done.then) done.then(function () { rerenderCard("answers"); changed(); });
+      return;
     }
 
     if (act === "it-add" || act === "opt-add-none" || act === "opt-add-na" || act === "opt-add-other") {

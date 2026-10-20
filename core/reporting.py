@@ -639,6 +639,109 @@ def build_sheets(records: list, scope: str, cfg: dict):
     ]
 
 
+# ---------------------------------------------------------------- Delta source values
+# A Delta question reproduces an earlier question so a respondent can see what was said
+# before and answer against it.  What it shows as reference is not authored by hand - it
+# comes from the answers the source question actually collected.  This reads those back:
+# a mean per row x column for a matrix, a mean per row for a scale, the allocated points
+# for a constant sum, the rank position for a rank, and the single value for a number.
+# Everything is rounded to one decimal, and a cell nobody answered is simply absent.
+
+GRID_SOURCE_TYPES = ("numeric_matrix", "text_grid", "rating_grid", "semantic_diff",
+                     "emoji_grid", "sum_to_100", "rating_scale", "rank",
+                     "numeric", "slider")
+
+
+def delta_source_columns(q: dict) -> list:
+    """The columns an earlier question can offer a Delta, in the order they should appear.
+
+    A question with a column list of its own offers exactly that.  One that scores each row
+    on a scale - a rating scale, word pairs, emoji grid - has no comparable columns, so it
+    offers a single Value column and the reference becomes the row's mean.
+    """
+    cols = q.get("cols") or []
+    if cols:
+        return cols
+    if q.get("rows") or q.get("items") or q.get("type") in ("sum_to_100", "rank", "numeric", "slider"):
+        return [{"code": "v", "label": "Value"}]
+    return []
+
+
+def delta_source_rows(q: dict) -> list:
+    """The rows an earlier question can offer a Delta."""
+    return q.get("rows") or q.get("items") or []
+
+
+# A source question whose answers are numbers, so a Delta can read them back as reference.
+NUMERIC_SOURCE_TYPES = ("numeric_matrix", "sum_to_100", "rating_scale",
+                        "semantic_diff", "emoji_grid", "rank", "numeric", "slider")
+
+
+def delta_source_values(records: list, q: dict) -> dict:
+    """What a Delta can show as reference for one source question.
+
+    ``cells`` is keyed ``"<row code>_<col code>"`` and holds the mean of every respondent who
+    answered that cell; ``rows`` and ``cols`` hold the means across a whole row or a whole
+    column.  ``n`` is how many complete respondents answered it, so the author can tell a real
+    reference from a guess, and a cell nobody answered is absent rather than zero.  A question
+    whose answers are not numbers - a choice grid, a text grid - reports ``numeric: False``
+    and no values, because averaging a word or a pick tells the respondent nothing.
+    """
+    from core.research import numeric
+
+    complete = [r for r in records if r.get("status") == "complete"]
+    qid, t = q["id"], q.get("type")
+    cols, rows = delta_source_columns(q), delta_source_rows(q)
+    out = {"qid": qid, "type": t, "n": 0, "numeric": t in NUMERIC_SOURCE_TYPES,
+           "rows": {}, "cols": {}, "cells": {}}
+    if not out["numeric"]:
+        return out
+
+    def vals(key):
+        got = []
+        for r in complete:
+            x = numeric((r.get("answers") or {}).get(qid, {}).get(key))
+            if x is not None:
+                got.append(x)
+        return got
+
+    def mean(got):
+        return round(sum(got) / len(got), 1) if got else None
+
+    # a plain number answers once, under no row or column
+    if t in ("numeric", "slider") and not rows:
+        got = vals("_")
+        out["n"] = len(got)
+        if got:
+            out["cells"]["_v"] = mean(got)
+        return out
+
+    many = len(cols) > 1
+    answered = 0
+    for r in rows:
+        rc = str(r["code"])
+        for c in cols:
+            cc = str(c["code"])
+            got = vals(rc + "_" + cc) if many else vals(rc)
+            if got:
+                answered = max(answered, len(got))
+                out["cells"][rc + "_" + cc] = mean(got)
+    out["n"] = answered
+
+    # the same read across a whole row, and down a whole column
+    for r in rows:
+        rc = str(r["code"])
+        got = [v for k, v in out["cells"].items() if k.startswith(rc + "_")]
+        if got:
+            out["rows"][rc] = mean(got)
+    for c in cols:
+        cc = str(c["code"])
+        got = [v for k, v in out["cells"].items() if k.endswith("_" + cc)]
+        if got:
+            out["cols"][cc] = mean(got)
+    return out
+
+
 def _picked(v, code) -> bool:
     """Whether a choice-grid row's answer contains the column's code (single or multi)."""
     if isinstance(v, list):

@@ -71,6 +71,100 @@ def _data_dictionary(cfg):
     return headers, rows
 
 
+# ---------------------------------------------------------------- what the source was answered with
+# A Delta does not ask the author to type the reference values in: it reads them back out
+# of the answers the source question actually collected.
+SRC_CFG = {
+    "title": "Delta source",
+    "sections": [{"id": "S1", "title": "Main"}],
+    "questions": [
+        {"id": "G1", "section": "S1", "type": "numeric_matrix", "stem": "What was in place before?",
+         "min": 0, "max": 100,
+         "rows": [{"code": "r1", "label": "Region A"}, {"code": "r2", "label": "Region B"}],
+         "cols": [{"code": "c1", "label": "Baseline"}, {"code": "c2", "label": "Target"}]},
+        {"id": "T1", "section": "S1", "type": "text_grid", "stem": "In your own words",
+         "rows": [{"code": "a", "label": "First"}],
+         "cols": [{"code": "c1", "label": "Say what"}]},
+        {"id": "S1q", "section": "S1", "type": "rating_scale", "stem": "How good?",
+         "rows": [{"code": "a", "label": "One"}], "scale": {"min": 1, "max": 5}},
+        {"id": "N1", "section": "S1", "type": "numeric", "stem": "How many?"},
+    ],
+    "qc": {"min_seconds": 1},
+}
+
+
+def _answered(cfg, qid, answers, i=0):
+    """A complete respondent who answered `qid` with `answers`."""
+    r = _respondent(i, {qid: answers}, cfg)
+    r["flat"] = flatten(r, r["answers"], cfg)
+    return r
+
+
+def test_a_matrix_source_gives_the_mean_of_every_cell():
+    from core.reporting import delta_source_values
+    recs = [
+        _answered(SRC_CFG, "G1", {"r1_c1": "10", "r1_c2": "90", "r2_c1": "25", "r2_c2": "75"}, 1),
+        _answered(SRC_CFG, "G1", {"r1_c1": "20", "r1_c2": "80", "r2_c1": "35", "r2_c2": "65"}, 2),
+        _answered(SRC_CFG, "G1", {"r1_c1": "30", "r1_c2": "70", "r2_c1": "45", "r2_c2": "55"}, 3),
+    ]
+    v = delta_source_values(recs, SRC_CFG["questions"][0])
+    assert v["cells"] == {"r1_c1": 20.0, "r1_c2": 80.0, "r2_c1": 35.0, "r2_c2": 65.0}
+    assert v["rows"] == {"r1": 50.0, "r2": 50.0}
+    assert v["cols"] == {"c1": 27.5, "c2": 72.5}
+    assert v["n"] == 3 and v["numeric"] is True
+
+
+def test_a_cell_nobody_answered_is_absent_not_zero():
+    from core.reporting import delta_source_values
+    recs = [_answered(SRC_CFG, "G1", {"r1_c1": "10"}, 1)]
+    v = delta_source_values(recs, SRC_CFG["questions"][0])
+    assert v["cells"] == {"r1_c1": 10.0}
+    assert "r2_c1" not in v["cells"] and "r1_c2" not in v["cells"]
+
+
+def test_a_scale_source_offers_one_value_column_per_row_mean():
+    from core.reporting import delta_source_columns, delta_source_values
+    q = SRC_CFG["questions"][2]
+    assert [c["code"] for c in delta_source_columns(q)] == ["v"]
+    recs = [_answered(SRC_CFG, "S1q", {"a": "4"}, 1), _answered(SRC_CFG, "S1q", {"a": "2"}, 2)]
+    v = delta_source_values(recs, q)
+    assert v["cells"] == {"a_v": 3.0} and v["n"] == 2
+
+
+def test_a_word_answered_source_reports_no_values_to_carry():
+    from core.reporting import delta_source_values
+    q = SRC_CFG["questions"][1]
+    recs = [_answered(SRC_CFG, "T1", {"a_c1": "the first thing"}, 1)]
+    v = delta_source_values(recs, q)
+    # averaging a word tells a respondent nothing, so nothing is offered
+    assert v["numeric"] is False and v["cells"] == {} and v["n"] == 0
+
+
+def test_a_plain_number_source_gives_its_one_value():
+    from core.reporting import delta_source_values
+    q = SRC_CFG["questions"][3]
+    recs = [_answered(SRC_CFG, "N1", {"_": "42"}, 1)]
+    assert delta_source_values(recs, q)["cells"] == {"_v": 42.0}
+
+
+def test_the_endpoint_serves_what_a_delta_carries(client):
+    slug = _live(client, SRC_CFG, "delta-src")
+    for a in [{"r1_c1": "10", "r1_c2": "90", "r2_c1": "25", "r2_c2": "75"},
+              {"r1_c1": "20", "r1_c2": "80", "r2_c1": "35", "r2_c2": "65"}]:
+        sid = client.post("/api/start", json={"study": slug, "is_test": False}).get_json()["session_id"]
+        client.post("/api/save", json={"session_id": sid, "elapsed_seconds": 30,
+                                       "answers": {"G1": a}})
+        client.post("/api/submit", json={"session_id": sid, "elapsed_seconds": 60})
+    d = client.get("/api/studio/delta-source", query_string={"study": slug, "q": "G1"}).get_json()
+    assert d["qid"] == "G1" and d["n"] == 2 and d["numeric"] is True
+    assert d["cells"] == {"r1_c1": 15.0, "r1_c2": 85.0, "r2_c1": 30.0, "r2_c2": 70.0}
+    # the editor draws its column list from the source question, so it comes back too
+    assert [c["code"] for c in d["columns"]] == ["c1", "c2"]
+    assert [r["code"] for r in d["row_list"]] == ["r1", "r2"]
+    assert client.get("/api/studio/delta-source",
+                      query_string={"study": slug, "q": "nope"}).status_code == 404
+
+
 # ---------------------------------------------------------------- the export
 def test_a_grid_delta_flattens_one_column_per_new_cell():
     q = GRID_CFG["questions"][1]
@@ -146,15 +240,16 @@ def test_research_still_reads_the_pair_delta():
 
 
 # ---------------------------------------------------------------- end to end through the survey
-def _live(client, cfg, slug, answers):
+def _live(client, cfg, slug, answers=None):
     r = client.post("/api/studio/save", json={"slug": slug, "title": cfg["title"], "cfg": cfg})
     assert r.status_code == 200, r.get_json()
     client.post("/api/studio/status", json={"slug": slug, "status": "live"})
-    s = client.post("/api/start", json={"study": slug, "is_test": False}).get_json()
-    sid = s["session_id"]
-    client.post("/api/save", json={"session_id": sid, "elapsed_seconds": 30, "answers": answers})
-    client.post("/api/submit", json={"session_id": sid, "elapsed_seconds": 60})
-    return sid
+    if answers:
+        s = client.post("/api/start", json={"study": slug, "is_test": False}).get_json()
+        sid = s["session_id"]
+        client.post("/api/save", json={"session_id": sid, "elapsed_seconds": 30, "answers": answers})
+        client.post("/api/submit", json={"session_id": sid, "elapsed_seconds": 60})
+    return slug
 
 
 def test_a_grid_delta_flows_into_the_export(client):

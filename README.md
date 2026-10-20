@@ -353,10 +353,22 @@ now" read as one table rather than two.
 
 Every column can be renamed - a carried one as readily as a new one - and **+ Add column**
 and **+ Add row** both stay available, so a Delta can grow past the question it came from.
-Each row also holds the reference value shown under each carried column, so the author
-decides what the respondent is comparing against. Carrying forward from a second source
-*adds* to what is there: the columns and reference values already authored are never
-dropped, only a column whose own source question has lost it.
+Carrying forward from a second source *adds* to what is there: the columns and reference
+values already authored are never dropped, only a column whose own source question has lost
+it.
+
+**The reference values are not typed by hand.** They are read back out of the answers the
+source question actually collected: the mean of every respondent who answered that row and
+that column. The line under the source picker says exactly that - *the reference values are
+the mean of the N answers to G1* - so nobody has to guess where a number came from.
+
+Type over any cell to show something else instead; a cell the author has changed is theirs,
+and neither a **Refresh reference values** nor reopening the study moves it. Refresh
+re-reads the source and updates only the cells still holding what the data said, which is
+how a Delta picks up answers that arrived after it was built. A source nobody has answered
+yet leaves the cells empty and says so; one answered with words or picks rather than numbers
+- a text grid, a choice grid - says that too, because averaging a word tells a respondent
+nothing.
 
 A **Validation rule** of *Each new column adds up to* puts a live total row under the new
 columns; it follows the cells as they are typed and turns red the moment a column is off,
@@ -505,8 +517,8 @@ Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 python3 -m pytest                               # in-process suite, no server needed
 python3 -m pytest tests/test_ai_detect.py       # AI-answer detection, flags, queue, exports
 python3 -m pytest tests/test_globalize.py       # languages, translation, outline, new question types
-python3 -m pytest tests/test_delta_grid.py        # Delta as a carried grid: export, data dictionary,
-                                                 #   research summary, and the older before/after Delta
+python3 -m pytest tests/test_delta_grid.py        # Delta as a carried grid: reference values read back from the
+                                                 #   source, export, data dictionary, research summary, before/after Delta
 python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
 python3 -m pytest tests/test_screening.py       # screening config on save, plain-English logic, outline & export
 
@@ -520,8 +532,8 @@ node scripts/dom/studio_colors_test.js          # font-colour & highlight palett
 node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
 node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
 node scripts/dom/studio_scale_row_test.js          # the six-column scale-point row: track sizes, the SVG attach control, no literal escape text
-node scripts/dom/studio_delta_grid_test.js         # Delta: carry-forward, side-by-side columns, renames,
-                                                 #   add / delete / reorder, the rendered grid, N/A and totals
+node scripts/dom/studio_delta_grid_test.js         # Delta: carry-forward, reference values from the source's answers,
+                                                 #   side-by-side columns, renames, add / delete / reorder, N/A and totals
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view

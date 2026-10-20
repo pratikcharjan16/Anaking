@@ -8,6 +8,8 @@ API (used by static/js/studio.js)
     GET  /api/studio/list                  all studies with respondent counts
     GET  /api/studio/study?slug=           one study incl. config
     GET  /api/studio/analysis?study=       quick analysis aggregates
+    GET  /api/studio/delta-source?study=&q=  what a source question was answered with,
+                                             for a Delta to carry forward as reference
     POST /api/studio/save                  create or update {slug?, title, cfg}
     POST /api/studio/status                {slug, status: draft|live|paused|closed}
     POST /api/studio/delete                {slug}
@@ -49,7 +51,8 @@ from core.i18n import (LANGUAGES, coverage, default_language, extract_strings,
 LANGUAGES_MAP = {c: {"name": n, "native": nv, "dir": d} for c, n, nv, d in LANGUAGES}
 from core.narration import clip_duration
 from core.outline import build_outline
-from core.reporting import analysis_for
+from core.reporting import (analysis_for, delta_source_columns, delta_source_rows,
+                             delta_source_values)
 from core.translator import TranslationError, translate_string
 from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
 from models import Study, StudyError
@@ -80,6 +83,38 @@ def get_study():
         return jsonify({"error": "unknown study"}), 404
     return jsonify({"slug": study.slug, "title": study.title, "status": study.status,
                     "cfg": study.cfg, "updated_at": study.updated_at})
+
+
+@bp.get("/api/studio/delta-source")
+def delta_source():
+    """What a source question has actually been answered with, for a Delta to carry forward.
+
+    The Delta editor asks for this the moment an author picks a source question, so the
+    reference cells are filled from the data rather than typed by hand.  A question nobody
+    has answered yet - or one whose answers are not numbers - comes back with no values,
+    and the editor says so instead of showing a blank it cannot explain.
+    """
+    slug = study_arg()
+    qid = str(request.args.get("q") or "")
+    cfg = Study.cfg_of(slug)
+    q = next((x for x in cfg.get("questions", []) if str(x.get("id")) == qid), None)
+    if q is None:
+        return jsonify({"error": "Unknown question " + qid}), 404
+    data = records(slug, "all")
+    vals = delta_source_values(data, q)
+    return jsonify({
+        "qid": q["id"],
+        "type": q.get("type"),
+        "n": vals["n"],
+        "numeric": vals["numeric"],
+        "rows": vals["rows"],
+        "cols": vals["cols"],
+        "cells": vals["cells"],
+        "columns": [{"code": str(c.get("code")), "label": c.get("label") or ""}
+                    for c in delta_source_columns(q)],
+        "row_list": [{"code": str(r.get("code")), "label": r.get("label") or ""}
+                     for r in delta_source_rows(q)],
+    })
 
 
 @bp.get("/api/studio/analysis")

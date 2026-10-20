@@ -95,6 +95,16 @@ async function liveStudy(cfg, title) {
   await req("POST", "/admin/reset?study=" + slug + "&scope=all");
   return slug;
 }
+// respondents who have already answered the source question, the way they would have
+async function answerSource(slug, qid, answers) {
+  for (const a of answers) {
+    const st = await post("/api/start", { study: slug, is_test: false });
+    const sid = st.session_id;
+    await post("/api/save", { session_id: sid, elapsed_seconds: 30, answers: { [qid]: a } });
+    await req("POST", "/api/submit", JSON.stringify({ session_id: sid, elapsed_seconds: 60 }));
+  }
+}
+
 async function openSurvey(slug) {
   const url = "/survey/" + slug + "/test";
   const dom = new JSDOM(await get(url), { url: BASE + url, runScripts: "outside-only", pretendToBeVisual: true });
@@ -441,6 +451,162 @@ const CFG = {
   check("the older two-cell delta still renders its before, after and change boxes",
     !!P.$(".delta-out") && P.$$(".delta-cell").length === 3,
     "cells=" + P.$$(".delta-cell").length + " out=" + !!P.$(".delta-out"));
+
+  // =============================================================== the reference values come
+  // from the source question's own answers, not from the author's keyboard
+  const SRC_CFG = {
+    sections: [{ id: "S1", title: "Delta" }],
+    questions: [
+      { id: "G1", section: "S1", type: "numeric_matrix", stem: "What was in place before?",
+        min: 0, max: 100,
+        rows: [{ code: "r1", label: "Region A" }, { code: "r2", label: "Region B" }],
+        cols: [{ code: "c1", label: "Baseline" }, { code: "c2", label: "Target" }] },
+      { id: "C2", section: "S1", type: "open_text", stem: "Say something" },
+    ],
+    tpp: {}, explainer_scenes: [],
+  };
+  const rslug = await liveStudy(SRC_CFG, "Delta Reference");
+  await answerSource(rslug, "G1", [
+    { r1_c1: "10", r1_c2: "90", r2_c1: "25", r2_c2: "75" },
+    { r1_c1: "20", r1_c2: "80", r2_c1: "35", r2_c2: "65" },
+    { r1_c1: "30", r1_c2: "70", r2_c1: "45", r2_c2: "55" },
+  ]);
+  // the mean of the three: 20 / 80 / 35 / 65
+  const dsrc = JSON.parse(await get("/api/studio/delta-source?study=" + rslug + "&q=G1"));
+  check("the source endpoint reports the mean of every answered cell",
+    dsrc.cells.r1_c1 === 20 && dsrc.cells.r1_c2 === 80 &&
+    dsrc.cells.r2_c1 === 35 && dsrc.cells.r2_c2 === 65 && dsrc.n === 3,
+    JSON.stringify(dsrc.cells) + " n=" + dsrc.n);
+
+  const R2 = await studio(rslug);
+  await R2.open("C2"); await sleep(260);
+  R2.click(R2.$(".st-addq")); await sleep(320);
+  R2.click(R2.$('[data-act="qadd-type"][data-type="delta"]'));
+  let rid = null;
+  for (let i = 0; i < 25 && !rid; i++) {
+    rid = ((await savedCfg(rslug)).questions.find(q => q.type === "delta") || {}).id;
+    if (!rid) await sleep(300);
+  }
+  await R2.open(rid); await sleep(340);
+
+  check("before anything is carried, the reference cells are empty",
+    R2.$$(".st-dl-ref").length === 0 && R2.$$(".st-dl-tr[data-dri]").length === 0);
+
+  R2.$("#f-delta-source").value = "G1";
+  R2.fire(R2.$("#f-delta-source"), "change");
+  await sleep(180);
+  R2.click(R2.$('[data-act="delta-carry"]'));
+  await sleep(1100);
+  check("Carry forward fills the reference cells from the source's answers",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "20|80|35|65",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
+  check("the note says where the reference values came from",
+    /mean of the 3 answers to G1/.test(R2.$(".st-dl-note").textContent),
+    R2.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 200));
+  check("Refresh reference values is offered once there is a source",
+    !!R2.$('[data-act="delta-refresh"]') && !R2.$('[data-act="delta-refresh"]').disabled);
+
+  let rq = await R2.savedQ(rid, q => (q.rows || []).some(r => r.ref && Object.keys(r.ref).length));
+  check("the filled reference values persist",
+    rq.rows[0].ref.dscc1 === "20" && rq.rows[1].ref.dscc2 === "65",
+    JSON.stringify(rq.rows));
+
+  // a cell the author typed over is theirs, and a Refresh does not move it
+  const over = R2.$$(".st-dl-ref")[0];
+  over.value = "999"; R2.fire(over, "input");
+  await sleep(750);
+  R2.click(R2.$('[data-act="delta-refresh"]'));
+  await sleep(1100);
+  check("a typed-over reference cell survives a Refresh, and the rest still move",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|80|35|65",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
+
+  // more data arrives: a Refresh picks up the new mean on the cells left to the data
+  await answerSource(rslug, "G1", [{ r1_c1: "40", r1_c2: "60", r2_c1: "55", r2_c2: "45" }]);
+  R2.click(R2.$('[data-act="delta-refresh"]'));
+  await sleep(1100);
+  check("a Refresh after more answers picks up the new mean",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|75|40|60",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|") +
+    " (r1_c2 mean of 90,80,70,60 = 75; r2_c1 mean of 25,35,45,55 = 40; r2_c2 = 60)");
+
+  // reopening the card re-reads the answers without moving anything the author typed
+  await R2.open("G1"); await sleep(260);
+  await R2.open(rid); await sleep(1200);
+  check("reopening the card re-reads the source and leaves the override alone",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|") === "999|75|40|60",
+    R2.$$(".st-dl-ref").map(n => n.value).join("|"));
+  check("the reference section produced no script errors", !R2.errs.length, R2.errs.join(" | "));
+
+  // ---------------------------------------------------------------- nothing answered yet
+  const ECFG = {
+    sections: [{ id: "S1", title: "Delta" }],
+    questions: [
+      { id: "G1", section: "S1", type: "numeric_matrix", stem: "Asked but never answered",
+        rows: [{ code: "r1", label: "Region A" }],
+        cols: [{ code: "c1", label: "Baseline" }] },
+      { id: "C2", section: "S1", type: "open_text", stem: "Say something" },
+    ],
+    tpp: {}, explainer_scenes: [],
+  };
+  const eslug = await liveStudy(ECFG, "Delta No Answers");
+  const E = await studio(eslug);
+  await E.open("C2"); await sleep(260);
+  E.click(E.$(".st-addq")); await sleep(320);
+  E.click(E.$('[data-act="qadd-type"][data-type="delta"]'));
+  let eid = null;
+  for (let i = 0; i < 25 && !eid; i++) {
+    eid = ((await savedCfg(eslug)).questions.find(q => q.type === "delta") || {}).id;
+    if (!eid) await sleep(300);
+  }
+  await E.open(eid); await sleep(340);
+  E.$("#f-delta-source").value = "G1";
+  E.fire(E.$("#f-delta-source"), "change");
+  await sleep(180);
+  E.click(E.$('[data-act="delta-carry"]'));
+  await sleep(1100);
+  check("a source with no answers leaves the reference cells empty and says so",
+    E.$$(".st-dl-ref").every(n => n.value === "") &&
+    /no complete answers yet/.test(E.$(".st-dl-note").textContent),
+    E.$$(".st-dl-ref").map(n => n.value).join("|") + " / " +
+    E.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 160));
+
+  // ---------------------------------------------------------------- a non-numeric source
+  const TCFG = {
+    sections: [{ id: "S1", title: "Delta" }],
+    questions: [
+      { id: "T1", section: "S1", type: "text_grid", stem: "In your own words",
+        rows: [{ code: "a", label: "First" }], cols: [{ code: "c1", label: "Say what" }] },
+      { id: "C2", section: "S1", type: "open_text", stem: "Say something" },
+    ],
+    tpp: {}, explainer_scenes: [],
+  };
+  const tslug = await liveStudy(TCFG, "Delta Text Source");
+  await answerSource(tslug, "T1", [{ a_c1: "the first thing" }, { a_c1: "another thing" }]);
+  const tds = JSON.parse(await get("/api/studio/delta-source?study=" + tslug + "&q=T1"));
+  check("a source answered with words reports no values to carry",
+    tds.numeric === false && !Object.keys(tds.cells || {}).length,
+    JSON.stringify(tds));
+  const T = await studio(tslug);
+  await T.open("C2"); await sleep(260);
+  T.click(T.$(".st-addq")); await sleep(320);
+  T.click(T.$('[data-act="qadd-type"][data-type="text_grid"][data-kind="0"]') ||
+          T.$('[data-act="qadd-type"][data-type="delta"]'));
+  await sleep(400);
+  let tid = null;
+  for (let i = 0; i < 25 && !tid; i++) {
+    tid = ((await savedCfg(tslug)).questions.find(q => q.type === "delta") || {}).id;
+    if (!tid) await sleep(300);
+  }
+  await T.open(tid); await sleep(340);
+  T.$("#f-delta-source").value = "T1";
+  T.fire(T.$("#f-delta-source"), "change");
+  await sleep(180);
+  T.click(T.$('[data-act="delta-carry"]'));
+  await sleep(1100);
+  check("carrying from a word-answered source says why the cells are empty",
+    /answered with words or picks, not numbers/.test(T.$(".st-dl-note").textContent),
+    T.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 200));
 
   console.log("\n" + (fails ? fails + " FAILURE(S)" : "all checks passed"));
   process.exit(fails ? 1 : 0);
