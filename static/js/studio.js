@@ -81,6 +81,7 @@
     numeric_matrix: { name: "Numeric Matrix", icon: "\u25A4", desc: "A number for every row", group: "Questions" },
     delta: { name: "Delta", icon: "\u0394", desc: "Before / after values and the change", group: "Questions" },
     concept_test: { name: "Concept Test", icon: "\uD83D\uDCA1", desc: "Show a concept, rate it on rows", group: "Methodologies" },
+    walk_through: { name: "Walk Through", icon: "\u25B6\uFE0F", desc: "Narrated animated walkthrough - no answer stored", group: "Methodologies" },
     heatmap: { name: "Heatmap", icon: "\u25A9", desc: "Intensity per row \u00D7 column", group: "Methodologies" },
     maxdiff: { name: "Max Diff", icon: "\u2194", desc: "Best / worst trade-offs - the Max Diff experiment", group: "Methodologies", noprev: true },
     choice_task: { name: "Conjoint", icon: "\u21C4", desc: "Choice tasks from the conjoint design", group: "Methodologies" },
@@ -170,6 +171,13 @@
       q.items = [{ code: "i1", label: "First item" }, { code: "i2", label: "Second item" }];
       q.loop_mode = "create"; q.loop_source = ""; q.limit_loops = false; q.loop_limit = 3; q.loop_randomize = false; q.loop_override = false;
       q.loop_questions = [{ id: q.id + "_LQ1", type: "open_text", stem: "What do you think about {label}?", placeholder: "Type your answer", required: true }];
+    }
+    if (type === "walk_through") {
+      q.required = false;                 // nothing is asked, so nothing can be required
+      q.walk_tts = true;                  // speak each step with the browser voice
+      q.walk_description_html = "";
+      q.walk_steps = [];
+      q.walk_questions = [];
     }
     if (type === "text_block") { q.required = false; q.body = "Add instructions, an introduction or a story here."; }
     return q;
@@ -813,6 +821,10 @@
       case "concept_test":
         var cc = (q.concepts||[]).length, cq = (q.concept_questions||[]).length;
         return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+cc+' concepts</b><i></i></span><span class="st-tb-row"><b>'+cq+' questions</b><i></i></span>'+(cq? '<span class="st-tb-more">'+cc*cq+' steps</span>':'')+'</div>';
+      case "walk_through":
+        var ws = (q.walk_steps||[]).length, wq = (q.walk_questions||[]).length;
+        var attached = (q.walk_steps||[]).filter(function(st){ return st.media && st.media.src; }).length;
+        return '<div class="st-tb-rows"><span class="st-tb-row"><b>'+ws+' steps</b><i></i></span><span class="st-tb-row"><b>'+wq+' questions</b><i></i></span>'+(attached? '<span class="st-tb-more">'+attached+' attached</span>':'')+'</div>';
       case "heatmap":
         var hm = q.heatmap || {};
         if (hm.image_src) return '<div class="st-tb-hm"><img src="' + esc(hm.image_src) + '" alt=""><span>' + esc(hm.image_title || "Heatmap") + ' \u00B7 ' + ((hm.reactions||[]).length||0) + ' reactions</span></div>';
@@ -1299,6 +1311,7 @@
   // ------------------------------------------------------------ question editor pane
   var ed = null;           // live reference to cur.cfg.questions[sel]
   var ctInnerQi = null;    // when editing a question inside Concept Test: index in ed.concept_questions
+  var wtInnerQi = null;    // ... inside a Walk Through: index in ed.walk_questions
   var OPS = [["selected", "has selected"], ["not_selected", "has not selected"],
     ["any_of", "selected any of (codes a,b)"], ["none_of", "selected none of (codes a,b)"],
     ["eq", "equals"], ["ne", "does not equal"], ["gt", "is greater than"], ["gte", "is at least"], ["lt", "is less than"], ["lte", "is at most"],
@@ -1838,44 +1851,14 @@
     var host = document.getElementById("st-editor"); if (!host) return;
     closePipePicker();
     ed = sel >= 0 ? cur.cfg.questions[sel] : null;
-    if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
-      var parentQ = ed;
-      var innerQ = parentQ.concept_questions && parentQ.concept_questions[ctInnerQi];
-      if (innerQ) {
-        ed = innerQ;
-        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
-        var ti = tinfo(ed.type);
-        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="ct-inner-back" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(ctInnerQi+1)+' of '+parentQ.concept_questions.length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentQ.concept_execution||'Concept Test')+')</span><span class="st-count">'+(ctInnerQi+1)+'/'+parentQ.concept_questions.length+'</span></div>';
-        host.innerHTML =
-          backHead +
-          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
-          '<div class="st-ehead">' +
-            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
-            '<div class="st-ehead-main"><div class="st-ehead-row">' +
-              '<div class="st-ehead-idcol">' +
-                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
-                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
-              '</div>' +
-              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
-              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
-              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
-            '</div></div>' +
-            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="ct-inner-dup" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="ct-inner-del" title="Delete">✕</button></div>' +
-          '</div>' +
-          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
-          edStrip() +
-          (edTab==="screen" ? "" : scrLineHtml()) +
-          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
-           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
-           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
-             card("q","Question","What respondents read", qCard()) +
-             card("answers",answersTitle(),"", answersCard()) +
-             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
-             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
-             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
-        renderPreview(); return;
-      } else { ctInnerQi=null; ed = parentQ; }
+    var innerHtml = null;
+    if (ed && ed.type === "walk_through" && wtInnerQi !== null) {
+      innerHtml = renderInnerQuestion("walk_questions", wtInnerQi, "cq", "wt-inner-back", "Walk Through");
+    } else if (ed && ed.type === "concept_test" && ctInnerQi !== null) {
+      innerHtml = renderInnerQuestion("concept_questions", ctInnerQi, "cq", "ct-inner-back",
+                                      ed.concept_execution || "Concept Test");
     }
+    if (innerHtml) { host.innerHTML = innerHtml; renderPreview(); return; }
     if (!ed) {
       host.innerHTML = '<div class="st-editor-empty"><div class="st-editor-empty-ic">\u270E</div><h3>' +
         (cur.cfg.questions.length ? "Pick a question on the left to edit it" : "This study has no questions yet") +
@@ -2904,7 +2887,8 @@
     html += '</div>';
     return html;
   }
-  function conceptQuestionRow(qq, qi){
+  function conceptQuestionRow(qq, qi, pfx){
+    pfx = pfx || "ct";                 // "ct" = Concept Test, "wt" = Walk Through
     var icon = tinfo(qq.type).icon || "\u2261";
     var tname = (tinfo(qq.type).name || qq.type);
     var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
@@ -2913,22 +2897,232 @@
     h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
     h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
     h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
-    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="ct-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="ct-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="ct-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="'+pfx+'-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="'+pfx+'-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="'+pfx+'-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
     h += '</div>';
     return h;
   }
-  function openCtTypePicker(){
-    var html = '<div class="st-modal-head"><strong>Add a question to Concept Test</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+  // ---------------------------------------------------------------- walk-through card
+  // A Walk Through is a Concept Test with the concepts replaced by walk-through steps: each
+  // step carries a piece of narration plus either an animated scene or an attached image or
+  // video, and the respondent watches the sequence instead of reading it.  No answer is
+  // stored - the questions after it are optional and separate.
+  var WT_DURATIONS = ["no-limit", "5 sec", "10 sec", "15 sec", "20 sec", "25 sec", "30 sec", "1 min", "2 min"];
+  function walkSteps() {
+    if (!Array.isArray(ed.walk_steps)) ed.walk_steps = [];
+    ed.walk_steps.forEach(function (st) {
+      if (!st.art) st.art = "generic";
+      if (!st.id) st.id = ed.id + "_W" + (ed.walk_steps.indexOf(st) + 1);
+    });
+    return ed.walk_steps;
+  }
+  function walkQuestions() {
+    if (!Array.isArray(ed.walk_questions)) ed.walk_questions = [];
+    return ed.walk_questions;
+  }
+  function walkThroughBlock() {
+    var steps = walkSteps(), qs = walkQuestions();
+    var html = '<div class="st-ct-wrap st-ct-breathable">';
+
+    // ---- set-up: what the respondent is told before the walkthrough starts
+    html += '<div class="st-ct-section">';
+    html += '<div class="st-field"><label>Walk-through set-up \u2014 shown before it starts</label>' +
+      richToolbar("f-wt-desc") +
+      '<div class="st-rich" id="f-wt-desc" contenteditable="true" data-placeholder="' +
+      'You are about to be taken through this step by step. Sit back and listen - there is nothing to read.">' +
+      chipify(Q.sanitize(ed.walk_description_html || "")) + '</div></div>';
+    html += '<div class="st-ct-toggle-row">' +
+      '<label class="st-switch"><input type="checkbox" id="f-wt-tts"' + (ed.walk_tts !== false ? " checked" : "") +
+      '><i></i>Speak each step with the browser voice</label>' +
+      '<span class="st-ct-toggle-hint">The narration under each step is read out loud, so the respondent ' +
+      'does not have to read it. Attach a recorded clip to any step to use a real voice instead.</span></div>';
+    html += '</div>';
+
+    // ---- the steps
+    html += '<div class="st-ct-section">';
+    html += '<div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Walk-through steps ' +
+      '<span class="st-count">' + (steps.length ? steps.length : "") + '</span></span></div>';
+    html += '<div class="st-ct-concepts">';
+    if (!steps.length) {
+      html += '<div class="st-empty">No steps yet - add one for each thing you want to show, then write what ' +
+        'should be said out loud. A PowerPoint deck can be turned into steps for you.</div>';
+    }
+    steps.forEach(function (st, i) { html += walkStepRow(st, i); });
+    html += '</div>';
+    html += '<div class="st-ct-concepts-controls">' +
+      '<button class="st-btn sm st-ct-add-btn" data-act="wt-add">+ Add step</button>' +
+      '<button class="st-btn play" data-act="wt-preview-all">&#9654; Preview the walkthrough</button>' +
+      '</div>';
+    html += '<div class="st-ct-toggle-row">' +
+      '<label class="st-upload big">&#8679; Build steps from a PowerPoint deck' +
+      '<input type="file" accept=".pptx" data-act="wt-ppt" hidden></label>' +
+      '<span class="st-ct-toggle-hint">One step per slide: the slide title becomes the step name and the ' +
+      'slide text plus its speaker notes become the narration. Replaces the steps above.</span></div>';
+    html += '</div>';
+
+    // ---- questions asked afterwards (optional)
+    html += '<div class="st-ct-sep"><span>Questions about the walkthrough</span></div>';
+    html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    if (!qs.length) {
+      html += '<div class="st-empty">No questions yet - a Walk Through can simply be shown and then left, ' +
+        'or you can ask something about it.</div>';
+    }
+    qs.forEach(function (qq, qi) { html += conceptQuestionRow(qq, qi, "wt"); });
+    html += '</div><button class="st-btn ghost wide" data-act="wt-q-add" style="margin-top:10px">+ Add Item</button></div>';
+    html += '</div>';
+    return html;
+  }
+
+  function walkStepRow(st, i) {
+    var opts = artLabels().map(function (a) { return a[0]; });
+    var hasMedia = !!(st.media && st.media.src);
+    var h = '<div class="st-ct-concept-card" data-wt-i="' + i + '">';
+
+    h += '<div class="st-ct-concept-top">' +
+      '<span class="st-grip" title="Drag to reorder">\u283F</span>' +
+      '<input data-wt="label" data-i="' + i + '" value="' + esc(st.label || "") +
+      '" placeholder="Step ' + (i + 1) + ' - e.g. Mechanism of action" class="st-ct-label-input">' +
+      '<button class="st-ibtn danger" data-act="wt-del" data-i="' + i + '" title="Delete">\u2715</button>' +
+      '<span class="st-item-tools">' +
+      '<button class="st-btn sm" data-act="wt-up" data-i="' + i + '" title="Move up"' + (i === 0 ? " disabled" : "") + '>&#8593;</button>' +
+      '<button class="st-btn sm" data-act="wt-down" data-i="' + i + '" title="Move down"' + (i === walkSteps().length - 1 ? " disabled" : "") + '>&#8595;</button>' +
+      '</span></div>';
+
+    // attachment
+    h += '<div class="st-ct-concept-mid">' +
+      '<button class="st-ibtn" data-act="wt-media" data-i="' + i + '" title="Attach an image or a video">&#128206;</button>';
+    if (hasMedia) {
+      h += '<span class="st-thumb">' +
+        (st.media.kind === "video" ? "&#127909;" : '<img src="' + esc(st.media.src) + '" alt="">') +
+        '<button class="st-x" data-act="wt-media-del" data-i="' + i + '">&times;</button></span>' +
+        '<span class="st-ct-text">' + esc(st.media.kind === "video" ? "Video" : "Image") + ' attached</span>';
+    } else {
+      h += '<span class="st-ct-text">No attachment - an animated scene is shown instead</span>';
+    }
+    h += '</div>';
+
+    // narration - the text that gets spoken
+    h += '<div class="st-wt-narr">' +
+      '<label>Narration the respondent hears</label>' +
+      '<textarea data-wt="narration" data-i="' + i + '" rows="3" placeholder="Say this out loud, e.g. ' +
+      '&quot;This drug blocks the target before the tumour can grow.&quot;">' + esc(st.narration || "") + '</textarea>' +
+      (hasMedia ? "" : '<span class="st-ct-toggle-hint">Spoken over the animation chosen below.</span>') +
+      '</div>';
+
+    h += '<div class="st-ct-concept-bottom">';
+    if (!hasMedia) {
+      h += '<label class="st-inline">Animation <select data-wt="art" data-i="' + i + '">' +
+        opts.map(function (a) { return '<option value="' + a + '"' + (a === st.art ? " selected" : "") + '>' +
+          esc(artLabel(a)) + "</option>"; }).join("") + '</select></label>';
+    }
+    h += '<span class="st-inline">' + (st.src
+      ? '<span class="st-clip">&#127911; ' + esc(st.file || "clip") + (st.seconds ? " &middot; " + st.seconds + "s" : "") +
+        ' <button class="st-x" data-act="wt-clip-del" data-i="' + i + '" title="Remove clip">&times;</button></span>'
+      : '<label class="st-upload">&#8679; Recorded clip<input type="file" accept="audio/*,.mp3,.m4a,.ogg,.wav,.webm" data-act="wt-clip" data-i="' + i + '" hidden></label>') +
+      '</span>';
+    h += '<label class="st-inline">For <select data-wt="duration" data-i="' + i + '">' +
+      WT_DURATIONS.map(function (d) {
+        var cur = WT_DUR_MAP[st.duration] || st.duration || "no-limit";
+        return '<option value="' + d + '"' + (cur === d ? " selected" : "") + ">" + d + "</option>";
+      }).join("") + '</select></label>';
+    h += '<label class="st-switch"><input type="checkbox" data-wt="allow_replay" data-i="' + i + '"' +
+      (st.allow_replay ? " checked" : "") + '><i></i>Allow replay</label>';
+    h += '<a href="#" class="st-link" data-act="wt-preview" data-i="' + i + '" style="color:#12789e">Preview</a>';
+    h += '</div></div>';
+    return h;
+  }
+
+  var WT_DUR_MAP = { "no-limit": "no-limit", "5s": "5 sec", "10s": "10 sec", "15s": "15 sec",
+    "20s": "20 sec", "25s": "25 sec", "30s": "30 sec", "1 min": "1 min", "2 min": "2 min" };
+
+  function openCtTypePicker(pfx, what){
+    pfx = pfx || "ct";
+    var html = '<div class="st-modal-head"><strong>Add a question to '+esc(what||"Concept Test")+'</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
       '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
     GROUPS.forEach(function(g){
       html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
       TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
         var i = TYPE_INFO[t];
-        html += '<button class="st-type" data-act="ct-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+        html += '<button class="st-type" data-act="'+pfx+'-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
       });
       html += '</div>';
     });
     openModal(html, "st-typepick");
+  }
+
+  function conceptQuestionRow(qq, qi, pfx){
+    pfx = pfx || "ct";                 // "ct" = Concept Test, "wt" = Walk Through
+    var icon = tinfo(qq.type).icon || "\u2261";
+    var tname = (tinfo(qq.type).name || qq.type);
+    var stemShort = (qq.stem || qq.title || "Untitled question").slice(0,90);
+    var reqTxt = qq.required!==false ? "Required" : "Optional";
+    var h = '<div class="st-ct-q" data-qi="'+qi+'" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:#fff;margin-bottom:6px">';
+    h += '<span class="st-grip" draggable="true" title="Drag to reorder" style="cursor:grab">\u283F</span>';
+    h += '<span class="st-ct-q-ic" title="'+esc(tname)+'">'+icon+'</span>';
+    h += '<span style="flex:1;min-width:0"><b style="font-size:13px">'+esc(stemShort)+'</b><br><span class="st-meta">'+esc(qq.id)+' \u00B7 '+esc(tname)+' \u00B7 '+reqTxt+ (qq.options ? ' \u00B7 '+qq.options.length+' options' : (qq.rows? ' \u00B7 '+qq.rows.length+' rows':''))+'</span></span>';
+    h += '<span class="st-item-tools" style="display:flex;gap:4px"><button class="st-btn sm on" data-act="'+pfx+'-q-edit" data-qi="'+qi+'">Edit</button><button class="st-ibtn" data-act="'+pfx+'-q-dup" data-qi="'+qi+'" title="Duplicate">\u2398</button><button class="st-ibtn danger" data-act="'+pfx+'-q-del" data-qi="'+qi+'" title="Delete">\u2715</button></span>';
+    h += '</div>';
+    return h;
+  }
+
+  function openCtTypePicker(pfx, what){
+    pfx = pfx || "ct";
+    var html = '<div class="st-modal-head"><strong>Add a question to '+esc(what||"Concept Test")+'</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+      '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
+    GROUPS.forEach(function(g){
+      html += '<div class="st-type-group">'+g+'</div><div class="st-type-grid">';
+      TYPES.filter(function(t){ return TYPE_INFO[t].group===g; }).forEach(function(t){
+        var i = TYPE_INFO[t];
+        html += '<button class="st-type" data-act="'+pfx+'-q-add-type" data-type="'+t+'"><span class="st-type-ic">'+i.icon+'</span><span><b>'+esc(i.name)+'</b><small>'+esc(i.desc)+'</small></span></button>';
+      });
+      html += '</div>';
+    });
+    openModal(html, "st-typepick");
+  }
+
+  // Both a Concept Test and a Walk Through let you edit one of their inner questions in
+  // place.  `field` is the list on the parent (concept_questions / walk_questions), `backAct`
+  // the action prefix stamped on the back / duplicate / delete buttons, and `attr` the data-
+  // attribute prefix those question rows carry.
+  function renderInnerQuestion(field, idx, attr, backAct, parentLabel) {
+      var parentQ = ed;
+      var innerQ = parentQ[field] && parentQ[field][idx];
+      var out = null;
+      if (innerQ) {
+        ed = innerQ;
+        if (!ed.stem_html) ed.stem_html = esc(ed.stem || "");
+        var ti = tinfo(ed.type);
+        var backHead = '<div class="st-ct-inner-head" style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:#fff8ec;border:1px solid #f2dcb3;border-radius:8px;margin-bottom:10px"><button class="st-btn sm" data-act="' + backAct + '" style="background:#fff">← Back to '+esc(parentQ.id)+'</button><span class="st-meta">Editing question '+(idx+1)+' of '+parentQ[field].length+' inside <b>'+esc(parentQ.id)+'</b> ('+esc(parentLabel)+')</span><span class="st-count">'+(idx+1)+'/'+parentQ[field].length+'</span></div>';
+        out =
+          backHead +
+          '<div id="st-pipe-pop" class="st-pipe-pop" hidden></div>' +
+          '<div class="st-ehead">' +
+            '<span class="st-ehead-ic" title="'+esc(ti.name)+'">'+ti.icon+'</span>' +
+            '<div class="st-ehead-main"><div class="st-ehead-row">' +
+              '<div class="st-ehead-idcol">' +
+                '<label class="st-mini">ID <input id="f-id" value="'+esc(ed.id)+'"></label>' +
+                '<label class="st-mini">Title <input id="f-title" value="'+esc(ed.title||'')+'" placeholder="Short label"></label>' +
+              '</div>' +
+              '<label class="st-mini">Type <select id="f-type">' + GROUPS.map(function(g){ return '<optgroup label="'+g+'">'+TYPES.filter(function(x){return TYPE_INFO[x].group===g;}).map(function(x){ return '<option value="'+x+'"'+(x===ed.type?' selected':'')+'>'+esc(TYPE_INFO[x].name)+'</option>'; }).join('')+'</optgroup>'; }).join('')+'</select></label>' +
+              '<label class="st-mini">Section <select id="f-section">'+cur.cfg.sections.map(function(s){ return '<option value="'+esc(s.id)+'"'+(ed.section===s.id?' selected':'')+'>'+esc(secLabel(s))+'</option>'; }).join('')+'</select></label>' +
+              '<label class="st-switch"><input type="checkbox" id="f-required"'+(ed.required!==false?' checked':'')+'><i></i>Required</label>' +
+            '</div></div>' +
+            '<div class="st-ehead-tools"><button class="st-ibtn" data-act="' + backAct.replace("back","dup") + '" title="Duplicate">⎘</button><button class="st-ibtn danger" data-act="' + backAct.replace("back","del") + '" title="Delete">✕</button></div>' +
+          '</div>' +
+          '<div id="st-qcheck">'+questionCheckHtml()+'</div>' +
+          edStrip() +
+          (edTab==="screen" ? "" : scrLineHtml()) +
+          (edTab==="cond" ? '<nav class="st-jump"><a href="#card-logic" data-act="jump" data-card="logic">Show IF</a></nav>'+card("logic","Show IF"+(sifOn()&&((ed.show_if||{}).rules||[]).length?' <em class="st-dot">on</em>':'') ,"Show IF - exactly who gets this question and who skips it", logicCard())
+           : edTab==="screen" ? '<nav class="st-jump"><a href="#card-screening" data-act="jump" data-card="screening">Screen in / screen out</a></nav>'+card("screening","Screen in / screen out"+(scrCount()?' <em class="st-dot">on</em>':''),"Who carries on past this question - and who is ended", screeningCard())
+           : '<nav class="st-jump">' + [["q","Question"],["answers",answersTitle()], ["display","Display & order"], ["media","Image / video"], ["advanced","Advanced"]].map(function(j){ return '<a href="#card-'+j[0]+'" data-act="jump" data-card="'+j[0]+'">'+j[1]+'</a>'; }).join('')+'</nav>' +
+             card("q","Question","What respondents read", qCard()) +
+             card("answers",answersTitle(),"", answersCard()) +
+             card("display","Display & order","Layout, randomisation, text style", displayCard()) +
+             card("media","Image or video"+(ed.media&&ed.media.src?' <em class="st-dot">on</em>':''),"Shown under the question text", mediaCard()) +
+             card("advanced","Advanced (JSON)","Everything the form does is stored here", advancedCard(), true));
+        return out;
+      }
+      ed = parentQ;
+      return null;
   }
 
   function answersCard() {
@@ -2941,6 +3135,10 @@
     }
     if (t === "concept_test") {
       html += conceptTestBlock();
+      return html;
+    }
+    if (t === "walk_through") {
+      html += walkThroughBlock();
       return html;
     }
     if (t === "heatmap") html += heatmapBlock();
@@ -3998,6 +4196,10 @@
     var answers = (!useSample || useSample.checked) ? Q.sampleAnswers(cur.cfg.questions, ed.id) : {};
     // when editing a question inside Concept Test, preview it as respondent sees: Concept + Question on one screen
     var previewQ = ed;
+    if (wtInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="walk_through") {
+      try { renderPreview(); } catch (e) {}
+      return;
+    }
     if (ctInnerQi !== null && cur.cfg.questions[sel] && cur.cfg.questions[sel].type==="concept_test") {
       var parentP = cur.cfg.questions[sel];
       var conc = (parentP.concepts && parentP.concepts[0]) || {label: parentP.concepts && parentP.concepts[ctInnerQi] ? parentP.concepts[ctInnerQi].label : "Concept", text:"", text_html:"", media:null};
@@ -4173,6 +4375,25 @@
       setOrDel(ed, "ai_action", qaa);
       if (qaa === "off") ed.ai_check = false; else delete ed.ai_check;
     }
+    if (t === "walk_through") {
+      ed.walk_tts = !!chk("f-wt-tts");
+      var wd = document.getElementById("f-wt-desc");
+      if (wd) { var wh = unchip(Q.sanitize(wd.innerHTML)); ed.walk_description_html = wh; if(Q.stripTags(wh)) ed.walk_description = Q.stripTags(wh); else delete ed.walk_description; }
+      if (ed.walk_steps) {
+        ed.walk_steps.forEach(function(st, i){
+          var labEl = document.querySelector('[data-wt="label"][data-i="'+i+'"]');
+          if(labEl) st.label = labEl.value;
+          var narEl = document.querySelector('[data-wt="narration"][data-i="'+i+'"]');
+          if(narEl) { st.narration = narEl.value; st.text = narEl.value; st.text_html = Q.sanitize(esc(narEl.value)); st.caption = narEl.value; }
+          var artEl = document.querySelector('[data-wt="art"][data-i="'+i+'"]');
+          if(artEl) st.art = artEl.value;
+          var durEl = document.querySelector('[data-wt="duration"][data-i="'+i+'"]');
+          if(durEl) st.duration = WT_DUR_MAP[durEl.value] || durEl.value;
+          var repEl = document.querySelector('[data-wt="allow_replay"][data-i="'+i+'"]');
+          if(repEl) st.allow_replay = repEl.checked;
+        });
+      }
+    }
     if (t === "concept_test") {
       setOrDel(ed, "concept_execution", val("f-ct-exec"));
       var cd = document.getElementById("f-ct-desc");
@@ -4190,28 +4411,6 @@
           if(replayEl) c.allow_replay = replayEl.checked;
           var textInput = document.querySelector('[data-ct="text_input"][data-i="'+i+'"]');
           if(textInput) { c.text = textInput.value; c.text_html = Q.sanitize(esc(textInput.value)); }
-        });
-      }
-      if (ed.concept_questions) {
-        ed.concept_questions.forEach(function(qq, qi){
-          var stemEl = document.querySelector('[data-cq="stem"][data-qi="'+qi+'"]');
-          if(stemEl) qq.stem = stemEl.value;
-          var typeEl = document.querySelector('[data-cq="type"][data-qi="'+qi+'"]');
-          if(typeEl) qq.type = typeEl.value;
-          if(qq.type==="single_select"||qq.type==="multi_select"){
-            var optCodes = document.querySelectorAll('[data-cq="opt_code"][data-qi="'+qi+'"]');
-            var optLabels = document.querySelectorAll('[data-cq="opt_label"][data-qi="'+qi+'"]');
-            if(optCodes.length){
-              var newOpts=[];
-              optCodes.forEach(function(cEl, oi){
-                var lEl = optLabels[oi];
-                var code = cEl.value.trim(); if(!code) code = oi+1;
-                var lab = lEl ? lEl.value : "";
-                newOpts.push({code: isNaN(Number(code))?code:Number(code), label: lab});
-              });
-              qq.options = newOpts;
-            }
-          }
         });
       }
       if (val("f-concept") !== undefined) setOrDel(ed, "concept", val("f-concept"));
@@ -4831,8 +5030,86 @@
     if (act === "ct-media") { var cidx = Number(b.getAttribute("data-i")); var inp = document.createElement("input"); inp.type="file"; inp.accept="image/*,video/*,audio/*"; inp.onchange=function(){ if(inp.files&&inp.files[0]) uploadMedia(inp.files[0], function(r){ syncFromForm(); ed.concepts[cidx].media = {src:r.src, kind:r.kind, external:false}; rerenderCard("answers"); changed(); toast("Attached "+r.file); }); }; inp.click(); return; }
     if (act === "ct-edit-text") { syncFromForm(); var ei = Number(b.getAttribute("data-i")); askText("Concept text", "Text shown with the concept (supports rich formatting via toolbar)", (ed.concepts[ei]&&ed.concepts[ei].text)||"", function(txt){ var c=ed.concepts[ei]; c.text=txt; c.text_html=Q.sanitize(esc(txt)); rerenderCard("answers"); changed(); }); return; }
     if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
+    // ---- Walk Through: the steps themselves -------------------------------------------
+    if (act === "wt-add") { syncFromForm(); ed.walk_steps = ed.walk_steps||[]; ed.walk_steps.push({ id: ed.id+"_W"+(ed.walk_steps.length+1), label: "Step "+(ed.walk_steps.length+1), narration: "", art: "generic", duration: "no-limit", allow_replay: true, media: null }); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-del") { syncFromForm(); var wdi = Number(b.getAttribute("data-i")); ed.walk_steps.splice(wdi,1); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-up" || act === "wt-down") {
+      var wi = Number(b.getAttribute("data-i")), wj = wi + (act === "wt-up" ? -1 : 1);
+      if (wj < 0 || wj >= ed.walk_steps.length) return;
+      syncFromForm(); var tmp = ed.walk_steps[wi]; ed.walk_steps[wi] = ed.walk_steps[wj]; ed.walk_steps[wj] = tmp;
+      rerenderCard("answers"); changed(); return;
+    }
+    if (act === "wt-media") {
+      var wmi = Number(b.getAttribute("data-i"));
+      var inp = document.createElement("input"); inp.type = "file"; inp.accept = "image/*,video/*";
+      inp.onchange = function () {
+        if (!inp.files || !inp.files[0]) return;
+        uploadMedia(inp.files[0], function (r) {
+          syncFromForm(); var st = ed.walk_steps[wmi]; if (!st) return;
+          st.media = { src: r.src, kind: r.kind, external: false };
+          delete st.art;                              // an attachment replaces the animation
+          rerenderCard("answers"); changed(); toast("Attached " + r.file);
+        });
+      };
+      inp.click(); return;
+    }
+    if (act === "wt-media-del") { syncFromForm(); var mdi = Number(b.getAttribute("data-i")); var mst = ed.walk_steps[mdi];
+      if (mst) { var old = (mst.media || {}).src || ""; if (old) api("/api/studio/media/delete", { study: cur.slug, file: old.split("/").pop() });
+        delete mst.media; mst.art = "generic"; rerenderCard("answers"); changed(); }
+      return;
+    }
+    if (act === "wt-clip") {
+      var wci = Number(b.getAttribute("data-i"));
+      var cinp = document.createElement("input"); cinp.type = "file"; cinp.accept = "audio/*,.mp3,.m4a,.ogg,.wav,.webm";
+      cinp.onchange = function () {
+        if (!cinp.files || !cinp.files[0]) return;
+        uploadClip(wci, cinp.files[0], "walk_steps");
+      };
+      cinp.click(); return;
+    }
+    if (act === "wt-clip-del") { syncFromForm(); var cdi = Number(b.getAttribute("data-i")); var cst = ed.walk_steps[cdi];
+      if (cst) { removeClipFrom(cst, cur.slug); rerenderCard("answers"); changed(); }
+      return;
+    }
+    if (act === "wt-preview") { syncFromForm(); previewWalkThrough(Number(b.getAttribute("data-i"))); return; }
+    if (act === "wt-preview-all") { syncFromForm(); previewWalkThrough(0); return; }
+    if (act === "wt-ppt") {
+      var file = (b.files && b.files[0]) || null;
+      if (!file) return;
+      if (!/\.pptx$/i.test(file.name)) { toast("Upload a .pptx deck (PowerPoint 2007 or newer)"); return; }
+      var fd = new FormData(); fd.append("file", file, file.name);
+      toast("Reading " + file.name + "\u2026");
+      fetch("/api/studio/walkthrough/ppt?study=" + encodeURIComponent(cur.slug), { method: "POST", body: fd, credentials: "same-origin" })
+        .then(function (r) { return r.json(); })
+        .then(function (r) {
+          if (r.error) { toast(r.error); return; }
+          syncFromForm();
+          ed.walk_steps = (r.steps || []).map(function (st, i) {
+            return { id: ed.id + "_W" + (i + 1), label: st.label, narration: st.narration,
+                     title: st.label, caption: st.narration, text: st.narration,
+                     art: "generic", duration: "no-limit", allow_replay: true, media: null };
+          });
+          rerenderCard("answers"); changed();
+          toast((r.steps || []).length + " step(s) built from the deck - review the narration on each one");
+        })
+        .catch(function () { toast("Could not read that deck"); });
+      return;
+    }
+    // ---- Walk Through: the questions asked afterwards ---------------------------------
+    if (act === "wt-inner-back") { syncFromForm(); wtInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "wt-inner-dup") { var pw2 = cur.cfg.questions[sel]; if (!pw2) return; syncFromForm(); var curWq = wtInnerQi;
+      var copyW = JSON.parse(JSON.stringify(pw2.walk_questions[curWq])); copyW.id = pw2.id + "_WQ" + (pw2.walk_questions.length + 1);
+      copyW.stem = (copyW.stem || "") + " (copy)"; pw2.walk_questions.splice(curWq + 1, 0, copyW); wtInnerQi = curWq + 1;
+      renderEditorPane(); changed(); return; }
+    if (act === "wt-inner-del") { var pw3 = cur.cfg.questions[sel]; if (!pw3) return; syncFromForm();
+      pw3.walk_questions.splice(wtInnerQi, 1); wtInnerQi = null; renderEditorPane(); changed(); return; }
+    if (act === "wt-q-del") { syncFromForm(); var wqd = Number(b.getAttribute("data-qi")); ed.walk_questions.splice(wqd, 1); rerenderCard("answers"); changed(); return; }
+    if (act === "wt-q-dup") { syncFromForm(); var wqs = Number(b.getAttribute("data-qi")); var copyWq = JSON.parse(JSON.stringify(ed.walk_questions[wqs]));
+      copyWq.id = ed.id + "_WQ" + (ed.walk_questions.length + 1); copyWq.stem = (copyWq.stem || "") + " (copy)";
+      ed.walk_questions.splice(wqs + 1, 0, copyWq); rerenderCard("answers"); changed(); return; }
     if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
-    if (act === "ct-q-add") { openCtTypePicker(); return; }
+    if (act === "ct-q-add") { openCtTypePicker("ct", "Concept Test"); return; }
+    if (act === "wt-q-add") { openCtTypePicker("wt", "the Walk Through"); return; }
     if (act === "ct-q-edit") { var qei = Number(b.getAttribute("data-qi")); var p = cur.cfg.questions[sel]; if(p && p.type==="concept_test" && p.concept_questions[qei]){ syncFromForm(); ctInnerQi = qei; renderEditorPane(); } return; }
     if (act === "ct-inner-back") { syncFromForm(); ctInnerQi = null; renderEditorPane(); changed(); return; }
     if (act === "ct-inner-dup") { var pp = cur.cfg.questions[sel]; if(!pp) return; syncFromForm(); var curQi = ctInnerQi; var copyI = JSON.parse(JSON.stringify(pp.concept_questions[curQi])); copyI.id = pp.id+"_CQ"+(pp.concept_questions.length+1); copyI.stem = (copyI.stem||"")+" (copy)"; pp.concept_questions.splice(curQi+1,0,copyI); ctInnerQi = curQi+1; renderEditorPane(); changed(); return; }
@@ -5121,7 +5398,8 @@
     if (t.id && t.id.indexOf("f-loop")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
     if (t.getAttribute && t.getAttribute("data-loop-k")) { syncFromForm(); if(t.getAttribute("data-loop-k")==="type") rerenderCard("answers"); changed(); return; }
     if (t.id && t.id.indexOf("f-ct")===0) { syncFromForm(); rerenderCard("answers"); changed(); return; }
-    if (t.getAttribute && (t.getAttribute("data-ct") || t.getAttribute("data-cq"))) { syncFromForm(); if(t.getAttribute("data-cq")==="type") rerenderCard("answers"); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-ct")) { syncFromForm(); changed(); return; }
+    if (t.getAttribute && t.getAttribute("data-wt")) { syncFromForm(); changed(); return; }
     if (t.name === "f-rz") { $$("#st-editor .st-radio").forEach(function (l) { l.classList.toggle("on", l.querySelector("input").checked); }); }
     if (t.closest(".st-flag")) t.closest(".st-flag").classList.toggle("on", t.checked);
     if (t.type === "checkbox" && t.closest(".st-flag")) { changed(); return; }
@@ -5147,6 +5425,7 @@
       var hold = e.target.closest(".st-rule").querySelector('[data-sf="value"]');
       if (hold) hold.value = String(hold.value).split("=")[0] + "=" + e.target.value;
     }
+    if (e.target.getAttribute && e.target.getAttribute("data-wt")) { syncFromForm(); changed(); return; }
     changed();
     if (sfName) refreshScrPlain();            // the sentence follows the number as it is typed
   });
@@ -5202,6 +5481,18 @@
     // The Concept Test "+ Add Item" picker is a modal, and #st-modal sits outside
     // #st-root - so unlike the other ct-* actions this one has to be handled here,
     // alongside qadd-type, or clicking a type does nothing.
+    if (act === "wt-q-add-type") { var wtt = b.getAttribute("data-type"); var parentWt = cur.cfg.questions[sel];
+      if (!parentWt || parentWt.type !== "walk_through") return;
+      syncFromForm(); parentWt.walk_questions = parentWt.walk_questions || [];
+      var wqid = parentWt.id + "_WQ" + (parentWt.walk_questions.length + 1);
+      var wnq = qTemplate(wtt, wqid, parentWt.section);
+      wnq.stem = "New " + tinfo(wtt).name.toLowerCase() + " about the walkthrough";
+      wnq.required = false;
+      parentWt.walk_questions.push(wnq); closeModal(); wtInnerQi = parentWt.walk_questions.length - 1;
+      ed = parentWt; renderEditorPane(); changed(); toast("Added " + tinfo(wtt).name); return;
+    }
+    if (act === "wt-q-edit") { var wqi = Number(b.getAttribute("data-qi")); var pw = cur.cfg.questions[sel];
+      if (pw && pw.type === "walk_through" && pw.walk_questions[wqi]) { syncFromForm(); wtInnerQi = wqi; renderEditorPane(); } return; }
     if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
       parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
     if (act === "ask-ok") { var v = (document.getElementById("st-ask") || {}).value; closeModal(); if (askCb) askCb(v); askCb = null; }
@@ -5361,9 +5652,11 @@
     }).join("") + "</div>";
   }
   function sceneThumb(art) { var A = window.BEACON_ART || {}; return A[art] || A.generic || '<svg viewBox="0 0 400 240"></svg>'; }
-  function uploadClip(i, file) {
+  function uploadClip(i, file, field) {
     if (!file) return;
-    var sc = scenes()[i]; if (!sc) return;
+    var sc = field === "walk_steps" ? (ed.walk_steps || [])[i] : scenes()[i];
+    if (!sc) return;
+    var after = field === "walk_steps" ? function(){ rerenderCard("answers"); } : function(){ renderScenePrev(); };
     var fd = new FormData(); fd.append("file", file, file.name);
     toast("Uploading " + file.name + "\u2026");
     fetch("/api/studio/narration?study=" + encodeURIComponent(cur.slug), { method: "POST", body: fd, credentials: "same-origin" })
@@ -5371,17 +5664,22 @@
       .then(function (r) {
         if (r.error) { toast("Upload failed: " + r.error); return; }
         sc.src = r.src; sc.file = r.file; sc.seconds = r.seconds || 0; sc.clipId = r.clip;
-        renderScenePrev(); markChanged();
+        after(); markChanged();
         toast("Clip attached" + (r.seconds ? " (" + r.seconds + "s)" : ""));
       })
       .catch(function () { toast("Upload failed"); });
   }
   function removeClip(i) {
     var sc = scenes()[i]; if (!sc) return;
-    var id = sc.clipId || (sc.src || "").split("/").pop().split(".")[0];
-    if (id) api("/api/studio/narration/delete", { study: cur.slug, clip: id });
-    delete sc.src; delete sc.file; delete sc.seconds; delete sc.clipId;
+    removeClipFrom(sc, cur.slug);
     renderScenePrev(); markChanged();
+  }
+  // the clip lives on the step, not on an index - a Walk Through step and a study-level
+  // scene both carry src / file / seconds / clipId
+  function removeClipFrom(sc, slug) {
+    var id = sc.clipId || (sc.src || "").split("/").pop().split(".")[0];
+    if (id) api("/api/studio/narration/delete", { study: slug, clip: id });
+    delete sc.src; delete sc.file; delete sc.seconds; delete sc.clipId;
   }
 
   // walkthrough preview overlay
@@ -5412,6 +5710,48 @@
     closePreviewer();
     previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
       scenes: JSON.parse(JSON.stringify(list)), narration: cur.cfg.narration || {}, muted: false, tts: tts,
+      onDone: function () { previewer = null; closePreview(); }
+    });
+    previewer.start();
+    if (startAt) previewer.loadScene(startAt);
+  }
+  // The Walk Through plays through the same overlay as the study-level walkthrough, but the
+  // scenes come from the question's own steps: each step's narration is its caption, its
+  // attachment (if any) takes the place of the animation, and a recorded clip wins over the
+  // browser voice.
+  function walkScenesFrom(steps, tts) {
+    return steps.map(function (st, i) {
+      return {
+        id: st.id || ("W" + (i + 1)), art: (st.media && st.media.src) ? "" : (st.art || "generic"),
+        media: st.media || null,
+        title: st.label || ("Step " + (i + 1)),
+        caption: st.narration || "",
+        clip: null, src: st.src || "", seconds: st.seconds || 0,
+        at: 0, allow_replay: !!st.allow_replay
+      };
+    });
+  }
+  function previewWalkThrough(startAt) {
+    if (!window.BeaconExplainer) { toast("Explainer script not loaded"); return; }
+    var steps = walkSteps();
+    var tts = !!document.getElementById("f-wt-tts") && document.getElementById("f-wt-tts").checked;
+    if (!steps.length) { toast("Add at least one step first"); return; }
+    if (!steps.some(function (st) { return (st.narration || "").trim(); })) {
+      toast("Write the narration for at least one step first"); return;
+    }
+    var ov = document.getElementById("explainer");
+    var clips = steps.filter(function (st) { return st.src; }).length;
+    var quiet = steps.filter(function (st) { return !(st.narration || "").trim(); }).length;
+    document.getElementById("ex-hint").textContent = quiet
+      ? quiet + " step(s) with no narration"
+      : (clips === steps.length ? "A recorded clip on every step"
+        : clips ? clips + " recorded clip(s), the rest " + (tts ? "browser voice" : "silent")
+        : (tts ? "Browser voice narration on" : "Silent, timed walkthrough"));
+    ov.hidden = false;
+    closePreviewer();
+    previewer = new window.BeaconExplainer(document.getElementById("ex-mount"), {
+      scenes: JSON.parse(JSON.stringify(walkScenesFrom(steps, tts))),
+      narration: cur.cfg.narration || {}, muted: false, tts: tts,
       onDone: function () { previewer = null; closePreview(); }
     });
     previewer.start();

@@ -21,6 +21,7 @@ API (used by static/js/studio.js)
     POST /api/studio/make_conjoint         {attributes, n_tasks, seed} -> design
     POST /api/studio/narration?study=      multipart upload of a scene clip -> {clip, src, seconds}
     POST /api/studio/narration/delete      {study, clip}
+    POST /api/studio/walkthrough/ppt?study=  multipart .pptx -> one narrated step per slide
     POST /api/studio/media?study=<slug>    multipart image/video attached to a question
     GET  /media/<slug>/<file>              public: respondents load attachments here
     GET  /narration/<study>/<file>         serves an uploaded clip (public - respondents play it)
@@ -50,6 +51,7 @@ from core.narration import clip_duration
 from core.outline import build_outline
 from core.reporting import analysis_for
 from core.translator import TranslationError, translate_string
+from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
 from models import Study, StudyError
 
 AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
@@ -623,6 +625,33 @@ def conjoint():
         return jsonify({"error": str(e)}), 400
     design["generated_at"] = stamp()
     return jsonify(design)
+
+
+# ---------------------------------------------------------------- walk-through decks
+@bp.post("/api/studio/walkthrough/ppt")
+def walkthrough_from_ppt():
+    """Turn an uploaded PowerPoint deck into narrated walk-through steps.
+
+    One step per slide: the slide title becomes the step label and the slide body plus its
+    speaker notes become the narration the respondent hears.  Nothing is stored server-side
+    - the author reviews the steps in the Studio and saves them with the question.
+    """
+    slug = request.args.get("study") or ""
+    if not Study.get(slug):
+        return jsonify({"error": "unknown study"}), 404
+    f = request.files.get("file")
+    if not f or not f.filename:
+        return jsonify({"error": "no file"}), 400
+    if not f.filename.lower().endswith(".pptx"):
+        return jsonify({"error": "upload a .pptx deck (PowerPoint 2007 or newer)"}), 400
+    data = f.read()
+    if len(data) > DECK_MAX_BYTES:
+        return jsonify({"error": "deck too large (max %d MB)" % (DECK_MAX_BYTES // (1024 * 1024))}), 400
+    try:
+        steps = steps_from_pptx(data)
+    except DeckError as e:
+        return jsonify({"error": str(e)}), 400
+    return jsonify({"ok": True, "steps": steps, "slides": len(steps)})
 
 
 # ---------------------------------------------------------------- narration clips

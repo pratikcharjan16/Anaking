@@ -296,7 +296,7 @@ Grouped exactly like a commercial builder: **Questions** - Single Select (incl. 
 options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
 Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
 Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -
-Max Diff experiment, Conjoint, Concept Test, Heatmap; **Survey flow** - Welcome Page,
+Max Diff experiment, Conjoint, Concept Test, Walk Through, Heatmap; **Survey flow** - Welcome Page,
 Thank You Page, Question Page, Question Loop, Page Randomizer; **Objects** - Embedded
 Variable, Text Block. Every type is fully editable (rows, scales, ranges, labels,
 placeholders, rich text, logic, media, styling) and every answer type flows into the
@@ -372,6 +372,41 @@ and reordered; "Build scenes from text" turns the seven product-profile text fie
 starting set of scenes. Per scene, narration is resolved as: uploaded clip → browser
 text-to-speech (if enabled) → silent timer. **Preview walkthrough** plays the unsaved draft.
 
+### Walk Through (Studio → + Add question → Methodologies)
+
+A **Walk Through** is a question that stores no answer. It plays a narrated, animated sequence
+and then the survey moves on — for showing a respondent something instead of making them read
+it. It starts empty, like a Concept Test: the author adds the steps they actually need.
+
+Each **step** carries:
+
+| field | what it does |
+|---|---|
+| **Narration** | the text that gets *spoken* — the author writes it once and the respondent's browser reads it aloud (`speechSynthesis`), so nothing has to be read on screen |
+| **Attachment** | an image or video, uploaded through the existing media path; it replaces the animation for that step |
+| **Animation** | when there is no attachment, one of the built-in animated scenes (mechanism, efficacy, safety, …) |
+| **Recorded clip** | an mp3 / m4a / ogg / wav / webm narration, which wins over the browser voice for that step |
+| **For** / **Allow replay** | how long the step stays up, and whether the respondent can replay it |
+
+**Build steps from a PowerPoint deck** uploads a `.pptx` and turns it into one step per slide —
+the slide title becomes the step name and the slide body plus its speaker notes become the
+narration. Text only: images inside the deck are left for the author to attach per step,
+because extracting them would mean re-hosting files the Studio already has an upload path for.
+Nothing is stored server-side; the author reviews the steps and saves them with the question.
+
+Steps are added, removed and reordered, and **Preview the walkthrough** plays the unsaved draft
+through the same overlay respondents see. Below the steps, an optional list of **questions about
+the walkthrough** is asked once, after it has played.
+
+On the respondent side the walkthrough is one step of its own: the card names it and lists the
+steps, the overlay plays them with narration, and *Skip* or the end of the last step returns to
+the survey. Nothing is written to the respondent's record — only the questions that follow are.
+
+**Honest limits.** The voice is the browser's built-in speech engine, so it needs no audio
+files and no network call, but it is not a studio recording — attach a recorded clip where the
+delivery matters. There is no server-side video render: "animated" means the built-in SVG
+scenes plus the author's own image or video, played in step with the narration clock.
+
 Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 
 ## Tests
@@ -400,7 +435,8 @@ node scripts/dom/studio_actions_test.js         # dashboard actions: preview / d
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js
 node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes
-node scripts/dom/concept_test_empty_test.js      # a new Concept Test starts empty and an empty one never reaches a respondent        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/concept_test_empty_test.js      # a new Concept Test starts empty and an empty one never reaches a respondent
+node scripts/dom/walk_through_test.js            # the Walk Through card, a deck turned into steps, the narrated respondent step        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)

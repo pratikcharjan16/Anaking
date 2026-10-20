@@ -19,6 +19,59 @@ def _verbatim_qs(cfg: dict) -> list:
     return [(q, "_") for q in (cfg.get("qc", {}) or {}).get("verbatim_qs", [])]
 
 
+# A Concept Test and a Walk Through both keep their answers under a synthetic id built from
+# the inner question's own id.  One place flattens either, so the two cannot drift apart.
+_INNER_SINGLE = ("single_select", "numeric", "slider", "nps", "rating_scale", "gauge_meter")
+_INNER_GRID = ("rating_grid", "rating_scale", "semantic_diff", "sum_to_100")
+
+
+def _flatten_inner(ct, cq, sid, sa, out):
+    """Write one inner answer `sa` of question `cq` (type `ct`) under key `sid`."""
+    if not sa:
+        return
+    if ct in _INNER_SINGLE:
+        out[sid] = sa.get("_", "")
+        if ct == "single_select":
+            opt = next((o for o in cq.get("options", []) if str(o["code"]) == str(sa.get("_"))), None)
+            if opt:
+                out[sid + "_text"] = opt["label"]
+    elif ct == "open_text":
+        out[sid] = sa.get("_", "")
+    elif ct == "multi_select":
+        out[sid] = ";".join(str(c) for c in sorted(sa.get("codes", []), key=str))
+    elif ct in _INNER_GRID or (ct == "gauge_meter" and cq.get("rows")):
+        for r in cq.get("rows") or []:
+            out[f"{sid}_{r['code']}"] = sa.get(r["code"], "")
+    elif ct == "loop":
+        pass
+    else:
+        if "_" in sa:
+            out[sid] = sa.get("_", "")
+        else:
+            for kk, vv in sa.items():
+                if not kk.startswith("_"):
+                    out[f"{sid}_{kk}"] = vv
+
+
+def _flatten_synthetic(qid, answers, out):
+    """Sweep up answer keys under `qid_` that the config loop did not reach."""
+    for ak, av in answers.items():
+        if not ak.startswith(qid + "_") or ak in out:
+            continue
+        if isinstance(av, dict):
+            if "_" in av:
+                out[ak] = av.get("_", "")
+            elif "codes" in av:
+                out[ak] = ";".join(str(c) for c in av.get("codes", []))
+            else:
+                for kk, vv in av.items():
+                    if not kk.startswith("_"):
+                        out[f"{ak}_{kk}"] = vv
+        else:
+            out[ak] = av
+
+
+
 def flatten(respondent, answers: dict, cfg: dict) -> dict:
     quota = cfg.get("quota", {})
     ai = score_free_text(answers, cfg, _verbatim_qs(cfg))
@@ -166,54 +219,19 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 for c in concepts:
                     for cq in cqs:
                         sid = f"{qid}_{c.get('id')}_{cq.get('id')}"
-                        sa = answers.get(sid, {})
-                        if not sa:
-                            continue
-                        # flatten based on cq type
-                        ct = cq.get("type")
-                        if ct in ("single_select","numeric","slider","nps","rating_scale","gauge_meter"):
-                            out[sid] = sa.get("_","")
-                            if ct=="single_select":
-                                opt = next((o for o in cq.get("options",[]) if str(o["code"])==str(sa.get("_"))), None)
-                                if opt: out[sid+"_text"]=opt["label"]
-                        elif ct=="open_text":
-                            out[sid]=sa.get("_","")
-                        elif ct in ("multi_select",):
-                            out[sid]=";".join(str(c) for c in sorted(sa.get("codes",[]), key=str))
-                        elif ct in ("rating_grid","rating_scale","semantic_diff","sum_to_100") or (ct=="gauge_meter" and cq.get("rows")):
-                            for r in cq.get("rows") or []:
-                                out[f"{sid}_{r['code']}"]=sa.get(r["code"],"")
-                        elif ct=="loop":
-                            pass
-                        else:
-                            # fallback: store raw _ or whole dict
-                            if "_" in sa: out[sid]=sa.get("_","")
-                            else:
-                                for kk, vv in sa.items():
-                                    if not kk.startswith("_"): out[f"{sid}_{kk}"]=vv
-                # also handle synthetic keys that may include randomize/limit subset not in cfg iteration (e.g., per respondent subset)
-                # include any extra answer keys starting with qid+"_"
-                for ak, av in answers.items():
-                    if ak.startswith(qid+"_") and ak not in out:
-                        if isinstance(av, dict):
-                            if "_" in av: out[ak]=av.get("_","")
-                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
-                            else:
-                                for kk, vv in av.items():
-                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
-                        else:
-                            out[ak]=av
+                        _flatten_inner(cq.get("type"), cq, sid, answers.get(sid, {}), out)
+                # a per-respondent subset may not be in the config order: sweep up the rest
+                _flatten_synthetic(qid, answers, out)
             else:
-                # if only one side present, still include synthetic keys
-                for ak, av in answers.items():
-                    if ak.startswith(qid+"_") and ak not in out:
-                        if isinstance(av, dict):
-                            if "_" in av: out[ak]=av.get("_","")
-                            elif "codes" in av: out[ak]=";".join(str(c) for c in av.get("codes",[]))
-                            else:
-                                for kk, vv in av.items():
-                                    if not kk.startswith("_"): out[f"{ak}_{kk}"]=vv
-                        else: out[ak]=av
+                _flatten_synthetic(qid, answers, out)
+        elif t == "walk_through":
+            # a Walk Through stores nothing itself; the questions asked about it do, each
+            # under its own id
+            for cq in q.get("walk_questions") or []:
+                sid = str(cq.get("id") or "")
+                if sid:
+                    _flatten_inner(cq.get("type"), cq, sid, answers.get(sid, {}), out)
+            _flatten_synthetic(qid, answers, out)
         elif t == "loop":
             for it in q.get("items", []) or []:
                 out[f"{qid}_{it['code']}"] = a.get(it["code"], "")
@@ -551,6 +569,18 @@ def build_sheets(records: list, scope: str, cfg: dict):
             for cq in q.get("concept_questions", []) or []:
                 for c in q.get("concepts", []) or []:
                     dd_rows.append([q["id"], q.get("section",""), q["type"]+" question", cq.get("stem","")[:80], f"{c.get('id')}_{cq.get('id')}", f"{c.get('label')} · {cq.get('type')} {cq.get('stem','')[:40]}", f"per concept {cq.get('type')}"])
+        elif q["type"] == "walk_through":
+            for wst in q.get("walk_steps", []) or []:
+                media = wst.get("media") or {}
+                kind = media.get("kind") if media.get("src") else "animated scene"
+                dd_rows.append([q["id"], q.get("section",""), q["type"], stem, wst.get("id",""),
+                                wst.get("label",""),
+                                "step · " + str(kind) + " · " + (wst.get("narration","") or "")[:60]])
+            for wcq in q.get("walk_questions", []) or []:
+                dd_rows.append([q["id"], q.get("section",""), q["type"]+" question",
+                                wcq.get("stem","")[:80], wcq.get("id",""),
+                                f"{wcq.get('type')} · asked once, after the walkthrough",
+                                "after walkthrough"])
         elif q["type"] == "loop":
             for it in q.get("items", []) or []:
                 dd_rows.append([q["id"], q["section"], q["type"], stem, it["code"], it["label"],

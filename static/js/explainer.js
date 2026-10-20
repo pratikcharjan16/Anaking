@@ -304,6 +304,19 @@
     });
   };
 
+  // An author-supplied attachment wins over the built-in artwork: a step with an image or a
+  // video shows that, everything else falls back to the animated scene.  The layer keeps its
+  // class so the crossfade and the sizing in survey.css still apply.
+  function mediaFor(sc) {
+    var m = sc.media;
+    if (!m || !m.src) return "";
+    var kind = m.kind || (/\.(mp4|webm|mov)(\?|$)/i.test(m.src) ? "video" : "image");
+    if (kind === "video") {
+      return '<video class="scene-media" src="' + m.src + '" autoplay muted loop playsinline></video>';
+    }
+    return '<img class="scene-media" src="' + m.src + '" alt="">';
+  }
+
   Explainer.prototype.start = function () {
     this.i = -1;
     this.loadScene(0);
@@ -375,7 +388,7 @@
 
     // crossfade: draw into the hidden layer, fade it in over the other one
     var show = 1 - this.active;
-    this.layers[show].innerHTML = ART[sc.art] || ART[sc.id] || ART.generic;
+    this.layers[show].innerHTML = mediaFor(sc) || ART[sc.art] || ART[sc.id] || ART.generic;
     void this.layers[show].offsetWidth; // restart CSS animations
     this.layers[show].classList.add("on");
     this.layers[this.active].classList.remove("on");

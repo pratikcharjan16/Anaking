@@ -70,6 +70,7 @@
 .ex-art{position:absolute;inset:0;background:transparent;border-radius:0;overflow:hidden;
   opacity:0;transition:opacity .55s ease}
 .ex-art.on{opacity:1}
+.scene-media{display:block;width:100%;height:100%;object-fit:contain;background:#fff}
 .ex-caption.cap-in{animation:capIn .5s ease both}
 @keyframes capIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .ex-bar{padding-top:2px}

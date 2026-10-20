@@ -1238,9 +1238,10 @@
       "</div>";
   }
 
-  function runExplainer(scenes, onDone) {
+  function runExplainer(scenes, onDone, opts) {
     var ov = $("#explainer");
-    $("#ex-badge").textContent = scenes.length > 1 ? "Product profile" : "How the choices work";
+    opts = opts || {};
+    $("#ex-badge").textContent = opts.badge || (scenes.length > 1 ? "Product profile" : "How the choices work");
     ov.hidden = false;
     explainerOnDone = onDone;
     var mounted = false;
@@ -1250,7 +1251,7 @@
           scenes: scenes,
           narration: NARR,
           muted: !soundOn,
-          tts: !!SPEC.use_tts,
+          tts: opts.tts === undefined ? !!SPEC.use_tts : !!opts.tts,
           onDone: function () { explainer = null; dismissExplainer(); }
         });
         explainer.start();
@@ -1323,6 +1324,29 @@
       }
     }
     return items;
+  }
+  // ---------------------------------------------------------------- walk-through
+  // The steps of a Walk Through, normalised for the explainer: each one has a label, a
+  // piece of narration and either an attachment or one of the built-in animated scenes.
+  function walkStepsOf(q){
+    var raw = Array.isArray(q.walk_steps) ? q.walk_steps
+            : (Array.isArray(q.walkthrough_steps) ? q.walkthrough_steps : []);
+    return raw.filter(function(st){ return st && typeof st === "object"; }).map(function(st, i){
+      return {
+        id: st.id || (q.id + "_W" + (i + 1)),
+        art: (st.media && st.media.src) ? "" : (st.art || "generic"),
+        media: (st.media && st.media.src) ? st.media : null,
+        title: st.label || st.title || ("Step " + (i + 1)),
+        caption: st.narration || st.caption || "",
+        clip: null, src: st.src || "", seconds: st.seconds || 0,
+        at: 0, allow_replay: !!st.allow_replay
+      };
+    });
+  }
+  function walkQuestionsOf(q){
+    var raw = Array.isArray(q.walk_questions) ? q.walk_questions
+            : (Array.isArray(q.walkthrough_questions) ? q.walkthrough_questions : []);
+    return raw.filter(function(x){ return x && typeof x === "object"; });
   }
   function conceptListFor(q){
     var concepts = (q.concepts || []).slice();
@@ -1474,6 +1498,28 @@
             synth3._concept_parent = q.id;
             synth3.section = q.section;
             steps.push({ kind: "q", q: synth3 });
+          });
+        }
+      } else if (q.type === "walk_through") {
+        // A Walk Through stores nothing: it plays its narrated steps, then the questions
+        // asked about it (if any) follow as ordinary steps.  With no steps it is skipped
+        // entirely rather than shown as an empty screen.
+        var wsteps = walkStepsOf(q);
+        var wqs = walkQuestionsOf(q);
+        if (wsteps.length) {
+          steps.push({ kind: "wt", q: q });
+          wqs.forEach(function(cq){
+            var synth = JSON.parse(JSON.stringify(cq));
+            synth._concept_parent = q.id;          // the "back to <parent>" chip on the card
+            synth.section = q.section;
+            steps.push({ kind: "q", q: synth });
+          });
+        } else {
+          wqs.forEach(function(cq2){
+            var synth2 = JSON.parse(JSON.stringify(cq2));
+            synth2._concept_parent = q.id;
+            synth2.section = q.section;
+            steps.push({ kind: "q", q: synth2 });
           });
         }
       } else {
@@ -2142,6 +2188,35 @@
     var grid = renderGrid(q, false);
     if (grid) wrap.appendChild(grid);
     return wrap;
+  }
+
+  // The Walk Through screen the respondent lands on.  It holds nothing to answer: it names
+  // the walkthrough and starts it, and the questions that follow are separate steps.  If the
+  // explainer cannot run at all the static list underneath is what they read instead.
+  function renderWalkThrough(q) {
+    var card = el("div", "card walkthrough-intro");
+    card.appendChild(el("h1", "stem", q.stem || q.title || "A short walkthrough"));
+    if (q.walk_description_html && window.BeaconQ) {
+      var d = el("div", "walkthrough-desc");
+      window.BeaconQ.richInto(d, q.walk_description_html, logicCtx(), "\u2026");
+      card.appendChild(d);
+    } else if (q.walk_description) {
+      card.appendChild(el("p", "walkthrough-desc", pipeText(q.walk_description)));
+    }
+    var steps = walkStepsOf(q);
+    var list = el("ol", "walkthrough-steps");
+    steps.forEach(function(st){
+      var li = el("li");
+      li.appendChild(el("b", null, st.title));
+      if (st.caption) li.appendChild(el("span", "walkthrough-cap", st.caption));
+      list.appendChild(li);
+    });
+    card.appendChild(list);
+    var note = el("div", "st-note", steps.length > 1
+      ? "This plays through " + steps.length + " steps with narration. There is nothing to read or answer."
+      : "This plays with narration. There is nothing to read or answer.");
+    card.appendChild(note);
+    return card;
   }
 
   function renderLoop(q) {
@@ -3106,6 +3181,7 @@
       case "emoji_grid": body = renderEmojiGrid(q); break;
       case "delta": body = renderDelta(q); break;
       case "concept_test": body = renderConceptTest(q); break;
+      case "walk_through": body = renderWalkThrough(q); break;
       case "loop": body = renderLoop(q); break;
       case "text_block": body = renderTextBlock(q); break;
       case "rating_grid": body = renderGrid(q, false); break;
@@ -3428,6 +3504,8 @@
 
   function validateStep() {
     var st = steps[cur];
+    // a Walk Through asks nothing, so there is nothing to check - it just has to have played
+    if (st.kind === "wt") return true;
     if (st.kind === "task") {
       if (getAns(st.q.id, "T" + st.taskId) === undefined) {
         showErr("Please choose one of the treatments, or choose to continue current standard of care.");
@@ -3680,7 +3758,23 @@
     pendingDwell = null;
     if (dwellTimer) { clearInterval(dwellTimer); dwellTimer = null; }
 
-    var node = st.kind === "task" ? renderConjoint(st) : renderQuestion(locQ(st.q));
+    var node;
+    if (st.kind === "task") node = renderConjoint(st);
+    else if (st.kind === "wt") {
+      node = renderWalkThrough(st.q);
+      var wtSteps = walkStepsOf(st.q);
+      if (wtSteps.length && !window.BEACON_PREVIEW_MODE) {
+        // the card is only the label for what is about to play: the walkthrough itself runs
+        // in the overlay, and Next is what continues once it has been watched or skipped
+        setTimeout(function () {
+          runExplainer(wtSteps, null, {
+            badge: st.q.stem || st.q.title || "Walkthrough",
+            tts: st.q.walk_tts !== false
+          });
+        }, 150);
+      }
+    }
+    else node = renderQuestion(locQ(st.q));
     var chip = st.kind === "task" ? null : langChip(st.q);
     if (chip && node.insertBefore) {
       var stemH = node.querySelector(".stem");

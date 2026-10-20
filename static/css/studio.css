@@ -942,5 +942,10 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-ct-concept-mid .st-ct-text{ font-size:12.5px; color:var(--muted); flex:1; min-width:160px }
 .st-ct-concept-bottom{ display:flex; align-items:center; gap:12px; flex-wrap:wrap }
 .st-ct-concept-bottom select{ border:1px solid var(--line); border-radius:8px; padding:6px 9px; font-size:12.5px; background:#fff }
+.st-wt-narr{ display:flex; flex-direction:column; gap:5px }
+.st-wt-narr label{ font-size:11px; font-weight:800; color:var(--muted); text-transform:uppercase; letter-spacing:.06em }
+.st-wt-narr textarea{ width:100%; min-height:62px; padding:9px 11px; font-size:13.5px; line-height:1.5;
+  border:1px solid var(--line); border-radius:8px; background:#fff; resize:vertical; font-family:inherit }
+.st-wt-narr textarea:focus{ outline:none; border-color:var(--accent2) }
 .st-ct-add-btn{ align-self:flex-start; background:#e53935; color:#fff; border-color:#e53935; padding:7px 14px; font-weight:700; margin-top:2px }
 .st-ct-add-btn:hover{ background:#c62828; border-color:#c62828 }
