@@ -28,11 +28,28 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const click=el=>el.dispatchEvent(new w.MouseEvent("click",{bubbles:true,cancelable:true}));
   const type=(el,v)=>{el.value=v; el.dispatchEvent(new w.Event("input",{bubbles:true}));};
   const P=s=>$(".st-color-pop.open "+s);                      // scope to the open palette
+  // select a substring wherever it currently lives (the DOM is re-wrapped after each colour)
+  const pick=sub=>{const w=doc.createTreeWalker(stem,4),ns=[];while(w.nextNode())ns.push(w.currentNode);
+    for(const n of ns){const i=n.nodeValue.indexOf(sub);if(i<0)continue;
+      const r=doc.createRange();r.setStart(n,i);r.setEnd(n,i+sub.length);
+      const s=w2.getSelection();s.removeAllRanges();s.addRange(r);return;}
+    throw new Error("not found: "+sub);};
+  const inHost=()=>{const s=w2.getSelection();return !!(s&&s.rangeCount&&stem.contains(s.anchorNode));};
+  // what a real browser does when focus leaves the editable: the selection goes with it
+  const loseSelection=()=>{const r=doc.createRange();r.selectNodeContents(doc.body);
+    const s=w2.getSelection();s.removeAllRanges();s.addRange(r);};
+  const toastText=()=>[...doc.querySelectorAll("[class*=toast]")].map(t=>t.textContent).join(" ");
+  const set=txt=>{stem.innerHTML=txt;};
+  const pickSwatch=title=>{const c=$(`.st-color-pop.open .st-color-cell[title="${title}"]`);
+    const hex=c.getAttribute("data-color");click(c);return hex;};
   const rgb=h=>{const m=/^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(h);
     return m?`rgb(${parseInt(m[1],16)}, ${parseInt(m[2],16)}, ${parseInt(m[3],16)})`:h;};
-  const openPalette=k=>{ if(!$(".st-color-pop.open")) click($("[data-color-trigger="+k+"]")); };
+  // open the palette of this kind, whatever is currently open
+  const openPalette=k=>{ if(!$(".st-color-pop.open") ||
+      $(".st-color-pop.open").getAttribute("data-palette-kind")!==k) click($("[data-color-trigger="+k+"]")); };
   const stem=$("#f-stem-rich"), selectAll=el=>{const r=doc.createRange();r.selectNodeContents(el);
     const s=w.getSelection();s.removeAllRanges();s.addRange(r);};
+  const w2=w;
 
   // ---------------- both pickers are on both rich-text fields -------------------------
   check("question text toolbar has a font-colour and a highlight button",
@@ -150,6 +167,82 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   click($("[data-color-trigger=hiliteColor]"));
   check("only one palette is open at a time", $$(".st-color-pop.open").length===1);
   check("the second one to open is the highlight", $(".st-color-pop.open").getAttribute("data-palette-kind")==="hiliteColor");
+
+
+  // ---- the palette must not lose the selection it is colouring ------------------------
+  // Clicking a palette control (or typing a hex code) moves focus out of the editable, which
+  // throws the selection away - so every colour after the first would land on nothing.
+  set("Alpha bravo charlie delta echo");
+  pick("charlie delta");
+  openPalette("foreColor");
+  check("opening the palette kept the selection", inHost());
+  loseSelection();                                    // worst case: assume focus already moved
+  const hexSel=pickSwatch("Blue, lighter 80%");
+  check("the colour lands on the words that were selected",
+    new RegExp('<span style="color: '+hexSel+'">charlie delta</span>').test(stem.innerHTML), stem.innerHTML);
+  check("and the words around them are untouched", stem.textContent==="Alpha bravo charlie delta echo", stem.innerHTML);
+
+  set("Alpha bravo charlie");
+  pick("bravo");
+  openPalette("foreColor");
+  click(P("[data-color-more]"));
+  P(".st-color-hex").focus();
+  loseSelection();
+  check("typing a hex code really does take the selection away", !inHost());
+  P(".st-color-hex").value="#ff9900";
+  P(".st-color-hex").dispatchEvent(new w.Event("input",{bubbles:true}));
+  click(P("[data-color-apply]"));
+  check("a custom hex colour still lands on the right words",
+    /<span style="color: #ff9900">bravo<\/span>/.test(stem.innerHTML), stem.innerHTML);
+
+  // ---- several colours on one line, each on its own words -----------------------------
+  set("One two three four five six");
+  pick("two three");
+  openPalette("foreColor");
+  const hexA=pickSwatch("Red");
+  check("the first colour is on its own words",
+    new RegExp('<span style="color: '+hexA+'">two three</span>').test(stem.innerHTML), stem.innerHTML);
+  pick("five six");
+  openPalette("foreColor");
+  const hexB=pickSwatch("Gold");
+  check("a second colour applies to its own selection",
+    new RegExp('<span style="color: '+hexB+'">five six</span>').test(stem.innerHTML), stem.innerHTML);
+  check("both colours are on the line at once", stem.innerHTML.includes(hexA)&&stem.innerHTML.includes(hexB), stem.innerHTML);
+  check("no words were lost or duplicated", stem.textContent==="One two three four five six", stem.innerHTML);
+
+  // ---- changing a highlight replaces it instead of stacking another span --------------
+  set("marked text here");
+  pick("marked text");
+  openPalette("hiliteColor");
+  const hlCells=[...doc.querySelectorAll(".st-color-pop.open .st-color-cell")];
+  click(hlCells[0]);
+  const hl1=hlCells[0].getAttribute("data-color");
+  check("the first highlight is on", new RegExp("background-color: "+hl1).test(stem.innerHTML), stem.innerHTML);
+  pick("marked text");
+  openPalette("hiliteColor");
+  const cells2=[...doc.querySelectorAll(".st-color-pop.open .st-color-cell")];
+  click(cells2[cells2.length-1]);
+  const hl2=cells2[cells2.length-1].getAttribute("data-color");
+  check("picking another highlight replaces it rather than nesting",
+    stem.innerHTML.includes(hl2)&&!stem.innerHTML.includes(hl1), stem.innerHTML);
+
+  // ---- nothing selected: say so, change nothing ---------------------------------------
+  set("plain words");
+  loseSelection();
+  openPalette("foreColor");
+  pickSwatch("Red");
+  check("with nothing selected the text is left alone", !/color:\s*#/.test(stem.innerHTML), stem.innerHTML);
+  check("and the author is told to select text first", /select the text/i.test(toastText()), toastText());
+
+  // ---- a caret (no selection) still means "format what I type next" -------------------
+  set("type here");
+  const caretNode=doc.createTreeWalker(stem,4).nextNode();
+  const cr=doc.createRange(); cr.setStart(caretNode,4); cr.collapse(true);
+  const cs=w.getSelection(); cs.removeAllRanges(); cs.addRange(cr);
+  openPalette("foreColor");
+  pickSwatch("Gold");
+  check("a caret with no selection still colours what you type next", /color:\s*#/.test(stem.innerHTML), stem.innerHTML);
+  check("and the words survive", stem.textContent.includes("type here"), stem.innerHTML);
 
   // ---------------- the markup this produces is what the sanitiser allows -------------
   stem.innerHTML='Which <b style="font-size:18px">therapy</b>, and <span style="color: #4472c4">why</span>? '+

@@ -2303,6 +2303,72 @@
   }
 
   // --- apply / remove a colour, keeping every other format intact -------------------------
+  // Typing a hex code has to take focus away from the question text, which throws the
+  // selection away. Remember it when the palette opens and put it back before applying, or
+  // every colour after the first would land on nothing. Note that focus() alone leaves a
+  // collapsed caret at the start of the field, which still looks "inside" the host - so the
+  // saved range is compared rather than merely checked for containment.
+  // The palette is a popover outside the text, so clicking it (or typing in its hex box) moves
+  // focus out of the editable and takes the selection with it - the colour would then be
+  // applied to nothing. Remember the selection when the palette opens and put it back before
+  // applying. Only the endpoints are stored, never the Range itself: browsers hand out a range
+  // that the Selection can rewrite in place, and a stale one is worse than none.
+  var stSavedSel = null;                       // {host, sc, so, ec, eo}
+  function stSelectionIn(host) {
+    var s = window.getSelection();
+    return !!(s && s.rangeCount && host && host.contains(s.anchorNode));
+  }
+  function stRememberSelection(host) {
+    stSavedSel = null;
+    var s = window.getSelection();
+    if (!s || !s.rangeCount || !host) return;
+    if (!host.contains(s.anchorNode)) return;
+    var r = s.getRangeAt(0);
+    stSavedSel = { host: host, sc: r.startContainer, so: r.startOffset, ec: r.endContainer, eo: r.endOffset };
+  }
+  function stSameAsSaved(s, saved) {
+    return !!s && s.anchorNode === saved.sc && s.anchorOffset === saved.so &&
+      s.focusNode === saved.ec && s.focusOffset === saved.eo;
+  }
+  function stRestoreSelection(host) {
+    var saved = stSavedSel;
+    if (!saved || saved.host !== host) return false;
+    // the editor may have re-rendered the card, or the author may have retyped the field
+    if (!host.contains(saved.sc) || !host.contains(saved.ec)) { stSavedSel = null; return false; }
+    var s = window.getSelection();
+    if (stSameAsSaved(s, saved)) return true;
+    var live = (s && s.rangeCount) ? s.getRangeAt(0).cloneRange() : null;
+    try {
+      host.focus();
+      var r = document.createRange();
+      r.setStart(saved.sc, saved.so);
+      r.setEnd(saved.ec, saved.eo);
+      s.removeAllRanges();
+      s.addRange(r);
+      if (s.rangeCount && stSameAsSaved(s, saved)) return true;
+    } catch (e) { /* fall through and put the live selection back */ }
+    // focus() alone has collapsed the selection to the top of the field, so restore whatever
+    // was selected before we touched it rather than colouring the wrong words
+    try {
+      s.removeAllRanges();
+      if (live) s.addRange(live);
+    } catch (e2) { /* nothing further we can do */ }
+    return false;
+  }
+  // take one colour property off an element, unwrapping it when nothing is left
+  function stDropProp(el, isFore) {
+    var tag = el.tagName;
+    if (tag === "FONT") {
+      if (isFore && el.hasAttribute("color")) el.removeAttribute("color");
+      return;
+    }
+    if (tag === "MARK" && !isFore) { stUnwrap(el); return; }
+    if (!el.style) return;
+    if (isFore) el.style.color = "";
+    else el.style.backgroundColor = "";
+    if (!(el.getAttribute("style") || "").trim()) el.removeAttribute("style");
+    if (tag === "SPAN" && el.attributes.length === 0) stUnwrap(el);
+  }
   function stUnwrap(el) {
     var p = el.parentNode;
     if (!p) return;
@@ -2350,20 +2416,7 @@
       sel.removeAllRanges(); sel.addRange(nr);
       return;
     }
-    stColourNodes(host, range).forEach(function (el) {
-      var tag = el.tagName;
-      if (tag === "FONT") {
-        if (isFore && el.hasAttribute("color")) el.removeAttribute("color");
-        return;
-      }
-      if (tag === "MARK" && !isFore) { stUnwrap(el); return; }
-      if (!el.style) return;
-      if (isFore) el.style.color = "";
-      else el.style.backgroundColor = "";
-      // drop the style attribute once it is empty so no bare <span style=""> is left behind
-      if (!(el.getAttribute("style") || "").trim()) el.removeAttribute("style");
-      if (tag === "SPAN" && el.attributes.length === 0) stUnwrap(el);
-    });
+    stColourNodes(host, range).forEach(function (el) { stDropProp(el, isFore); });
   }
   // Wrap the selection in a span carrying the colour - the fallback for engines where
   // execCommand is unavailable, and what lets this be exercised outside a browser.
@@ -2386,6 +2439,10 @@
     w.setAttribute("style", style);
     w.appendChild(frag);
     range.insertNode(w);
+    // change the colour rather than stacking a new span on top of the old one
+    for (var n = w.parentNode; n && n !== host; n = n.parentNode) {
+      if (n.nodeType === 1) stDropProp(n, isFore);
+    }
     var nr2 = document.createRange();
     nr2.selectNodeContents(w);
     sel.removeAllRanges(); sel.addRange(nr2);
@@ -2395,12 +2452,19 @@
     if (!host) return;
     var isFore = kind === "foreColor";
     var remove = !color || color === "automatic" || color === "transparent";
-    host.focus();
+    // the palette and its hex box have taken focus by now, so put the author's selection back
+    // before doing anything to it - focus() on its own only leaves a collapsed caret
+    stRestoreSelection(host);
+    if (!stSelectionIn(host)) {
+      toast(isFore ? "Select the text you want to colour first." : "Select the text you want to highlight first.");
+      return;
+    }
     try { document.execCommand("styleWithCSS", false, true); } catch (e) {}
     if (remove) {
       stStripColor(host, isFore);
       stSyncToolbar(target, kind, null);
       changed();
+      stRememberSelection(host);        // the wrap/unwrap re-parented the nodes the range pointed at
       return;
     }
     var hex = (stToRgb(color) || {}).hex || color;
@@ -2412,6 +2476,7 @@
     stRemember(kind, hex);
     stSyncToolbar(target, kind, hex);
     changed();
+    stRememberSelection(host);          // keep the same words selected for the next colour
   }
   function stApplyFontSize(target, px) {
     var host = document.getElementById(target); if (!host) return;
@@ -2475,7 +2540,11 @@
       if (!pop) return;
       var wasOpen = pop.classList.contains("open");
       stClosePops();
-      if (!wasOpen) { pop.classList.add("open"); trig.setAttribute("aria-expanded", "true"); }
+      if (!wasOpen) {
+        stRememberSelection(document.getElementById(tgt));   // the selection the colour lands on
+        pop.classList.add("open");
+        trig.setAttribute("aria-expanded", "true");
+      }
       return;
     }
     var inPop = e.target.closest(".st-color-pop");
@@ -5057,7 +5126,11 @@
   });
   // keep selection-based commands working when the toolbar button steals focus
   root.addEventListener("mousedown", function (e) {
-    if (e.target.closest("button.st-tb, .st-tb-color")) e.preventDefault();      // keep the text selection
+    // The palette is a popover outside the text, so a click on any of its buttons would move
+    // focus out of the editable and collapse the selection - the colour would then be applied
+    // to nothing. Stopping the default keeps the selection. The palette's own inputs (hex,
+    // R / G / B, picker) still have to be focusable, which is why only buttons are covered.
+    if (e.target.closest("button.st-tb, .st-tb-color, .st-color-pop button")) e.preventDefault();
     var pb = e.target.closest("[data-pipe-for]");
     if (pb) { e.preventDefault(); pipeCaret = null; rememberCaret(document.getElementById(pb.getAttribute("data-pipe-for"))); }
   });
