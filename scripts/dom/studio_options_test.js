@@ -95,6 +95,17 @@ const KIND_NAME = { opt: "answer option", row: "row", col: "column", pt: "scale 
   // ---------------- 2. each row has its OWN palette, keyed to its own label ----------------
   await open("Q1");
   const a0 = lab("opt", 0), a1 = lab("opt", 1);
+
+  // ---------------- 1b. the palette's containing block is its own toolbar -----------------
+  const cssText = await get("/static/css/studio.css");
+  check("the toolbar is the palette's positioning context",
+    /\.st-toolbar\{[^}]*position:\s*relative/.test(cssText.replace(/\n/g, " ")),
+    "no position:relative on .st-toolbar");
+  openPalette("foreColor", a0, "option 1");
+  check("an option's palette lives inside that option's own toolbar",
+    $('.st-toolbar[data-for="' + a0.id + '"]').contains($('.st-color-pop[data-palette-for="' + a0.id + '"]')),
+    $('.st-color-pop[data-palette-for="' + a0.id + '"]').parentElement.className);
+
   openPalette("foreColor", a0, "option 1");
   check("the palette for option 1 is the only one open",
     $$(".st-color-pop.open").length === 1 &&

@@ -2244,7 +2244,13 @@
       var wrap = document.createElement("div");
       wrap.innerHTML = stPaletteHTML(target, kind);
       pop = wrap.firstChild;
-      tb.parentElement.insertBefore(pop, tb.nextSibling);
+      // Inside the toolbar, not after it. .st-toolbar is position:relative, so as its child the
+      // palette's containing block is the toolbar itself and it opens just under the button.
+      // As a sibling it instead anchored to the nearest positioned ancestor - .st-editor, which
+      // is also overflow-y:auto - so it was placed below the whole editor pane and clipped away.
+      // That is why the picker looked broken on the question and help text while answer options
+      // worked: .st-richlabel happens to be positioned, so those palettes anchored correctly.
+      tb.appendChild(pop);
     }
     // flip the palette to the left when its button sits near the right edge of the window
     if (trig && trig.getBoundingClientRect) {
@@ -2463,9 +2469,13 @@
     if (!host) return;
     var isFore = kind === "foreColor";
     var remove = !color || color === "automatic" || color === "transparent";
-    // the palette and its hex box have taken focus by now, so put the author's selection back
-    // before doing anything to it - focus() on its own only leaves a collapsed caret
-    stRestoreSelection(host);
+    // Prefer the selection that is live right now. The palette can stay open across "Apply", so
+    // the author may have selected different words since it opened - the saved range is only a
+    // fallback for when focus really was stolen (by the hex box or the colour picker). Getting
+    // this backwards is what makes the colour look like it does nothing: stRestoreSelection
+    // force-installs the saved range, silently discarding what the author just selected.
+    if (stSelectionIn(host)) stRememberSelection(host);
+    else stRestoreSelection(host);
     if (!stSelectionIn(host)) {
       toast(isFore ? "Select the text you want to colour first." : "Select the text you want to highlight first.");
       return;
@@ -2551,8 +2561,11 @@
       if (!pop) return;
       var wasOpen = pop.classList.contains("open");
       stClosePops();
+      // Remember on every open, not only the first. "Apply" in the custom area leaves the palette
+      // open, and the author may have moved the caret or selected different words since; a range
+      // saved at the first open would otherwise keep colouring the old words.
+      stRememberSelection(document.getElementById(tgt));
       if (!wasOpen) {
-        stRememberSelection(document.getElementById(tgt));   // the selection the colour lands on
         pop.classList.add("open");
         trig.setAttribute("aria-expanded", "true");
       }

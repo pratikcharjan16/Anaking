@@ -343,7 +343,12 @@ a{color:var(--accent2)}
    is inert while it is invisible so it cannot swallow a text selection */
 .st-richlabel .st-pipe-btn{position:absolute;bottom:4px;right:4px;opacity:0;pointer-events:none;background:#fff;margin-left:0}
 .st-richlabel:hover .st-pipe-btn,.st-richlabel:focus-within .st-pipe-btn,.st-richlabel .st-pipe-btn:focus-visible{opacity:1;pointer-events:auto}
-.st-toolbar{display:flex;flex-wrap:wrap;gap:3px;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 6px;background:#f7f9fb}
+/* position:relative is what makes the colour palette work. .st-color-pop is
+   position:absolute with top:calc(100% + 8px), and without this its containing block is the
+   nearest positioned ancestor - .st-editor, which is also overflow-y:auto. The palette then
+   anchors to the bottom of the whole editor pane and is clipped away, so the picker looks
+   broken. Anchoring it to its own toolbar puts it directly under the button that opened it. */
+.st-toolbar{position:relative;display:flex;flex-wrap:wrap;gap:3px;align-items:center;border:1px solid var(--line);border-bottom:0;border-radius:8px 8px 0 0;padding:5px 6px;background:#f7f9fb}
 .st-tb{border:1px solid transparent;background:transparent;border-radius:6px;min-width:28px;height:26px;padding:0 7px;font-size:12.5px;cursor:pointer;color:var(--ink);display:inline-flex;align-items:center;justify-content:center;gap:3px}
 .st-tb:hover{background:#fff;border-color:var(--line)}
 .st-tb-sep{width:1px;height:18px;background:var(--line);margin:0 3px}
@@ -406,10 +411,7 @@ a{color:var(--accent2)}
   border-radius:8px;padding:6px 9px}
 .st-color-hint{font-size:11px;color:var(--muted);margin-top:9px;line-height:1.4}
 /* size select refinement */
-/* size select refinement */
 .st-toolbar select[data-size-for]{min-width:72px;max-width:90px}
-/* ensure toolbar palette positioning context */
-.st-toolbar{position:relative}
 .st-rich{border:1px solid var(--line);border-radius:0 0 8px 8px;padding:10px 12px;min-height:74px;font-size:15px;line-height:1.5;background:#fff;outline:none}
 .st-rich.sm{min-height:44px;font-size:13px}
 .st-rich:focus{border-color:var(--accent2);box-shadow:0 0 0 3px rgba(18,120,158,.15)}

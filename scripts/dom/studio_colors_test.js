@@ -59,6 +59,27 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
     !!$(".st-toolbar[data-for=f-help-rich] [data-color-trigger=foreColor]") &&
     !!$(".st-toolbar[data-for=f-help-rich] [data-color-trigger=hiliteColor]"));
 
+  // ---------------- the palette opens under its own button -------------------------------
+  // .st-color-pop is position:absolute with top:calc(100% + 8px), so its containing block is the
+  // nearest positioned ancestor. The palette is created inside the toolbar, and .st-toolbar is
+  // position:relative - assert both halves of that, because jsdom does no layout and cannot
+  // catch it any other way. When the palette was inserted as a SIBLING of the toolbar it instead
+  // anchored to .st-editor (position:relative + overflow-y:auto) and was pushed below the whole
+  // editor pane and clipped away: the picker looked broken on the question and help text while
+  // answer options - whose .st-richlabel is positioned - kept working.
+  const cssText = await get("/static/css/studio.css");
+  check("the toolbar is the palette's positioning context",
+    /\.st-toolbar\{[^}]*position:\s*relative/.test(cssText.replace(/\n/g, " ")), "no position:relative on .st-toolbar");
+  const anchorOk = t => { const tb = $('.st-toolbar[data-for="' + t + '"]'), pop = $('.st-color-pop[data-palette-for="' + t + '"]');
+    return !!tb && !!pop && tb.contains(pop); };
+  click($("[data-color-trigger=foreColor]"));                  // opens the stem's font palette
+  check("the question-text palette lives inside its own toolbar", anchorOk("f-stem-rich"),
+    $('.st-color-pop[data-palette-for="f-stem-rich"]').parentElement.className);
+  click($('.st-toolbar[data-for="f-help-rich"] [data-color-trigger="hiliteColor"]'));
+  check("the help-text palette lives inside its own toolbar too", anchorOk("f-help-rich"),
+    ($('.st-color-pop[data-palette-for="f-help-rich"]') || {parentElement:{className:"none"}}).parentElement.className);
+  $$(".st-color-pop.open").forEach(p => p.classList.remove("open"));   // leave none of them open for the checks below
+
   // ---------------- the font-colour palette -------------------------------------------
   click($("[data-color-trigger=foreColor]"));
   check("clicking A opens the font-colour palette", $(".st-color-pop.open") &&
@@ -91,7 +112,10 @@ const sleep=ms=>new Promise(r=>setTimeout(r,ms));
   const hp=$(".st-color-pop.open");
   check("clicking the highlighter opens the highlight palette", hp &&
     hp.getAttribute("data-palette-kind")==="hiliteColor");
-  check("its first entry is No colour, not Automatic", /No colour/.test($(".st-color-none-label").textContent));
+  // scope to the palette that is actually open: more than one palette exists by now, and an
+  // unscoped query lands on whichever was created first
+  check("its first entry is No colour, not Automatic", /No colour/.test(hp.querySelector(".st-color-none-label").textContent),
+    hp.querySelector(".st-color-none-label").textContent);
   check("it is grouped as Highlight colours",
     $$(".st-color-pop.open .st-color-group").some(g=>/Highlight colours/.test(g.textContent)));
   const cells=[...hp.querySelectorAll(".st-color-cell")];
