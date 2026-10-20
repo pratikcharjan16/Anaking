@@ -406,6 +406,9 @@
     rank: "rank",
     rating_grid: "grid", rating_scale: "grid", semantic_diff: "grid", emoji_grid: "grid",
     heatmap: "grid", concept_test: "grid",
+    // presented, never answered: a walkthrough is watched, so it owns no answer slot
+    // and no screening operator may be applied to it
+    walk_through: "any", text_block: "any",
     sum_to_100: "alloc", numeric_matrix: "numrows"
   };
   function qKind(q) {
@@ -878,6 +881,8 @@
           }
           break;
         case "text_block": break;
+        // a walkthrough stores nothing: it is shown, not answered
+        case "walk_through": break;
         default: break;
       }
       out[q.id] = a;

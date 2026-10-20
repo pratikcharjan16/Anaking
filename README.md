@@ -399,13 +399,31 @@ through the same overlay respondents see. Below the steps, an optional list of *
 the walkthrough** is asked once, after it has played.
 
 On the respondent side the walkthrough is one step of its own: the card names it and lists the
-steps, the overlay plays them with narration, and *Skip* or the end of the last step returns to
-the survey. Nothing is written to the respondent's record — only the questions that follow are.
+steps, the overlay plays them, and *Skip* or the end of the last step returns to the survey.
+Nothing is written to the respondent's record — only the questions that follow are.
+
+**How it plays.** The overlay is a small video player, and the narration is its clock. One
+`requestAnimationFrame` loop reads a single elapsed-time source and drives everything visual from
+it, so the picture and the voice cannot drift apart:
+
+| | |
+|---|---|
+| **Karaoke caption** | the step's title and narration are split into one `<span>` per word; the word being spoken is highlighted and the ones already spoken dim. Word positions come from the speech engine's `onboundary` events where they are reported (Chrome, Firefox) and from an elapsed-time estimate everywhere else — Safari never fires them, so the estimate runs by default and the boundary only corrects it. Muted, nothing is lit at all. |
+| **Timeline** | a video-style scrubber for the *whole* walkthrough, with a chapter marker per step at its cumulative offset; click a marker to jump. The readout is `0:12 / 1:04`. |
+| **Letterboxed stage** | 16:9, vignetted, with a slow Ken Burns drift on each artwork layer (a fresh direction per step) and an ambient wash whose colour follows the scene. |
+| **Audio meter** | five bars that breathe with the narration. Synthetic, deliberately: routing the `<audio>` through an `AnalyserNode` would hijack its output and put mute, autoplay policy and CORS at risk for no visible gain at this size. |
+| **Autoplay** | when the browser blocks playback the overlay asks for a click — a large *Play the narration* button — instead of silently running a timer the respondent never asked for. |
+
+The three clock sources are a browser-voice step, an uploaded clip (`timeupdate` against its real
+duration) and a muted or silent step (a plain timer). A step whose audio errors out falls back to
+the timer rather than stalling, and a speech engine that never reports `end` is caught by a
+timeout so the respondent is never stranded. `prefers-reduced-motion` keeps the words and drops
+the movement.
 
 **Honest limits.** The voice is the browser's built-in speech engine, so it needs no audio
 files and no network call, but it is not a studio recording — attach a recorded clip where the
 delivery matters. There is no server-side video render: "animated" means the built-in SVG
-scenes plus the author's own image or video, played in step with the narration clock.
+scenes plus the author's own image or video, driven in step with the narration clock.
 
 Production: `gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"`
 
@@ -437,6 +455,7 @@ node scripts/dom/survey_ai_check_test.js
 node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes
 node scripts/dom/concept_test_empty_test.js      # a new Concept Test starts empty and an empty one never reaches a respondent
 node scripts/dom/walk_through_test.js            # the Walk Through card, a deck turned into steps, the narrated respondent step        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/explainer_cinematic_test.js     # the narration-as-clock player: karaoke boundaries, timeline + chapters, autoplay, mute, degradation
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)

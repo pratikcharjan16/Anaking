@@ -44,6 +44,7 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
   check("the card says there are no steps yet", /No steps yet/.test(empties.join("|")), empties.join(" | "));
   check("the card still offers a way to add and to preview",
     !!$('[data-act="wt-add"]') && !!$('[data-act="wt-preview-all"]'));
+
   check("a deck can be turned into steps", !!$('[data-act="wt-ppt"]'));
   check("browser-voice narration is on by default", $("#f-wt-tts").checked);
 
@@ -68,6 +69,24 @@ let fails=0; const check=(l,c,d="")=>{console.log((c?"PASS  ":"FAIL  ")+l+(c?"":
   click($('[data-act="wt-down"][data-i="0"]')); await sleep(150);
   const after=$$('[data-wt="label"]').map(i=>i.value);
   check("a step can be moved down", after[0]==="Step 2" && after[1]==="Mechanism of action", JSON.stringify(after));
+
+  // ---------- the studio preview plays the same cinematic player respondents get ----------
+  click($('[data-act="wt-preview-all"]')); await sleep(600);
+  check("Preview opens the walkthrough overlay", !$("#explainer").hidden);
+  check("the preview mounts a chapter marker per step, not the old row of dots",
+    $$("#ex-dots .ex-dot").length === 2, "dots=" + $$("#ex-dots .ex-dot").length);
+  check("the chapter markers sit at their cumulative offsets",
+    parseFloat($$("#ex-dots .ex-dot")[1].style.left) > 0,
+    $$("#ex-dots .ex-dot")[1].style.left);
+  check("the preview draws the audio meter and the whole-timeline readout",
+    !!$("#ex-sound") && /^\d+:\d\d$/.test($("#ex-now").textContent) &&
+    /^\d+:\d\d$/.test($("#ex-total").textContent) && $("#ex-total").textContent !== "0:00",
+    $("#ex-now").textContent + " / " + $("#ex-total").textContent);
+  check("the preview splits the narration into karaoke words",
+    $$("#ex-sub .w").length > 0, "words=" + $$("#ex-sub .w").length);
+  click($("#ex-skip")); await sleep(300);
+  check("Skip closes the preview and empties the mount",
+    $("#explainer").hidden, "hidden=" + $("#explainer").hidden);
 
   // ---------- a follow-up question ----------
   click($('[data-act="wt-q-add"]')); await sleep(150);
