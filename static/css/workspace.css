@@ -231,31 +231,6 @@
 .dash-zone-tag.mid { background: #fef3c7; color: #b45309; }
 .dash-zone-tag.high { background: #d1fae5; color: #047857; }
 
-/* NPS Visual Bar */
-.nps-visual-bar {
-  display: flex;
-  height: 24px;
-  border-radius: 6px;
-  overflow: hidden;
-  margin: 12px 0;
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.1);
-}
-.nps-seg-p { background: #10b981; }
-.nps-seg-pass { background: #f59e0b; }
-.nps-seg-d { background: #ef4444; }
-.nps-score-badge {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 6px;
-  padding: 8px 16px;
-  border-radius: 8px;
-  background: #f0fdf4;
-  border: 1px solid #bbf7d0;
-  color: #15803d;
-  font-size: 18px;
-  font-weight: 800;
-  margin-bottom: 12px;
-}
 
 .ppt-q-item {
   display: flex;

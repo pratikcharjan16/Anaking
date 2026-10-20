@@ -392,16 +392,16 @@
 
   // Which family of controls the condition needs, per question type:
   //   choice      - options / codes
-  //   number      - one number (numeric entry, scale, NPS, date, delta)
+  //   number      - one number (numeric entry, scale, date, delta)
   //   alloc       - an allocation split across rows (constant sum)
   //   numrows     - a number per row, with no forced total (a numeric matrix without columns)
   //   nummatrix   - a numeric matrix of rows x columns, one number per cell
-  //   grid        - a scale value per row (rating scale, word pairs, heat map, concept test,
+  //   grid        - a scale value per row (rating scale, NPS, heat map, concept test,
   //                 and older scale-based grids)
   //   choicegrid  - a grid of rows x columns where each row picks one or several columns
   var TYPE_KIND = {
     single_select: "choice", multi_select: "choice",
-    numeric: "number", slider: "number", nps: "number", date: "number", delta: "number",
+    numeric: "number", slider: "number", date: "number", delta: "number",
     open_text: "text", loop: "text",
     rank: "rank",
     rating_grid: "grid", rating_scale: "grid", semantic_diff: "grid", emoji_grid: "grid",
@@ -658,7 +658,7 @@
     a = a || {};
     if (!q) return false;
     switch (q.type) {
-      case "single_select": case "numeric": case "slider": case "nps":
+      case "single_select": case "numeric": case "slider":
       case "open_text": case "date":
         return a._ !== undefined && a._ !== null && String(a._) !== "";
       case "multi_select": return (a.codes || []).length > 0;
@@ -839,7 +839,7 @@
       if (q.id === uptoId) break;
       var a = {};
       switch (q.type) {
-        case "single_select": case "nps": a._ = q.options && q.options.length ? q.options[0].code : 7; break;
+        case "single_select": a._ = q.options && q.options.length ? q.options[0].code : 7; break;
         case "multi_select": a.codes = (q.options || []).slice(0, 2).map(function (o) { return o.code; }); break;
         case "numeric": case "slider": a._ = Math.round(((q.min || 0) + (q.max || 100)) / 2); break;
         case "open_text": a._ = "(sample answer to " + q.id + ")"; break;

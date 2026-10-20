@@ -148,19 +148,6 @@ def generate_insight(q: dict, data: dict, cut_meta: dict | None = None) -> str:
         elif m is not None:
             return f"Average gauge score is {m:.1f}{unit}{zone_txt} across n={base} respondents."
 
-    # NPS insight
-    if qtype == "nps":
-        nps_info = data.get("nps") or {}
-        score = nps_info.get("score")
-        if score is not None:
-            sign = "+" if score > 0 else ""
-            return (f"Net Promoter Score is {sign}{score} ({nps_info.get('promoters_pct', 0)}% Promoters, "
-                    f"{nps_info.get('passives_pct', 0)}% Passives, {nps_info.get('detractors_pct', 0)}% Detractors) "
-                    f"with a mean recommendation rating of {data.get('mean', '—')}/10.")
-        m = data.get("mean")
-        med = data.get("median")
-        return f"Average recommendation score is {m} (Median: {med}) across n={base} respondents."
-
     # Rank insight
     if qtype == "rank" and opts:
         sorted_ranks = sorted(opts, key=lambda x: x.get("first_count", 0), reverse=True)
@@ -272,8 +259,8 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
             "median": None,
         }
 
-        # Numeric / Slider / NPS / Single Gauge Meter
-        if qtype in ("numeric", "slider", "nps", "gauge_meter") and not q.get("rows"):
+        # Numeric / Slider / Single Gauge Meter
+        if qtype in ("numeric", "slider", "gauge_meter") and not q.get("rows"):
             ns = [numeric(v) for v in vals]
             ns = [v for v in ns if v is not None]
             row["base"] = len(ns)
@@ -302,24 +289,6 @@ def analyze_with_datacut(records: list, cfg: dict, cut_q_id: str | None = None,
                     {"label": row["mid_label"], "cls": "mid", "count": z_mid, "pct": round(100 * z_mid / tot, 1)},
                     {"label": row["max_label"], "cls": "high", "count": z_high, "pct": round(100 * z_high / tot, 1)}
                 ]
-
-            if qtype == "nps":
-                promoters = sum(1 for x in ns if x >= 9)
-                passives = sum(1 for x in ns if 7 <= x <= 8)
-                detractors = sum(1 for x in ns if x <= 6)
-                tot = len(ns) or 1
-                p_pct = round(100 * promoters / tot, 1)
-                pas_pct = round(100 * passives / tot, 1)
-                d_pct = round(100 * detractors / tot, 1)
-                nps_score = round(p_pct - d_pct, 1)
-                dist = [{"score": i, "count": sum(1 for x in ns if int(round(x)) == i), "pct": round(100 * sum(1 for x in ns if int(round(x)) == i) / tot, 1)} for i in range(11)]
-                row["nps"] = {
-                    "score": nps_score,
-                    "promoters_count": promoters, "promoters_pct": p_pct,
-                    "passives_count": passives, "passives_pct": pas_pct,
-                    "detractors_count": detractors, "detractors_pct": d_pct,
-                    "dist": dist
-                }
 
             if cut_meta and cut_meta["active"]:
                 vals_A = [numeric(r["answers"].get(qid, {}).get("_")) for r in records_A]

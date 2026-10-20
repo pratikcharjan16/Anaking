@@ -70,8 +70,7 @@
     text_grid: { name: "Text Grid", icon: "\u229E", desc: "Rows \u00D7 columns of text boxes – flexible, images on rows & columns, voice to text", group: "Questions" },
     rating_scale: { name: "Rating Scale", icon: "\u2605", desc: "Rate rows on one scale, with low-end, mid and high-end labels", group: "Questions" },
     gauge_meter: { name: "Gauge Meter", icon: "\u23F1", desc: "Interactive dial speedometer / gauge meter", group: "Questions" },
-    semantic_diff: { name: "Word pairs", icon: "\u27F7", desc: "Slide between two opposite words", group: "Questions" },
-    nps: { name: "Net Promoter", icon: "\u2469", desc: "Likelihood to recommend", group: "Questions", noprev: true },
+    semantic_diff: { name: "NPS", icon: "\u2194", desc: "Score rows between two opposite anchors", group: "Questions" },
     emoji_grid: { name: "Emoji reaction", icon: "\u263A", desc: "Faces instead of numbers", group: "Questions" },
     numeric: { name: "Numeric Entry", icon: "#", desc: "Type a number - %, $, count", group: "Questions" },
     slider: { name: "Scale", icon: "\u2696", desc: "Drag to a value", group: "Questions" },
@@ -129,7 +128,6 @@
       q.rows = [{ code: "a", label: "First item" }, { code: "b", label: "Second item" },
                 { code: "c", label: "Third item" }];
     }
-    if (type === "nps") { q.scale = { min: 0, max: 10 }; }
     if (type === "choice_task") q.conjoint = conjointTemplate();
     if (type === "emoji_grid") {
       q.scale = { min: 1, max: 5, faces: ["\uD83D\uDE1E", "\uD83D\uDE41", "\uD83D\uDE10", "\uD83D\uDE42", "\uD83D\uDE0D"],
@@ -191,7 +189,7 @@
       questions: [
         qTemplate("single_select", "Q1", "S1"),
         qTemplate("rating_grid", "Q2", "S1"),
-        qTemplate("nps", "Q3", "S1"),
+        qTemplate("slider", "Q3", "S1"),
         qTemplate("open_text", "Q4", "S1")
       ],
       tpp: { patient: "", mechanism: "", trial: "", efficacy: "", safety: "",
@@ -816,7 +814,6 @@
         return thumbRows(q, 3);
       case "rating_scale":
       case "semantic_diff":
-      case "nps":
         return thumbScale(q);
       case "concept_test":
         var cc = (q.concepts||[]).length, cq = (q.concept_questions||[]).length;
@@ -1823,7 +1820,7 @@
   function answersTitle() {
     var t = ed.type;
     return hasOptions(t) ? "Answer options" : hasRows(t) ? "Rows & scale" : t === "open_text" ? "Text box" :
-      t === "numeric" || t === "slider" ? "Number range" : t === "nps" ? "Scale" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
+      t === "numeric" || t === "slider" ? "Number range" : t === "maxdiff" ? "Rounds" : t === "choice_task" ? "Choice task" : "Settings";
   }
 
   // The question editor follows the reference design: a strip with Content & Settings and
@@ -3150,7 +3147,6 @@
       html += loopBlock();
     }
 
-    if (t === "nps") html += '<h4 class="st-h4">Scale</h4>' + scaleRangeFields();
     if (t === "numeric_matrix" || t === "delta") {
       html += '<div class="st-grid4"><div class="st-field"><label>Minimum <span class="st-opt">blank = no limit</span></label><input id="f-nmin" type="number" value="' + (ed.min != null ? ed.min : "") + '"></div>' +
         '<div class="st-field"><label>Maximum</label><input id="f-nmax" type="number" value="' + (ed.max != null ? ed.max : "") + '"></div>' +
@@ -4302,7 +4298,7 @@
       if (!hm.image_src) delete hm.image_src;
       if (!Object.keys(hm).length) delete ed.heatmap;
     }
-    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff" || t === "nps") {
+    if (t === "rating_grid" || t === "rating_scale" || t === "semantic_diff") {
       if (val("f-smin") !== undefined) {
         ed.scale = ed.scale || {}; ed.scale.min = num("f-smin") != null ? num("f-smin") : 1; ed.scale.max = num("f-smax") != null ? num("f-smax") : 7;
         setOrDel(ed.scale, "min_label", val("f-sminl")); setOrDel(ed.scale, "max_label", val("f-smaxl"));
@@ -5998,7 +5994,6 @@
         html += '<div class="st-kpis">' +
           '<div class="st-kpi"><strong>' + compN + '/' + startN + '</strong><span>completed</span></div>' +
           '<div class="st-kpi"><strong>' + dur + '</strong><span>minutes</span></div>' +
-          (a.nps && a.nps.score != null ? '<div class="st-kpi"><strong>' + (a.nps.score > 0 ? '+' : '') + a.nps.score + '</strong><span>NPS</span></div>' : '') +
         '</div>';
 
         if (a.questions && a.questions.length && window.AnakingCharts) {

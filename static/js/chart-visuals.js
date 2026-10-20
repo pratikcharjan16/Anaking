@@ -37,13 +37,6 @@
         { id: 'donut', label: '🍩 Zones' }
       ];
     }
-    if (t === 'nps') {
-      return [
-        { id: 'gauge', label: '🎯 NPS Meter' },
-        { id: 'bar', label: '📊 3-Segment Bar' },
-        { id: 'column', label: '❚❚ 0-10 Columns' }
-      ];
-    }
     if (t === 'sum_to_100') {
       return [
         { id: 'bar', label: '📊 Allocation' },
@@ -379,37 +372,6 @@
   }
 
   // --------------------------------------------------------------------------
-  // NPS Score Meter Generator
-  // --------------------------------------------------------------------------
-  function renderNpsMeter(q) {
-    var nps = q.nps || {};
-    var score = nps.score != null ? nps.score : 0;
-    var sign = score > 0 ? '+' : '';
-    var pPct = nps.promoters_pct || 0;
-    var pasPct = nps.passives_pct || 0;
-    var dPct = nps.detractors_pct || 0;
-
-    return '<div style="margin:8px 0">' +
-      '<div class="nps-score-badge">' +
-        '<span>NPS:</span>' +
-        '<strong>' + sign + score + '</strong>' +
-        '<span style="font-size:12px;font-weight:600;color:#64748b;margin-left:8px">(Range -100 to +100)</span>' +
-      '</div>' +
-      '<div class="nps-visual-bar">' +
-        '<div class="nps-seg-p" style="width:' + pPct + '%" title="Promoters (9-10): ' + pPct + '% (n=' + (nps.promoters_count || 0) + ')"></div>' +
-        '<div class="nps-seg-pass" style="width:' + pasPct + '%" title="Passives (7-8): ' + pasPct + '% (n=' + (nps.passives_count || 0) + ')"></div>' +
-        '<div class="nps-seg-d" style="width:' + dPct + '%" title="Detractors (0-6): ' + dPct + '% (n=' + (nps.detractors_count || 0) + ')"></div>' +
-      '</div>' +
-      '<div style="display:flex;justify-content:space-between;font-size:12px;margin-top:6px;flex-wrap:wrap;gap:8px">' +
-        '<span style="color:#047857">● <b>' + pPct + '%</b> Promoters (9-10)</span>' +
-        '<span style="color:#b45309">● <b>' + pasPct + '%</b> Passives (7-8)</span>' +
-        '<span style="color:#b91c1c">● <b>' + dPct + '%</b> Detractors (0-6)</span>' +
-      '</div>' +
-      '<div style="font-size:11.5px;color:#64748b;margin-top:10px">Mean recommendation score: <b>' + (q.mean != null ? q.mean : '—') + '/10</b> · Median: <b>' + (q.median != null ? q.median : '—') + '</b></div>' +
-    '</div>';
-  }
-
-  // --------------------------------------------------------------------------
   // Word Cloud & Verbatims Generator
   // --------------------------------------------------------------------------
   function renderWordCloud(q) {
@@ -599,24 +561,6 @@
           }).join('') +
         '</div>' +
       '</div>';
-    }
-
-    // 4. NPS
-    if (t === 'nps') {
-      if (view === 'column') {
-        var dist = (q.nps && q.nps.dist) ? q.nps.dist.map(function (d) { return { label: String(d.score), pct: d.pct, count: d.count }; }) : [];
-        return renderSvgColumn(dist, false, {});
-      }
-      if (view === 'bar') {
-        var npsObj = q.nps || {};
-        var pData = [
-          { label: 'Promoters (9-10)', pct: npsObj.promoters_pct || 0, count: npsObj.promoters_count || 0, color: '#10b981' },
-          { label: 'Passives (7-8)', pct: npsObj.passives_pct || 0, count: npsObj.passives_count || 0, color: '#f59e0b' },
-          { label: 'Detractors (0-6)', pct: npsObj.detractors_pct || 0, count: npsObj.detractors_count || 0, color: '#ef4444' }
-        ];
-        return renderSvgColumn(pData, false, {});
-      }
-      return renderNpsMeter(q);
     }
 
     // 5. Sum to 100

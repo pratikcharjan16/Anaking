@@ -3743,7 +3743,7 @@
   }
   function escHtml(v){return String(v==null?'':v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
   function aiFillTest(){
-    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider'||q.type==='nps')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
+    steps.forEach(function(s){ var q=s.q, a=answers[q.id]=answers[q.id]||{}; if(q.options&&q.options.length)a._=String(q.options[0].code); else if(q.type==='open_text')a._='Test response generated for survey validation only.'; else if(q.type==='numeric'||q.type==='slider')a._=q.min||5; else if(q.type==='heatmap'){ if(q.heatmap){ var rc=(q.heatmap.reactions||[])[0]; if(rc) a.clicks=[{x:0.5,y:0.5,reaction:rc.code}]; } else (q.rows||[]).forEach(function(r){(q.cols||[]).forEach(function(c){a[r.code+'_'+c.code]=1;});}); } else if(q.rows)(q.rows||[]).forEach(function(r){a[r.code]=(q.scale&&q.scale.min)||1;}); });
     store('answers',answers); save(); render(); toastTest('AI populated test-only sample answers. Review before using navigation.');
   }
   function toastTest(msg){var s=$("#tc-state");if(s)s.textContent=msg;}

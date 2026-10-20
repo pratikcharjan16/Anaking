@@ -120,7 +120,7 @@ def summarize(records, cfg, segment=None, segment_value=None):
         row = {'id': qid, 'title': plain(q.get('stem_html') or q.get('stem') or qid), 'type': q['type'],
                'base': len(vals), 'missing_or_not_shown': len(complete) - len(vals), 'small_base': len(vals) < 30,
                'options': [], 'mean': None}
-        if q.get('type') in ('numeric', 'slider', 'nps', 'gauge_meter') and not q.get('rows'):
+        if q.get('type') in ('numeric', 'slider', 'gauge_meter') and not q.get('rows'):
             ns = [numeric(v) for v in vals]
             ns = [v for v in ns if v is not None]
             row['base'] = len(ns)

@@ -21,7 +21,7 @@ def _verbatim_qs(cfg: dict) -> list:
 
 # A Concept Test and a Walk Through both keep their answers under a synthetic id built from
 # the inner question's own id.  One place flattens either, so the two cannot drift apart.
-_INNER_SINGLE = ("single_select", "numeric", "slider", "nps", "rating_scale", "gauge_meter")
+_INNER_SINGLE = ("single_select", "numeric", "slider", "rating_scale", "gauge_meter")
 _INNER_GRID = ("rating_grid", "rating_scale", "semantic_diff", "sum_to_100")
 
 
@@ -131,15 +131,6 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
                 for c in q.get("cols", []):
                     key = f"{r['code']}_{c['code']}"
                     out[f"{qid}_{key}"] = a.get(key, "")
-        elif t == "nps":
-            raw = a.get("_", "")
-            out[qid] = raw
-            try:
-                n = int(raw)
-                out[qid + "_segment"] = ("Promoter" if n >= 9 else "Passive" if n >= 7
-                                         else "Detractor")
-            except (ValueError, TypeError):
-                out[qid + "_segment"] = ""
         elif t == "rating_grid" and q.get("cols"):
             # a rows x columns choice grid: one column code per row, plus its wording
             col_labels = {str(c["code"]): c.get("label", "") for c in q["cols"]}
@@ -537,9 +528,6 @@ def build_sheets(records: list, scope: str, cfg: dict):
             n_tasks = (cfg.get("conjoint") or {}).get("n_tasks", 0)
             dd_rows.append([q["id"], q["section"], q["type"], stem, "T1..T" + str(n_tasks),
                             "chosen alternative per task", "1-3 chosen, 0 = opt-out"])
-        elif q["type"] == "nps":
-            dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "0-10 NPS",
-                            "9-10 promoter, 7-8 passive, 0-6 detractor"])
         elif q["type"] == "date":
             dd_rows.append([q["id"], q["section"], q["type"], stem, "_", "calendar date",
                             "YYYY-MM-DD"])
@@ -622,7 +610,7 @@ def analysis_for(records: list, cfg: dict) -> dict:
            "n_screened": sum(1 for r in records if r["status"] == "screened_out"),
            "mean_minutes": round(sum(r["elapsed_seconds"] or 0 for r in complete) / 60 /
                                  len(complete), 1) if complete else 0,
-           "ratings": [], "nps": None, "maxdiff": [], "heatmap": [], "emoji": [],
+           "ratings": [], "maxdiff": [], "heatmap": [], "emoji": [],
            "choice_share": None}
 
     def mean(vals):
@@ -654,18 +642,6 @@ def analysis_for(records: list, cfg: dict) -> dict:
                 rows.append({"label": r["label"], "cells": cells})
             out.setdefault("choice_grids", []).append(
                 {"id": q["id"], "stem": q["stem"][:60], "rows": rows})
-        elif t == "nps":
-            seg = {"Promoter": 0, "Passive": 0, "Detractor": 0}
-            for rec in complete:
-                v = rec["answers"].get(q["id"], {}).get("_")
-                try:
-                    n = int(v)
-                except (TypeError, ValueError):
-                    continue
-                seg["Promoter" if n >= 9 else "Passive" if n >= 7 else "Detractor"] += 1
-            tot = sum(seg.values()) or 1
-            out["nps"] = {"id": q["id"], "segments": seg,
-                          "score": round(100 * (seg["Promoter"] - seg["Detractor"]) / tot)}
         elif t == "gauge_meter":
             if q.get("rows"):
                 rows = []

@@ -11,16 +11,17 @@ from core.datacut import analyze_with_datacut
 
 
 def test_analysis_across_multiple_diverse_projects(client):
-    # Project 1: Consumer Brand Study with Gauge, Sum to 100, Emoji Grid, NPS
+    # Project 1: Consumer Brand Study with Scale, Gauge, Sum to 100, Emoji Grid
     proj1_cfg = {
         "title": "Consumer Brand Study",
         "sections": [{"id": "S1", "title": "Main"}],
         "questions": [
             {
-                "id": "Q_NPS",
+                "id": "Q_REC",
                 "section": "S1",
-                "type": "nps",
+                "type": "slider",
                 "stem": "How likely are you to recommend our brand?",
+                "min": 0, "max": 10, "step": 1,
             },
             {
                 "id": "Q_GAUGE",
@@ -115,7 +116,7 @@ def test_analysis_across_multiple_diverse_projects(client):
         client.post("/api/submit", json={
             "session_id": s["session_id"],
             "answers": {
-                "Q_NPS": {"_": 9 if i < 3 else 6},
+                "Q_REC": {"_": 9 if i < 3 else 6},
                 "Q_GAUGE": {"_": 82 if i < 3 else 60},
                 "Q_SUM": {"brand_a": 60, "brand_b": 40},
                 "Q_EMOJI": {"feel": 5, "trust": 4},
@@ -143,10 +144,12 @@ def test_analysis_across_multiple_diverse_projects(client):
     # 1. Verify Project 1 (Consumer) in Workspace & Studio analysis
     w1 = client.get("/api/workspace/analysis?study=proj-consumer&scope=all").get_json()
     assert w1["complete"] == 5
-    nps_q = next(q for q in w1["questions"] if q["id"] == "Q_NPS")
-    assert nps_q["nps"]["promoters_count"] == 3
-    assert nps_q["nps"]["detractors_count"] == 2
-    assert "promoter" in nps_q["insight"].lower()
+    rec_q = next(q for q in w1["questions"] if q["id"] == "Q_REC")
+    # three respondents at 9 and two at 6: the mean must sit between them, and the
+    # question must still be analysed rather than dropped as an unknown type
+    assert rec_q["mean"] is not None and 6 < rec_q["mean"] < 9
+    assert rec_q["base"] == 5
+    assert rec_q["median"] == 9
 
     gauge_q = next(q for q in w1["questions"] if q["id"] == "Q_GAUGE")
     assert gauge_q["mean"] is not None

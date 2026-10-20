@@ -183,7 +183,7 @@ never fire here), *the condition*, and *the value*. The condition list follows t
 | Question type | Conditions |
 |---|---|
 | Choose one / multi-select | is · is not · **is any of** · **is none of** · **includes all of** · is exactly these · **selects at least / at most / exactly** *n* |
-| Number, slider, NPS, date | equals · does not equal · is more than · at least · less than · at most · is between |
+| Number, slider, date | equals · does not equal · is more than · at least · less than · at most · is between |
 | Open text / loop | mentions · does not mention · is shorter than *n* words |
 | Rating grid, rating scale, semantic, heat map, numeric matrix | row is / is not / is at least / is at most |
 | Ranking | ranks … first · ranks … in the top *n* · includes all of · selects at least … |
@@ -294,13 +294,33 @@ Variables** (names captured from the respondent link, e.g. `?panel=A` → export
 
 Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
 options), Grid, Rating Scale (rows on one scale with low-end, mid and high-end labels),
-Rank Order, Scale, Text Entry, Numeric Entry, Net Promoter,
+Rank Order, Scale, Text Entry, Numeric Entry, NPS,
 Constant Sum, Numeric Matrix, Date, Delta (before / after / change); **Methodologies** -
 Max Diff experiment, Conjoint, Concept Test, Walk Through, Heatmap; **Survey flow** - Welcome Page,
 Thank You Page, Question Page, Question Loop, Page Randomizer; **Objects** - Embedded
 Variable, Text Block. Every type is fully editable (rows, scales, ranges, labels,
 placeholders, rich text, logic, media, styling) and every answer type flows into the
 flattened exports and the data dictionary.
+
+**NPS** is the word-pairs tile - rows scored between two opposite anchors, with the
+low-end and high-end labels either side. The dedicated *Net Promoter* type was removed:
+it offered one 0-10 question and nothing else, so it could not be reused, and the same
+answer shape is available as a **Scale** question with a 0-10 range. It is gone from the
+add-item library, the Type dropdown, the starter study and the analysis, export and
+PowerPoint code paths - so a study saved before the removal keeps its data, but its
+Net Promoter question no longer produces a promoter / passive / detractor score.
+
+### Editing a question
+
+The editor is a stack of cards - **Question**, **Rows & scale** (the answers), **Display &
+order**, **Image or video** and **Advanced** - each one collapsible, with a sticky jump
+nav across the top. The spacing follows one rhythm everywhere: a fixed gap between
+stacked fields, the same gap again between grid rows, and no double margin where a field
+sits inside a grid, so nothing crowds whatever is above or below it. Answer rows (options,
+rows, columns, scale points) are the densest part of the editor, so they get the most room -
+a row's own padding, a clear gap between rows, and taller inputs. On a narrow window the
+three- and four-across field grids drop to two-up, because a long label and its input do
+not fit in a third of a 400px pane.
 
 ### Written-answer quality: AI-generated & pasted text (all open-text questions)
 
@@ -444,6 +464,7 @@ node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/edit
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
 node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
 node scripts/dom/studio_options_test.js        # formatting on answer option / row / column / scale point labels
+node scripts/dom/studio_nps_and_spacing_test.js   # Net Promoter removed everywhere, the word-pairs tile reads NPS, card spacing contract
                                                #   hex/RGB/picker, recent colours, legibility warning
 node scripts/dom/survey_chrome_test.js          # respondent chrome: no section names, project details hidden while answering, gamified strip on top
 node scripts/dom/studio_sections_test.js        # outline: blank starter section, + Section, Title field, thumbnails view
