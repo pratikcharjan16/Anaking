@@ -1417,9 +1417,11 @@
       } else if (q.type === "concept_test") {
         var concepts = conceptListFor(q);
         var cqs = (q.concept_questions && q.concept_questions.length) ? q.concept_questions.slice() : [];
-        // legacy fallback: if no new structure, treat as single question
+        // Nothing to show: a Concept Test with no concepts and no questions would leave
+        // the respondent on an empty screen, so leave it out. An older single-question
+        // concept test (concept text + rating rows) still plays.
         if(!concepts.length && !cqs.length){
-          steps.push({ kind: "q", q: q });
+          if(q.rows && q.rows.length) steps.push({ kind: "q", q: q });
         } else if(concepts.length && cqs.length){
           concepts.forEach(function(concept){
             var cIdx = concepts.indexOf(concept);
@@ -2065,7 +2067,7 @@
 
   function renderConceptTest(q) {
     var wrap = el("div", "concept-test");
-    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length){
+    if(q.concepts && q.concepts.length || q.concept_questions && q.concept_questions.length || !(q.rows && q.rows.length)){
       var concepts = conceptListFor(q);
       var cqs = q.concept_questions || [];
       if(!concepts.length || !cqs.length){

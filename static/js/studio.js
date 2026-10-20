@@ -156,25 +156,14 @@
     if (type === "concept_test") {
       q.concept = "Describe the concept here.";
       q.scale = { min: 1, max: 7, min_label: "Strongly disagree", max_label: "Strongly agree" };
-      q.rows = [{ code: "a", label: "It is easy to understand" }, { code: "b", label: "It is relevant to me" }];
       q.concept_execution = "";
       q.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
       q.concept_show_desc_first_only = true;
-      q.concept_concepts_per_enabled = true;
+      q.concept_concepts_per_enabled = false;
       q.concept_concepts_per = 3;
       q.concept_randomize = false;
-      q.concepts = [
-        { id: q.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
-        { id: q.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
-        { id: q.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
-      ];
-      q.concept_questions = [
-        { id: q.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: true, placeholder: "Type your answer" },
-        { id: q.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient — KEY DIAGNOSTIC", required: true, options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
-        { id: q.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
-        { id: q.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
-        { id: q.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Statement 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
-      ];
+      q.concepts = [];
+      q.concept_questions = [];
     }
     if (type === "loop") {
       q.child = "open_text"; q.prompt_template = "{label}"; q.text_rows = 2;
@@ -2875,24 +2864,14 @@
   }
 
   function conceptTestBlock(){
-    if(!ed.concepts) ed.concepts = [
-      { id: ed.id + "_C1", label: "EXECUTION A", text: "One patient in all...", text_html: "One patient in all...", duration: "5s", allow_replay: true, media: null },
-      { id: ed.id + "_C2", label: "EXECUTION B", text: "Pink accessories...", text_html: "Pink accessories...", duration: "5s", allow_replay: true, media: null },
-      { id: ed.id + "_C3", label: "EXECUTION C", text: "All five patients...", text_html: "All five patients...", duration: "5s", allow_replay: true, media: null }
-    ];
+    if(!ed.concepts) ed.concepts = [];
     if(ed.concept_concepts_per===undefined) ed.concept_concepts_per = 3;
-    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = true;
+    if(ed.concept_concepts_per_enabled===undefined) ed.concept_concepts_per_enabled = false;
     if(ed.concept_randomize===undefined) ed.concept_randomize = false;
     if(ed.concept_execution===undefined) ed.concept_execution = "";
     if(ed.concept_description_html===undefined) ed.concept_description_html = "You are about to see some concepts, followed by some questions related to what you saw<br><center>Please click Continue to view the concept.</center>";
     if(ed.concept_show_desc_first_only===undefined) ed.concept_show_desc_first_only = true;
-    if(!ed.concept_questions) ed.concept_questions = [
-      { id: ed.id + "_CQ1", type: "open_text", stem: "Q1: Unaided Takeaway", required: false },
-      { id: ed.id + "_CQ2", type: "single_select", stem: "Q2: Most Suited Patient \u2014 KEY DIAGNOSTIC", options: [{code:1,label:"Option 1"},{code:2,label:"Option 2"}] },
-      { id: ed.id + "_CQ3", type: "open_text", stem: "Comment", required: false },
-      { id: ed.id + "_CQ4", type: "rating_grid", stem: "Q3: Implied Claims Agreement", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Agree"},{code:"c2",label:"Disagree"}] },
-      { id: ed.id + "_CQ5", type: "rating_grid", stem: "Q4: Call to Action", rows: [{code:"a",label:"Row 1"}], cols: [{code:"c1",label:"Yes"},{code:"c2",label:"No"}] }
-    ];
+    if(!ed.concept_questions) ed.concept_questions = [];
     var html = '<div class="st-ct-wrap st-ct-breathable">';
     html += '<div class="st-ct-section"><div class="st-field"><label>EXECUTIONS</label><input id="f-ct-exec" value="' + esc(ed.concept_execution||"") + '" placeholder="e.g. Execution A, B, C"></div></div>';
     html += '<div class="st-ct-section"><div class="st-field"><label>Description</label>' + richToolbar("f-ct-desc") + '<div class="st-rich" id="f-ct-desc" contenteditable="true" data-placeholder="You are about to see some concepts...">' + chipify(Q.sanitize(ed.concept_description_html||"")) + '</div></div>';
@@ -2900,6 +2879,7 @@
     html += '<div class="st-ct-section"><div class="st-ct-concepts-head"><span class="st-ct-concepts-title">Concepts</span><label class="st-switch"><input type="checkbox" id="f-ct-cper-on"' + (ed.concept_concepts_per_enabled ? " checked" : "") + '><i></i>Set concepts per respondent</label></div>';
     html += '<div class="st-ct-concepts-controls"><div class="st-ct-select-group"><select id="f-ct-cper" ' + (ed.concept_concepts_per_enabled ? "" : "disabled") + '>' + [1,2,3,4,5,6,7,8].map(function(n){ return '<option value="' + n + '"' + (ed.concept_concepts_per==n ? " selected" : "") + '>' + n + '</option>'; }).join("") + '</select><button class="st-btn sm ' + (ed.concept_randomize ? "on" : "") + '" data-act="ct-rand" style="' + (ed.concept_randomize ? "background:#e53935;color:#fff;border-color:#e53935" : "background:#fff;color:#e53935;border-color:#f1d3d0") + '">Randomize</button></div><span class="st-hint" style="margin:0">How many concepts each respondent sees</span></div></div>';
     html += '<div class="st-ct-concepts">';
+    if(!ed.concepts.length) html += '<div class="st-empty">No concepts yet - add one for each execution you want to show, then give it a label, some text or an image.</div>';
     ed.concepts.forEach(function(c,i){
       var durOpts = ["no-limit","5 sec","10 sec","15 sec","20 sec","25 sec","30 sec","1 min"];
       var durMap = {"no-limit":"no-limit","5s":"5 sec","5 sec":"5 sec","10s":"10 sec","10 sec":"10 sec","15s":"15 sec","15 sec":"15 sec","20s":"20 sec","20 sec":"20 sec","25s":"25 sec","25 sec":"25 sec","30s":"30 sec","30 sec":"30 sec","1 min":"1 min"};
@@ -2916,6 +2896,7 @@
     html += '<button class="st-btn sm st-ct-add-btn" data-act="ct-add">+ Add Concept</button>';
     html += '<div class="st-ct-sep"><span>Concept Test Survey</span></div>';
     html += '<div class="st-ct-qs"><div class="st-ct-qs-list">';
+    if(!ed.concept_questions.length) html += '<div class="st-empty">No questions yet - add the ones you want asked about each concept.</div>';
     ed.concept_questions.forEach(function(qq, qi){
       html += conceptQuestionRow(qq, qi);
     });
@@ -4852,8 +4833,6 @@
     if (act === "ct-preview") { syncFromForm(); var pi = Number(b.getAttribute("data-i")); var cc = ed.concepts[pi]; if(cc) openModal('<div class="st-modal-head"><strong>Preview '+esc(cc.label)+'</strong><button class="ex-close" data-act="modal-close" type="button">&times;</button></div><div style="padding:12px">'+(cc.media&&cc.media.src?'<img src="'+esc(cc.media.src)+'" style="max-width:100%;border-radius:8px;margin-bottom:8px">':'')+'<div>'+chipify(Q.sanitize(cc.text_html||esc(cc.text||"")))+'</div><div class="st-meta" style="margin-top:8px">Duration: '+esc(cc.duration)+' \u00B7 Replay: '+(cc.allow_replay?"yes":"no")+'</div></div><div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Close</button></div>'); return; }
     if (act === "ct-rand") { syncFromForm(); ed.concept_randomize = !ed.concept_randomize; rerenderCard("answers"); changed(); return; }
     if (act === "ct-q-add") { openCtTypePicker(); return; }
-    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
-      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
     if (act === "ct-q-edit") { var qei = Number(b.getAttribute("data-qi")); var p = cur.cfg.questions[sel]; if(p && p.type==="concept_test" && p.concept_questions[qei]){ syncFromForm(); ctInnerQi = qei; renderEditorPane(); } return; }
     if (act === "ct-inner-back") { syncFromForm(); ctInnerQi = null; renderEditorPane(); changed(); return; }
     if (act === "ct-inner-dup") { var pp = cur.cfg.questions[sel]; if(!pp) return; syncFromForm(); var curQi = ctInnerQi; var copyI = JSON.parse(JSON.stringify(pp.concept_questions[curQi])); copyI.id = pp.id+"_CQ"+(pp.concept_questions.length+1); copyI.stem = (copyI.stem||"")+" (copy)"; pp.concept_questions.splice(curQi+1,0,copyI); ctInnerQi = curQi+1; renderEditorPane(); changed(); return; }
@@ -5220,6 +5199,11 @@
     if (act === "logic-guide") { closeModal(); openLogicGuide(); }
     if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; if (!((ed.show_if.rules || []).length)) delete ed.show_if.off; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
     if (act === "qadd-type") addQuestion(b.getAttribute("data-type"), b.getAttribute("data-sec"), Number(b.getAttribute("data-after")));
+    // The Concept Test "+ Add Item" picker is a modal, and #st-modal sits outside
+    // #st-root - so unlike the other ct-* actions this one has to be handled here,
+    // alongside qadd-type, or clicking a type does nothing.
+    if (act === "ct-q-add-type") { var ctt = b.getAttribute("data-type"); var parentCt = cur.cfg.questions[sel]; if(!parentCt || parentCt.type!=="concept_test") return; syncFromForm(); parentCt.concept_questions = parentCt.concept_questions||[]; var qid2 = parentCt.id+"_CQ"+(parentCt.concept_questions.length+1); var nq = qTemplate(ctt, qid2, parentCt.section); nq.stem = "New "+tinfo(ctt).name.toLowerCase()+" about {concept}"; nq.required = false; // concept questions optional by default
+      parentCt.concept_questions.push(nq); closeModal(); ctInnerQi = parentCt.concept_questions.length-1; ed = parentCt; renderEditorPane(); changed(); toast("Added "+tinfo(ctt).name); return; }
     if (act === "ask-ok") { var v = (document.getElementById("st-ask") || {}).value; closeModal(); if (askCb) askCb(v); askCb = null; }
     if (act === "cmd-welcome" || act === "cmd-thanks") {
       closeModal(); tab = "settings"; renderEditor();

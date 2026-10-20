@@ -399,7 +399,8 @@ node scripts/dom/survey_conjoint_test.js        # respondent conjoint: authored 
 node scripts/dom/studio_actions_test.js         # dashboard actions: preview / duplicate / launch / pause / relaunch / reminder
 node scripts/dom/pipe_picker_test.js            # Studio pipe picker (needs jsdom: npm i jsdom)
 node scripts/dom/survey_ai_check_test.js
-node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes        # respondent AI check: chip, gate, proofreading step
+node scripts/dom/survey_ai_textfields_test.js    # the same check on text-grid cells, comments and specify boxes
+node scripts/dom/concept_test_empty_test.js      # a new Concept Test starts empty and an empty one never reaches a respondent        # respondent AI check: chip, gate, proofreading step
 node scripts/dom/ai_check_team_test.js          # Studio AI settings + Admin review queue
 node scripts/dom/globalize_test.js              # SURVEY OPTIONS menu, library, Globalize panel, language picker
 node scripts/dom/screening_engine_test.js        # screening engine: groups, counts, qualify, live vs Next (no jsdom)
