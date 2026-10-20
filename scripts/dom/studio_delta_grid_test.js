@@ -130,10 +130,17 @@ async function openSurvey(slug) {
     click: el => el.dispatchEvent(new w.MouseEvent("click", { bubbles: true, cancelable: true })),
     go: async (qid) => {
       // jump straight at the question we want, the way a respondent walking the study would
-      const d = w.document;
-      const idx = (w.SURVEY_ORDER || []).indexOf(qid);
-      w.jumpTo(qid); await sleep(400);
-      return idx >= 0;
+      const sel = w.document.querySelector(".test-jump-inline select");
+      if (!sel) throw new Error("no jump-to select in the test view");
+      const i = [...sel.options].findIndex(o => {
+        const t = o.textContent.replace(/^\u2713\s*/, "");
+        return t.indexOf(qid + " \u00b7") === 0;
+      });
+      if (i < 0) throw new Error("no survey step for " + qid);
+      sel.value = String(i);
+      sel.dispatchEvent(new w.Event("change", { bubbles: true }));
+      await sleep(700);
+      return true;
     },
   };
 }
@@ -600,6 +607,75 @@ const CFG = {
   check("carrying from a word-answered source says why the cells are empty",
     /answered with words or picks, not numbers/.test(T.$(".st-dl-note").textContent),
     T.$(".st-dl-note").textContent.replace(/\s+/g, " ").slice(0, 200));
+
+  // ------------------------------------------------- the respondent's own answer
+  // A study is answered while it runs.  The author carries forward before anybody has
+  // answered the source, so the studio cells are empty; what the respondent typed into
+  // the source question themselves still has to show up as reference.
+  const OCFG = {
+    sections: [{ id: "S1", title: "Delta" }],
+    questions: [
+      { id: "S1q", section: "S1", type: "sum_to_100", stem: "New constant sum question",
+        rows: [{ code: "a", label: "First item" }, { code: "b", label: "Second item" },
+               { code: "c", label: "New row" }, { code: "d", label: "New row e" }] },
+      { id: "C2", section: "S1", type: "open_text", stem: "Say something" },
+    ],
+    tpp: {}, explainer_scenes: [],
+  };
+  const oslug = await liveStudy(OCFG, "Delta Own Answer");
+  const O = await studio(oslug);
+  await O.open("C2"); await sleep(260);
+  O.click(O.$(".st-addq")); await sleep(320);
+  O.click(O.$('[data-act="qadd-type"][data-type="delta"]'));
+  let oid = null;
+  for (let i = 0; i < 25 && !oid; i++) {
+    oid = ((await savedCfg(oslug)).questions.find(q => q.type === "delta") || {}).id;
+    if (!oid) await sleep(300);
+  }
+  await O.open(oid); await sleep(340);
+  O.$("#f-delta-source").value = "S1q";
+  O.fire(O.$("#f-delta-source"), "change");
+  await sleep(200);
+  O.click(O.$('[data-act="delta-carry"]'));
+  await sleep(1400);
+  check("carried from a constant sum, the studio cells are empty until someone answers",
+    refVals(O).every(v => v === "\u2014"), refVals(O).join("|"));
+
+  // answer the constant sum 25 a row, the way the author testing it would
+  const OP = await openSurvey(oslug);
+  const pStart = OP.$("#start-btn") || OP.$('[data-act="start"]');
+  if (pStart) { OP.click(pStart); await sleep(700); }
+  const s100 = OP.$$(".s100-row input");
+  s100.forEach(i => { i.value = "25"; });
+  s100.forEach(i => i.dispatchEvent(new OP.w.Event("input", { bubbles: true })));
+  await sleep(600);
+  check("the constant sum the respondent just filled reads 100%",
+    (OP.$(".s100-total strong") || {}).textContent === "100%",
+    (OP.$(".s100-total strong") || {}).textContent);
+  await OP.go(oid);
+  const dgRefs = () => OP.$$(".dg-ref").map(n => n.textContent.trim()).join("|");
+  check("the Delta shows the values they themselves gave the source question",
+    dgRefs() === "25|25|25|25", dgRefs());
+  check("those cells hold no input either", OP.$$(".dg-td-src input").length === 0,
+    "inputs=" + OP.$$(".dg-td-src input").length);
+  const hints = () => OP.$$(".dg-hint").map(n => n.textContent.replace(/\s+/g, " ")).join(" // ");
+  check("the line under the table says where the numbers came from",
+    /values you gave in S1q/.test(hints()) && /cannot be changed/.test(hints()), hints());
+  check("the own-answer survey produced no script errors", !OP.errs.length, OP.errs.join(" | "));
+
+  // once they walk on, the answer is stored and the studio's aggregate agrees
+  await OP.go("S1q");
+  const again = OP.$$(".s100-row input");
+  again.forEach(i => { i.value = "25"; });
+  again.forEach(i => i.dispatchEvent(new OP.w.Event("input", { bubbles: true })));
+  await sleep(400);
+  OP.click(OP.$$(".nav .btn.primary")[0]); await sleep(1400);
+  O.click(O.$('[data-act="delta-refresh"]')); await sleep(1400);
+  check("a Refresh once the answer is stored reads the same 25s back",
+    refVals(O).join("|") === "25|25|25|25", refVals(O).join("|"));
+  const oq = await O.savedQ(oid, q => (q.rows || []).every(r => r.ref && r.ref.dscv));
+  check("the stored reference is the respondent's own 25s",
+    oq.rows.map(r => r.ref.dscv).join("|") === "25|25|25|25", JSON.stringify(oq.rows));
 
   console.log("\n" + (fails ? fails + " FAILURE(S)" : "all checks passed"));
   process.exit(fails ? 1 : 0);

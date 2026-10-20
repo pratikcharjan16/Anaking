@@ -2140,6 +2140,31 @@
       tbl.appendChild(grp);
     }
 
+    // What a carried cell shows is not typed by anyone on this screen: it is what the
+    // source question was answered with.  The studio fills the reference from the mean of
+    // everyone who has answered it, and where that is still empty - a study is answered
+    // while it runs, so the first person through has nobody to average - the cell falls
+    // back to what this respondent themselves gave to that question earlier in this very
+    // session.  Either way it is reference text and cannot be changed here.
+    var allQ = SPEC.questions || [];
+    function srcOf(c) {
+      return allQ.filter(function (x) { return String(x.id) === String(c.src_q); })[0] || null;
+    }
+    function ownAnswer(r, c) {
+      var a = answers[String(c.src_q)] || {};
+      var sq = srcOf(c);
+      var keys = [];
+      if (sq && (sq.cols || []).length > 1) keys.push(String(r.code) + "_" + String(c.src_code));
+      if (!sq || (sq.rows || sq.items || []).length) keys.push(String(r.code));
+      if (!sq || !(sq.rows || sq.items || []).length) keys.push("_");
+      for (var i = 0; i < keys.length; i++) {
+        var v = a[keys[i]];
+        if (v !== undefined && v !== null && v !== "" && v !== "NA") return v;
+      }
+      return null;
+    }
+    var fromData = 0, fromSelf = 0;
+
     // ---- one row per carried row: reference on the left, entry on the right -------------
     rows.forEach(function (r) {
       var row = el("div", "dg-tr");
@@ -2147,7 +2172,26 @@
       srcCols.forEach(function (c) {
         var td = el("div", "dg-td dg-td-src");
         var v = (r.ref || {})[c.code];
-        td.appendChild(el("span", "dg-ref", v === undefined || v === null || v === "" ? "—" : String(v) + unit));
+        var self = false;
+        if (v === undefined || v === null || String(v) === "") {
+          v = ownAnswer(r, c);
+          if (v !== null) self = true;
+        }
+        if (v === undefined || v === null || v === "") {
+          td.appendChild(el("span", "dg-ref", "—"));
+        } else {
+          if (self) fromSelf++; else fromData++;
+          var sp = el("span", "dg-ref", escHtml(String(v) + unit));
+          sp.title = PREVIEW
+            ? "What " + (c.src_q || "the earlier question") +
+              " was answered with — sample answers in this preview. Shown for reference; it cannot be changed here."
+            : (self
+              ? "Your answer to " + (c.src_q || "the earlier question") +
+                ", shown for reference. It cannot be changed here."
+              : "The mean of what everyone has answered in " + (c.src_q || "the earlier question") +
+                ", shown for reference. It cannot be changed here.");
+          td.appendChild(sp);
+        }
         row.appendChild(td);
       });
       var naKey = r.code;
@@ -2214,6 +2258,28 @@
     refreshTotals();
 
     wrap.appendChild(tbl);
+    // One line saying where the reference numbers came from, so nobody has to guess.
+    if (srcCols.length) {
+      var srcId = String(srcCols[0].src_q || "");
+      var prov;
+      if (PREVIEW) {
+        prov = "The reference column shows what " + srcId +
+          " was answered with — sample answers here, since this is a preview.";
+      } else if (fromData && fromSelf) {
+        prov = "The reference column shows the mean of what everyone has answered in " + srcId +
+          " so far, and your own answer to it where nothing else is there yet.";
+      } else if (fromSelf) {
+        prov = "These are the values you gave in " + srcId +
+          ", shown here for reference. They cannot be changed on this question.";
+      } else if (fromData) {
+        prov = "These are the mean of what everyone has answered in " + srcId +
+          ", shown here for reference. They cannot be changed on this question.";
+      } else {
+        prov = "Nobody has answered " + srcId +
+          " yet, so there is nothing to refer to here. It fills in once answers arrive.";
+      }
+      wrap.appendChild(el("div", "dg-hint", escHtml(prov)));
+    }
     if (q.delta_total !== undefined && q.delta_total !== "" && totalOn) {
       wrap.appendChild(el("div", "dg-hint",
         "Each column should add up to " + q.delta_total + unit + "."));

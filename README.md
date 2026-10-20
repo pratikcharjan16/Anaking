@@ -371,6 +371,13 @@ answered yet leaves dashes and says so - *Nobody has answered G1 yet* - and poin
 test view; one answered with words or picks rather than numbers - a text grid, a choice
 grid - says that too, because averaging a word tells a respondent nothing.
 
+A respondent also sees **their own earlier answer** as the reference where nobody else has
+answered that cell yet. They typed 25 into each row of the constant sum; the Delta carried
+from it shows 25 under each row, greyed and not editable, rather than a dash nobody
+explains - and the line under the table says which of the two it is showing: *These are the
+values you gave in Q1*, or *the mean of what everyone has answered in Q1*. Either way the
+number is never something they can change on this question.
+
 A **Validation rule** of *Each new column adds up to* puts a live total row under the new
 columns; it follows the cells as they are typed and turns red the moment a column is off,
 so an overshoot is visible on the question rather than only after submit. N/A is offered
