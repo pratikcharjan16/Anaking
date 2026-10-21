@@ -6,9 +6,9 @@
 <title>BEACON Studio - survey platform</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=201020e">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/studio.css') }}?v=201021a">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/studio-ai.css') }}?v=261001b">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/studio-ai.css') }}?v=261021b">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921g">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/preview-skin.css') }}?v=260921g">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/preview-skin.css') }}?v=261021b">
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="/static/js/security.js"></script>{% endif %}
 <link rel="stylesheet" href="/static/css/studio-workspace.css">
@@ -89,12 +89,12 @@
     <div id="ex-mount"></div>
   </div>
 </div>
-<script>window.BEACON_PREVIEW_MODE = true;</script>
+<script>window.BEACON_PREVIEW_MODE = true; window.STUDIO_AGENT_MODEL = {{ research_agent_model|tojson }}; window.STUDIO_AGENT_MODEL_NAME = {{ research_agent_model_name|tojson }};</script>
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=261006g"></script>
-<script src="{{ url_for('static', filename='js/survey.js') }}?v=261019c"></script>
+<script src="{{ url_for('static', filename='js/survey.js') }}?v=261021b"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=201020e"></script>
 <script src="/static/js/chart-visuals.js"></script>
-<script src="{{ url_for('static', filename='js/studio.js') }}?v=201021a"></script>
+<script src="{{ url_for('static', filename='js/studio.js') }}?v=261021c"></script>
 <script src="/static/js/studio-layout.js"></script>
 </body>
 </html>

@@ -82,6 +82,13 @@ CREATE TABLE IF NOT EXISTS invites (
     sent_at TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_invites_study ON invites(study_slug, id);
+CREATE TABLE IF NOT EXISTS research_agent_sessions (
+    study_slug TEXT PRIMARY KEY,
+    messages TEXT NOT NULL DEFAULT '[]',
+    memory TEXT NOT NULL DEFAULT '{}',
+    created_at TEXT,
+    updated_at TEXT
+);
 """
 
 # Databases created by the very first server had a global UNIQUE on respondent_code.
@@ -217,6 +224,36 @@ class Study:
     def cfg_of(slug: str) -> dict:
         s = Study.get(slug)
         return s.cfg if s else {}
+
+    @staticmethod
+    def agent_session(slug: str) -> dict | None:
+        """Saved research-agent conversation and compact project memory for one study."""
+        row = get_db().execute(
+            "SELECT messages,memory,created_at,updated_at FROM research_agent_sessions WHERE study_slug=?",
+            (slug,)).fetchone()
+        if not row:
+            return None
+        try:
+            messages = json.loads(row["messages"] or "[]")
+            memory = json.loads(row["memory"] or "{}")
+        except (ValueError, TypeError):
+            messages, memory = [], {}
+        return {"messages": messages if isinstance(messages, list) else [],
+                "memory": memory if isinstance(memory, dict) else {},
+                "created_at": row["created_at"], "updated_at": row["updated_at"]}
+
+    @staticmethod
+    def save_agent_session(slug: str, messages: list[dict], memory: dict) -> None:
+        """Persist the full conversation and the current study context in SQLite."""
+        if not Study.get(slug):
+            raise StudyError("unknown study", 404)
+        ts, conn = now(), get_db()
+        with write_lock, conn:
+            conn.execute(
+                "INSERT INTO research_agent_sessions (study_slug,messages,memory,created_at,updated_at) "
+                "VALUES (?,?,?,?,?) ON CONFLICT(study_slug) DO UPDATE SET "
+                "messages=excluded.messages,memory=excluded.memory,updated_at=excluded.updated_at",
+                (slug, json.dumps(messages, ensure_ascii=False), json.dumps(memory, ensure_ascii=False), ts, ts))
 
     @staticmethod
     def list_with_counts() -> list[dict]:
@@ -438,6 +475,7 @@ class Study:
             return
         conn = get_db()
         with write_lock, conn:
+            conn.execute("DELETE FROM research_agent_sessions WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM answers WHERE respondent_id IN "
                          "(SELECT id FROM respondents WHERE study_id=?)", (s.id,))
             conn.execute("DELETE FROM response_versions WHERE respondent_id IN (SELECT id FROM respondents WHERE study_id=?)", (s.id,))
