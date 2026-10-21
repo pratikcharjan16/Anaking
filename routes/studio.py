@@ -31,10 +31,12 @@ API (used by static/js/studio.js)
 
 from __future__ import annotations
 
+import json
 import os
 import re
 import secrets
 import shutil
+import urllib.request
 import zipfile
 from io import BytesIO
 from xml.etree import ElementTree
@@ -51,6 +53,10 @@ from core.i18n import (LANGUAGES, coverage, default_language, extract_strings,
 LANGUAGES_MAP = {c: {"name": n, "native": nv, "dir": d} for c, n, nv, d in LANGUAGES}
 from core.narration import clip_duration
 from core.outline import build_outline
+from core.questionnaire_docx import build_questionnaire_docx
+from core.research_agent import (build_from_brief, build_from_document, build_model_prompt,
+                                 parse_model_json, refine_questionnaire,
+                                 validate_model_questionnaire)
 from core.reporting import (analysis_for, delta_source_columns, delta_source_rows,
                              delta_source_values)
 from core.translator import TranslationError, translate_string
@@ -62,12 +68,15 @@ AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
 
 from .helpers import attachment, error, json_body, records, study_arg, stamp
 
+MAX_STUDIO_SOURCE_CHARS = 1_000_000
 bp = Blueprint("studio", __name__)
 
 
 @bp.get("/studio/")
 def page():
-    return render_template("studio/studio.html")
+    return render_template("studio/studio.html",
+                           research_agent_model=bool(current_app.config.get("LOCAL_AI_URL") and current_app.config.get("LOCAL_AI_MODEL")),
+                           research_agent_model_name=current_app.config.get("LOCAL_AI_MODEL") or "")
 
 
 @bp.get("/api/studio/list")
@@ -158,33 +167,348 @@ def save():
         return error(e)
 
 
-@bp.post("/api/studio/import-document")
-def import_document():
-    """Extract source text for the new-study assistant from TXT, MD or DOCX files."""
-    upload = request.files.get("file")
+def _read_source_document(upload):
+    """Read the text content of a DOCX/TXT/MD/CSV without trusting document paths."""
     if not upload or not upload.filename:
-        return jsonify({"error": "Choose a questionnaire or brief to upload."}), 400
+        return None, None, "Choose a questionnaire or brief to upload."
     name = secure_filename(upload.filename)
     ext = name.rsplit(".", 1)[-1].lower() if "." in name else ""
     raw = upload.read(8 * 1024 * 1024 + 1)
     if len(raw) > 8 * 1024 * 1024:
-        return jsonify({"error": "The document must be smaller than 8 MB."}), 413
+        return None, None, "The document must be smaller than 8 MB."
     try:
         if ext in ("txt", "md", "csv"):
-            text = raw.decode("utf-8", errors="replace")
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = raw.decode("utf-16", errors="replace")
         elif ext == "docx":
             with zipfile.ZipFile(BytesIO(raw)) as doc:
+                info = doc.getinfo("word/document.xml")
+                if info.file_size > 30 * 1024 * 1024:
+                    return None, None, "The uncompressed Word document is too large to safely import."
                 xml = doc.read("word/document.xml")
             root = ElementTree.fromstring(xml)
-            text = "\n".join("".join(node.itertext()) for node in root.iter()
-                               if node.tag.endswith("}p"))
+            paragraphs = []
+            for paragraph in root.iter():
+                if not paragraph.tag.endswith("}p"):
+                    continue
+                parts = []
+                for node in paragraph.iter():
+                    if node.tag.endswith("}t"):
+                        parts.append(node.text or "")
+                    elif node.tag.endswith("}tab") or node.tag.endswith("}br"):
+                        parts.append(" ")
+                line = "".join(parts).strip()
+                if line:
+                    paragraphs.append(line)
+            text = "\n".join(paragraphs)
         else:
-            return jsonify({"error": "Use a DOCX, TXT, MD or CSV file."}), 400
-    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError):
-        return jsonify({"error": "That document could not be read."}), 400
+            return None, None, "Use a DOCX, TXT, MD or CSV file. Save older .DOC files as .DOCX first."
+    except (zipfile.BadZipFile, KeyError, ElementTree.ParseError, OSError):
+        return None, None, "That document could not be read. Check that it is a valid DOCX, TXT, MD or CSV file."
     text = re.sub(r"\n{3,}", "\n\n", text).strip()
-    return jsonify({"ok": True, "filename": name, "text": text[:50000]})
+    if not text:
+        return None, None, "The document appears to be empty or contains no readable text."
+    if len(text) > MAX_STUDIO_SOURCE_CHARS:
+        return None, None, "The extracted text exceeds the 1,000,000-character import limit. Split it into smaller source documents so no questions are omitted."
+    return name, text, None
 
+
+@bp.post("/api/studio/import-document")
+def import_document():
+    """Extract source text from DOCX, TXT, MD or CSV for the research-design workflow."""
+    name, text, err = _read_source_document(request.files.get("file"))
+    if err:
+        status_code = 413 if any(marker in err for marker in ("8 MB", "character import limit", "uncompressed Word")) else 400
+        return jsonify({"error": err}), status_code
+    return jsonify({"ok": True, "filename": name, "text": text})
+
+
+def _agent_model_available() -> bool:
+    return bool(current_app.config.get("LOCAL_AI_URL") and current_app.config.get("LOCAL_AI_MODEL"))
+
+
+def _call_local_research_model(prompt: str) -> dict:
+    """Call the server-configured local Ollama-compatible model; never accept a URL from a user."""
+    url = str(current_app.config.get("LOCAL_AI_URL") or "").strip()
+    model = str(current_app.config.get("LOCAL_AI_MODEL") or "").strip()
+    if not url or not model:
+        raise RuntimeError("No local research model is configured.")
+    payload = {"model": model, "stream": False, "format": "json", "prompt": prompt}
+    req = urllib.request.Request(url.rstrip("/") + "/api/generate", data=json.dumps(payload).encode("utf-8"),
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=60) as response:
+        result = json.loads(response.read(2_000_000))
+    text = result.get("response")
+    if not isinstance(text, str) or not text.strip():
+        raise ValueError("The configured research model returned an empty response.")
+    return parse_model_json(text)
+
+
+def _agent_new_slug(title: str) -> str:
+    base = re.sub(r"[^a-z0-9-]+", "-", (title or "research-study").lower()).strip("-")[:32] or "research-study"
+    if len(base) < 2:
+        base = "research-study"
+    slug = base
+    n = 2
+    while Study.get(slug):
+        suffix = "-" + str(n)
+        slug = base[:40 - len(suffix)] + suffix
+        n += 1
+    return slug
+
+
+def _agent_summary(cfg: dict) -> dict:
+    questions = cfg.get("questions") or []
+    screen_sections = {str(s.get("id")) for s in (cfg.get("sections") or [])
+                       if any(x in str(s.get("title") or "").lower() for x in ("screen", "eligib", "qualif"))}
+    return {
+        "questions": len(questions),
+        "screeners": sum(1 for q in questions if str(q.get("section")) in screen_sections),
+        "main": sum(1 for q in questions if str(q.get("section")) not in screen_sections),
+        "show_if": sum(1 for q in questions if (q.get("show_if") or {}).get("rules")),
+        "screening_rules": sum(len((q.get("screening") or {}).get("rules") or []) for q in questions),
+        "types": sorted({str(q.get("type") or "") for q in questions}),
+        "notes": cfg.get("design_notes") or [],
+    }
+
+
+def _agent_payload(slug: str, session: dict | None = None) -> dict:
+    study = Study.get(slug)
+    if not study:
+        return {"error": "unknown study"}
+    session = session or Study.agent_session(slug) or {"messages": [], "memory": {}}
+    memory = dict(session.get("memory") or {})
+    memory.pop("source_text", None)  # keep the original upload server-side; the UI needs only project notes
+    return {"ok": True, "slug": slug, "title": study.title, "cfg": study.cfg,
+            "messages": session.get("messages") or [], "memory": memory,
+            "summary": _agent_summary(study.cfg), "model_available": _agent_model_available(),
+            "model_name": current_app.config.get("LOCAL_AI_MODEL") if _agent_model_available() else ""}
+
+
+def _message(role: str, content: str, **extra) -> dict:
+    from datetime import datetime, timezone
+    return {"role": role, "content": str(content or "")[:12000],
+            "created_at": datetime.now(timezone.utc).isoformat(timespec="seconds"), **extra}
+
+
+@bp.post("/api/studio/agent/start")
+def agent_start():
+    """Create a draft questionnaire and save its design conversation against the study."""
+    body = json_body()
+    title = str(body.get("title") or "New research study").strip()[:120]
+    brief = str(body.get("brief") or "").strip()[:10000]
+    audience = str(body.get("audience") or "").strip()[:2000]
+    market = str(body.get("market") or "").strip()[:1000]
+    source_text = str(body.get("source_text") or "").strip()
+    if len(source_text) > MAX_STUDIO_SOURCE_CHARS:
+        return jsonify({"error": "The extracted text exceeds the 1,000,000-character import limit. Split it into smaller source documents so no questions are omitted."}), 413
+    source_filename = secure_filename(str(body.get("source_filename") or "")[:180])
+    mode = str(body.get("mode") or "agent")
+    if mode not in ("agent", "upload", "draft"):
+        mode = "agent"
+    if not brief and not source_text:
+        return jsonify({"error": "Describe the research objective or upload a brief/questionnaire to begin."}), 400
+
+    warnings = []
+    imported = {"found": 0, "imported": 0, "warnings": [], "source_kind": "brief"}
+    model_used = False
+    cfg = None
+    assistant_text = ""
+    allow_model = _agent_model_available() and body.get("model_consent") is True
+    if mode in ("upload", "draft"):
+        cfg, imported = build_from_document(title, source_text, brief, audience, market, source_filename)
+        warnings = list(imported.get("warnings") or [])
+        if mode == "draft" and imported.get("source_kind") != "questionnaire":
+            return jsonify({"error": "No questionnaire questions were identified in that file. Use Draft survey with an existing questionnaire, or choose Upload a document for a research brief."}), 400
+        if imported.get("source_kind") == "questionnaire":
+            if mode == "draft":
+                assistant_text = (f"I created a Studio survey draft from {imported['imported']} question(s) in {source_filename or 'your questionnaire'}. "
+                                  "Each question and answer list was mapped to a supported Studio question type; authored wording and order are retained, and recognizable routing or screening is kept. "
+                                  "No eligibility rules were invented. The project is open in Studio for review and editing.")
+            else:
+                assistant_text = (f"I converted **{imported['imported']} question(s)** from {source_filename or 'your document'} into the Studio format. "
+                                  "The question wording and order are retained, answer lists are mapped to supported Studio question types, and any recognizable show-if or screening logic is kept. "
+                                  "No eligibility rules were invented. Review the question-by-question preview and tell me if you want any changes.")
+        else:
+            assistant_text = ("I read the uploaded file as a research brief, not as a questionnaire, and created an editable first draft from its objectives. "
+                              "The draft includes an eligibility/relationship section and a main questionnaire. Please review it and tell me what to adjust.")
+    elif allow_model:
+        try:
+            candidate = _call_local_research_model(build_model_prompt(
+                "Design a new questionnaire", title, brief, audience, market,
+                source_text=source_text))
+            cfg, warnings = validate_model_questionnaire(candidate, title, brief, audience, market, source_filename)
+            model_used = True
+            assistant_text = str(candidate.get("assistant_message") or "I drafted a questionnaire from your research objectives. Review the question-by-question version and tell me what you would like changed.")[:4000]
+        except Exception:
+            warnings.append("The configured local model did not return a valid questionnaire; a conservative guided draft was created instead.")
+    if cfg is None:
+        cfg = build_from_brief(title, brief or source_text[:10000], audience, market, source_filename)
+        if source_text:
+            cfg["research_source_text"] = source_text
+        if not assistant_text:
+            assistant_text = ("I created a structured first draft from your objectives. It starts with respondent eligibility, then moves through recent behaviour, decision drivers and an open response. "
+                              "I avoided applying any screen-out rule unless you supplied a target criterion. Review the question-by-question preview and tell me what you would like changed.")
+
+    cfg["title"] = title
+    cfg["group_name"] = str(body.get("group_name") or "").strip()[:120]
+    parent = str(body.get("parent_study") or "").strip().upper()
+    if parent:
+        cfg["parent_study"] = parent[:40]
+    cfg["creation_mode"] = mode
+    cfg["ai_assistant"] = True
+    cfg.setdefault("research_agent", {})
+    cfg["research_agent"].update({"version": 1, "mode": "local-model" if model_used else (mode if mode in ("upload", "draft") else "guided"),
+                                  "source_filename": source_filename})
+    if warnings:
+        cfg["design_notes"] = list(dict.fromkeys(list(cfg.get("design_notes") or []) + warnings))
+    slug = _agent_new_slug(title)
+    try:
+        Study.save({"slug": slug, "title": title, "cfg": cfg})
+    except StudyError as exc:
+        return error(exc)
+
+    user_text = ("Uploaded document: " + source_filename if source_filename else "Business need: " + brief)
+    if brief and source_filename:
+        user_text += "\nAdditional focus: " + brief
+    if audience:
+        user_text += "\nTarget respondents: " + audience
+    if market:
+        user_text += "\nMarket / geography: " + market
+    if not user_text.strip():
+        user_text = "Create an editable questionnaire from the supplied research material."
+    messages = [_message("user", user_text, attachment=source_filename or None),
+                _message("assistant", assistant_text, kind="questionnaire_draft")]
+    memory = {"brief": brief or cfg.get("research_brief", ""), "audience": audience,
+              "market": market, "source_filename": source_filename,
+              "source_text": source_text, "model_consent": bool(allow_model),
+              "design_notes": cfg.get("design_notes") or []}
+    Study.save_agent_session(slug, messages, memory)
+    return jsonify(_agent_payload(slug, {"messages": messages, "memory": memory}))
+
+
+@bp.get("/api/studio/agent")
+def agent_get():
+    slug = request.args.get("study") or request.args.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    session = Study.agent_session(slug)
+    if not session:
+        memory = {"brief": study.cfg.get("research_brief", ""),
+                  "audience": study.cfg.get("research_audience", ""),
+                  "market": study.cfg.get("research_market", ""),
+                  "source_filename": (study.cfg.get("research_agent") or {}).get("source_filename", ""),
+                  "source_text": study.cfg.get("research_source_text", ""), "design_notes": study.cfg.get("design_notes") or []}
+        intro = (f"I have loaded the saved questionnaire for {study.title} ({len(study.cfg.get('questions') or [])} questions). "
+                 "I will use this draft and the study context as memory, so you do not need to explain it again. Name a question ID, ask for a routing change, or upload an edited DOCX/TXT/MD/CSV questionnaire.")
+        session = {"messages": [_message("assistant", intro)], "memory": memory}
+        Study.save_agent_session(slug, session["messages"], memory)
+    return jsonify(_agent_payload(slug, session))
+
+
+@bp.post("/api/studio/agent/turn")
+def agent_turn():
+    """Revise the saved questionnaire, retain context, and append the full chat turn."""
+    is_multipart = request.mimetype == "multipart/form-data"
+    body = request.form if is_multipart else json_body()
+    slug = str(body.get("slug") or "").strip()
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    message_text = str(body.get("message") or "").strip()[:4000]
+    attachment_name, attachment_text = "", ""
+    upload = request.files.get("file") if is_multipart else None
+    if upload and upload.filename:
+        attachment_name, attachment_text, doc_error = _read_source_document(upload)
+        if doc_error:
+            status_code = 413 if any(marker in doc_error for marker in ("8 MB", "character import limit", "uncompressed Word")) else 400
+            return jsonify({"error": doc_error}), status_code
+        if not message_text:
+            message_text = "Please review this uploaded questionnaire, preserve every identified question, and update my editable Studio draft from it."
+    if not message_text:
+        return jsonify({"error": "Write a change request or upload an edited questionnaire."}), 400
+
+    session = Study.agent_session(slug) or {"messages": [], "memory": {}}
+    messages = session.get("messages") or []
+    memory = session.get("memory") or {}
+    user_entry = _message("user", message_text, attachment=attachment_name or None)
+    if attachment_text:
+        user_entry["document_characters"] = len(attachment_text)
+    messages.append(user_entry)
+
+    use_model = str(body.get("use_model") or "").lower() in ("1", "true", "on", "yes")
+    consent = str(body.get("model_consent") or "").lower() in ("1", "true", "on", "yes")
+    cfg = study.cfg
+    assistant_text = ""
+    warnings: list[str] = []
+    revised = None
+    if not attachment_text and use_model and consent and _agent_model_available():
+        try:
+            candidate = _call_local_research_model(build_model_prompt(
+                "Revise the current questionnaire according to the user request; preserve approved content that is not being changed.",
+                study.title, str(memory.get("brief") or cfg.get("research_brief") or ""),
+                str(memory.get("audience") or cfg.get("research_audience") or ""),
+                str(memory.get("market") or cfg.get("research_market") or ""),
+                current_cfg=cfg, history=messages, instruction=message_text,
+                source_text=str(memory.get("source_text") or "")))
+            revised, warnings = validate_model_questionnaire(
+                candidate, study.title, str(memory.get("brief") or cfg.get("research_brief") or ""),
+                str(memory.get("audience") or cfg.get("research_audience") or ""),
+                str(memory.get("market") or cfg.get("research_market") or ""),
+                str(memory.get("source_filename") or ""))
+            # Preserve project-level configuration not owned by the model.
+            for key in ("group_name", "parent_study", "creation_mode", "ai_assistant", "welcome_title",
+                        "welcome_text", "thanks_title", "thanks_text", "privacy_notice", "consent_statement"):
+                if key in cfg:
+                    revised[key] = cfg[key]
+            revised["research_agent"] = dict(cfg.get("research_agent") or {})
+            revised["research_agent"].update({"version": 1, "mode": "local-model-revision"})
+            assistant_text = str(candidate.get("assistant_message") or "I revised the questionnaire based on your request. Please review the new version before fielding.")[:4000]
+        except Exception:
+            warnings.append("The configured local model could not safely return an editable questionnaire; I used the saved-context revision tools instead.")
+
+    if revised is None:
+        revised, assistant_text, warnings = refine_questionnaire(cfg, message_text, attachment_text, attachment_name)
+    if warnings:
+        existing_notes = list(revised.get("design_notes") or [])
+        revised["design_notes"] = list(dict.fromkeys(existing_notes + warnings))
+    if attachment_text:
+        memory["source_filename"] = attachment_name
+        memory["source_text"] = attachment_text
+    if revised.get("research_brief"):
+        memory["brief"] = revised["research_brief"]
+    if revised.get("research_audience"):
+        memory["audience"] = revised["research_audience"]
+    if revised.get("research_market"):
+        memory["market"] = revised["research_market"]
+    memory["design_notes"] = revised.get("design_notes") or []
+    if use_model and consent and _agent_model_available():
+        memory["model_consent"] = True
+    messages.append(_message("assistant", assistant_text, kind="questionnaire_revision" if revised != cfg else "guidance"))
+    if revised != cfg:
+        try:
+            Study.save({"slug": slug, "title": study.title, "cfg": revised})
+        except StudyError as exc:
+            return error(exc)
+    Study.save_agent_session(slug, messages, memory)
+    return jsonify(_agent_payload(slug, {"messages": messages, "memory": memory}))
+
+
+@bp.get("/api/studio/questionnaire.docx")
+def questionnaire_docx():
+    """Download the current questionnaire in editable Word format, including its routing."""
+    slug = request.args.get("study") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    data = build_questionnaire_docx(_base_of(study))
+    filename = f"{study.slug}_questionnaire_{stamp()}.docx"
+    return attachment(data,
+                      "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                      filename)
 
 @bp.post("/api/studio/status")
 def status():

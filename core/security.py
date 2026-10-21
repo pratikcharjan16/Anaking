@@ -72,6 +72,8 @@ def init_security(app):
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
             abort(400, 'Expected a JSON object.')
+        if request.mimetype == 'multipart/form-data' and request.form.get('slug'):
+            body = dict(body, slug=request.form.get('slug'))
         preview = (path.endswith('/test') or path == '/test' or
                    (path.startswith('/api/spec') and request.args.get('preview') == '1') or
                    (path == '/api/start' and body.get('is_test')))
@@ -114,6 +116,8 @@ def init_security(app):
         if '*' not in g.staff['studies']:
             if path.endswith(('/move', '/duplicate', '/globalize')):
                 abort(403, 'Workspace-wide permission is required to manage study identities.')
+            if path == '/api/studio/agent/start':
+                abort(403, 'Workspace-wide permission is required to create a new study.')
             if path == '/api/studio/save':
                 from models import Study
                 existing = Study.get(body.get('slug') or '')
@@ -129,5 +133,5 @@ def init_security(app):
         response.headers.setdefault('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)')
         if request.method not in ('GET', 'HEAD', 'OPTIONS') and response.status_code < 400 and getattr(g, 'staff', None):
             body = request.get_json(silent=True) or {}
-            audit(request.path, body.get('slug') or body.get('study') or request.args.get('study', ''))
+            audit(request.path, body.get('slug') or body.get('study') or request.form.get('slug') or request.args.get('study', ''))
         return response
