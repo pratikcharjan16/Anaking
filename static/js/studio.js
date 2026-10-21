@@ -428,7 +428,7 @@
       tops.length + " stud" + (tops.length === 1 ? "y" : "ies") + (live ? " \u00B7 " + live + " live" : "") +
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
       '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button></div></div>' +
-      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with guided templates</b><p>Turn a business need, rough objectives or an existing questionnaire into a fully customizable study.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
+      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with a saved agent</b><p>Turn research objectives or an uploaded questionnaire into an editable, Studio-ready survey. Review the flow, test it and export the questionnaire to Word.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
@@ -671,7 +671,7 @@
           (t[2] !== "" ? '<span class="st-count">' + t[2] + "</span>" : "") + "</button>";
       }).join("") + "</nav>" +
       '<div id="st-panel" class="st-panel-host"></div>' +
-      '<button class="st-ai-fab" data-act="ai-guide"><span>✦</span><b>Research guidance</b><small>Guidance throughout your build</small></button>';
+      '<button class="st-ai-fab" data-act="ai-guide"><span>✦</span><b>Research design agent</b><small>Saved questionnaire chat</small></button>';
     root.innerHTML = html;
     renderSaveState();
     renderTab();
@@ -5942,8 +5942,10 @@
     if (act === "new-mode") showNewStudyForm(b.getAttribute("data-mode"));
     if (act === "new-back") openNewStudy();
     if (act === "new-create") createFromWizard();
-    if (act === "agent-send") { var msg = $(".st-agent-msg"); if (msg) msg.innerHTML = '<b>Recommended next step</b><p>Start by confirming one primary business decision, then keep each question tied to it. I recommend reviewing screening criteria and removing any double-barrelled wording before launch.</p>'; }
-    if (act === "agent-action") { var box = $(".st-agent-msg"); if (box) box.innerHTML = '<b>Suggested edit ready</b><p>I recommend concise, neutral wording and mutually exclusive answer choices. Use the real-time fixes beside each flagged issue to apply a specific change with confirmation.</p>'; }
+    if (act === "agent-submit") submitAgentTurn(null);
+    if (act === "agent-download") downloadAgentQuestionnaire();
+    if (act === "agent-review-toggle") { var review = document.getElementById("agent-review-list"); if (review) { review.hidden = !review.hidden; b.textContent = review.hidden ? "Review questions" : "Hide question review"; } }
+    if (act === "agent-open-studio") { var openSlug = agentModalSlug; closeModal(); openEditor(openSlug); }
     if (act === "logic-guide") { closeModal(); openLogicGuide(); }
     if (act === "logic-apply") { var qid = val('lg-q'), op = val('lg-op'), value = val('lg-value'); if (!qid) return; if (!confirm('Apply this show-if rule to ' + ed.id + '?')) return; ed.show_if = ed.show_if || {match:'all',rules:[]}; if (!((ed.show_if.rules || []).length)) delete ed.show_if.off; ed.show_if.rules.push({q:qid,op:op,value:value}); closeModal(); markChanged(); renderEditorPane(); toast('Show-if rule applied — test it in the live preview'); }
     if (act === "qadd-type") addQuestion(b.getAttribute("data-type"), b.getAttribute("data-sec"), Number(b.getAttribute("data-after")));
@@ -6007,13 +6009,16 @@
 
   // search / missing-only inside the language panel (delegated so re-renders keep focus)
   document.addEventListener("change", function (e) {
-    if (!e.target || e.target.id !== "ns-file" || !e.target.files[0]) return;
+    if (!e.target || !e.target.files || !e.target.files[0]) return;
+    if (e.target.id === "agent-upload-file") { submitAgentTurn(e.target.files[0]); return; }
+    if (e.target.id !== "ns-file") return;
     var fd = new FormData(); fd.append("file", e.target.files[0]);
     var state = document.getElementById("ns-file-state"); if (state) state.textContent = "Reading document…";
-    fetch("/api/studio/import-document", {method:"POST", body:fd}).then(function(r){return r.json();}).then(function(d){
+    fetch("/api/studio/import-document", {method:"POST", credentials:"same-origin", body:fd}).then(function(r){return r.json();}).then(function(d){
       if (d.error) { if (state) state.textContent = d.error; return; }
-      var area = document.getElementById("ns-objectives"); if (area) area.value = d.text || "";
-      if (state) state.textContent = "✓ " + d.filename + " · ready to generate";
+      var area = document.getElementById("ns-source-text"); if (area) area.value = d.text || "";
+      var name = document.getElementById("ns-source-name"); if (name) name.value = d.filename || "";
+      if (state) state.textContent = "✓ " + d.filename + " · " + (d.text || "").length.toLocaleString() + " characters read · ready to convert";
       var title = document.getElementById("ns-title"); if (title && title.value === "New research study") title.value = d.filename.replace(/\.[^.]+$/, "");
     }).catch(function(){ if(state) state.textContent = "Could not upload the document."; });
   });
@@ -6508,46 +6513,164 @@
 
   // ------------------------------------------------------------ new-study launchpad + study-level events
   var newStudyMode = "scratch";
+  var agentModalData = null;
+  var agentModalSlug = "";
   function openNewStudy() {
     var cards = [
       ["scratch", "＋", "Build from scratch", "Start with a clean, flexible questionnaire."],
-      ["prompt", "✦", "Describe the business need", "Use a brief to create an editable starter template."],
-      ["agent", "◈", "Design with AI agent", "Start from guided research templates; review every question."],
-      ["upload", "⇧", "Upload a document", "Import a brief, sales document or existing questionnaire (DOCX, TXT, MD, CSV)."]
+      ["agent", "◈", "Design with AI agent", "Describe your objectives and build a research-ready, editable questionnaire."],
+      ["draft", "✎", "Draft survey", "Read an existing questionnaire, map each question and its answers to Studio types, and create the survey draft directly."],
+      ["upload", "⇧", "Upload a document", "Convert a brief or other source with the research-design workflow; questionnaires are also supported."]
     ];
     openModal('<div class="st-modal-head"><strong>Create a new study</strong><span class="st-meta">Choose a starting point. Everything remains editable.</span><button class="ex-close" data-act="modal-close">&times;</button></div>' +
       '<div class="st-start-grid">' + cards.map(function (x) { return '<button class="st-start-card" data-act="new-mode" data-mode="' + x[0] + '"><i>' + x[1] + '</i><b>' + x[2] + '</b><span>' + x[3] + '</span></button>'; }).join('') + '</div>', 'st-newstudy');
   }
   function showNewStudyForm(mode) {
     newStudyMode = mode;
-    var labels = {scratch:"Build from scratch", prompt:"Describe your business need", agent:"Design with the AI agent", upload:"Import an existing document"};
-    var source = mode === "scratch" ? '' : '<label class="st-field"><span>' + (mode === "upload" ? 'Source document' : 'Objectives or business need') + '</span>' +
-      (mode === "upload" ? '<div class="st-drop"><input id="ns-file" type="file" accept=".docx,.txt,.md,.csv"><b>Choose a DOCX, TXT, MD or CSV</b><small id="ns-file-state">Maximum 8 MB</small></div><textarea id="ns-objectives" hidden></textarea>' :
-       '<textarea id="ns-objectives" rows="7" placeholder="Example: Understand why sales declined, assess unmet needs, test three concepts and identify purchase drivers…"></textarea>') + '</label>';
-    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">Guided templates are a starting point, not model-generated research.</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
-      '<div class="st-form-2"><label class="st-field"><span>Study title</span><input id="ns-title" value="New research study" autofocus></label><label class="st-field"><span>Study group <em>optional</em></span><input id="ns-group" placeholder="e.g. Brand tracking 2027"></label></div>' +
-      '<label class="st-field"><span>Parent study ID <em>optional</em></span><input id="ns-parent" placeholder="e.g. STU-000014"><small>Create a child wave or related survey under a parent.</small></label>' + source +
-      (mode === "agent" ? '<div class="st-agent-note">◈ The research agent will stay available in Studio to guide objectives, sample, question wording, logic and quality checks.</div>' : '') +
-      '<div class="st-modal-actions"><button class="st-btn" data-act="new-back">Back</button><button class="st-btn on" data-act="new-create">' + (mode === "scratch" ? 'Create study' : 'Generate editable questionnaire') + '</button></div></div>', 'st-newstudy');
-  }
-  function generatedCfg(title, objectives) {
-    var c = blankCfg(); c.title = title; var text = (objectives || '').toLowerCase();
-    c.questions[0].stem = "Which option best describes your role or relationship to this category?";
-    c.questions[1].stem = text.indexOf("sales") >= 0 ? "Please rate the factors that influence your purchasing decisions." : "Please rate the importance of each factor when making your decision.";
-    c.questions[1].rows = [{code:"quality",label:"Product or service quality"},{code:"value",label:"Value for money"},{code:"support",label:"Sales and customer support"},{code:"trust",label:"Brand trust"}];
-    c.questions[2].stem = "How likely are you to recommend this brand or solution?";
-    c.questions[3].stem = "What is the single most important improvement you would like to see, and why?";
-    if (objectives) c.research_brief = objectives;
-    return c;
+    var labels = {scratch:"Build from scratch", agent:"Design with AI agent", draft:"Draft survey", upload:"Upload a document"};
+    var source = "";
+    if (mode === "agent") {
+      source = '<label class="st-field"><span>Business need or research objectives <em>required</em></span><textarea id="ns-objectives" rows="5" placeholder="What decision should this research support? What do you need to learn or measure? Include products, hypotheses, audiences or concepts if known."></textarea></label>' +
+        '<div class="st-form-2"><label class="st-field"><span>Target respondents <em>optional, but helps define screeners</em></span><input id="ns-audience" placeholder="e.g. current customers, category buyers, decision-makers"></label><label class="st-field"><span>Market / geography <em>optional</em></span><input id="ns-market" placeholder="e.g. India, Bengaluru, urban adults"></label></div>' +
+        (window.STUDIO_AGENT_MODEL ? '<label class="st-agent-consent"><input id="ns-model-consent" type="checkbox"><span>Use the configured local model (' + esc(window.STUDIO_AGENT_MODEL_NAME || 'on-premises') + ') to draft this questionnaire. The brief and current study context will be sent to that configured endpoint.</span></label>' : '<div class="st-agent-note">The guided research designer will use your saved brief, audience and conversation history. It will not apply an unstated screen-out rule.</div>');
+    } else if (mode === "draft") {
+      source = '<label class="st-field"><span>Existing questionnaire <em>required</em></span><div class="st-drop"><input id="ns-file" type="file" accept=".docx,.txt,.md,.csv"><b>Choose a questionnaire (DOCX, TXT, MD or CSV)</b><small id="ns-file-state">Questions and answers are read one by one; a supported Studio type is selected from each question wording and response format. Create the editable draft, then change any type in Studio. Maximum 8 MB / 1,000,000 extracted characters.</small></div><textarea id="ns-source-text" hidden></textarea><input id="ns-source-name" type="hidden"></label>' +
+        '<div class="st-form-2"><label class="st-field"><span>Target respondents <em>optional context</em></span><input id="ns-audience" placeholder="e.g. current customers, category buyers"></label><label class="st-field"><span>Market / geography <em>optional context</em></span><input id="ns-market" placeholder="e.g. India"></label></div>';
+    } else if (mode === "upload") {
+      source = '<label class="st-field"><span>Questionnaire, brief or other source <em>required</em></span><div class="st-drop"><input id="ns-file" type="file" accept=".docx,.txt,.md,.csv"><b>Choose a DOCX, TXT, MD or CSV</b><small id="ns-file-state">Maximum 8 MB / 1,000,000 extracted characters. Every detected question is mapped individually; a brief is turned into a structured draft.</small></div><textarea id="ns-source-text" hidden></textarea><input id="ns-source-name" type="hidden"></label>' +
+        '<label class="st-field"><span>Additional focus or instructions <em>optional</em></span><textarea id="ns-objectives" rows="3" placeholder="e.g. Keep all existing questions; focus on current customers in India."></textarea></label>' +
+        '<div class="st-form-2"><label class="st-field"><span>Target respondents <em>optional</em></span><input id="ns-audience" placeholder="e.g. current customers, category buyers"></label><label class="st-field"><span>Market / geography <em>optional</em></span><input id="ns-market" placeholder="e.g. India"></label></div>';
+    }
+    var scratchParent = '<label class="st-field"><span>Parent study ID <em>optional</em></span><input id="ns-parent" placeholder="e.g. STU-000014"><small>Create a child wave or related survey under a parent.</small></label>';
+    var meta = '<div class="st-form-2"><label class="st-field"><span>Study title</span><input id="ns-title" value="New research study" autofocus></label><label class="st-field"><span>Study group <em>optional</em></span><input id="ns-group" placeholder="e.g. Brand tracking 2027"></label></div>' + scratchParent;
+    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">' + (mode === "scratch" ? 'Everything remains editable.' : 'Review the questions and routing before testing or launch.') + '</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
+      meta + source +
+      '<div class="st-modal-actions"><button class="st-btn" data-act="new-back">Back</button><button class="st-btn on" data-act="new-create">' + (mode === "scratch" ? 'Create study' : mode === "draft" ? 'Create survey draft' : mode === "upload" ? 'Convert document to questionnaire' : 'Generate editable questionnaire') + '</button></div></div>', 'st-newstudy');
   }
   function createFromWizard() {
     var title = (document.getElementById('ns-title') || {}).value || 'New research study';
-    var obj = (document.getElementById('ns-objectives') || {}).value || '';
-    var cfg = newStudyMode === 'scratch' ? blankCfg() : generatedCfg(title, obj);
-    cfg.title = title; cfg.group_name = ((document.getElementById('ns-group') || {}).value || '').trim();
-    cfg.parent_study = ((document.getElementById('ns-parent') || {}).value || '').trim().toUpperCase();
-    cfg.creation_mode = newStudyMode; cfg.ai_assistant = newStudyMode !== 'scratch';
-    closeModal(); createStudy(cfg);
+    var group = ((document.getElementById('ns-group') || {}).value || '').trim();
+    var parent = ((document.getElementById('ns-parent') || {}).value || '').trim().toUpperCase();
+    if (newStudyMode === 'scratch') {
+      var cfg = blankCfg(); cfg.title = title; cfg.group_name = group; cfg.parent_study = parent;
+      cfg.creation_mode = 'scratch'; cfg.ai_assistant = false;
+      closeModal(); createStudy(cfg); return;
+    }
+    var body = {title:title, group_name:group, parent_study:parent,
+      brief:((document.getElementById('ns-objectives') || {}).value || '').trim(),
+      audience:((document.getElementById('ns-audience') || {}).value || '').trim(),
+      market:((document.getElementById('ns-market') || {}).value || '').trim(),
+      mode:newStudyMode, model_consent:!!((document.getElementById('ns-model-consent') || {}).checked)};
+    if (newStudyMode === 'upload' || newStudyMode === 'draft') {
+      body.source_text = ((document.getElementById('ns-source-text') || {}).value || '').trim();
+      body.source_filename = ((document.getElementById('ns-source-name') || {}).value || '').trim();
+      if (!body.source_text) { toast('Choose a document first.'); return; }
+    } else if (!body.brief) { toast('Describe the business need or research objectives first.'); return; }
+    closeModal();
+    var loadingTitle = newStudyMode === 'draft' ? 'Reading the questionnaire and drafting your survey…' : newStudyMode === 'upload' ? 'Converting your document…' : 'Designing your questionnaire…';
+    openModal('<div class="st-agent-loading"><span>✦</span><b>' + loadingTitle + '</b><p>Mapping question wording, answer lists and supported Studio question types.</p></div>', 'st-agent-workspace');
+    api('/api/studio/agent/start', body).then(function (d) {
+      if (d.error) { toast(d.error); closeModal(); showNewStudyForm(newStudyMode); return; }
+      if (newStudyMode === 'draft') {
+        closeModal();
+        openEditor(d.slug);
+        toast('Survey draft created with ' + d.summary.questions + ' questions · /' + d.slug);
+        return;
+      }
+      agentModalSlug = d.slug; agentModalData = d;
+      renderDesignAgent(d);
+      toast('Questionnaire draft created · /' + d.slug);
+    }).catch(function () { closeModal(); toast('Could not create the questionnaire. Please try again.'); });
+  }
+  function openDesignAgent(slug) {
+    agentModalSlug = slug;
+    agentModalData = null;
+    openModal('<div class="st-agent-loading"><span>✦</span><b>Loading saved research chat…</b><p>Restoring the project context and your previous messages.</p></div>', 'st-agent-workspace');
+    api('/api/studio/agent?study=' + encodeURIComponent(slug)).then(function (d) {
+      if (d.error) { toast(d.error); closeModal(); return; }
+      agentModalData = d; renderDesignAgent(d);
+    }).catch(function () { closeModal(); toast('Could not load the saved research chat.'); });
+  }
+  function agentFormat(text) { return esc(text || '').replace(/\n/g, '<br>'); }
+  function agentQuestionReview(cfg) {
+    var questions = cfg && cfg.questions || [];
+    var sections = cfg && cfg.sections || [];
+    return '<div class="st-agent-review-list" id="agent-review-list" hidden>' + sections.map(function (sec) {
+      var qs = questions.filter(function (q) { return String(q.section) === String(sec.id); });
+      if (!qs.length) return '';
+      return '<h4>' + esc(sec.title || 'Questionnaire') + '</h4>' + qs.map(function (q) {
+        var answerBits = [];
+        if (q.options && q.options.length) answerBits.push(q.options.map(function (o) { return o.label; }).join(' · '));
+        if (q.rows && q.rows.length) answerBits.push(q.rows.map(function (r) { return r.label; }).join(' · '));
+        if (q.cols && q.cols.length) answerBits.push('Columns: ' + q.cols.map(function (c) { return c.label; }).join(' · '));
+        if (q.scale) answerBits.push('Scale ' + q.scale.min + '–' + q.scale.max + (q.scale.min_label || q.scale.max_label ? ': ' + (q.scale.min_label || '') + ' / ' + (q.scale.max_label || '') : ''));
+        if (q.min != null && q.max != null) answerBits.push('Range ' + q.min + '–' + q.max + (q.min_label || q.max_label ? ': ' + (q.min_label || '') + ' / ' + (q.max_label || '') : ''));
+        var logic = q.show_if && q.show_if.rules && q.show_if.rules.length ? 'Show-if routing' : '';
+        var screen = q.screening && q.screening.rules && q.screening.rules.length ? 'Screening rule' : '';
+        return '<article class="st-agent-qreview"><div><b>' + esc(q.id) + '</b><span>' + esc(String(q.type || '').replace(/_/g, ' ')) + (q.required === false ? ' · optional' : ' · required') + (logic ? ' · ' + logic : '') + (screen ? ' · ' + screen : '') + '</span></div><p>' + esc(q.stem || q.body || '') + '</p>' + (answerBits.length ? '<small>' + esc(answerBits.join(' / ')) + '</small>' : '') + '</article>';
+      }).join('');
+    }).join('') + '</div>';
+  }
+  function renderDesignAgent(d) {
+    var msgs = d.messages || [];
+    var sum = d.summary || {};
+    var memory = d.memory || {};
+    var transcript = msgs.map(function (m) {
+      var role = m.role === 'user' ? 'user' : 'assistant';
+      var attachment = m.attachment ? '<small class="st-agent-attachment">📄 ' + esc(m.attachment) + (m.document_characters ? ' · ' + Number(m.document_characters).toLocaleString() + ' characters read' : '') + '</small>' : '';
+      return '<div class="st-agent-message ' + role + '"><div class="st-agent-message-role">' + (role === 'user' ? 'You' : 'Research agent') + '</div><div class="st-agent-message-body">' + agentFormat(m.content) + '</div>' + attachment + '</div>';
+    }).join('');
+    var notes = (sum.notes || []).length ? '<div class="st-agent-notes"><b>Researcher checks before launch</b><ul>' + sum.notes.map(function (n) { return '<li>' + esc(n) + '</li>'; }).join('') + '</ul></div>' : '';
+    var consent = d.model_available ? '<label class="st-agent-model-consent"><input id="agent-model-consent" type="checkbox"><span>Use configured local model (' + esc(d.model_name || 'on-premises') + ') for this turn. Your saved brief, chat and current questionnaire will be sent to that configured endpoint.</span></label>' : '<div class="st-agent-memory-note">✦ Project memory is active. This chat, research brief and current questionnaire are saved with the study, so you do not need to repeat the context.</div>';
+    var html = '<div class="st-modal-head st-agent-head"><div><strong>✦ Research design agent</strong><span class="st-meta">' + esc(d.title || '') + ' · saved project conversation</span></div><button class="ex-close" data-act="modal-close">&times;</button></div>' +
+      '<div class="st-agent-workspace-body"><div class="st-agent-toolbar"><div class="st-agent-summary"><b>' + (sum.questions || 0) + ' questions</b><span>' + (sum.screeners || 0) + ' screener · ' + (sum.main || 0) + ' main</span><span>' + (sum.show_if || 0) + ' show-if · ' + (sum.screening_rules || 0) + ' screening rules</span></div>' +
+      '<div class="st-agent-actions"><button class="st-btn sm" data-act="agent-review-toggle">Review questions</button><button class="st-btn sm" data-act="agent-download">Download editable Word</button><a class="st-btn sm" href="/survey/' + encodeURIComponent(d.slug) + '/test" target="_blank" rel="noopener">Preview survey</a><button class="st-btn sm on" data-act="agent-open-studio">Open in Studio</button></div></div>' +
+      agentQuestionReview(d.cfg || {}) + notes +
+      '<div class="st-agent-memory"><details><summary>Remembered research context</summary><div><b>Objective</b><p>' + esc(memory.brief || 'No separate objective saved.') + '</p>' + (memory.audience ? '<b>Target respondents</b><p>' + esc(memory.audience) + '</p>' : '') + (memory.market ? '<b>Market / geography</b><p>' + esc(memory.market) + '</p>' : '') + '</div></details></div>' +
+      '<div class="st-agent-transcript" id="agent-transcript">' + (transcript || '<div class="st-agent-empty">Your saved design conversation will appear here.</div>') + '</div>' +
+      '<div class="st-agent-composer">' + consent + '<label class="st-agent-input-label" for="agent-input">What would you like to change?</label><textarea id="agent-input" rows="3" placeholder="e.g. Shorten Q4, make Q5 multi-select, add a show-if rule, or upload an edited questionnaire…"></textarea>' +
+      '<div class="st-agent-composer-actions"><label class="st-btn sm st-agent-upload-label">⇧ Upload edited document<input id="agent-upload-file" type="file" accept=".docx,.txt,.md,.csv"></label><small id="agent-upload-state">DOCX, TXT, MD or CSV · max 8 MB / 1,000,000 characters</small><button class="st-btn on" data-act="agent-submit">Send change</button></div>' +
+      '<div class="st-agent-footer">Changes save to this study. Preview and edit before you publish; nothing is launched automatically.</div></div></div>';
+    openModal(html, 'st-agent-workspace');
+    var feed = document.getElementById('agent-transcript');
+    if (feed) feed.scrollTop = feed.scrollHeight;
+  }
+  function refreshAgentEditor(d) {
+    if (cur && cur.slug === d.slug) {
+      cur.cfg = d.cfg; cur.title = d.title; auto.dirty = false; auto.error = null; auto.lastSaved = Date.now();
+      sel = cur.cfg.questions && cur.cfg.questions.length ? Math.min(sel, cur.cfg.questions.length - 1) : -1;
+      renderEditor();
+    }
+  }
+  function submitAgentTurn(file) {
+    if (!agentModalSlug) return;
+    var input = document.getElementById('agent-input');
+    var message = (input && input.value || '').trim();
+    if (!file && !message) { toast('Write a change request or upload an edited questionnaire.'); return; }
+    var useModel = !!((document.getElementById('agent-model-consent') || {}).checked);
+    var submit = document.querySelector('#st-modal [data-act="agent-submit"]');
+    if (submit) { submit.disabled = true; submit.textContent = file ? 'Converting…' : 'Thinking…'; }
+    var request;
+    if (file) {
+      request = new FormData(); request.append('slug', agentModalSlug); request.append('message', message); request.append('file', file);
+      request.append('use_model', useModel ? 'true' : 'false'); request.append('model_consent', useModel ? 'true' : 'false');
+    } else {
+      request = {slug:agentModalSlug, message:message, use_model:useModel, model_consent:useModel};
+    }
+    var url = '/api/studio/agent/turn';
+    (file ? fetch(url, {method:'POST', credentials:'same-origin', body:request}).then(function(r){return r.json();}) : api(url, request))
+      .then(function (d) {
+        if (d.error) { toast(d.error); if (submit) { submit.disabled = false; submit.textContent = 'Send change'; } return; }
+        agentModalData = d; refreshAgentEditor(d); renderDesignAgent(d);
+      }).catch(function () { toast('The change could not be saved. Please try again.'); if (submit) { submit.disabled = false; submit.textContent = 'Send change'; } });
+  }
+  function downloadAgentQuestionnaire() {
+    var url = '/api/studio/questionnaire.docx?study=' + encodeURIComponent(agentModalSlug);
+    fetch(url, {credentials:'same-origin'}).then(function (r) { if (!r.ok) throw new Error('download'); return r.blob(); }).then(function (blob) {
+      var a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = (agentModalSlug || 'study') + '_questionnaire.docx';
+      document.body.appendChild(a); a.click(); a.remove(); setTimeout(function(){URL.revokeObjectURL(a.href);}, 5000);
+      toast('Editable questionnaire downloaded.');
+    }).catch(function(){ window.open(url, '_blank'); });
   }
   function createStudy(cfg) {
     api("/api/studio/save", { slug: "", title: cfg.title, cfg: cfg }).then(function (r) {
@@ -6592,9 +6715,7 @@
     var i = Number(b.getAttribute("data-i"));
 
     if (act === "new") openNewStudy();
-    if (act === "ai-guide") {
-      openModal('<div class="st-modal-head"><strong>✦ Research design agent</strong><span class="st-meta">Your study-aware guide</span><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-agent-chat"><div class="st-agent-msg"><b>How can I help with this study?</b><p>I can review the objectives, recommend question types, improve wording, suggest logic, check bias and prepare the study for launch.</p></div><div class="st-agent-chips"><button>Review my questionnaire</button><button>Suggest the next question</button><button>Check for bias</button><button>Help with sample design</button></div><textarea placeholder="Ask about your objectives, questionnaire or study design…"></textarea><div class="st-modal-actions"><span class="st-meta">Suggestions never change your study until you approve them.</span><button class="st-btn on" data-act="agent-send">Send</button></div></div>', 'st-agent-modal');
-    }
+    if (act === "ai-guide") { if (cur && cur.slug) flushSave(function () { openDesignAgent(cur.slug); }); }
     if (act === "dup-beacon") {
       api("/api/studio/study?slug=beacon").then(function (s) {
         if (s.error) { toast("PROJECT BEACON template not found"); return; }

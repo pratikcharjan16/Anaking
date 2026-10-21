@@ -3149,39 +3149,210 @@
   }
 
   function renderRank(q) {
-    var order = getAns(q.id, "order") || orderedList(q.rows, q).map(function (r) { return r.code; });
+    var savedOrder = getAns(q.id, "order");
+    var validCodes = (q.rows || []).map(function (r) { return r.code; });
+    var order = savedOrder && savedOrder.length ? savedOrder.filter(function (code) {
+      return validCodes.some(function (candidate) { return String(candidate) === String(code); });
+    }) : orderedList(q.rows, q).map(function (r) { return r.code; });
+    validCodes.forEach(function (code) {
+      if (!order.some(function (existing) { return String(existing) === String(code); })) order.push(code);
+    });
+    var root = el("div", "rank-wrap");
+    var help = el("p", "rank-help", "Drag the grip (or anywhere on a row on desktop) to reorder. You can also use the up and down buttons.");
     var wrap = el("div", "rank-list");
     var top = q.rank_count || 3;
+    var drag = null;
+    root.appendChild(help);
+    root.appendChild(wrap);
+    wrap.setAttribute("role", "list");
+    wrap.setAttribute("aria-label", "Rank these items. Drag with the handle or use the move up and down buttons.");
 
-    function paint() {
+    function rowFor(code) {
+      return (q.rows || []).filter(function (x) { return String(x.code) === String(code); })[0];
+    }
+    function refreshPositions() {
+      Array.prototype.forEach.call(wrap.querySelectorAll(".rank-item"), function (item, i) {
+        var pos = item.querySelector(".pos");
+        if (pos) pos.textContent = String(i + 1);
+        item.classList.toggle("top", i < top);
+        item.setAttribute("aria-posinset", String(i + 1));
+        item.setAttribute("aria-setsize", String(order.length));
+      });
+    }
+    function placeDraggedItem(x, y, hit) {
+      if (!drag) return;
+      Array.prototype.forEach.call(wrap.querySelectorAll(".drop-target"), function (node) {
+        node.classList.remove("drop-target", "drop-before", "drop-after");
+      });
+      var target = hit && hit.closest ? hit.closest(".rank-item") : null;
+      var listRect = wrap.getBoundingClientRect();
+      if (target && wrap.contains(target) && target !== drag.item) {
+        var rect = target.getBoundingClientRect();
+        var insertBefore = y < rect.top + rect.height / 2;
+        wrap.insertBefore(drag.item, insertBefore ? target : target.nextSibling);
+        target.classList.add("drop-target", insertBefore ? "drop-before" : "drop-after");
+        refreshPositions();
+      } else if (!target && x >= listRect.left && x <= listRect.right &&
+                 y >= listRect.top && y <= listRect.bottom) {
+        var others = Array.prototype.filter.call(wrap.querySelectorAll(".rank-item"), function (row) { return row !== drag.item; });
+        var next = others.filter(function (row) {
+          var rect = row.getBoundingClientRect();
+          return y < rect.top + rect.height / 2;
+        })[0];
+        if (next) {
+          wrap.insertBefore(drag.item, next);
+          next.classList.add("drop-target", "drop-before");
+        } else {
+          wrap.appendChild(drag.item);
+          var previous = drag.item.previousElementSibling;
+          if (previous) previous.classList.add("drop-target", "drop-after");
+        }
+        refreshPositions();
+      } else if (!target && y >= listRect.bottom) {
+        wrap.appendChild(drag.item);
+        var last = drag.item.previousElementSibling;
+        if (last) last.classList.add("drop-target", "drop-after");
+        refreshPositions();
+      }
+    }
+    function orderFromDom() {
+      var codeMap = Object.create(null);
+      (q.rows || []).forEach(function (row) { codeMap[String(row.code)] = row.code; });
+      return Array.prototype.map.call(wrap.querySelectorAll(".rank-item"), function (node) {
+        return codeMap[node.dataset.rankCode];
+      }).filter(function (code) { return code !== undefined; });
+    }
+    function onPointerMove(e) {
+      if (!drag || drag.native || drag.pointerId !== e.pointerId) return;
+      if (!drag.moved && Math.abs(e.clientY - drag.startY) < 4) return;
+      drag.moved = true;
+      e.preventDefault();
+      placeDraggedItem(e.clientX, e.clientY, document.elementFromPoint(e.clientX, e.clientY));
+    }
+    function onPointerUp(e) {
+      if (drag && !drag.native && drag.pointerId === e.pointerId) finishDrag(false);
+    }
+    function onPointerCancel(e) {
+      if (drag && !drag.native && drag.pointerId === e.pointerId) finishDrag(true);
+    }
+    function finishDrag(cancel) {
+      if (!drag) return;
+      var state = drag;
+      drag = null;
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.removeEventListener("pointercancel", onPointerCancel);
+      wrap.classList.remove("drag-active");
+      Array.prototype.forEach.call(wrap.querySelectorAll(".rank-item"), function (node) {
+        node.classList.remove("dragging", "drop-target", "drop-before", "drop-after");
+        node.removeAttribute("aria-grabbed");
+      });
+      if (cancel) {
+        order = state.initialOrder;
+        paint();
+        return;
+      }
+      if (state.moved) {
+        order = orderFromDom();
+        paint(state.code);
+      }
+    }
+    wrap.addEventListener("dragover", function (e) {
+      if (!drag || !drag.native) return;
+      e.preventDefault();
+      if (e.dataTransfer) e.dataTransfer.dropEffect = "move";
+      drag.moved = true;
+      placeDraggedItem(e.clientX, e.clientY, e.target);
+    });
+    wrap.addEventListener("drop", function (e) {
+      if (!drag || !drag.native) return;
+      e.preventDefault();
+      drag.dropAccepted = true;
+      finishDrag(false);
+    });
+
+    function paint(focusCode, returnFocus) {
       wrap.innerHTML = "";
       order.forEach(function (code, i) {
-        var r = q.rows.filter(function (x) { return x.code === code; })[0];
+        var r = rowFor(code);
+        if (!r) return;
         var item = el("div", "rank-item" + (i < top ? " top" : ""));
+        item.dataset.rankCode = String(r.code);
+        item.draggable = true;
+        item.setAttribute("role", "listitem");
+        item.setAttribute("aria-posinset", String(i + 1));
+        item.setAttribute("aria-setsize", String(order.length));
         item.appendChild(el("span", "pos", String(i + 1)));
         item.appendChild(itemLabelNode(r, "rank-label"));
+        item.addEventListener("dragstart", function (e) {
+          var control = e.target && e.target.closest ? e.target.closest("button") : null;
+          if (control || (drag && !drag.native)) { e.preventDefault(); return; }
+          drag = { item: item, code: r.code, pointerId: null, startY: e.clientY,
+                   moved: false, native: true, dropAccepted: false, initialOrder: order.slice() };
+          wrap.classList.add("drag-active");
+          item.classList.add("dragging");
+          item.setAttribute("aria-grabbed", "true");
+          if (e.dataTransfer) {
+            e.dataTransfer.effectAllowed = "move";
+            try { e.dataTransfer.setData("text/plain", String(r.code)); } catch (err) {}
+            try { e.dataTransfer.setDragImage(item, 20, 20); } catch (err) {}
+          }
+        });
+        item.addEventListener("dragend", function () {
+          if (drag && drag.native && drag.item === item) finishDrag(!drag.dropAccepted);
+        });
+
+        var handle = el("span", "rank-drag-handle", "⠿");
+        handle.dataset.rankCode = String(r.code);
+        handle.setAttribute("aria-hidden", "true");
+        handle.title = "Drag to reorder";
+        handle.addEventListener("pointerdown", function (e) {
+          if (e.pointerType === "mouse" || e.isPrimary === false || (e.button !== undefined && e.button !== 0)) return;
+          e.preventDefault();
+          drag = { item: item, handle: handle, code: r.code, pointerId: e.pointerId,
+                   startY: e.clientY, moved: false, native: false, initialOrder: order.slice() };
+          wrap.classList.add("drag-active");
+          item.classList.add("dragging");
+          item.setAttribute("aria-grabbed", "true");
+          document.addEventListener("pointermove", onPointerMove);
+          document.addEventListener("pointerup", onPointerUp);
+          document.addEventListener("pointercancel", onPointerCancel);
+          try { handle.setPointerCapture(e.pointerId); } catch (err) { /* document listeners also track uncaptured pointers */ }
+        });
+
         var ar = el("div", "arrows");
         var up = el("button", null, "&#9650;"), dn = el("button", null, "&#9660;");
         up.type = dn.type = "button";
         up.disabled = i === 0; dn.disabled = i === order.length - 1;
-        up.addEventListener("click", function () { move(i, -1); });
-        dn.addEventListener("click", function () { move(i, 1); });
+        up.setAttribute("aria-label", "Move " + (r.label || "item") + " up in ranking");
+        dn.setAttribute("aria-label", "Move " + (r.label || "item") + " down in ranking");
+        up.title = "Move up"; dn.title = "Move down";
+        up.addEventListener("click", function () { move(i, -1, r.code); });
+        dn.addEventListener("click", function () { move(i, 1, r.code); });
         ar.appendChild(up); ar.appendChild(dn);
+        item.appendChild(handle);
         item.appendChild(ar);
         wrap.appendChild(item);
       });
       setAns(q.id, "order", order.slice());
       ansChanged();
       hideErr();
+      if (returnFocus && focusCode !== undefined) {
+        var focusItem = Array.prototype.filter.call(wrap.querySelectorAll(".rank-item"), function (item) {
+          return item.dataset.rankCode === String(focusCode);
+        })[0];
+        var enabledMove = focusItem && focusItem.querySelector(".arrows button:not(:disabled)");
+        if (enabledMove) enabledMove.focus();
+      }
     }
-    function move(i, d) {
+    function move(i, d, focusCode) {
       var j = i + d;
       if (j < 0 || j >= order.length) return;
       var t = order[i]; order[i] = order[j]; order[j] = t;
-      paint();
+      paint(focusCode, true);
     }
     paint();
-    return wrap;
+    return root;
   }
 
   // ---- conjoint as cards, with a minimum dwell gate ----
