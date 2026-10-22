@@ -743,7 +743,7 @@
     var t = [["questions", "Questions", c.questions.length], ["translations", "Translations", ""],
              ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""]];
     if (hasConjointQuestion(c)) t.push(["conjoint", "Conjoint", ""]);
-    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]]);
+    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""], ["quota", "Quota", (c.quotas || []).length || ""]]);
   }
   // keep the bar in step with the questions (adding/removing a conjoint question changes it).
   // Rebuilding the shell re-enters this, so guard against recursing.
@@ -776,6 +776,7 @@
     if (tab === "tpp") renderScenePrev();
     if (tab === "responses") responsesTab($(".st-panel", p));
     if (tab === "analysis") analysisTab($(".st-panel", p));
+    if (tab === "quota") quotaTab($(".st-panel", p));
   }
 
   // ------------------------------------------------------------ questions workspace
@@ -6473,6 +6474,180 @@
   }
 
   // ------------------------------------------------------------ responses / analysis
+  // ------------------------------------------------------------ quota
+  // Quota cells: how many completed responses each option group of a question needs -
+  // typically a screener like "primary specialty".  cfg.quotas holds the rules and saves
+  // with the design; /api/studio/quotas returns the live fill so this tab can tell the
+  // team when a group is full (stop sharing new respondent links for that option) and
+  // which responses arrived over quota (saved as "Quota Full" in the data extract).
+  var quotaPoll = null, quotaNoticed = {};
+  function quotaEligible(q) {
+    return !!q && (q.type === "single_select" || q.type === "multi_select") && (q.options || []).length > 0;
+  }
+  function quotaQuestion(qid) {
+    return (cur.cfg.questions || []).filter(function (q) { return String(q.id) === String(qid); })[0];
+  }
+  function quotaCell(id) {
+    return (cur.cfg.quotas || []).filter(function (c) { return String(c.id) === String(id); })[0];
+  }
+  function quotaTouch() { markChanged(); syncTabs(); }
+
+  function quotaTab(p) {
+    quotaNoticed = {};
+    p._quotaState = null;
+    renderQuota(p);
+    quotaFetch(p);
+    clearInterval(quotaPoll);
+    quotaPoll = setInterval(function () {
+      if (tab !== "quota" || !cur) { clearInterval(quotaPoll); return; }
+      quotaFetch(p);
+    }, 45000);
+  }
+  function quotaFetch(p) {
+    if (!cur) return;
+    fetch("/api/studio/quotas?slug=" + encodeURIComponent(cur.slug), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        if (!st || st.error || tab !== "quota" || !cur) return;
+        (st.notifications || []).forEach(function (n) {
+          if (quotaNoticed[n.message]) return;
+          quotaNoticed[n.message] = 1;
+          toast(n.message);                       // notify on every new fill / over-quota run
+        });
+        p._quotaState = st;
+        quotaBadge(st);
+        renderQuota(p);
+      });
+  }
+  function quotaBadge(st) {
+    var b = document.querySelector('.st-tab[data-tab="quota"] .st-count');
+    if (!b) return;
+    var full = (st.cells || []).filter(function (c) { return c.full; }).length;
+    b.classList.toggle("st-count-warn", full > 0);
+    b.textContent = full > 0 ? full + " full" : ((st.cells || []).length || "");
+  }
+
+  function quotaRowHtml(cell, qs, stat) {
+    var q = quotaQuestion(cell.qid);
+    var opts = (q && q.options) || [];
+    var chosen = {};
+    (cell.options || []).forEach(function (o) { chosen[String(o)] = 1; });
+    var html = '<div class="st-qcell' + (stat && stat.full ? " full" : "") + '" data-qc="' + esc(String(cell.id)) + '">' +
+      '<div class="st-q-main">' +
+        '<select class="st-q-q" title="Question to quota on">' +
+          '<option value="">Choose a question\u2026</option>' +
+          qs.map(function (x) {
+            return '<option value="' + esc(String(x.id)) + '"' + (String(x.id) === String(cell.qid) ? " selected" : "") + '>' +
+              esc(String(x.id)) + " \u00b7 " + esc(String(x.stem || x.title || "").slice(0, 70)) + "</option>";
+          }).join("") +
+        "</select>" +
+        '<div class="st-q-opts">' + (opts.length ? opts.map(function (o) {
+          var on = chosen[String(o.code)] ? " on" : "";
+          return '<label class="st-qchip' + on + '"><input type="checkbox" data-opt="' + esc(String(o.code)) + '"' +
+            (on ? " checked" : "") + "> " + esc(String(o.label || o.code)) + "</label>";
+        }).join("") : '<span class="st-q-empty">Pick a question with options.</span>') + "</div>" +
+      "</div>" +
+      '<label class="st-q-target">Completes needed <input type="number" min="1" max="99999" value="' +
+        (cell.target || 1) + '"></label>' +
+      '<div class="st-q-stat">' + (stat ? (
+        '<div class="st-q-bar"><i style="width:' +
+          Math.min(100, Math.round(100 * stat.filled / Math.max(1, stat.target))) + '%"></i></div>' +
+        '<b>' + stat.filled + " / " + stat.target + " completes</b>" +
+        (stat.full
+          ? '<span class="st-pill warn">Quota full \u00b7 stop sharing links</span>' +
+            (stat.over ? '<small>' + stat.over + ' over saved as \u201cQuota Full\u201d</small>' : "")
+          : '<span class="st-pill ok">Filling \u00b7 ' + stat.remaining + " to go</span>")
+      ) : '<span class="st-q-empty">Loading fill status\u2026</span>') + "</div>" +
+      '<button class="st-btn sm ghost" data-act="quota-del" title="Remove this quota cell">Remove</button>' +
+      "</div>";
+    return html;
+  }
+
+  function renderQuota(p) {
+    if (!cur) return;
+    var c = cur.cfg;
+    if (!c.quotas) c.quotas = [];
+    var qs = (c.questions || []).filter(quotaEligible);
+    var st = p._quotaState;
+    var byId = {};
+    (st && st.cells || []).forEach(function (x) { byId[String(x.id)] = x; });
+
+    var html = '<div class="st-page-head"><h2>Quota</h2><p>Set how many completed responses each ' +
+      'option group needs \u2014 typically a screener like \u201cprimary specialty\u201d. When a group reaches ' +
+      'its target, stop sharing new respondent links for that option; responses that still arrive ' +
+      'are still accepted and saved as \u201cQuota Full\u201d in the normal data extract.</p></div>';
+
+    if (st) {
+      html += '<div class="st-qsum"><span class="st-qsum-n"><b>' + st.total_filled + "</b> of <b>" +
+        st.total_target + "</b> completes toward quota</span>" +
+        '<label class="st-inline" title="Test runs are rehearsals - leave off for real fieldwork">' +
+        '<input type="checkbox" id="st-q-counttest"' + (st.count_test ? " checked" : "") +
+        "> count test runs too</label>" +
+        '<button class="st-btn sm ghost" data-act="quota-refresh">Refresh</button></div>';
+    }
+    if (st && (st.notifications || []).length) {
+      html += '<div class="st-qnotice" role="status"><b>Quota notices</b><ul>' +
+        st.notifications.map(function (n) { return "<li>" + esc(n.message) + "</li>"; }).join("") +
+        "</ul></div>";
+    }
+
+    html += '<div class="st-qlist">' + (c.quotas.length
+      ? c.quotas.map(function (cell) { return quotaRowHtml(cell, qs, byId[String(cell.id)]); }).join("")
+      : '<div class="st-q-empty st-q-none">No quota cells yet. Add one to cap how many completes ' +
+        'an option group needs.</div>') + "</div>";
+
+    if (qs.length) {
+      html += '<button class="st-btn" data-act="quota-add">+ Add quota cell</button>';
+    } else {
+      html += '<div class="st-q-empty">Add a single- or multi-choice question first \u2014 quotas work on ' +
+        'the options of a question (typically your screener).</div>';
+    }
+    if (st && (st.over || []).length) {
+      html += '<div class="st-qover"><b>Responses over quota \u00b7 saved as \u201cQuota Full\u201d</b><ul>' +
+        st.over.map(function (o) {
+          return "<li><code>" + esc(o.respondent_code || "") + "</code> " +
+            (o.is_test ? "test" : "real") + " \u00b7 completed " + esc(o.completed_at || "") + "</li>";
+        }).join("") + "</ul></div>";
+    }
+    p.innerHTML = html;
+
+    // ---- edits: every change goes through the normal autosave
+    $$(".st-qcell", p).forEach(function (row) {
+      var cell = quotaCell(row.getAttribute("data-qc"));
+      if (!cell) return;
+      var qsel = row.querySelector(".st-q-q");
+      if (qsel) qsel.addEventListener("change", function () {
+        cell.qid = qsel.value;
+        cell.options = [];
+        quotaTouch();
+        renderQuota(p);
+      });
+      $$('input[type="checkbox"][data-opt]', row).forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var code = cb.getAttribute("data-opt");
+          var set = {};
+          (cell.options || []).forEach(function (o) { set[String(o)] = 1; });
+          if (cb.checked) set[code] = 1; else delete set[code];
+          cell.options = Object.keys(set);
+          cb.closest(".st-qchip").classList.toggle("on", cb.checked);
+          quotaTouch();
+        });
+      });
+      var tin = row.querySelector(".st-q-target input");
+      if (tin) tin.addEventListener("change", function () {
+        cell.target = Math.max(1, parseInt(tin.value, 10) || 1);
+        tin.value = cell.target;
+        quotaTouch();
+      });
+    });
+    var ct = p.querySelector("#st-q-counttest");
+    if (ct) ct.addEventListener("change", function () {
+      c.quotas_count_test = !!ct.checked;
+      quotaTouch();
+      quotaFetch(p);
+    });
+  }
+
   function responsesTab(p) {
     api("/api/admin/data?study=" + encodeURIComponent(cur.slug) + "&scope=all")
       .then(function (d) {
@@ -6879,6 +7054,25 @@
     if (act === "viewlive") {
       // Open the test environment in a new tab; this builder keeps its place.
       openTestLink("/survey/" + cur.slug + "/test");
+    }
+    if (act === "quota-add" || act === "quota-del" || act === "quota-refresh") {
+      var qp = document.querySelector("#st-panel .st-panel");
+      if (qp && cur) {
+        if (act === "quota-add") {
+          cur.cfg.quotas = cur.cfg.quotas || [];
+          var firstQ = (cur.cfg.questions || []).filter(quotaEligible)[0];
+          cur.cfg.quotas.push({ id: "qc" + Date.now().toString(36),
+            qid: firstQ ? String(firstQ.id) : "", options: [], target: 1 });
+          quotaTouch();
+        } else if (act === "quota-del") {
+          var row = b.closest(".st-qcell");
+          var cid = row && row.getAttribute("data-qc");
+          cur.cfg.quotas = (cur.cfg.quotas || []).filter(function (c) { return String(c.id) !== String(cid); });
+          quotaTouch();
+        }
+        renderQuota(qp);
+        if (act === "quota-refresh") quotaFetch(qp);
+      }
     }
     if (act === "outline-view") {
       outlineView = b.getAttribute("data-v") === "thumbs" ? "thumbs" : "list";

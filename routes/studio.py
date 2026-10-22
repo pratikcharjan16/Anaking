@@ -61,7 +61,7 @@ from core.reporting import (analysis_for, delta_source_columns, delta_source_row
                              delta_source_values)
 from core.translator import TranslationError, translate_string
 from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
-from models import Study, StudyError
+from models import Respondent, Study, StudyError
 
 AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
              "ogg": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm"}
@@ -157,6 +157,30 @@ def analysis():
         if k not in res:
             res[k] = v
     return jsonify(res)
+
+
+@bp.get("/api/studio/quotas")
+def quotas_state():
+    """Live quota fill for the Studio's Quota tab.
+
+    Counts completed responses against the study's configured quota cells and
+    returns, per cell, how many completes it has, whether it is full (the team
+    should stop sharing new respondent links for that option) and which responses
+    arrived over quota (saved as "Quota Full" in the data extract).
+    """
+    slug = request.args.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    rows = []
+    for r in Respondent.for_study(study.id, "all"):
+        rows.append({"id": r["id"], "respondent_code": r["respondent_code"],
+                     "is_test": bool(r["is_test"]), "status": r["status"],
+                     "completed_at": r["completed_at"], "answers": Respondent(r).answers()})
+    from core.quotas import state as quota_state
+    out = quota_state(study.cfg, rows)
+    out["slug"] = slug
+    return jsonify(out)
 
 
 @bp.post("/api/studio/save")

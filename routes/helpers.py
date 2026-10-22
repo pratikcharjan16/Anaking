@@ -58,6 +58,11 @@ def records(slug: str, scope: str = "all", include_invalid: bool = False) -> lis
         for field in ('reason', 'notes', 'reviewer', 'updated_at'):
             rec['flat']['validation_' + field] = decision[field]
         out.append(rec)
+    # Quota category ("Quota Full") rides on the normal extracts - same files, one
+    # extra column.  Counted against the study's *current* quota cells (the rule the
+    # team set in Studio), not a response's frozen design snapshot.
+    from core.quotas import attach as attach_quota_category
+    attach_quota_category(out, study.cfg)
     return out
 
 

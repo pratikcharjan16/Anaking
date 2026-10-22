@@ -317,6 +317,26 @@ exported as a `language` column.
 Variables** (names captured from the respondent link, e.g. `?panel=A` → exported as
 `ev_panel`).
 
+### Quotas (Studio → **Quota**)
+
+Say how many completed responses each option group needs — typically on a screener
+like "What is your primary specialty": Medical Oncologist 2, Hem Onc 4, Surgeons 4 out
+of 10 completes. A quota cell = a question + one or more of its options + the number of
+completes needed.
+
+- The **Quota tab** (beside Analysis) shows the fill of every cell live: `2 / 2 completes ·
+  Quota full · stop sharing links`, with a bar per cell and the totals.
+- When a cell fills, the team is **notified** (toast + the notices panel) and should
+  **stop sharing new respondent links for that option** — the other options keep taking
+  respondents until they fill too.
+- Respondents who arrive after the cut are **never blocked**: they complete as usual, and
+  their response is saved as **"Quota Full"** in the `quota_category` column of the normal
+  data extract (csv / Excel / json — no separate quota file). Every later over-quota
+  completion is notified too.
+- Quotas count **real completes** by default (partials and test runs never fill them);
+  "count test runs too" is there for rehearsal. Over-quota order is first-come — the first
+  `target` completes fill the quota.
+
 ### The add-item library (Studio → + Add question)
 
 Grouped exactly like a commercial builder: **Questions** - Single Select (incl. image
