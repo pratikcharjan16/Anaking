@@ -94,9 +94,12 @@ carry a run forward on purpose: `?review=<token>` (a shared team review restores
 and notes) and `?keep=1` (used by the in-page language switch, so changing language mid-test does
 not throw the answers away).
 
-Every page header carries the same **Projects · Survey · Studio · Monitor** switcher, with the
-current section marked for assistive technology, so the team can hop between apps without
-retyping anything. Respondents see none of this — the team strip on the survey
+Every page header carries the same **Projects · Studio · Monitor** switcher, with the current
+section marked for assistive technology, so the team can hop between apps without retyping
+anything. The respondent survey is deliberately **not** a tab: previewing and testing happens
+in the Studio (▶ Test survey) and through the per-study test/preview links. Inside a test
+link the team strip keeps a small **▶ Test view** marker that returns to that study's test
+link. Respondents see none of this — the team strip on the survey
 only renders in test mode (`/survey/<slug>/test`), which is also where drafts are previewed; the
 respondent link of a draft or closed study shows a "not launched yet" page instead.
 

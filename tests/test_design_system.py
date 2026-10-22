@@ -61,26 +61,41 @@ def test_brand_markup_is_rendered_from_one_macro(client):
 
 
 # ------------------------------------------------------------------ navigation
+def test_switcher_is_projects_studio_monitor(client):
+    """The respondent survey is not one of the apps: preview/test belongs to the Studio."""
+    for path in ("/", "/studio/", "/admin/", "/survey/test"):
+        html = _html(client, path)
+        links = re.findall(r'<a class="appnav-link[^"]*"[^>]*>([^<]+)</a>', html)
+        assert links == ["Projects", "Studio", "Monitor"], (path, links)
+
+
 def test_app_switcher_marks_the_current_section(client):
-    expected = {"/": "home", "/studio/": "studio",
-                "/admin/": "admin", "/survey/test": "survey"}
-    for path, active in expected.items():
+    for path in ("/", "/studio/", "/admin/"):
         html = _html(client, path)
         current = re.findall(r'<a class="appnav-link([^"]*)"([^>]*)>', html)
         assert any(" on" in cls and 'aria-current="page"' in rest
                    for cls, rest in current), path
-        assert html.count('aria-current="page"') >= 1, path
         # the active marker is on exactly one link in the switcher
         assert sum(1 for cls, _ in current if " on" in cls) == 1, path
 
 
-def test_survey_switcher_keeps_the_study_it_came_from(client):
+def test_test_strip_marks_the_test_view_not_a_switcher_tab(client):
+    """In test mode the strip carries a small "Test view" link as the current marker
+    (and return target); no switcher tab is falsely marked current."""
+    html = _html(client, "/survey/test")
+    assert re.search(r'<a class="teambar-testlink"[^>]*aria-current="page"', html)
+    assert 'class="appnav-link on"' not in html
+
+
+def test_test_strip_keeps_the_study_it_came_from(client):
     r = client.post("/api/studio/save", json={
         "slug": "ds-child", "title": "Design system study",
         "cfg": {"sections": [], "questions": []}})
     assert r.status_code == 200, r.get_json()
     html = _html(client, "/survey/ds-child/test")
+    # "Test view" returns to this study's test link ...
     assert 'href="/survey/ds-child/test"' in html
+    # ... and the switcher deep-links back into the same study's tools
     assert 'href="/studio/#ds-child"' in html
     assert 'href="/admin/?study=ds-child"' in html
 

@@ -20,7 +20,9 @@
   <span class="teambar-note">Research-team view &middot; <strong>{{ study_title }}</strong>
     &middot; {{ 'draft preview' if is_draft else 'test mode - stored as T-codes' }}
     {% if design_version %}<span class="teambar-ver" title="Fingerprint of the saved design this test link is running. It changes every time the survey is saved; a fresh test run always starts on the latest one.">design {{ design_version }}</span>{% endif %}</span>
-  {% with active='survey', nav_study=slug, survey_href=request.path %}{% include '_nav.html' %}{% endwith %}
+  <a class="teambar-testlink" href="{{ request.path }}" aria-current="page"
+     title="This test link: /survey/{{ slug }}/test. Opens a fresh run on question 1.">&#9654; Test view</a>
+  {% with nav_study=slug %}{% include '_nav.html' %}{% endwith %}
 </div>
 {% endif %}
 <header class="topbar">

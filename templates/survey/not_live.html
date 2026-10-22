@@ -12,7 +12,7 @@
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
   {{ brand('SURVEY', '', 38, 'nl') }}
-  {% with active='survey', nav_study=slug %}{% include '_nav.html' %}{% endwith %}
+  {% with nav_study=slug %}{% include '_nav.html' %}{% endwith %}
 </header>
 <main id="main" class="panel-main">
   <div class="panel-card">

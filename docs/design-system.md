@@ -71,8 +71,11 @@ instrument.
 ## Shared components
 
 * `.an-appbar` — the team app bar (brand + section switcher).
-* `.appnav` / `.appnav-link` — Projects · Survey · Studio · Monitor, with
-  `aria-current="page"` on the active one.
+* `.appnav` / `.appnav-link` — Projects · Studio · Monitor, with `aria-current="page"` on
+  the active one. The respondent survey is not a switcher tab: preview/test belongs to the
+  Studio's ▶ Test survey and the per-study test/preview links. The test-mode team strip
+  carries a `.teambar-testlink` "Test view" marker instead (return target for that study's
+  test link).
 * `.an-foot` — public footer.
 * `.pill` — one status pill for every app; variants are semantic
   (`live`, `draft`, `closed`, `test`, `complete`, `in_progress`, `screened_out`, …).
