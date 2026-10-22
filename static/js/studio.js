@@ -518,7 +518,8 @@
         : "";
       return '<div class="st-card" data-slug="' + esc(s.slug) + '">' +
         '<div class="st-card-top"><h3>' + esc(s.title) + '</h3><span class="st-pill ' + s.status + '">' + s.status + "</span></div>" +
-        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') + '</div>' +
+        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') +
+          (s.owner_email && window.ME && s.owner_email !== window.ME.email ? ' <span class="st-owner-chip" title="This project belongs to another account - you have full admin access">· ' + esc(s.owner_email) + '</span>' : '') + '</div>' +
         '<div class="st-meta">/survey/' + esc(s.slug) + " \u00B7 updated " + esc(ago(s.updated_at)) + "</div>" + kidHtml +
         '<div class="st-stats"><div><strong>' + s.started + "</strong><span>started</span></div><div><strong>" + s.complete + "</strong><span>complete</span></div>" +
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
@@ -696,7 +697,13 @@
   function renderEditor() {
     if (cur && cur.cfg && cur.cfg.parent) { renderChildEditor(); return; }
     var c = cur.cfg;
-    var html = '<div class="st-bar">' +
+    // Admin oversight: when the open project belongs to someone else, say so -
+    // the admin is the platform owner and edits with full rights.
+    var ownerBanner = (cur.owner_email && window.ME && cur.owner_email !== window.ME.email)
+      ? '<div class="st-owner-banner"><b>Admin access</b> — you are editing <code>' + esc(cur.owner_email) +
+        '</code>\u2019s project with full rights: read, edit, publish, export and manage.</div>'
+      : "";
+    var html = ownerBanner + '<div class="st-bar">' +
       '<button class="st-btn ghost" data-act="back" title="Back to all studies">\u2190 Studies</button>' +
       '<input type="text" id="ed-title" class="st-title" value="' + esc(cur.title) + '" title="Study title">' +
       '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Paused: nobody new can start. Closed: no new starts or submissions.">' +

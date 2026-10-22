@@ -48,3 +48,8 @@
 .cs-btn.no{background:#fdeeee;border-color:#f0c9c4;color:#b34a3c}
 .cs-btn.ghost{border-color:var(--line,#e6ddd2)}
 .cs-empty{padding:26px;text-align:center;color:var(--muted,#5c574e)}
+
+/* project manage row */
+.cs-status{padding:5px 9px;border:1.5px solid var(--line,#e6ddd2);border-radius:999px;
+  font:inherit;font-size:11.5px;font-weight:700;background:#fff;cursor:pointer}
+.cs-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}

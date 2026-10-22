@@ -88,28 +88,69 @@
     });
   }
 
+  var STATUSES = ["draft", "live", "paused", "closed"];
+
   function showProjects(id, name) {
     api("/api/admin/console/projects?user_id=" + id).then(function (out) {
       if (out.error) { alert(out.error); return; }
       var box = document.getElementById("cs-projects");
       box.hidden = false;
+      box.dataset.userId = id;
       document.getElementById("cs-projects-title").textContent = "Projects built by " + name;
       document.getElementById("cs-project-rows").innerHTML = out.projects.map(function (p) {
-        return '<tr><td><b>' + esc(p.title) + '</b></td><td><code>' + esc(p.slug) + '</code></td>' +
-          '<td><span class="cs-pill ' + (p.status === "live" ? "st-ok" : "") + '">' + esc(p.status) + '</span></td>' +
+        return '<tr data-slug="' + esc(p.slug) + '"><td><b>' + esc(p.title) + '</b></td><td><code>' + esc(p.slug) + '</code></td>' +
+          '<td><select class="cs-status" data-act="proj-status" data-slug="' + esc(p.slug) + '" title="Change study status">' +
+            STATUSES.map(function (st) {
+              return '<option value="' + st + '"' + (st === p.status ? " selected" : "") + '>' + st + '</option>';
+            }).join("") + '</select></td>' +
           '<td>' + (p.completes || 0) + '</td>' +
           '<td class="cs-when">' + esc((p.updated_at || "").replace("T", " ").slice(0, 16)) + '</td>' +
-          '<td><a class="cs-btn ghost" href="/studio/#' + esc(p.slug) + '">Open in Studio</a> ' +
-          '<a class="cs-btn ghost" href="/admin/?study=' + esc(p.slug) + '">Monitor</a></td></tr>';
+          '<td class="cs-acts"><a class="cs-btn ghost" href="/studio/#' + esc(p.slug) + '">Open in Studio</a> ' +
+          '<a class="cs-btn ghost" href="/admin/?study=' + esc(p.slug) + '">Monitor</a> ' +
+          '<button class="cs-btn ghost" data-act="proj-own" data-slug="' + esc(p.slug) + '">Take ownership</button> ' +
+          '<button class="cs-btn no" data-act="proj-del" data-slug="' + esc(p.slug) + '">Delete</button></td></tr>';
       }).join("") || '<tr><td colspan="6" class="cs-empty">Nothing built yet.</td></tr>';
       box.scrollIntoView({ behavior: "smooth", block: "start" });
     });
   }
 
+  function manageProject(act, slug, el) {
+    if (act === "proj-status") {
+      return api("/api/studio/status", { slug: slug, status: el.value }).then(function (out) {
+        if (out.error) alert(out.error); else load();
+      });
+    }
+    if (act === "proj-own") {
+      if (!confirm("Take ownership of " + slug + "? You become its main owner (full access is already yours).")) return;
+      return api("/api/admin/console/project/owner", { slug: slug }).then(function (out) {
+        if (out.error) alert(out.error); else {
+          var box = document.getElementById("cs-projects");
+          showProjects(box.dataset.userId, document.getElementById("cs-projects-title").textContent.replace("Projects built by ", ""));
+        }
+      });
+    }
+    if (act === "proj-del") {
+      if (!confirm("Delete " + slug + " and all of its responses? This cannot be undone.")) return;
+      return api("/api/studio/delete", { slug: slug }).then(function (out) {
+        if (out.error) alert(out.error); else {
+          var box = document.getElementById("cs-projects");
+          showProjects(box.dataset.userId, document.getElementById("cs-projects-title").textContent.replace("Projects built by ", ""));
+          load();
+        }
+      });
+    }
+  }
+
+  document.addEventListener("change", function (e) {
+    var sel = e.target.closest('select[data-act="proj-status"]');
+    if (sel) manageProject("proj-status", sel.getAttribute("data-slug"), sel);
+  });
+
   document.addEventListener("click", function (e) {
     var b = e.target.closest("[data-act]");
     if (!b) return;
     var act = b.getAttribute("data-act"), id = b.getAttribute("data-id");
+    if (act === "proj-del" || act === "proj-own") return manageProject(act, b.getAttribute("data-slug"));
     if (act === "projects") return showProjects(id, b.getAttribute("data-name") || "");
     if (act === "promote" || act === "demote") {
       if (act === "promote" && !confirm("Give this account full admin rights?")) return;

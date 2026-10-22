@@ -1074,3 +1074,12 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-qover li{margin:3px 0}
 .st-count-warn{background:var(--warn-soft);color:var(--warn)}
 @media(max-width:820px){.st-qcell{grid-template-columns:1fr}}
+
+/* ---------- admin oversight: owner chip + edit banner ---------- */
+.st-owner-chip{display:inline-block;background:#f7ecd4;color:#8a6d1f;border:1px solid #e2cf9c;
+  border-radius:999px;padding:1px 9px;font-size:10px;font-weight:750}
+.st-owner-banner{display:flex;align-items:center;gap:8px;margin:0 0 10px;padding:10px 14px;
+  background:#f7ecd4;border:1px solid #e2cf9c;border-radius:10px;font-size:12px;color:#5c4a12}
+.st-owner-banner b{background:#c9a227;color:#3d3218;border-radius:6px;padding:2px 8px;
+  font-size:10px;letter-spacing:.06em;text-transform:uppercase}
+.st-owner-banner code{background:#fff;border:1px solid #e2d6b8;border-radius:6px;padding:1px 7px}

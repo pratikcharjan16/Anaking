@@ -13,6 +13,7 @@
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="{{ asset('js/security.js') }}"></script>{% endif %}
+<script>window.ME = {% if account() %}{{ account() | tojson }}{% else %}null{% endif %};</script>
 </head>
 <body>
 <a class="skip-link" href="#st-root">Skip to the builder</a>

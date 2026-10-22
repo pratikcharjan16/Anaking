@@ -159,7 +159,39 @@ def projects_of():
         row = counts.get(p["slug"]) or {}
         p["started"] = row.get("started", 0)
         p["study_id"] = row.get("study_id", "")
+        p["owner_email"] = row.get("owner_email", "")
     return jsonify({"projects": out})
+
+
+@bp.post("/api/admin/console/project/owner")
+def project_owner():
+    """Manage a project from the back-end: make the admin its owner.
+
+    The admin already has full access to every study; this rewrites the owning
+    account so the project sits under the admin in the listings too.  Reversible:
+    pass ``user_id`` to hand the project back to an account.
+    """
+    _require_admin()
+    body = json_body()
+    slug = str(body.get("slug") or "")
+    study = Study.get(slug)
+    if not study:
+        abort(404, "unknown study")
+    target = body.get("user_id")
+    if target:
+        user = accounts.by_id(int(target))
+        if not user:
+            abort(404, "unknown user")
+        owner_id = user["id"]
+    else:
+        me = getattr(g, "user", None)
+        if not me:
+            abort(400, "No signed-in admin account to take ownership.")
+        owner_id = me["id"]
+    with get_db() as db:
+        db.execute("UPDATE studies SET owner_id=? WHERE slug=?", (owner_id, slug))
+    audit("console/project-owner", study=slug, detail=f"owner -> {owner_id}")
+    return jsonify({"ok": True, "slug": slug, "owner_id": owner_id})
 
 
 @bp.post("/api/admin/console/decision")

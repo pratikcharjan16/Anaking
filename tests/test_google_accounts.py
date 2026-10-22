@@ -335,6 +335,63 @@ def test_admin_portal_is_open_for_review_and_tracks_activity(app, client):
     assert b"Signed in" in html or b"Edited a design" in html   # audit trail humanised
 
 
+# ------------------------------------------------------------------ admin oversight
+def test_admin_edits_and_manages_any_users_project(app, client):
+    """The admin is the platform owner: full read + edit on every account's work."""
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co")
+    slug = make_study(client, "Ana's study", H())
+    out(client)
+
+    signin(client, "chief@platform.co")
+    # whole studio is visible: open it, read it, overwrite the design
+    r = client.get("/api/studio/study", query_string={"slug": slug})
+    assert r.status_code == 200
+    assert r.get_json()["owner_email"] == "ana@research.co"
+    cfg = r.get_json()["cfg"]
+    cfg["questions"][0]["stem"] = "Edited by the admin"
+    r = client.post("/api/studio/save", json={"slug": slug, "title": "Ana's study", "cfg": cfg}, headers=H())
+    assert r.status_code == 200
+    assert client.get("/api/studio/study", query_string={"slug": slug}) \
+        .get_json()["cfg"]["questions"][0]["stem"] == "Edited by the admin"
+    # manage it from the back-end: status changes and delete rights included
+    r = client.post("/api/studio/status", json={"slug": slug, "status": "live"}, headers=H())
+    assert r.status_code == 200
+    assert client.get("/api/studio/study", query_string={"slug": slug}).get_json()["status"] == "live"
+
+
+def test_admin_can_take_and_give_ownership_from_the_console(app, client):
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co")
+    slug = make_study(client, "Handover", H())
+    ana_id = uid_of(app, "ana@research.co")
+    out(client)
+
+    signin(client, "chief@platform.co")
+    r = client.post("/api/admin/console/project/owner", json={"slug": slug}, headers=H())
+    assert r.get_json()["owner_id"] == uid_of(app, "chief@platform.co")
+    # and hand it back to the account that built it
+    r = client.post("/api/admin/console/project/owner",
+                    json={"slug": slug, "user_id": ana_id}, headers=H())
+    assert r.get_json()["owner_id"] == ana_id
+    assert client.post("/api/admin/console/project/owner",
+                       json={"slug": "nope"}, headers=H()).status_code == 404
+
+    # non-admins cannot re-own other people's work
+    out(client)
+    signin(client, "bo@research.co")
+    approve_direct(app, "bo@research.co")
+    signin(client, "bo@research.co")
+    assert client.post("/api/admin/console/project/owner",
+                       json={"slug": slug}, headers=H()).status_code == 403
+
+
 # ------------------------------------------------------------------ dev sign-in
 def test_dev_login_exists_only_when_explicitly_enabled(app, client):
     assert client.post("/auth/dev", json={"email": "x@y.co"}).status_code == 404

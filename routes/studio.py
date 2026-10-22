@@ -61,7 +61,7 @@ from core.reporting import (analysis_for, delta_source_columns, delta_source_row
                              delta_source_values)
 from core.translator import TranslationError, translate_string
 from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
-from models import Respondent, Study, StudyError
+from models import Respondent, Study, StudyError, get_db
 
 AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
              "ogg": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm"}
@@ -91,7 +91,10 @@ def get_study():
     if not study:
         return jsonify({"error": "unknown study"}), 404
     return jsonify({"slug": study.slug, "title": study.title, "status": study.status,
-                    "cfg": study.cfg, "updated_at": study.updated_at})
+                    "cfg": study.cfg, "updated_at": study.updated_at,
+                    "owner_id": study.owner_id,
+                    "owner_email": (get_db().execute("SELECT email FROM users WHERE id=?",
+                                                     (study.owner_id,)).fetchone() or {"email": ""})["email"]})
 
 
 @bp.get("/api/studio/delta-source")
