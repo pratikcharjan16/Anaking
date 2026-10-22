@@ -362,6 +362,61 @@
     el.innerHTML = html;
     var sw = document.getElementById("st-autosave"); if (sw) sw.checked = auto.on;
   }
+  // ---------------------------------------------------------- test tab
+  // The test environment always opens in its own tab, so this builder - question being
+  // edited, scroll position, unsaved panel state - stays exactly where it is.  The tab is
+  // opened inside the click gesture (pop-up blockers only allow that) and is pointed at the
+  // test link once pending edits are saved, so it never shows an older design.
+  var testTab = null, testTabTimer = null;
+  function openTestTab(url) {
+    var w = null;
+    try { w = window.open("", "_blank"); } catch (e) { w = null; }
+    if (!w) { window.location.assign(url); return; }   // pop-ups blocked: keep it working
+    try { w.opener = null; } catch (e) {}
+    try {
+      w.document.title = "Opening the test survey\u2026";
+      w.document.body.innerHTML = '<div style="font:14px/1.55 system-ui,sans-serif;' +
+        'padding:28px;color:#334">Saving your design and opening the test survey\u2026</div>';
+    } catch (e) {}
+    testTab = w;
+    clearTimeout(testTabTimer);
+    // A failed save never calls back: close the placeholder rather than leave a blank tab.
+    testTabTimer = setTimeout(function () {
+      if (testTab && !testTab.closed) { try { testTab.close(); } catch (e) {} }
+      testTab = null;
+    }, 10000);
+  }
+  function goTestTab(url) {
+    clearTimeout(testTabTimer);
+    if (testTab && !testTab.closed) {
+      var w = testTab; testTab = null;
+      try { w.location.replace(url); return; } catch (e) {}
+    }
+    testTab = null;
+    window.open(url, "_blank");
+  }
+  function openTestLink(url) {
+    // One click, one tab: a second click while the first is still saving must not queue
+    // another navigation (which would try to open yet another tab outside a click).
+    if (testTab && !testTab.closed) return;
+    openTestTab(url);
+    flushSave(function () { goTestTab(url); });
+  }
+
+  // Preview / test links on the cards and tabs save the builder first too, so the test
+  // environment can never open an older design than the one on screen.
+  var TEST_LINK_RE = /^\/survey\/[A-Za-z0-9\-]+\/test(?:\?|$)/;
+  document.addEventListener("click", function (e) {
+    if (!e.target || !e.target.closest) return;
+    var a = e.target.closest("a[href]");
+    if (!a || a.target !== "_blank") return;
+    var href = a.getAttribute("href") || "";
+    if (!TEST_LINK_RE.test(href) || !cur) return;
+    if (!auto.dirty && !auto.saving) return;      // nothing pending: let the link behave normally
+    e.preventDefault();
+    openTestLink(href);
+  }, true);
+
   window.addEventListener("beforeunload", function (e) {
     if (cur && auto.dirty) { e.preventDefault(); e.returnValue = ""; }
   });
@@ -463,7 +518,8 @@
         : "";
       return '<div class="st-card" data-slug="' + esc(s.slug) + '">' +
         '<div class="st-card-top"><h3>' + esc(s.title) + '</h3><span class="st-pill ' + s.status + '">' + s.status + "</span></div>" +
-        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') + '</div>' +
+        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') +
+          (s.owner_email && window.ME && s.owner_email !== window.ME.email ? ' <span class="st-owner-chip" title="This project belongs to another account - you have full admin access">· ' + esc(s.owner_email) + '</span>' : '') + '</div>' +
         '<div class="st-meta">/survey/' + esc(s.slug) + " \u00B7 updated " + esc(ago(s.updated_at)) + "</div>" + kidHtml +
         '<div class="st-stats"><div><strong>' + s.started + "</strong><span>started</span></div><div><strong>" + s.complete + "</strong><span>complete</span></div>" +
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
@@ -641,7 +697,13 @@
   function renderEditor() {
     if (cur && cur.cfg && cur.cfg.parent) { renderChildEditor(); return; }
     var c = cur.cfg;
-    var html = '<div class="st-bar">' +
+    // Admin oversight: when the open project belongs to someone else, say so -
+    // the admin is the platform owner and edits with full rights.
+    var ownerBanner = (cur.owner_email && window.ME && cur.owner_email !== window.ME.email)
+      ? '<div class="st-owner-banner"><b>Admin access</b> — you are editing <code>' + esc(cur.owner_email) +
+        '</code>\u2019s project with full rights: read, edit, publish, export and manage.</div>'
+      : "";
+    var html = ownerBanner + '<div class="st-bar">' +
       '<button class="st-btn ghost" data-act="back" title="Back to all studies">\u2190 Studies</button>' +
       '<input type="text" id="ed-title" class="st-title" value="' + esc(cur.title) + '" title="Study title">' +
       '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Paused: nobody new can start. Closed: no new starts or submissions.">' +
@@ -650,7 +712,7 @@
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
       '<button class="st-btn" data-act="save" title="Ctrl/Cmd + S">Save now</button>' +
-      '<button class="st-btn play" data-act="viewlive" title="Open the full test environment with question jump, notes, AI answers and team review links">\u25B6 Test survey</button>' +
+      '<button class="st-btn play" data-act="viewlive" title="Open the full test environment in a new tab - question jump, notes, AI answers and team review links. This builder stays open.">\u25B6 Test survey</button>' +
       '<div class="st-menu-wrap"><button class="st-btn" data-act="sopts" title="Survey options">SURVEY OPTIONS \u25BE</button>' +
         '<div class="st-menu" id="st-sopts" hidden>' +
         '<button type="button" data-act="so-settings">Settings</button>' +
@@ -688,7 +750,7 @@
     var t = [["questions", "Questions", c.questions.length], ["translations", "Translations", ""],
              ["tpp", "Walkthrough", (c.explainer_scenes || []).length || ""]];
     if (hasConjointQuestion(c)) t.push(["conjoint", "Conjoint", ""]);
-    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""]]);
+    return t.concat([["settings", "Settings & QC", ""], ["responses", "Responses", ""], ["analysis", "Analysis", ""], ["quota", "Quota", (c.quotas || []).length || ""]]);
   }
   // keep the bar in step with the questions (adding/removing a conjoint question changes it).
   // Rebuilding the shell re-enters this, so guard against recursing.
@@ -721,6 +783,7 @@
     if (tab === "tpp") renderScenePrev();
     if (tab === "responses") responsesTab($(".st-panel", p));
     if (tab === "analysis") analysisTab($(".st-panel", p));
+    if (tab === "quota") quotaTab($(".st-panel", p));
   }
 
   // ------------------------------------------------------------ questions workspace
@@ -6418,6 +6481,180 @@
   }
 
   // ------------------------------------------------------------ responses / analysis
+  // ------------------------------------------------------------ quota
+  // Quota cells: how many completed responses each option group of a question needs -
+  // typically a screener like "primary specialty".  cfg.quotas holds the rules and saves
+  // with the design; /api/studio/quotas returns the live fill so this tab can tell the
+  // team when a group is full (stop sharing new respondent links for that option) and
+  // which responses arrived over quota (saved as "Quota Full" in the data extract).
+  var quotaPoll = null, quotaNoticed = {};
+  function quotaEligible(q) {
+    return !!q && (q.type === "single_select" || q.type === "multi_select") && (q.options || []).length > 0;
+  }
+  function quotaQuestion(qid) {
+    return (cur.cfg.questions || []).filter(function (q) { return String(q.id) === String(qid); })[0];
+  }
+  function quotaCell(id) {
+    return (cur.cfg.quotas || []).filter(function (c) { return String(c.id) === String(id); })[0];
+  }
+  function quotaTouch() { markChanged(); syncTabs(); }
+
+  function quotaTab(p) {
+    quotaNoticed = {};
+    p._quotaState = null;
+    renderQuota(p);
+    quotaFetch(p);
+    clearInterval(quotaPoll);
+    quotaPoll = setInterval(function () {
+      if (tab !== "quota" || !cur) { clearInterval(quotaPoll); return; }
+      quotaFetch(p);
+    }, 45000);
+  }
+  function quotaFetch(p) {
+    if (!cur) return;
+    fetch("/api/studio/quotas?slug=" + encodeURIComponent(cur.slug), { credentials: "same-origin" })
+      .then(function (r) { return r.json(); })
+      .then(function (st) {
+        if (!st || st.error || tab !== "quota" || !cur) return;
+        (st.notifications || []).forEach(function (n) {
+          if (quotaNoticed[n.message]) return;
+          quotaNoticed[n.message] = 1;
+          toast(n.message);                       // notify on every new fill / over-quota run
+        });
+        p._quotaState = st;
+        quotaBadge(st);
+        renderQuota(p);
+      });
+  }
+  function quotaBadge(st) {
+    var b = document.querySelector('.st-tab[data-tab="quota"] .st-count');
+    if (!b) return;
+    var full = (st.cells || []).filter(function (c) { return c.full; }).length;
+    b.classList.toggle("st-count-warn", full > 0);
+    b.textContent = full > 0 ? full + " full" : ((st.cells || []).length || "");
+  }
+
+  function quotaRowHtml(cell, qs, stat) {
+    var q = quotaQuestion(cell.qid);
+    var opts = (q && q.options) || [];
+    var chosen = {};
+    (cell.options || []).forEach(function (o) { chosen[String(o)] = 1; });
+    var html = '<div class="st-qcell' + (stat && stat.full ? " full" : "") + '" data-qc="' + esc(String(cell.id)) + '">' +
+      '<div class="st-q-main">' +
+        '<select class="st-q-q" title="Question to quota on">' +
+          '<option value="">Choose a question\u2026</option>' +
+          qs.map(function (x) {
+            return '<option value="' + esc(String(x.id)) + '"' + (String(x.id) === String(cell.qid) ? " selected" : "") + '>' +
+              esc(String(x.id)) + " \u00b7 " + esc(String(x.stem || x.title || "").slice(0, 70)) + "</option>";
+          }).join("") +
+        "</select>" +
+        '<div class="st-q-opts">' + (opts.length ? opts.map(function (o) {
+          var on = chosen[String(o.code)] ? " on" : "";
+          return '<label class="st-qchip' + on + '"><input type="checkbox" data-opt="' + esc(String(o.code)) + '"' +
+            (on ? " checked" : "") + "> " + esc(String(o.label || o.code)) + "</label>";
+        }).join("") : '<span class="st-q-empty">Pick a question with options.</span>') + "</div>" +
+      "</div>" +
+      '<label class="st-q-target">Completes needed <input type="number" min="1" max="99999" value="' +
+        (cell.target || 1) + '"></label>' +
+      '<div class="st-q-stat">' + (stat ? (
+        '<div class="st-q-bar"><i style="width:' +
+          Math.min(100, Math.round(100 * stat.filled / Math.max(1, stat.target))) + '%"></i></div>' +
+        '<b>' + stat.filled + " / " + stat.target + " completes</b>" +
+        (stat.full
+          ? '<span class="st-pill warn">Quota full \u00b7 stop sharing links</span>' +
+            (stat.over ? '<small>' + stat.over + ' over saved as \u201cQuota Full\u201d</small>' : "")
+          : '<span class="st-pill ok">Filling \u00b7 ' + stat.remaining + " to go</span>")
+      ) : '<span class="st-q-empty">Loading fill status\u2026</span>') + "</div>" +
+      '<button class="st-btn sm ghost" data-act="quota-del" title="Remove this quota cell">Remove</button>' +
+      "</div>";
+    return html;
+  }
+
+  function renderQuota(p) {
+    if (!cur) return;
+    var c = cur.cfg;
+    if (!c.quotas) c.quotas = [];
+    var qs = (c.questions || []).filter(quotaEligible);
+    var st = p._quotaState;
+    var byId = {};
+    (st && st.cells || []).forEach(function (x) { byId[String(x.id)] = x; });
+
+    var html = '<div class="st-page-head"><h2>Quota</h2><p>Set how many completed responses each ' +
+      'option group needs \u2014 typically a screener like \u201cprimary specialty\u201d. When a group reaches ' +
+      'its target, stop sharing new respondent links for that option; responses that still arrive ' +
+      'are still accepted and saved as \u201cQuota Full\u201d in the normal data extract.</p></div>';
+
+    if (st) {
+      html += '<div class="st-qsum"><span class="st-qsum-n"><b>' + st.total_filled + "</b> of <b>" +
+        st.total_target + "</b> completes toward quota</span>" +
+        '<label class="st-inline" title="Test runs are rehearsals - leave off for real fieldwork">' +
+        '<input type="checkbox" id="st-q-counttest"' + (st.count_test ? " checked" : "") +
+        "> count test runs too</label>" +
+        '<button class="st-btn sm ghost" data-act="quota-refresh">Refresh</button></div>';
+    }
+    if (st && (st.notifications || []).length) {
+      html += '<div class="st-qnotice" role="status"><b>Quota notices</b><ul>' +
+        st.notifications.map(function (n) { return "<li>" + esc(n.message) + "</li>"; }).join("") +
+        "</ul></div>";
+    }
+
+    html += '<div class="st-qlist">' + (c.quotas.length
+      ? c.quotas.map(function (cell) { return quotaRowHtml(cell, qs, byId[String(cell.id)]); }).join("")
+      : '<div class="st-q-empty st-q-none">No quota cells yet. Add one to cap how many completes ' +
+        'an option group needs.</div>') + "</div>";
+
+    if (qs.length) {
+      html += '<button class="st-btn" data-act="quota-add">+ Add quota cell</button>';
+    } else {
+      html += '<div class="st-q-empty">Add a single- or multi-choice question first \u2014 quotas work on ' +
+        'the options of a question (typically your screener).</div>';
+    }
+    if (st && (st.over || []).length) {
+      html += '<div class="st-qover"><b>Responses over quota \u00b7 saved as \u201cQuota Full\u201d</b><ul>' +
+        st.over.map(function (o) {
+          return "<li><code>" + esc(o.respondent_code || "") + "</code> " +
+            (o.is_test ? "test" : "real") + " \u00b7 completed " + esc(o.completed_at || "") + "</li>";
+        }).join("") + "</ul></div>";
+    }
+    p.innerHTML = html;
+
+    // ---- edits: every change goes through the normal autosave
+    $$(".st-qcell", p).forEach(function (row) {
+      var cell = quotaCell(row.getAttribute("data-qc"));
+      if (!cell) return;
+      var qsel = row.querySelector(".st-q-q");
+      if (qsel) qsel.addEventListener("change", function () {
+        cell.qid = qsel.value;
+        cell.options = [];
+        quotaTouch();
+        renderQuota(p);
+      });
+      $$('input[type="checkbox"][data-opt]', row).forEach(function (cb) {
+        cb.addEventListener("change", function () {
+          var code = cb.getAttribute("data-opt");
+          var set = {};
+          (cell.options || []).forEach(function (o) { set[String(o)] = 1; });
+          if (cb.checked) set[code] = 1; else delete set[code];
+          cell.options = Object.keys(set);
+          cb.closest(".st-qchip").classList.toggle("on", cb.checked);
+          quotaTouch();
+        });
+      });
+      var tin = row.querySelector(".st-q-target input");
+      if (tin) tin.addEventListener("change", function () {
+        cell.target = Math.max(1, parseInt(tin.value, 10) || 1);
+        tin.value = cell.target;
+        quotaTouch();
+      });
+    });
+    var ct = p.querySelector("#st-q-counttest");
+    if (ct) ct.addEventListener("change", function () {
+      c.quotas_count_test = !!ct.checked;
+      quotaTouch();
+      quotaFetch(p);
+    });
+  }
+
   function responsesTab(p) {
     api("/api/admin/data?study=" + encodeURIComponent(cur.slug) + "&scope=all")
       .then(function (d) {
@@ -6822,10 +7059,27 @@
     }
     if (act === "save") { if (tab === "settings" || tab === "conjoint") readSettings(); auto.dirty = true; flushSave(function () { toast("Saved"); }); }
     if (act === "viewlive") {
-      // Navigate in the current preview frame. Hosted previews commonly block pop-up
-      // windows, which made this button appear to do nothing.
-      var url = "/survey/" + cur.slug + "/test";
-      flushSave(function () { window.location.assign(url); });
+      // Open the test environment in a new tab; this builder keeps its place.
+      openTestLink("/survey/" + cur.slug + "/test");
+    }
+    if (act === "quota-add" || act === "quota-del" || act === "quota-refresh") {
+      var qp = document.querySelector("#st-panel .st-panel");
+      if (qp && cur) {
+        if (act === "quota-add") {
+          cur.cfg.quotas = cur.cfg.quotas || [];
+          var firstQ = (cur.cfg.questions || []).filter(quotaEligible)[0];
+          cur.cfg.quotas.push({ id: "qc" + Date.now().toString(36),
+            qid: firstQ ? String(firstQ.id) : "", options: [], target: 1 });
+          quotaTouch();
+        } else if (act === "quota-del") {
+          var row = b.closest(".st-qcell");
+          var cid = row && row.getAttribute("data-qc");
+          cur.cfg.quotas = (cur.cfg.quotas || []).filter(function (c) { return String(c.id) !== String(cid); });
+          quotaTouch();
+        }
+        renderQuota(qp);
+        if (act === "quota-refresh") quotaFetch(qp);
+      }
     }
     if (act === "outline-view") {
       outlineView = b.getAttribute("data-v") === "thumbs" ? "thumbs" : "list";

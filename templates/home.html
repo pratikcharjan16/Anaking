@@ -1,61 +1,31 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PROJECT BEACON — Research platform</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/home.css') }}?v=260921a">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921a">
+{% from "_head.html" import head %}
+{{ head('Anaking · Research platform') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="/static/js/security.js"></script>{% endif %}
+<script src="{{ asset('js/security.js') }}"></script>{% endif %}
 </head>
 <body>
-<header class="topbar">
-  <a href="/" class="anaking-brand-lockup" title="Anaking — An Intelligent Insight Platform">
-    <svg class="anaking-svg-logo" viewBox="0 0 44 44" width="38" height="38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Anaking Logo">
-      <defs>
-        <linearGradient id="ak-hm-bg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#0f172a"/>
-          <stop offset="50%" stop-color="#1e293b"/>
-          <stop offset="100%" stop-color="#090d16"/>
-        </linearGradient>
-        <linearGradient id="ak-hm-crown" x1="6" y1="8" x2="38" y2="36" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#00f5a0"/>
-          <stop offset="50%" stop-color="#00d9f5"/>
-          <stop offset="100%" stop-color="#7928ca"/>
-        </linearGradient>
-        <linearGradient id="ak-hm-facet" x1="12" y1="12" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
-          <stop offset="100%" stop-color="#00d9f5" stop-opacity="0.2"/>
-        </linearGradient>
-        <filter id="ak-hm-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.8" result="blur"/>
-          <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-        </filter>
-      </defs>
-      <rect class="ak-ring" x="2" y="2" width="40" height="40" rx="12" fill="url(#ak-hm-bg)" stroke="url(#ak-hm-crown)" stroke-width="1.5"/>
-      <g class="ak-crown-group" filter="url(#ak-hm-glow)">
-        <path d="M 22 9 L 28 20 L 22 25 L 16 20 Z" fill="url(#ak-hm-crown)"/>
-        <path d="M 10 14 L 16 20 L 12 28 L 8 21 Z" fill="url(#ak-hm-crown)" opacity="0.9"/>
-        <path d="M 34 14 L 36 21 L 32 28 L 28 20 Z" fill="url(#ak-hm-crown)" opacity="0.9"/>
-        <path d="M 12 28 L 22 25 L 32 28 L 22 36 Z" fill="url(#ak-hm-crown)" opacity="0.8"/>
-        <polygon points="22,14 25,20 22,23 19,20" fill="url(#ak-hm-facet)"/>
-      </g>
-      <circle class="ak-particle" cx="22" cy="4" r="2" fill="#00f5a0"/>
-    </svg>
-    <div class="anaking-brand-text">
-      <div class="anaking-brand-title">
-        <b class="brand-anaking">Anaking</b>
-        <span class="brand-sub-badge">RESEARCH<span class="live-pulse-dot"></span></span>
-      </div>
-      <span class="anaking-tagline"><span class="tagline-spark">✦</span> An Intelligent Insight Platform</span>
-    </div>
-  </a>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="an-appbar">
+  {% from "_brand.html" import brand %}
+  {{ brand('RESEARCH', '/', 38, 'hm') }}
   {% with active='home' %}{% include '_nav.html' %}{% endwith %}
 </header>
 
-<main>
-  <section class="apps">
+<main id="main">
+  <section class="an-intro">
+    <p class="an-eyebrow">An intelligent insight platform</p>
+    <h1>Design the question. Trust the answer.</h1>
+    <p class="an-intro-copy">Three connected workspaces: build the survey, test exactly what respondents
+      will see, then read the evidence with the caveats attached.</p>
+  </section>
+
+  <section class="apps" aria-label="Workspaces">
     <a class="app app-survey" href="{{ url_for('survey.beacon_survey') }}">
       <span class="app-kicker">Respondents</span>
       <h2>Survey</h2>
@@ -75,7 +45,7 @@
 
     <a class="app app-admin" href="{{ url_for('admin.page') }}">
       <span class="app-kicker">Field management</span>
-      <h2>Admin</h2>
+      <h2>Monitor</h2>
       <p>Live counts, quota fill, demand headlines, data-quality flags, respondent list,
          Excel / CSV / JSON exports and test-data reset.</p>
       <code>/admin/</code>
@@ -83,10 +53,10 @@
   </section>
 
   <section class="studies">
-    <h3>Studies on this server</h3>
+    <h2>Studies on this server</h2>
     <table>
-      <thead><tr><th>Study</th><th>Status</th><th>Started</th><th>Complete</th><th>Respondent links</th>
-        <th>Team</th></tr></thead>
+      <thead><tr><th scope="col">Study</th><th scope="col">Status</th><th scope="col">Started</th>
+        <th scope="col">Complete</th><th scope="col">Respondent links</th><th scope="col">Team</th></tr></thead>
       <tbody>
       {% for s in studies %}
         <tr>
@@ -96,12 +66,12 @@
           <td>{{ s.complete }}</td>
           <td>
             <a href="/survey/{{ s.slug }}">live</a> &middot;
-            <a href="/survey/{{ s.slug }}/test">test</a>
+            <a href="/survey/{{ s.slug }}/test" target="_blank" rel="noopener">test</a>
           </td>
           <td>
             <a href="/studio/#{{ s.slug }}">builder</a> &middot;
             <a href="/admin/?study={{ s.slug }}">dashboard</a>
-            {% if s.status != 'live' %} &middot; <a href="/survey/{{ s.slug }}/test">preview</a>{% endif %}
+            {% if s.status != 'live' %} &middot; <a href="/survey/{{ s.slug }}/test" target="_blank" rel="noopener">preview</a>{% endif %}
           </td>
         </tr>
       {% endfor %}
@@ -110,8 +80,6 @@
   </section>
 </main>
 
-<footer class="foot">
-  <span>PROJECT BEACON &middot; Flask research platform &middot; <a href="/healthz">health</a></span>
-</footer>
+{% include "_footer.html" %}
 </body>
 </html>

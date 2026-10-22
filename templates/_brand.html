@@ -1,0 +1,46 @@
+{#- The Anaking lockup - one implementation for every page.  Keeping it here means the
+    mark, badge and tagline can never drift between apps again.  `prefix` keeps the inline
+    SVG ids unique when a page shows more than one lockup.  Palette: ivory cameo tile +
+    cut-green gem; the "live" motion (sheen sweep, float, orbiting spark) lives in
+    design-system.css and collapses under prefers-reduced-motion. -#}
+{% macro brand(badge='RESEARCH', href='/', size=38, prefix='ak', tagline=true,
+                badge_class='brand-sub-badge', link_class='anaking-brand-lockup',
+                title='Anaking — An Intelligent Insight Platform') -%}
+{%- set tag = 'a' if href else 'div' -%}
+<{{ tag }}{% if href %} href="{{ href }}"{% endif %} class="{{ link_class }}" title="{{ title }}">
+  <svg class="anaking-svg-logo" viewBox="0 0 44 44" width="{{ size }}" height="{{ size }}" fill="none"
+       xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Anaking">
+    <defs>
+      <clipPath id="{{ prefix }}-tile">
+        <rect x="2" y="2" width="40" height="40" rx="12"/>
+      </clipPath>
+      <linearGradient id="{{ prefix }}-sheen" x1="0" y1="0" x2="1" y2="0">
+        <stop offset="0" stop-color="#ffffff" stop-opacity="0"/>
+        <stop offset="0.5" stop-color="#ffffff" stop-opacity="0.55"/>
+        <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+      </linearGradient>
+    </defs>
+    <rect class="ak-ring" x="2" y="2" width="40" height="40" rx="12"
+          fill="#f6f1e8" stroke="#d8cdb6" stroke-width="1.5"/>
+    <g class="ak-gem">
+      <path d="M 22 9 L 28 20 L 22 25 L 16 20 Z" fill="#3aa886"/>
+      <path d="M 10 14 L 16 20 L 12 28 L 8 21 Z" fill="#1c6652"/>
+      <path d="M 34 14 L 36 21 L 32 28 L 28 20 Z" fill="#23785f"/>
+      <path d="M 12 28 L 22 25 L 32 28 L 22 36 Z" fill="#124a3c"/>
+      <polygon points="22,14 25,20 22,23 19,20" fill="#f6f1e8"/>
+    </g>
+    <g clip-path="url(#{{ prefix }}-tile)">
+      <rect class="ak-sheen" x="-18" y="-10" width="11" height="64" rx="3"
+            fill="url(#{{ prefix }}-sheen)"/>
+    </g>
+    <circle class="ak-particle" cx="22" cy="6.2" r="1.7" fill="#c9a227"/>
+  </svg>
+  <div class="anaking-brand-text">
+    <div class="anaking-brand-title">
+      <b class="brand-anaking">Anaking</b>
+      <span class="{{ badge_class }}">{{ badge }}<span class="live-pulse-dot"></span></span>
+    </div>
+    {% if tagline %}<span class="anaking-tagline"><span class="tagline-spark">✦</span> An Intelligent Insight Platform</span>{% endif %}
+  </div>
+</{{ tag }}>
+{%- endmacro %}

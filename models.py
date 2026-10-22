@@ -32,7 +32,8 @@ CREATE TABLE IF NOT EXISTS studies (
     status TEXT DEFAULT 'draft',
     cfg TEXT,
     created_at TEXT,
-    updated_at TEXT
+    updated_at TEXT,
+    owner_id INTEGER DEFAULT 0
 );
 CREATE TABLE IF NOT EXISTS respondents (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -168,6 +169,11 @@ def init_db(path: str | None = None) -> None:
             conn.executescript(GOVERNANCE_SCHEMA)
             from core.data_validation import SCHEMA as VALIDATION_SCHEMA
             conn.executescript(VALIDATION_SCHEMA)
+            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA
+            conn.executescript(ACCOUNTS_SCHEMA)
+            study_cols = {r["name"] for r in conn.execute("PRAGMA table_info(studies)")}
+            if "owner_id" not in study_cols:
+                conn.execute("ALTER TABLE studies ADD COLUMN owner_id INTEGER DEFAULT 0")
             cols = {r["name"] for r in conn.execute("PRAGMA table_info(respondents)")}
             if "study_id" not in cols:
                 conn.execute("ALTER TABLE respondents ADD COLUMN study_id INTEGER DEFAULT 1")
@@ -203,6 +209,7 @@ class Study:
         self.status = row["status"]
         self.updated_at = row["updated_at"]
         self.created_at = row["created_at"]
+        self.owner_id = (row["owner_id"] or 0) if "owner_id" in row.keys() else 0
         self.cfg: dict = json.loads(row["cfg"]) if row["cfg"] else {}
 
     @property
@@ -258,7 +265,8 @@ class Study:
     @staticmethod
     def list_with_counts() -> list[dict]:
         rows = get_db().execute(
-            "SELECT s.id, s.slug, s.title, s.status, s.updated_at, s.cfg, "
+            "SELECT s.id, s.slug, s.title, s.status, s.updated_at, s.cfg, s.owner_id, "
+            "(SELECT email FROM users u WHERE u.id=s.owner_id) AS owner_email, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id) AS n, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id AND "
             "r.status='complete') AS c, "
@@ -272,6 +280,8 @@ class Study:
             inv = cfg.get("invites") or {}
             out.append({"slug": r["slug"], "title": r["title"], "status": r["status"],
                         "updated_at": r["updated_at"], "started": r["n"], "complete": r["c"],
+                        "owner_id": r["owner_id"] or 0,
+                        "owner_email": r["owner_email"] or "",
                         "study_id": f"STU-{r['id']:06d}",
                         "parent": cfg.get("parent") or "", "language": cfg.get("language") or "",
                         "group_name": cfg.get("group_name") or "",
@@ -324,8 +334,12 @@ class Study:
 
     # ---- mutations
     @staticmethod
-    def save(body: dict) -> str:
-        """Create or update from a Studio payload ``{slug?, title?, cfg}``. Returns slug."""
+    def save(body: dict, owner_id: int | None = None) -> str:
+        """Create or update from a Studio payload ``{slug?, title?, cfg}``. Returns slug.
+
+        A study created here is owned by ``owner_id`` (the signed-in platform user);
+        updates never change the owner.  Legacy studies have ``owner_id == 0`` and
+        stay admin-visible only. """
         cfg = body.get("cfg") or {}
         title = str(body.get("title") or cfg.get("title") or "Untitled study")[:120]
         slug = str(body.get("slug") or "").lower().strip()
@@ -354,8 +368,8 @@ class Study:
                              (title, json.dumps(cfg), ts, slug))
             else:
                 conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, "
-                             "updated_at) VALUES (?,?,?,?,?,?)",
-                             (slug, title, "draft", json.dumps(cfg), ts, ts))
+                             "updated_at, owner_id) VALUES (?,?,?,?,?,?,?)",
+                             (slug, title, "draft", json.dumps(cfg), ts, ts, int(owner_id or 0)))
             saved = Study.get(slug)
             revision(conn, saved.id, title, cfg)
         return slug
@@ -388,11 +402,12 @@ class Study:
                          (status, now(), slug))
 
     @staticmethod
-    def duplicate(slug: str) -> str:
+    def duplicate(slug: str, owner_id: int | None = None) -> str:
         """Copy a study (config and all) under a new slug. Returns the new slug.
 
         The copy is a draft with its own recipient list and no respondents; uploaded media
         and narration keep working because their URLs are rewritten onto the copy's slug.
+        The copy is owned by ``owner_id`` (the account that asked for the duplicate).
         """
         src = Study.get(slug)
         if not src:
@@ -414,8 +429,9 @@ class Study:
         cfg["title"] = title
         conn, ts = get_db(), now()
         with write_lock, conn:
-            conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, updated_at) "
-                         "VALUES (?,?,?,?,?,?)", (new_slug, title, "draft", json.dumps(cfg), ts, ts))
+            conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, updated_at, owner_id) "
+                         "VALUES (?,?,?,?,?,?,?)",
+                         (new_slug, title, "draft", json.dumps(cfg), ts, ts, int(owner_id or 0)))
         return new_slug
 
     @staticmethod
@@ -602,6 +618,25 @@ class Respondent:
                 rid = conn.execute('SELECT id FROM respondents WHERE session_id=?', (sid,)).fetchone()['id']
                 conn.execute('INSERT INTO response_versions(respondent_id,cfg,digest) VALUES(?,?,?)', (rid, json.dumps(snapshot), fingerprint(snapshot)))
         return Respondent.by_session(sid)
+
+    @staticmethod
+    def discard_test_session(study: Study, session_id: str) -> bool:
+        """Delete a previous *test* session of ``study`` so the next test run starts blank.
+
+        A test link is a rehearsal, not data collection: opening it again should never
+        inherit the answers (or the frozen design snapshot) of the run before it.  Only
+        test records are touched, and only when they belong to the same study.
+        """
+        resp = Respondent.by_session(session_id)
+        if not resp or not resp.is_test or resp.study_id != study.id:
+            return False
+        conn = get_db()
+        with write_lock, conn:
+            for table in ("response_versions", "verbatim_codes", "response_validations",
+                          "response_validation_events", "answers"):
+                conn.execute("DELETE FROM " + table + " WHERE respondent_id=?", (resp.id,))
+            conn.execute("DELETE FROM respondents WHERE id=?", (resp.id,))
+        return True
 
     def set_assignment(self, task_order: list, alt_positions: dict) -> None:
         conn = get_db()

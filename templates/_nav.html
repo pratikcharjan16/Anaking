@@ -1,7 +1,8 @@
-{#- App switcher shown in every header.  `active` = home | survey | studio | admin. -#}
-<nav class="appnav" aria-label="Apps">
-  <a class="appnav-link{% if active == 'home' %} on{% endif %}" href="{{ '/workspace/' if config.WORKSPACE_ENABLED else '/' }}">Projects</a>
-  <a class="appnav-link{% if active == 'survey' %} on{% endif %}" href="{{ survey_href or '/survey/' }}">Survey</a>
-  <a class="appnav-link{% if active == 'studio' %} on{% endif %}" href="/studio/{% if nav_study %}#{{ nav_study }}{% endif %}">Design</a>
-  <a class="appnav-link{% if active == 'admin' %} on{% endif %}" href="/admin/{% if nav_study %}?study={{ nav_study }}{% endif %}">Monitor</a>
+{#- App switcher shown in every header.  `active` = home | studio | admin.
+    The respondent survey is not one of the apps: it is reached through the Studio
+    (▶ Test survey) and the per-study test/preview links, never from team chrome. -#}
+<nav class="appnav" aria-label="Sections">
+  <a class="appnav-link{% if active == 'home' %} on{% endif %}"{% if active == 'home' %} aria-current="page"{% endif %} href="{{ '/workspace/' if config.WORKSPACE_ENABLED else '/' }}">Projects</a>
+  <a class="appnav-link{% if active == 'studio' %} on{% endif %}"{% if active == 'studio' %} aria-current="page"{% endif %} href="/studio/{% if nav_study %}#{{ nav_study }}{% endif %}">Studio</a>
+  <a class="appnav-link{% if active == 'admin' %} on{% endif %}"{% if active == 'admin' %} aria-current="page"{% endif %} href="/admin/{% if nav_study %}?study={{ nav_study }}{% endif %}">Monitor</a>
 </nav>

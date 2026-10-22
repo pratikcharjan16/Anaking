@@ -61,7 +61,7 @@ from core.reporting import (analysis_for, delta_source_columns, delta_source_row
                              delta_source_values)
 from core.translator import TranslationError, translate_string
 from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
-from models import Study, StudyError
+from models import Respondent, Study, StudyError, get_db
 
 AUDIO_EXT = {"mp3": "audio/mpeg", "m4a": "audio/mp4", "mp4": "audio/mp4",
              "ogg": "audio/ogg", "opus": "audio/ogg", "wav": "audio/wav", "webm": "audio/webm"}
@@ -91,7 +91,10 @@ def get_study():
     if not study:
         return jsonify({"error": "unknown study"}), 404
     return jsonify({"slug": study.slug, "title": study.title, "status": study.status,
-                    "cfg": study.cfg, "updated_at": study.updated_at})
+                    "cfg": study.cfg, "updated_at": study.updated_at,
+                    "owner_id": study.owner_id,
+                    "owner_email": (get_db().execute("SELECT email FROM users WHERE id=?",
+                                                     (study.owner_id,)).fetchone() or {"email": ""})["email"]})
 
 
 @bp.get("/api/studio/delta-source")
@@ -159,10 +162,36 @@ def analysis():
     return jsonify(res)
 
 
+@bp.get("/api/studio/quotas")
+def quotas_state():
+    """Live quota fill for the Studio's Quota tab.
+
+    Counts completed responses against the study's configured quota cells and
+    returns, per cell, how many completes it has, whether it is full (the team
+    should stop sharing new respondent links for that option) and which responses
+    arrived over quota (saved as "Quota Full" in the data extract).
+    """
+    slug = request.args.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    rows = []
+    for r in Respondent.for_study(study.id, "all"):
+        rows.append({"id": r["id"], "respondent_code": r["respondent_code"],
+                     "is_test": bool(r["is_test"]), "status": r["status"],
+                     "completed_at": r["completed_at"], "answers": Respondent(r).answers()})
+    from core.quotas import state as quota_state
+    out = quota_state(study.cfg, rows)
+    out["slug"] = slug
+    return jsonify(out)
+
+
 @bp.post("/api/studio/save")
 def save():
     try:
-        return jsonify({"ok": True, "slug": Study.save(json_body())})
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        return jsonify({"ok": True, "slug": Study.save(json_body(), owner_id=owner)})
     except StudyError as e:
         return error(e)
 
@@ -366,7 +395,9 @@ def agent_start():
         cfg["design_notes"] = list(dict.fromkeys(list(cfg.get("design_notes") or []) + warnings))
     slug = _agent_new_slug(title)
     try:
-        Study.save({"slug": slug, "title": title, "cfg": cfg})
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        Study.save({"slug": slug, "title": title, "cfg": cfg}, owner_id=owner)
     except StudyError as exc:
         return error(exc)
 
@@ -638,7 +669,9 @@ def _invite_state(study, rows_only: bool = False) -> dict:
 def duplicate():
     slug = json_body().get("slug") or ""
     try:
-        new_slug = Study.duplicate(slug)
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        new_slug = Study.duplicate(slug, owner_id=owner)
     except StudyError as e:
         return error(e)
     return jsonify({"ok": True, "slug": new_slug, "title": Study.get(new_slug).title})

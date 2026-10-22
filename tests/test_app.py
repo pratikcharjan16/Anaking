@@ -31,16 +31,24 @@ def test_health(client):
     assert client.get("/healthz").get_json()["ok"] is True
 
 
-def test_home_page_links_to_all_apps(client):
+def test_landing_page_onboards_and_links_every_app(client):
+    # "/" is the marketing landing: animated feature demos + the way in
     r = client.get("/")
+    assert r.status_code == 200
+    assert b"ln-demo" in r.data and b"Sign in with Google" in r.data
+    for link in (b'href="/workspace/"', b'href="/studio/"', b'href="/admin/"'):
+        assert link in r.data
+    for gone in (b"/login", b"token"):
+        assert gone not in r.data.lower(), gone
+
+
+def test_legacy_home_lists_studies_with_deep_links(client):
+    r = client.get("/", query_string={"legacy": "1"})
     assert r.status_code == 200
     for link in (b'href="/survey/"', b'href="/studio/"', b'href="/admin/"'):
         assert link in r.data
     assert b"PROJECT BEACON - US Oncologist" in r.data       # seeded study listed
-    # team links are always shown - there is no sign-in step
     assert b'href="/studio/#beacon"' in r.data and b'href="/admin/?study=beacon"' in r.data
-    for gone in (b"/login", b"token", b"sign in"):
-        assert gone not in r.data.lower(), gone
 
 
 def test_survey_pages_inject_study_slug(client):

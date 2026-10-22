@@ -24,7 +24,7 @@ from __future__ import annotations
 import argparse
 import os
 
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request, url_for
 from werkzeug.exceptions import HTTPException
 from werkzeug.middleware.proxy_fix import ProxyFix
 from werkzeug.routing import BaseConverter
@@ -35,6 +35,23 @@ from core.seed import seed_beacon
 from routes import register_routes
 
 __version__ = "3.4.0"
+
+
+def _static_stamp(folder: str) -> str:
+    """Newest mtime in ``static/`` - a free cache-buster that changes on every deploy.
+
+    Every asset URL goes through ``asset()``, so a browser can never keep serving a
+    stylesheet or script from an earlier build (which used to be handled with a different
+    hand-typed ``?v=`` string per template - and forgotten in a few places).
+    """
+    newest = 0
+    for base, _dirs, files in os.walk(folder or "."):
+        for name in files:
+            try:
+                newest = max(newest, int(os.path.getmtime(os.path.join(base, name))))
+            except OSError:
+                continue
+    return str(newest or 0)
 
 
 class RegexConverter(BaseConverter):
@@ -71,6 +88,13 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     # generated URLs know the real scheme and host
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
     app.config["VERSION"] = __version__
+    # One build stamp for every static asset; ASSET_VERSION pins it in a fixed deployment.
+    app.config["ASSET_VERSION"] = os.environ.get("ASSET_VERSION") or _static_stamp(app.static_folder)
+
+    @app.template_global()
+    def asset(path: str) -> str:
+        """URL for a static asset, stamped with the running build."""
+        return f"{url_for('static', filename=path.lstrip('/'))}?v={app.config['ASSET_VERSION']}"
 
     os.makedirs(os.path.dirname(app.config["DB_PATH"]) or DATA_DIR, exist_ok=True)
     os.makedirs(app.config["VOICE_DIR"] or UPLOAD_DIR, exist_ok=True)

@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Admin console · Anaking', 'Platform admin: approve who joins, manage accounts and see what every account has built.') }}
+<link rel="stylesheet" href="{{ asset('css/admin.css') }}">
+<link rel="stylesheet" href="{{ asset('css/console.css') }}">
+<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+</head>
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="an-appbar">
+  {% from "_brand.html" import brand %}
+  {{ brand('ADMIN', '/admin/console', 38, 'con') }}
+  <div class="meta">
+    <span class="appnav-link on" aria-current="page">Admin console</span>
+    {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
+  </div>
+</header>
+
+<main id="main">
+  <section class="cs-head">
+    <div>
+      <h1>Admin console</h1>
+      <p>Every new profile waits for your approval here — one account per Google e-mail.
+        Approved accounts see only their own projects; you see everything.</p>
+    </div>
+    <div class="cs-stats" id="cs-stats"></div>
+  </section>
+
+  <section class="cs-pending" id="cs-pending" hidden>
+    <h2>Waiting for approval</h2>
+    <div class="cs-pending-list" id="cs-pending-list"></div>
+  </section>
+
+  <section class="cs-users">
+    <h2>Accounts</h2>
+    <table class="cs-table" id="cs-table">
+      <thead><tr>
+        <th>Person</th><th>Status</th><th>Role</th><th>Projects</th>
+        <th>Completes</th><th>Signed up</th><th>Last seen</th><th></th>
+      </tr></thead>
+      <tbody id="cs-rows"></tbody>
+    </table>
+  </section>
+
+  <section class="cs-projects" id="cs-projects" hidden>
+    <h2 id="cs-projects-title">Projects</h2>
+    <table class="cs-table">
+      <thead><tr><th>Study</th><th>Slug</th><th>Status</th><th>Completes</th><th>Updated</th><th></th></tr></thead>
+      <tbody id="cs-project-rows"></tbody>
+    </table>
+    <button class="cs-btn ghost" id="cs-projects-close" type="button">Close</button>
+  </section>
+</main>
+
+{% include '_footer.html' %}
+<script src="{{ asset('js/console.js') }}"></script>
+</body>
+</html>

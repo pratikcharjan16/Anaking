@@ -1,0 +1,151 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Admin portal · Usage & activity · Anaking',
+        'Platform admin portal: track every account, sign-ups, projects and user activity in one place.') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/portal.css') }}">
+<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+</head>
+<body class="landing portal">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="an-appbar">
+  {% from "_brand.html" import brand %}
+  {{ brand('ADMIN', '/admin-portal', 38, 'ptl') }}
+  <nav class="appnav" aria-label="Sections">
+    <a class="appnav-link" href="/">Landing</a>
+    <a class="appnav-link on" href="/admin-portal" aria-current="page">Admin portal</a>
+    <a class="appnav-link" href="/admin/console">Console</a>
+    <a class="appnav-link" href="/admin/">Monitor</a>
+  </nav>
+  <div class="ln-auth">
+    <span class="ptl-sample" title="This page is open while its design is reviewed">Sample · no login yet</span>
+  </div>
+</header>
+
+<main id="main">
+  <section class="ptl-hero">
+    <div>
+      <p class="ln-aichip"><i></i>Platform admin</p>
+      <h1>Usage &amp; user activity</h1>
+      <p class="ptl-hero-sub">Everything that happens on the platform — who signed in, who
+        registered, what they built and what they touched — in one live view.</p>
+    </div>
+    <div class="ptl-hero-note">
+      <b>Sample preview</b>
+      <p>This page is open without login while the design is being reviewed. When access
+        rules are finalised it will require an approved admin account.</p>
+    </div>
+  </section>
+
+  {#- ---------------- KPI row ---------------- -#}
+  <section class="ptl-kpis">
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.users }}">0</span>
+      <span class="ptl-kpi-l">Total users</span>
+      <em class="ptl-kpi-t up">{{ stats.approved }} approved</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.pending }}">0</span>
+      <span class="ptl-kpi-l">Pending approval</span>
+      <em class="ptl-kpi-t {% if stats.pending %}warn{% else %}up{% endif %}">review queue</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.active_week }}">0</span>
+      <span class="ptl-kpi-l">Active accounts</span>
+      <em class="ptl-kpi-t up">in the activity log</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.projects }}">0</span>
+      <span class="ptl-kpi-l">Projects built</span>
+      <em class="ptl-kpi-t up">{{ stats.completes }} completes</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.events_today }}">0</span>
+      <span class="ptl-kpi-l">Actions today</span>
+      <em class="ptl-kpi-t up">tracked live</em></div>
+  </section>
+
+  {#- ---------------- charts ---------------- -#}
+  <section class="ptl-charts">
+    <article class="ptl-card">
+      <h2>Sign-ups <small>last 14 days</small></h2>
+      <div class="ptl-bars">
+        {% for s in signups %}
+        <div class="ptl-bar" title="{{ s.day }}: {{ s.n }}">
+          <i style="--h: {{ (s.n * 100 / peak) | round(1) }}%"></i><span>{{ s.day }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+    <article class="ptl-card">
+      <h2>User activity <small>actions per day</small></h2>
+      <div class="ptl-bars gold">
+        {% for a in activity %}
+        <div class="ptl-bar" title="{{ a.day }}: {{ a.n }}">
+          <i style="--h: {{ (a.n * 100 / peak) | round(1) }}%"></i><span>{{ a.day }}</span>
+        </div>
+        {% endfor %}
+      </div>
+    </article>
+  </section>
+
+  {#- ---------------- users table ---------------- -#}
+  <section class="ptl-card ptl-users">
+    <div class="ptl-card-head">
+      <h2>All users</h2>
+      <input id="ptl-search" type="search" placeholder="Search name or e-mail…" aria-label="Search users">
+    </div>
+    <table class="ptl-table">
+      <thead><tr>
+        <th>Person</th><th>Status</th><th>Role</th><th>Projects</th>
+        <th>Completes</th><th>Actions</th><th>Last seen</th>
+      </tr></thead>
+      <tbody id="ptl-rows">
+      {% for u in users %}
+      <tr data-search="{{ (u.name ~ ' ' ~ u.email) | lower }}">
+        <td class="ptl-person">
+          <i class="ptl-av">{{ (u.name or u.email)[:2] | upper }}</i>
+          <span><b>{{ u.name or '—' }}</b><small>{{ u.email }}</small></span>
+        </td>
+        <td><span class="ptl-pill st-{{ u.status }}">{{ u.status }}</span></td>
+        <td>{{ u.role }}</td>
+        <td>{{ u.projects }}</td>
+        <td>{{ u.completes }}</td>
+        <td>{{ u.events }}</td>
+        <td class="ptl-when">{{ (u.last_login or u.created_at or '')[:16] | replace('T', ' ') }}</td>
+      </tr>
+      {% endfor %}
+      {% if not users %}
+      <tr><td colspan="7" class="ptl-empty">No accounts yet — the first registration will land here.</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+  </section>
+
+  {#- ---------------- activity feed ---------------- -#}
+  <section class="ptl-card ptl-feed">
+    <div class="ptl-card-head">
+      <h2>Activity feed <small>newest first</small></h2>
+    </div>
+    <ul class="ptl-timeline">
+      {% for e in feed %}
+      <li class="ptl-ev k-{{ e.kind }}">
+        <i class="ptl-dot"></i>
+        <div class="ptl-ev-body">
+          <p><b>{{ e.who }}</b> {{ e.label }}{% if e.study %} · <code>{{ e.study }}</code>{% endif %}</p>
+          {% if e.detail %}<small class="ptl-detail">{{ e.detail }}</small>{% endif %}
+        </div>
+        <span class="ptl-when">{{ e.at }}</span>
+      </li>
+      {% endfor %}
+      {% if not feed %}
+      <li class="ptl-empty">Activity will stream here as people sign in and work.</li>
+      {% endif %}
+    </ul>
+  </section>
+
+  <p class="ptl-footnote">Sample preview · open without login for review · when finalised this
+    page will require an approved admin account (<a href="/admin/console">admin console →</a>).</p>
+</main>
+
+{% include '_footer.html' %}
+<script src="{{ asset('js/portal.js') }}"></script>
+</body>
+</html>

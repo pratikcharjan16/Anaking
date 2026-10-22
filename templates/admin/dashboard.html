@@ -1,67 +1,32 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>PROJECT BEACON — Admin</title>
-<link rel="stylesheet" href="{{ url_for('static', filename='css/admin.css') }}?v=260921a">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921a">
+{% from "_head.html" import head %}
+{{ head('Monitor · Anaking', 'Fieldwork monitoring: live counts, quota fill, data-quality flags, verbatim review and exports.') }}
+<link rel="stylesheet" href="{{ asset('css/admin.css') }}">
+<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="/static/js/security.js"></script>{% endif %}
+<script src="{{ asset('js/security.js') }}"></script>{% endif %}
 </head>
 <body>
-<header class="topbar">
-  <a href="/admin/" class="anaking-brand-lockup" title="Anaking — An Intelligent Insight Platform">
-    <svg class="anaking-svg-logo" viewBox="0 0 44 44" width="38" height="38" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Anaking Logo">
-      <defs>
-        <linearGradient id="ak-adm-bg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#0f172a"/>
-          <stop offset="50%" stop-color="#1e293b"/>
-          <stop offset="100%" stop-color="#090d16"/>
-        </linearGradient>
-        <linearGradient id="ak-adm-crown" x1="6" y1="8" x2="38" y2="36" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#00f5a0"/>
-          <stop offset="50%" stop-color="#00d9f5"/>
-          <stop offset="100%" stop-color="#7928ca"/>
-        </linearGradient>
-        <linearGradient id="ak-adm-facet" x1="12" y1="12" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
-          <stop offset="100%" stop-color="#00d9f5" stop-opacity="0.2"/>
-        </linearGradient>
-        <filter id="ak-adm-glow" x="-20%" y="-20%" width="140%" height="140%">
-          <feGaussianBlur stdDeviation="1.8" result="blur"/>
-          <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-        </filter>
-      </defs>
-      <rect class="ak-ring" x="2" y="2" width="40" height="40" rx="12" fill="url(#ak-adm-bg)" stroke="url(#ak-adm-crown)" stroke-width="1.5"/>
-      <g class="ak-crown-group" filter="url(#ak-glow)">
-        <path d="M 22 9 L 28 20 L 22 25 L 16 20 Z" fill="url(#ak-adm-crown)"/>
-        <path d="M 10 14 L 16 20 L 12 28 L 8 21 Z" fill="url(#ak-adm-crown)" opacity="0.9"/>
-        <path d="M 34 14 L 36 21 L 32 28 L 28 20 Z" fill="url(#ak-adm-crown)" opacity="0.9"/>
-        <path d="M 12 28 L 22 25 L 32 28 L 22 36 Z" fill="url(#ak-adm-crown)" opacity="0.8"/>
-        <polygon points="22,14 25,20 22,23 19,20" fill="url(#ak-adm-facet)"/>
-      </g>
-      <circle class="ak-particle" cx="22" cy="4" r="2" fill="#00f5a0"/>
-    </svg>
-    <div class="anaking-brand-text">
-      <div class="anaking-brand-title">
-        <b class="brand-anaking">Anaking</b>
-        <span class="brand-sub-badge">MONITOR<span class="live-pulse-dot"></span></span>
-      </div>
-      <span class="anaking-tagline"><span class="tagline-spark">✦</span> An Intelligent Insight Platform</span>
-    </div>
-  </a>
+<a class="skip-link" href="#main">Skip to content</a>
+<header class="an-appbar">
+  {% from "_brand.html" import brand %}
+  {{ brand('MONITOR', '/admin/', 38, 'adm') }}
   <div class="meta">
     <span id="generated"></span>
     <label class="study-pick">Study
       <select id="study-select" title="Which study to show"></select>
     </label>
-    <a class="linkbtn" id="take-survey" href="/survey/test" target="_blank">Open test survey &rarr;</a>
+    <a class="linkbtn" id="take-survey" href="/survey/test" target="_blank" rel="noopener">Open test survey &rarr;</a>
+    {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console &rarr;</a>{% endif %}
     {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
   </div>
 </header>
 
-<main>
+<main id="main">
+  <h1 class="sr-only">Monitor</h1>
   <section class="toolbar">
     <div class="scope">
       <span class="scope-label">Data scope</span>
@@ -156,7 +121,8 @@
   </section>
 </main>
 
-<div class="toast" id="toast" hidden></div>
-<script src="{{ url_for('static', filename='js/admin.js') }}?v=260921a"></script>
+{% include "_footer.html" %}
+<div class="toast" id="toast" role="status" aria-live="polite" hidden></div>
+<script src="{{ asset('js/admin.js') }}"></script>
 </body>
 </html>
