@@ -1,0 +1,461 @@
+/* =====================================================================
+   Anaking — design system
+   ---------------------------------------------------------------------
+   One place for the platform's visual language. Loaded last on every
+   page so it settles the whole UI: tokens first, then the small set of
+   base rules and shared chrome every app uses.
+
+   Two themes, one system
+     default            team tools  (workspace, studio, monitor, home)
+     .theme-instrument  respondent survey (the clinical blue instrument)
+
+   Both themes share the neutral ramp, type, spacing, radii, elevation,
+   motion and the focus treatment. Only the accent and the paper warmth
+   change, so a respondent never mistakes the instrument for team chrome.
+
+   Rules for new work
+     - use var(--an-*) tokens, never raw hex values
+     - use the radius / shadow / motion scales below, not one-off numbers
+     - interactive elements get :focus-visible for free - don't remove it
+   ===================================================================== */
+
+/* ------------------------------------------------------------------ 1. tokens */
+:root {
+  color-scheme: light;
+
+  /* ink + neutrals (deep warm green-grey) */
+  --an-ink: #16241f;
+  --an-ink-soft: #3d514a;
+  --an-muted: #56685f;          /* 5.1:1 on paper - safe for body copy */
+  --an-faint: #7c8d86;
+  --an-line: #e1e7e1;
+  --an-line-soft: #eef2ed;
+  --an-line-strong: #cfd9d2;
+  --an-paper: #f6f7f4;
+  --an-panel: #ffffff;
+  --an-panel-2: #fbfcfa;
+
+  /* accent - deep research green */
+  --an-accent: #14614f;
+  --an-accent-strong: #0d4638;
+  --an-accent-bright: #1d8a6f;
+  --an-accent-soft: #e8f1ec;
+  --an-accent-tint: #f3f8f5;
+  --an-accent-ink: #ffffff;
+
+  /* status */
+  --an-good: #1c6b47;
+  --an-good-soft: #e8f4ec;
+  --an-warn: #8a5a12;
+  --an-warn-soft: #fbf3e3;
+  --an-bad: #a33228;
+  --an-bad-soft: #fbecea;
+  --an-violet: #5b4a91;
+  --an-violet-soft: #efecf8;
+
+  /* shape */
+  --an-radius-xs: 6px;
+  --an-radius-sm: 8px;
+  --an-radius: 10px;
+  --an-radius-lg: 14px;
+  --an-radius-pill: 999px;
+
+  /* elevation */
+  --an-shadow-1: 0 1px 2px rgba(18, 42, 32, .06);
+  --an-shadow-2: 0 6px 18px rgba(18, 42, 32, .08);
+  --an-shadow-3: 0 18px 48px rgba(15, 32, 26, .16);
+
+  /* type */
+  --an-font: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+             "Helvetica Neue", Arial, sans-serif;
+  --an-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  --an-text: 14px;
+  --an-leading: 1.55;
+
+  /* controls + focus */
+  --an-control-h: 38px;
+  --an-ring: 2px solid var(--an-accent);
+  --an-ring-offset: 2px;
+
+  /* motion */
+  --an-ease: cubic-bezier(.2, .7, .3, 1);
+  --an-fast: 140ms;
+  --an-mid: 240ms;
+
+  /* layering - keep chrome below overlays below modals below toasts */
+  --an-z-base: 1;
+  --an-z-nav: 30;
+  --an-z-overlay: 60;
+  --an-z-modal: 70;
+  --an-z-toast: 90;
+}
+
+/* The respondent instrument keeps its own, quieter clinical palette.
+   `.survey-skin` is the Studio's question-test view: the very same skin, so it gets
+   the very same palette and a preview can never drift from the real thing. */
+.theme-instrument,
+.survey-skin {
+  --an-ink: #16232e;
+  --an-ink-soft: #33465a;
+  --an-muted: #55697a;
+  --an-faint: #7c8f9f;
+  --an-line: #dde5ec;
+  --an-line-soft: #eef2f6;
+  --an-line-strong: #c9d7e1;
+  --an-paper: #f4f7f9;
+  --an-panel: #ffffff;
+  --an-panel-2: #fbfdfe;
+
+  --an-accent: #0b4f6c;
+  --an-accent-strong: #08405a;
+  --an-accent-bright: #12789e;
+  --an-accent-soft: #e8f2f7;
+  --an-accent-tint: #f4f9fb;
+}
+
+/* Legacy names must be re-declared *inside* a theme scope: a custom property's
+   var() references are substituted where it is declared, so an alias frozen on
+   :root would keep the team accent inside the instrument. Declared here, it
+   follows whichever palette the scope set. */
+:root,
+.theme-instrument,
+.survey-skin {
+  /* ---- legacy aliases -------------------------------------------------
+     The app stylesheets predate the token layer. They keep working (and
+     follow both themes) because every legacy name resolves to a token. */
+  --ink: var(--an-ink);
+  --muted: var(--an-muted);
+  --faint: var(--an-faint);
+  --line: var(--an-line);
+  --line2: var(--an-line-soft);
+  --bg: var(--an-paper);
+  --paper: var(--an-paper);
+  --panel: var(--an-panel);
+  --accent: var(--an-accent);
+  --accent-2: var(--an-accent-bright);
+  --accent2: var(--an-accent-bright);
+  --accent-soft: var(--an-accent-soft);
+  --soft: var(--an-accent-soft);
+  --soft2: var(--an-accent-tint);
+  --teal: var(--an-accent);
+  --teal-dark: var(--an-accent-strong);
+  --mint: var(--an-accent-soft);
+  --violet: var(--an-violet);
+  --lavender: var(--an-violet-soft);
+  --good: var(--an-good);
+  --good-soft: var(--an-good-soft);
+  --warn: var(--an-warn);
+  --warn-soft: var(--an-warn-soft);
+  --bad: var(--an-bad);
+  --bad-soft: var(--an-bad-soft);
+  --danger: var(--an-bad);
+  --studio: var(--an-violet);
+  --studio-soft: var(--an-violet-soft);
+  --amber: #fff3a3;
+  --radius: var(--an-radius);
+  --shadow: var(--an-shadow-2);
+}
+
+/* ------------------------------------------------------------------ 2. base */
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  font-family: var(--an-font);
+  font-size: var(--an-text);
+  line-height: var(--an-leading);
+  color: var(--an-ink);
+  background: var(--an-paper);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+::selection { background: var(--an-accent-soft); color: var(--an-ink); }
+
+/* One focus treatment for the whole platform. */
+:focus-visible {
+  outline: var(--an-ring);
+  outline-offset: var(--an-ring-offset);
+}
+a:focus-visible,
+button:focus-visible,
+summary:focus-visible,
+[role="button"]:focus-visible,
+[tabindex]:focus-visible,
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible {
+  outline: var(--an-ring);
+  outline-offset: var(--an-ring-offset);
+}
+
+/* Data reads better aligned. */
+.metric b, .card .v, .bar-val, .st-stat-bar, td.num, .num {
+  font-variant-numeric: tabular-nums;
+}
+
+[hidden] { display: none !important; }
+
+/* Quiet, consistent scrollbars on the surfaces that scroll a lot. */
+.tablewrap, .st-outline, .st-panel { scrollbar-width: thin; }
+
+/* ------------------------------------------------------------------ 3. utilities */
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  margin: -1px; padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+.skip-link {
+  position: fixed;
+  top: -100px;
+  left: 12px;
+  z-index: var(--an-z-toast);
+  padding: 10px 16px;
+  border-radius: var(--an-radius-sm);
+  background: var(--an-panel);
+  color: var(--an-ink);
+  font-weight: 650;
+  font-size: 13px;
+  text-decoration: none;
+  box-shadow: var(--an-shadow-2);
+  transition: top var(--an-fast) var(--an-ease);
+}
+.skip-link:focus { top: 12px; }
+
+.an-eyebrow {
+  font-size: 10.5px;
+  font-weight: 750;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: var(--an-muted);
+}
+
+/* ------------------------------------------------------------------ 4. app chrome */
+/* Team pages share one bar: brand on the left, sections on the right. */
+.an-appbar {
+  position: sticky;
+  top: 0;
+  z-index: var(--an-z-nav);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  flex-wrap: wrap;
+  padding: 12px 22px;
+  color: #fff;
+  background: linear-gradient(180deg, #16241f 0%, #101b17 100%);
+  border-bottom: 1px solid rgba(255, 255, 255, .08);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .06), 0 10px 30px rgba(10, 24, 19, .18);
+}
+.an-appbar a { text-decoration: none; }
+
+/* The brand lockup is white-on-dark in the bar, ink-on-paper everywhere else. */
+.an-appbar .brand-anaking {
+  color: #fff;
+  background: linear-gradient(135deg, #ffffff 0%, #b9f7e2 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.an-appbar .anaking-tagline { color: rgba(255, 255, 255, .76); }
+.an-appbar .brand-sub-badge {
+  border-color: rgba(123, 240, 208, .42);
+  background: rgba(255, 255, 255, .10);
+  color: #8df0d2;
+}
+.sidebar .brand-anaking,
+.st-top .brand-anaking,
+.login-card .brand-anaking {
+  color: var(--an-ink);
+  background: none;
+  -webkit-text-fill-color: currentColor;
+}
+
+/* Secondary link-style button used in bars and toolbars. */
+.linkbtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 7px 13px;
+  border-radius: var(--an-radius-sm);
+  background: rgba(255, 255, 255, .12);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition: background var(--an-fast) var(--an-ease);
+}
+.linkbtn:hover { background: rgba(255, 255, 255, .22); }
+
+
+/* ---- brand lockup --------------------------------------------------
+   Markup lives in templates/_brand.html; these are the shared defaults.
+   Context skins (.an-appbar = dark, .sidebar/.st-top/.login-card = paper)
+   only change colour, never structure. */
+.anaking-brand-lockup,
+.st-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 11px;
+  text-decoration: none;
+  cursor: pointer;
+  user-select: none;
+  line-height: 1.2;
+  transition: transform var(--an-fast) var(--an-ease);
+}
+.anaking-brand-lockup:hover,
+.st-brand-link:hover { transform: translateY(-1px); }
+
+.anaking-svg-logo {
+  flex-shrink: 0;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, .22);
+  transition: box-shadow var(--an-mid) var(--an-ease);
+}
+.anaking-brand-lockup:hover .anaking-svg-logo,
+.st-brand-link:hover .anaking-svg-logo {
+  box-shadow: 0 4px 16px rgba(0, 217, 245, .28);
+}
+
+.ak-crown-group { animation: akFloat 4.2s ease-in-out infinite alternate; transform-origin: 22px 22px; }
+.ak-particle { animation: akOrbit 9s linear infinite; transform-origin: 22px 22px; }
+@keyframes akFloat { from { transform: translateY(0) scale(1); } to { transform: translateY(-1px) scale(1.02); } }
+@keyframes akOrbit { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+
+.anaking-brand-text { display: flex; flex-direction: column; justify-content: center; }
+.anaking-brand-title { display: flex; align-items: center; gap: 7px; }
+.brand-anaking {
+  font-family: var(--an-font);
+  font-size: 19px;
+  font-weight: 800;
+  letter-spacing: -.03em;
+  color: var(--an-ink);
+  background: linear-gradient(135deg, #14211d 0%, #1d3f7a 58%, #10775f 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+.brand-sub-badge,
+.brand-studio-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border: 1px solid var(--an-line-strong);
+  border-radius: var(--an-radius-pill);
+  background: var(--an-panel);
+  color: var(--an-accent);
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+.live-pulse-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--an-accent-bright);
+  box-shadow: 0 0 6px var(--an-accent-bright);
+  animation: liveDotPulse 2.4s ease-in-out infinite;
+}
+@keyframes liveDotPulse {
+  0%, 100% { transform: scale(1); opacity: .8; }
+  50% { transform: scale(1.45); opacity: 1; }
+}
+.anaking-tagline {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-top: 2px;
+  color: var(--an-muted);
+  font-size: 10.5px;
+  font-weight: 550;
+  white-space: nowrap;
+}
+.tagline-spark { color: var(--an-accent-bright); font-size: 9px; animation: sparkTwinkle 3s ease-in-out infinite alternate; }
+@keyframes sparkTwinkle { from { opacity: .55; } to { opacity: 1; } }
+
+/* Footer shared by the public surfaces. */
+.an-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  flex-wrap: wrap;
+  max-width: 1180px;
+  margin: 0 auto;
+  padding: 26px 22px 34px;
+  color: var(--an-muted);
+  font-size: 12px;
+  border-top: 1px solid var(--an-line);
+}
+.an-foot b { color: var(--an-ink); font-weight: 650; letter-spacing: -.01em; }
+.an-foot-links { display: flex; gap: 16px; }
+.an-foot a { color: var(--an-muted); text-decoration: none; border-bottom: 1px solid transparent; }
+.an-foot a:hover { color: var(--an-accent); border-bottom-color: currentColor; }
+
+/* ------------------------------------------------------------------ 5. status pills */
+/* One pill, every app: same size, weight, radius and semantic colours. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 9px;
+  border-radius: var(--an-radius-pill);
+  background: var(--an-line-soft);
+  color: var(--an-muted);
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.6;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.pill.live, .pill.approved, .pill.complete, .pill.good, .pill.human,
+.pill-live, .pill-complete {
+  background: var(--an-good-soft);
+  color: var(--an-good);
+}
+.pill.draft, .pill.in_progress, .pill.warn, .pill.possible_ai,
+.pill-draft, .pill-in_progress {
+  background: var(--an-warn-soft);
+  color: var(--an-warn);
+}
+.pill.closed, .pill.screened_out, .pill.neutral,
+.pill-closed, .pill-screened_out {
+  background: var(--an-line-soft);
+  color: var(--an-muted);
+}
+.pill.test, .pill.bad,
+.pill-test {
+  background: var(--an-violet-soft);
+  color: var(--an-violet);
+}
+.pill.likely_ai { background: var(--an-bad-soft); color: var(--an-bad); }
+
+/* ------------------------------------------------------------------ 6. motion & print */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: .001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+@media print {
+  .an-appbar, .appnav, .skip-link, .an-foot, .teambar,
+  .builder-view-controls, .test-console, .st-ai-fab { display: none !important; }
+  body { background: #fff; }
+  a[href]::after { content: ""; }
+}

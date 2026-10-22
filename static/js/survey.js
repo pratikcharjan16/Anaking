@@ -145,7 +145,11 @@
 
   function applyWelcomeCopy() {
     if (!SPEC) return;
-    try { document.documentElement.dir = SPEC.render_dir || "ltr"; } catch (e) {}
+    try {
+      document.documentElement.dir = SPEC.render_dir || "ltr";
+      // screen readers and hyphenation need the actual language, not always "en"
+      if (SPEC.render_language) document.documentElement.lang = SPEC.render_language;
+    } catch (e) {}
     if (SPEC.welcome_title) {
       var h = document.querySelector("#welcome h1");
       if (h) h.textContent = SPEC.welcome_title;

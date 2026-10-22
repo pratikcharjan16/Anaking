@@ -1,0 +1,11 @@
+{#- Shared document head: title, description, icon and theme colour for every page.
+    Stylesheet links stay per-page (each app has its own), but these never drift again. -#}
+{% macro head(title, description='') -%}
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ title }}</title>
+<meta name="description" content="{{ description or 'Anaking — an intelligent insight platform to design, test, field and analyse research surveys.' }}">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#16241f">
+<link rel="icon" href="{{ asset('images/favicon.svg') }}" type="image/svg+xml">
+{%- endmacro %}

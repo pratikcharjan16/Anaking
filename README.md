@@ -94,8 +94,9 @@ carry a run forward on purpose: `?review=<token>` (a shared team review restores
 and notes) and `?keep=1` (used by the in-page language switch, so changing language mid-test does
 not throw the answers away).
 
-Every page header carries the same **Home · Survey · Studio · Admin** switcher, so the team can hop
-between apps without retyping anything. Respondents see none of this — the team strip on the survey
+Every page header carries the same **Projects · Survey · Studio · Monitor** switcher, with the
+current section marked for assistive technology, so the team can hop between apps without
+retyping anything. Respondents see none of this — the team strip on the survey
 only renders in test mode (`/survey/<slug>/test`), which is also where drafts are previewed; the
 respondent link of a draft or closed study shows a "not launched yet" page instead.
 
@@ -103,8 +104,15 @@ respondent link of a draft or closed study shows a "not launched yet" page inste
 open to anyone who can reach the server. Restrict access at the network or reverse-proxy layer
 (VPN, IP allow-list, HTTP basic auth in nginx/Caddy, …) before exposing the platform publicly.
 
+**Design system.** One token layer (`static/css/design-system.css`) owns the palette, type,
+radii, elevation, motion and focus treatment; app stylesheets only lay out their own screens.
+Two themes share those foundations — the team tools use the deep-green editorial identity, the
+respondent survey keeps its clinical navy instrument. The brand lockup, document head, section
+switcher and footer are shared macros, and every asset URL is stamped with one build version by
+`asset()` (no hand-typed `?v=` strings). See `docs/design-system.md`.
+
 Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
-`MEDIA_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`, respondent recordings in
+`MEDIA_DIR`, `SECRET_KEY`, `ASSET_VERSION`. Defaults put the database in `data/survey.db`, respondent recordings in
 `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
 
 ### Respondent survey: answer by voice & the gamified feel

@@ -51,7 +51,7 @@ def _survey_page(slug: str):
     # the team can preview a draft (the Studio's "Preview" button opens /survey/<slug>/test).
     paused = study.status == "paused"
     if not study.effective_live() and not is_test and not paused:
-        return render_template("survey/not_live.html", slug=slug), 403
+        return render_template("survey/not_live.html", slug=slug, study_title=study.title), 403
     # A paused study still serves the page: nobody can *start* (the client shows a paused
     # notice and /api/start refuses), but anyone already answering can resume and finish.
     design_version = ""

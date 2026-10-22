@@ -1,9 +1,3 @@
-:root{
-  --ink:#1a2733; --muted:#5f7284; --line:#dde5ec; --bg:#f4f7f9;
-  --accent:#0b4f6c; --accent-2:#12789e; --accent-soft:#e8f2f7;
-  --good:#1a7f4b; --warn:#b26a00; --bad:#b3261e;
-  --radius:10px;
-}
 *{box-sizing:border-box}
 /* The instrument shows/hides layers via the hidden attribute; without this rule the
    display:grid on .overlay would override hidden and the overlay would sit on screen
@@ -275,8 +269,8 @@ td.pick.sel .pick-mark{border-color:var(--accent-2);background:var(--accent-2);
 }
 
 /* ---------- test mode ---------- */
-body.testmode .topbar{background:#6b3fa0}
-body.testmode .brand-mark{color:#6b3fa0}
+body.testmode .topbar{background:var(--an-violet)}
+body.testmode .brand-mark{color:var(--an-violet)}
 body.testmode::before{
   content:"TEST MODE \2014 responses are stored separately and excluded from real-data exports";
   display:block;background:#f0e9f7;color:#5b2f8f;text-align:center;font-size:12px;
@@ -553,7 +547,7 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 
 /* Slim strip shown above the survey in test mode only (research-team view) */
 .teambar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;
-  background:#1a2733;color:#fff;padding:6px 22px;font-size:12.5px}
+  background:var(--an-ink);color:#fff;padding:6px 22px;font-size:12.5px}
 .teambar-note{opacity:.9}
 .teambar .appnav{background:rgba(255,255,255,.1)}
 

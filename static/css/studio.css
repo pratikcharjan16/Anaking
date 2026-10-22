@@ -1,7 +1,4 @@
 /* BEACON Studio - builder UI.  Layout: top bar · tabs · (outline | editor | live preview) */
-:root{--ink:#16232e;--muted:#5f7284;--faint:#8da0b1;--line:#dfe6ec;--line2:#eef2f6;--bg:#f3f6f9;--panel:#fff;
-  --accent:#0b4f6c;--accent2:#12789e;--soft:#e8f2f7;--soft2:#f4f9fb;--good:#1a7f4b;--warn:#b26a00;--bad:#b3261e;
-  --amber:#fff3a3;--radius:12px;--shadow:0 8px 28px rgba(11,79,108,.08)}
 *{box-sizing:border-box}
 html,body{height:100%}
 body{margin:0;background:var(--bg);color:var(--ink);
@@ -23,7 +20,7 @@ a{color:var(--accent2)}
 /* ---------- buttons & bits ---------- */
 .st-btn{border:1px solid var(--line);background:#fff;color:var(--accent);border-radius:9px;padding:7px 13px;font-size:12.5px;
   font-weight:700;cursor:pointer;transition:background .15s,border-color .15s,color .15s;text-decoration:none;display:inline-flex;align-items:center;gap:6px;line-height:1.2;white-space:nowrap}
-.st-btn:hover{background:var(--soft);border-color:#c9dbe4}
+.st-btn:hover{background:var(--soft);border-color:var(--line-strong)}
 .st-btn.on{background:var(--accent);color:#fff;border-color:var(--accent)}
 .st-btn.on:hover{background:#0a4560}
 .st-btn.good{color:var(--good);border-color:#bfe6d2}
@@ -97,7 +94,7 @@ a{color:var(--accent2)}
 .st-stats strong{display:block;font-size:20px;line-height:1.1;color:var(--accent)}
 .st-stats span{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:700}
 .st-stat-bar{grid-column:1/-1;height:6px;border-radius:4px;background:var(--line2);overflow:hidden;margin-top:6px}
-.st-stat-bar i{display:block;height:100%;background:linear-gradient(90deg,#7fd4f0,#12789e)}
+.st-stat-bar i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent))}
 .st-stats .st-meta{grid-column:1/-1;text-transform:none;letter-spacing:0;font-weight:500}
 .st-card-actions{display:flex;gap:7px;flex-wrap:wrap;align-items:center}
 .st-more{margin-left:auto;display:inline-flex;gap:2px}
@@ -555,7 +552,7 @@ a{color:var(--accent2)}
 /* ---------- Show IF — clean card layout (overrides grid above only inside #f-rules) ---------- */
 #f-rules{display:flex;flex-direction:column;gap:0}
 #f-rules .st-rule{grid-template-columns:unset;display:flex;flex-direction:column;gap:10px;align-items:stretch;padding:14px 14px 12px;background:#fff;border:1px solid var(--line);border-radius:12px;margin-bottom:12px;box-shadow:0 1px 6px rgba(16,35,46,.05)}
-#f-rules .st-rule:hover{border-color:#c9dbe4;box-shadow:0 4px 14px rgba(16,35,46,.08)}
+#f-rules .st-rule:hover{border-color:var(--line-strong);box-shadow:0 4px 14px rgba(16,35,46,.08)}
 .st-sif-head{display:flex;align-items:flex-start;gap:10px}
 .st-sif-badge{flex:0 0 auto;min-width:44px;text-align:center;font-size:10.5px;font-weight:800;letter-spacing:.07em;text-transform:uppercase;color:#fff;background:var(--accent);border-radius:999px;padding:5px 10px;line-height:1}
 .st-sif-badge.and{background:#546e7a}
@@ -626,7 +623,7 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-tbl th{text-align:left;color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:.04em;padding:6px 8px;border-bottom:2px solid var(--line)}
 .st-tbl td{padding:6px 8px;border-bottom:1px solid var(--line2)}
 .st-meter{height:8px;border-radius:5px;background:var(--line2);overflow:hidden}
-.st-meter i{display:block;height:100%;background:linear-gradient(90deg,#7fd4f0,#12789e)}
+.st-meter i{display:block;height:100%;background:linear-gradient(90deg,var(--accent2),var(--accent))}
 
 /* ---------- walkthrough (TPP) tab ---------- */
 .st-muted-note{font-size:12px;color:var(--muted)}
@@ -880,7 +877,7 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-hm .st-info{ margin-left:4px }
 
 /* ---------- Question Loop (new snip-matched card) ---------- */
-.st-loop-wrap{ background:#e6f3f0; border:1px solid #c8e0db; border-radius:12px; padding:10px; margin:6px 0 10px }
+.st-loop-wrap{ background:#e6f3f0; border:1px solid var(--line); border-radius:12px; padding:10px; margin:6px 0 10px }
 .st-loop-head{ display:flex; justify-content:space-between; align-items:center; padding:6px 8px 8px; font-weight:800; color:var(--accent); font-size:14px }
 .st-loop-title{ display:flex; align-items:center; gap:6px }
 .st-loop-title i{ font-style:normal; color:#1a9a8a }
@@ -997,7 +994,7 @@ table.st-tbl{width:100%;border-collapse:collapse;font-size:12.5px}
 .st-ct-add{ background:#e53935 !important; color:#fff !important; border-color:#e53935 !important }
 .st-ct-add:hover{ background:#c62828 !important; border-color:#c62828 !important }
 .st-ct-rand{ background:#e53935 !important; color:#fff !important; border-color:#e53935 !important; border-radius:7px; padding:6px 12px; font-weight:800; font-size:12px }
-.st-ct-sep{ text-align:center; font-weight:800; font-size:12.5px; color:var(--accent); background:#e8f2f7; border:1px solid #c8e0db; border-radius:8px; padding:8px; margin:12px 0 }
+.st-ct-sep{ text-align:center; font-weight:800; font-size:12.5px; color:var(--accent); background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:8px; margin:12px 0 }
 .st-ct-qs{ border:1px solid var(--line); border-radius:8px; padding:10px; margin:10px 0; background:#fff }
 .st-ct-qs-head{ display:flex; justify-content:space-between; align-items:center; font-weight:800; font-size:13px; margin-bottom:8px; color:var(--ink) }
 .st-ct-q{ border:1px solid var(--line2); border-radius:9px; padding:8px; margin-bottom:8px; background:var(--soft2) }

@@ -1,8 +1,5 @@
 /* Explainer (animated TPP walkthrough) - shared by the respondent survey and the
    Studio preview. Loaded by both survey.html and studio.html. */
-:root{--ink:#1a2733;--muted:#5f7284;--line:#dde5ec;--accent:#0b4f6c;--accent-2:#12789e;
-  --accent-soft:#e8f2f7;--good:#1a7f4b;--warn:#b26a00}
-
 /* ================= explainer overlay ================= */
 .overlay{position:fixed;inset:0;background:rgba(12,24,34,.72);z-index:60;display:grid;
   place-items:center;padding:18px;animation:fadeIn .25s ease}
