@@ -78,6 +78,12 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
 
+**The test survey opens in its own tab.** The Studio's **Test survey** button (and every Preview
+link on the cards, tabs and home page) saves any pending builder edits and then opens the test
+environment in a new tab, leaving the editing tab exactly as it was - same study, same question,
+same scroll position. Where a browser blocks pop-ups the link falls back to opening in the current
+tab, so the button never appears to do nothing.
+
 **A test link is always a fresh rehearsal.** Opening /survey/<slug>/test starts a brand-new run
 from the first question with blank answers, and it always renders the design as it is saved in the
 Studio right now — edits appear on the next open, with no browser cache or saved run to clear. The

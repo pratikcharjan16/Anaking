@@ -96,12 +96,12 @@
           <td>{{ s.complete }}</td>
           <td>
             <a href="/survey/{{ s.slug }}">live</a> &middot;
-            <a href="/survey/{{ s.slug }}/test">test</a>
+            <a href="/survey/{{ s.slug }}/test" target="_blank" rel="noopener">test</a>
           </td>
           <td>
             <a href="/studio/#{{ s.slug }}">builder</a> &middot;
             <a href="/admin/?study={{ s.slug }}">dashboard</a>
-            {% if s.status != 'live' %} &middot; <a href="/survey/{{ s.slug }}/test">preview</a>{% endif %}
+            {% if s.status != 'live' %} &middot; <a href="/survey/{{ s.slug }}/test" target="_blank" rel="noopener">preview</a>{% endif %}
           </td>
         </tr>
       {% endfor %}

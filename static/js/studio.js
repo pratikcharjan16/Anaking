@@ -362,10 +362,49 @@
     el.innerHTML = html;
     var sw = document.getElementById("st-autosave"); if (sw) sw.checked = auto.on;
   }
-  // ---------------------------------------------------------- test link freshness
-  // Any preview / test link in the Studio saves the builder first, so the test environment
-  // can never open an older design than the one on screen.  (The main "Test survey" button
-  // does the same in its own handler; these are the plain <a> links on the cards and tabs.)
+  // ---------------------------------------------------------- test tab
+  // The test environment always opens in its own tab, so this builder - question being
+  // edited, scroll position, unsaved panel state - stays exactly where it is.  The tab is
+  // opened inside the click gesture (pop-up blockers only allow that) and is pointed at the
+  // test link once pending edits are saved, so it never shows an older design.
+  var testTab = null, testTabTimer = null;
+  function openTestTab(url) {
+    var w = null;
+    try { w = window.open("", "_blank"); } catch (e) { w = null; }
+    if (!w) { window.location.assign(url); return; }   // pop-ups blocked: keep it working
+    try { w.opener = null; } catch (e) {}
+    try {
+      w.document.title = "Opening the test survey\u2026";
+      w.document.body.innerHTML = '<div style="font:14px/1.55 system-ui,sans-serif;' +
+        'padding:28px;color:#334">Saving your design and opening the test survey\u2026</div>';
+    } catch (e) {}
+    testTab = w;
+    clearTimeout(testTabTimer);
+    // A failed save never calls back: close the placeholder rather than leave a blank tab.
+    testTabTimer = setTimeout(function () {
+      if (testTab && !testTab.closed) { try { testTab.close(); } catch (e) {} }
+      testTab = null;
+    }, 10000);
+  }
+  function goTestTab(url) {
+    clearTimeout(testTabTimer);
+    if (testTab && !testTab.closed) {
+      var w = testTab; testTab = null;
+      try { w.location.replace(url); return; } catch (e) {}
+    }
+    testTab = null;
+    window.open(url, "_blank");
+  }
+  function openTestLink(url) {
+    // One click, one tab: a second click while the first is still saving must not queue
+    // another navigation (which would try to open yet another tab outside a click).
+    if (testTab && !testTab.closed) return;
+    openTestTab(url);
+    flushSave(function () { goTestTab(url); });
+  }
+
+  // Preview / test links on the cards and tabs save the builder first too, so the test
+  // environment can never open an older design than the one on screen.
   var TEST_LINK_RE = /^\/survey\/[A-Za-z0-9\-]+\/test(?:\?|$)/;
   document.addEventListener("click", function (e) {
     if (!e.target || !e.target.closest) return;
@@ -375,12 +414,7 @@
     if (!TEST_LINK_RE.test(href) || !cur) return;
     if (!auto.dirty && !auto.saving) return;      // nothing pending: let the link behave normally
     e.preventDefault();
-    // Opening waits for the save: if it fails the studio banner says so and the link is not
-    // opened against stale content.
-    flushSave(function () {
-      var w = window.open(href, "_blank", "noopener");
-      if (!w) window.location.assign(href);       // pop-up blocked: show it in this tab
-    });
+    openTestLink(href);
   }, true);
 
   window.addEventListener("beforeunload", function (e) {
@@ -671,7 +705,7 @@
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
       '<button class="st-btn" data-act="save" title="Ctrl/Cmd + S">Save now</button>' +
-      '<button class="st-btn play" data-act="viewlive" title="Open the full test environment with question jump, notes, AI answers and team review links">\u25B6 Test survey</button>' +
+      '<button class="st-btn play" data-act="viewlive" title="Open the full test environment in a new tab - question jump, notes, AI answers and team review links. This builder stays open.">\u25B6 Test survey</button>' +
       '<div class="st-menu-wrap"><button class="st-btn" data-act="sopts" title="Survey options">SURVEY OPTIONS \u25BE</button>' +
         '<div class="st-menu" id="st-sopts" hidden>' +
         '<button type="button" data-act="so-settings">Settings</button>' +
@@ -6843,10 +6877,8 @@
     }
     if (act === "save") { if (tab === "settings" || tab === "conjoint") readSettings(); auto.dirty = true; flushSave(function () { toast("Saved"); }); }
     if (act === "viewlive") {
-      // Navigate in the current preview frame. Hosted previews commonly block pop-up
-      // windows, which made this button appear to do nothing.
-      var url = "/survey/" + cur.slug + "/test";
-      flushSave(function () { window.location.assign(url); });
+      // Open the test environment in a new tab; this builder keeps its place.
+      openTestLink("/survey/" + cur.slug + "/test");
     }
     if (act === "outline-view") {
       outlineView = b.getAttribute("data-v") === "thumbs" ? "thumbs" : "list";
