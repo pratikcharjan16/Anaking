@@ -186,7 +186,9 @@ def quotas_state():
 @bp.post("/api/studio/save")
 def save():
     try:
-        return jsonify({"ok": True, "slug": Study.save(json_body())})
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        return jsonify({"ok": True, "slug": Study.save(json_body(), owner_id=owner)})
     except StudyError as e:
         return error(e)
 
@@ -390,7 +392,9 @@ def agent_start():
         cfg["design_notes"] = list(dict.fromkeys(list(cfg.get("design_notes") or []) + warnings))
     slug = _agent_new_slug(title)
     try:
-        Study.save({"slug": slug, "title": title, "cfg": cfg})
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        Study.save({"slug": slug, "title": title, "cfg": cfg}, owner_id=owner)
     except StudyError as exc:
         return error(exc)
 
@@ -662,7 +666,9 @@ def _invite_state(study, rows_only: bool = False) -> dict:
 def duplicate():
     slug = json_body().get("slug") or ""
     try:
-        new_slug = Study.duplicate(slug)
+        from flask import g
+        owner = (getattr(g, "user", None) or {}).get("id")
+        new_slug = Study.duplicate(slug, owner_id=owner)
     except StudyError as e:
         return error(e)
     return jsonify({"ok": True, "slug": new_slug, "title": Study.get(new_slug).title})

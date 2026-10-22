@@ -1,0 +1,50 @@
+/* ---------- admin console ---------- */
+.cs-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
+  flex-wrap:wrap;margin:26px clamp(16px,4vw,48px) 10px}
+.cs-head h1{margin:0 0 6px;font-size:26px;letter-spacing:-.02em}
+.cs-head p{margin:0;max-width:52em;font-size:13.5px;line-height:1.6;color:var(--muted,#5c574e)}
+.cs-stats{display:flex;gap:12px;flex-wrap:wrap}
+.cs-stat{background:#fff;border:1.5px solid var(--line,#e6ddd2);border-radius:12px;
+  padding:12px 18px;text-align:center;min-width:92px}
+.cs-stat b{display:block;font-size:22px;letter-spacing:-.02em}
+.cs-stat span{font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted,#5c574e)}
+.cs-pending{margin:12px clamp(16px,4vw,48px);padding:18px;border:1.5px solid #ecd6a8;
+  background:#fffdf6;border-radius:14px}
+.cs-pending h2{margin:0 0 12px;font-size:16px}
+.cs-pending-list{display:flex;flex-wrap:wrap;gap:12px}
+.cs-pending-card{display:flex;flex-direction:column;gap:6px;background:#fff;
+  border:1px solid var(--line,#e6ddd2);border-radius:12px;padding:14px 16px;min-width:260px}
+.cs-pending-card small{color:var(--muted,#5c574e);font-size:11.5px}
+.cs-pending-card span{display:flex;gap:8px;margin-top:4px}
+.cs-users,.cs-projects{margin:18px clamp(16px,4vw,48px) 40px}
+.cs-users h2,.cs-projects h2{font-size:18px;margin:0 0 12px}
+.cs-table{width:100%;border-collapse:collapse;background:#fff;border:1.5px solid var(--line,#e6ddd2);
+  border-radius:14px;overflow:hidden;font-size:13px}
+.cs-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
+  color:var(--muted,#5c574e);padding:11px 14px;border-bottom:1.5px solid var(--line,#e6ddd2);
+  background:var(--soft2,#f3eee5)}
+.cs-table td{padding:11px 14px;border-bottom:1px solid var(--line2,#e6ddd2);vertical-align:middle}
+.cs-table tr:last-child td{border-bottom:none}
+.cs-table tr.is-pending{background:#fffdf6}
+.cs-person{display:flex;align-items:center;gap:10px}
+.cs-person img,.cs-av{width:30px;height:30px;border-radius:50%;flex:none;
+  border:1.5px solid var(--line,#e6ddd2);object-fit:cover}
+.cs-av{background:var(--soft,#eef4f1)}
+.cs-person span{display:flex;flex-direction:column;gap:1px}
+.cs-person small{color:var(--muted,#5c574e);font-size:11px}
+.cs-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:10px;
+  font-weight:800;text-transform:uppercase;letter-spacing:.05em}
+.cs-pill.st-ok{background:var(--good-soft,#eefaf3);color:var(--good,#1c7a52)}
+.cs-pill.st-pending{background:#fff4e2;color:var(--warn,#8a6d1f)}
+.cs-pill.st-no{background:#fdeeee;color:#b34a3c}
+.cs-when{white-space:nowrap;color:var(--muted,#5c574e);font-size:11.5px}
+.cs-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+.cs-btn{border:1.5px solid transparent;border-radius:999px;padding:6px 13px;font-size:11.5px;
+  font-weight:750;cursor:pointer;text-decoration:none;color:var(--ink,#23211c);background:#fff;
+  transition:transform .2s cubic-bezier(.34,1.4,.64,1)}
+.cs-btn:hover{transform:translateY(-1px)}
+.cs-btn.ok{background:var(--accent,#1c6652);color:#fff}
+.cs-btn.no{background:#fdeeee;border-color:#f0c9c4;color:#b34a3c}
+.cs-btn.ghost{border-color:var(--line,#e6ddd2)}
+.cs-empty{padding:26px;text-align:center;color:var(--muted,#5c574e)}

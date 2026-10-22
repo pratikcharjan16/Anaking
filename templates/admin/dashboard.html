@@ -20,6 +20,7 @@
       <select id="study-select" title="Which study to show"></select>
     </label>
     <a class="linkbtn" id="take-survey" href="/survey/test" target="_blank" rel="noopener">Open test survey &rarr;</a>
+    {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console &rarr;</a>{% endif %}
     {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
   </div>
 </header>

@@ -7,9 +7,15 @@
 <p class="nav-caption">WORKSPACE</p><nav class="side-nav" aria-label="Workspace"><a href="#" class="active" id="projects-link" aria-current="page"><span>▦</span> Projects <span id="project-count" class="nav-count">0</span></a><a href="/studio/"><span>✎</span> Studio</a><a href="/admin/"><span>◴</span> Monitor</a><button id="open-assistant"><span>✧</span> Research assistant <i>NEW</i></button></nav>
 <div class="sidebar-note"><span class="note-orbit">✧</span><strong>Better questions.<br>Clearer decisions.</strong><p>Design thoughtfully. Review together. Let the evidence lead.</p><button id="guide-button" class="text-button">Explore the workflow →</button></div>
 <div class="sidebar-bottom"><span class="status-dot"></span> <span id="deployment-mode">Workspace ready</span><a href="/healthz" aria-label="Service health">↗</a></div>
-{% if config.STAFF_AUTH %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}
+{% if config.STAFF_AUTH %}{% if account() %}
+<div class="account-chip">{{ account().name or account().email }}
+  {% if account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin console</a>{% endif %}
+  <form method="post" action="/auth/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>
+</div>
+{% else %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}{% endif %}
 </aside>
-<div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Research team">RT</span></div></header>
+<div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Signed in account">{% if account() %}{{ (account().name or account().email)[:2] | upper }}{% else %}RT{% endif %}</span>
+  {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console →</a>{% endif %}</div></header>
 <main id="main" tabindex="-1"><div class="skeleton" aria-label="Loading projects"></div><div class="skeleton short"></div></main>
 <footer class="workspace-footer"><span>Made for considered research.</span><span>Human judgment. Transparent automation.</span></footer></div></div>
 <div id="toast" class="workspace-toast" role="status" hidden></div>

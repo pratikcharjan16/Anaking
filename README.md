@@ -67,7 +67,9 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 
 | App | URL | What it is |
 |---|---|---|
-| **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
+| **Home** | `/` | Marketing landing: animated feature demos + Google sign-in (the classic study list stays at `/?legacy=1`) |
+| | `/workspace/` | Project hub — what every account has built (with readiness checks, publishing, revisions) |
+| | `/admin/console` | Admin console — approve who joins, manage accounts, inspect projects (platform admins only) |
 | **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project details and progress line are hidden; the gamified strip (ring, points, rank, mic, sound) stays on top when *Gamified feel* is on — see below |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (test mode also previews drafts) |
@@ -77,6 +79,45 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 | | `/healthz` | Liveness check |
 
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
+
+### Accounts & sign-in (Google)
+
+The team apps (Projects / Studio / Monitor) are multi-user:
+
+- **Sign in with Google** — one profile per e-mail address, created on first sign-in.
+- **Admin approval** — new profiles are *pending* until the platform admin approves them in
+  the **Admin console** (`/admin/console`): Approve / Reject / Disable / Re-enable, Make
+  admin / Make user, and a per-account list of every project they have built.
+- **Private projects** — everything an account creates belongs to that account. Others never
+  see it; admins see and can open everything. Legacy studies with no owner are admin-only.
+- **Admin bootstrap** — put your address in `ADMIN_EMAILS` (comma-separated); those accounts
+  are auto-approved as admins on first sign-in, so the console can never be locked out.
+  The console refuses to lock out or demote the last admin.
+- **Respondent links stay public** — fieldwork never signs in; `/survey/…` keeps working
+  with the gate up.
+
+`/auth/dev` is a development-only e-mail sign-in shortcut (`DEV_LOGIN=1`, never available
+when `ANAKING_ENV=production`) for demos and QA without Google credentials.
+
+### Deploying to production
+
+```bash
+pip install -r requirements.txt            # includes google-auth + gunicorn
+export ANAKING_ENV=production
+export SECRET_KEY="..."                     # required; a long random string
+export STAFF_AUTH=1                         # forced on in production anyway
+export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="..."
+export ADMIN_EMAILS="you@your.org"
+export DB_PATH=/var/lib/anaking/survey.db   # optional; default data/survey.db
+gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
+```
+
+In Google Cloud Console create an **OAuth 2.0 Client ID** (Web application) and add the
+platform's exact callback URL: `https://<your-host>/auth/google/callback`. The app refuses
+to start in production without `STAFF_AUTH` and a non-default `SECRET_KEY`; `DEV_LOGIN`
+cannot be enabled there. Behind a reverse proxy the app trusts `X-Forwarded-*` (set those
+headers), and session cookies are `Secure` + `HttpOnly` + `SameSite=Lax` automatically.
 
 **The test survey opens in its own tab.** The Studio's **Test survey** button (and every Preview
 link on the cards, tabs and home page) saves any pending builder edits and then opens the test
