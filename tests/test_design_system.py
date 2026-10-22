@@ -196,3 +196,43 @@ def test_preview_skin_carries_no_palette():
                 encoding="utf-8").read()
     header = text[:text.index(".survey-skin *")]
     assert "#" not in header, header
+
+
+def test_brand_mark_carries_one_palette_no_neon_leftovers():
+    """The mark is ivory tile + cut-green gem. The old cyan/purple neon (and its
+    gradient wordmark) must never creep back into any brand surface."""
+    banned = ("#00f5a0", "#00d9f5", "#7928ca", "#38bdf8", "#a5f3fc", "#1e3a8a",
+              "#0d9488", "#b9f7e2", "#8df0d2")
+    files = [os.path.join(ROOT, "templates", "_brand.html"),
+             os.path.join(ROOT, "static", "images", "favicon.svg")]
+    css_dir = os.path.join(ROOT, "static", "css")
+    files += [os.path.join(css_dir, n) for n in sorted(os.listdir(css_dir))
+              if n.endswith(".css")]
+    for f in files:
+        text = open(f, encoding="utf-8").read().lower()
+        for c in banned:
+            assert c not in text, (os.path.relpath(f, ROOT), c)
+
+
+def test_wordmark_is_solid_not_gradient_text():
+    """Gradient text is unreadable at small sizes and washes out on dark bars."""
+    css_dir = os.path.join(ROOT, "static", "css")
+    for name in os.listdir(css_dir):
+        if not name.endswith(".css"):
+            continue
+        text = open(os.path.join(css_dir, name), encoding="utf-8").read()
+        assert "text-fill-color" not in text, name
+        assert "background-clip: text" not in text, name
+        assert "background-clip:text" not in text, name
+
+
+def test_brand_lives_in_the_design_system_only():
+    """No app stylesheet may style the lockup again - that is how it drifted."""
+    css_dir = os.path.join(ROOT, "static", "css")
+    for name in os.listdir(css_dir):
+        if not name.endswith(".css") or name == "design-system.css":
+            continue
+        text = open(os.path.join(css_dir, name), encoding="utf-8").read()
+        for needle in (".brand-anaking", ".anaking-svg-logo", ".brand-sub-badge",
+                       ".anaking-tagline", ".live-pulse-dot"):
+            assert needle not in text, (name, needle)

@@ -85,9 +85,21 @@ instrument.
 ## Brand
 
 `templates/_brand.html` renders the lockup (mark, wordmark, badge, tagline). Pass the badge
-for the surface (`STUDIO`, `MONITOR`, `SURVEY`, `WORKSPACE`, …) and a unique `prefix` so the
-inline SVG gradient ids stay unique. Never copy the SVG into a page — a test fails if a
-second copy appears.
+for the surface (`STUDIO`, `MONITOR`, `SURVEY`, `WORKSPACE`, …). Never copy the SVG into a
+page — a test fails if a second copy appears.
+
+The mark is an **ivory cameo tile with a cut-green gem**: warm paper tile (`#f6f1e8`, taupe
+keyline) carrying a four-facet gem in the platform's green ramp (`#3aa886 → #124a3c`) with
+an ivory glint. It was chosen for contrast, not decoration — the tile reads on the dark app
+bar, the navy/violet survey bar, paper and white alike, where the old near-black tile with
+neon facets disappeared against dark bars and mushed at small sizes. Companion rules:
+
+* The wordmark is **solid** (`--an-ink`, white on dark bars). No gradient text — it muddies
+  below 20px and washes out on dark chrome.
+* The badge is a calm pill (`--an-accent-soft` / accent, translucent white on dark bars).
+* Motion is hover-only: a gentle lift and shadow. No perpetual float/orbit/glow.
+* Tests ban the old neon palette (`#00f5a0`, `#00d9f5`, `#7928ca`, `#38bdf8`, …) and
+  gradient text anywhere in CSS, so the look cannot silently regress.
 
 ## Assets
 
@@ -123,7 +135,5 @@ if the checked-in file is stale.
 
 ## Known follow-ups
 
-* The brand lockup has context skins in `workspace.css` and `studio-workspace.css` that
-  predate the token layer; they are being folded into `design-system.css` file by file.
 * `survey.css` still contains literal colours from the instrument's original build. They
   match the theme tokens today; folding them into `var(--an-*)` is a follow-up.
