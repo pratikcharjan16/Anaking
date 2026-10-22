@@ -308,20 +308,64 @@ textarea:focus-visible {
   cursor: pointer;
   user-select: none;
   line-height: 1.2;
-  transition: transform var(--an-fast) var(--an-ease);
+  transition: transform 320ms cubic-bezier(.34, 1.4, .64, 1);
 }
 .anaking-brand-lockup:hover,
-.st-brand-link:hover { transform: translateY(-1px); }
+.st-brand-link:hover { transform: translateY(-2px); }
 
 .anaking-svg-logo {
   flex-shrink: 0;
   border-radius: 12px;
   box-shadow: 0 1px 2px rgba(25, 32, 26, .10), 0 6px 16px rgba(25, 32, 26, .10);
-  transition: box-shadow var(--an-mid) var(--an-ease);
+  transition: box-shadow var(--an-mid) var(--an-ease), filter var(--an-mid) var(--an-ease);
 }
 .anaking-brand-lockup:hover .anaking-svg-logo,
 .st-brand-link:hover .anaking-svg-logo {
-  box-shadow: 0 2px 4px rgba(25, 32, 26, .12), 0 10px 22px rgba(25, 32, 26, .14);
+  box-shadow: 0 2px 4px rgba(25, 32, 26, .12), 0 12px 26px rgba(25, 32, 26, .16);
+}
+
+/* ---- the living gem --------------------------------------------------
+   Three ambient motions give the mark its "live" feel without neon:
+   a light sweep across the tile (like light on a cut stone), a slow float
+   of the gem, and a gold spark orbiting it.  Hover makes the stone catch
+   the light faster.  All of it collapses under prefers-reduced-motion
+   (the base layer already disables animations globally). */
+.ak-gem,
+.ak-sheen,
+.ak-particle {
+  transform-box: view-box;
+  transform-origin: 22px 22px;
+}
+.ak-gem {
+  animation: akFloat 5.5s ease-in-out infinite alternate;
+  transition: filter var(--an-mid) var(--an-ease);
+}
+.ak-sheen {
+  transform: rotate(20deg) translateX(0);
+  animation: akSheen 7s cubic-bezier(.4, 0, .2, 1) infinite;
+}
+.ak-particle {
+  animation: akOrbit 11s linear infinite;
+}
+.anaking-brand-lockup:hover .ak-gem,
+.st-brand-link:hover .ak-gem { filter: brightness(1.06) saturate(1.04); }
+.anaking-brand-lockup:hover .ak-sheen,
+.st-brand-link:hover .ak-sheen { animation-duration: 2.4s; }
+
+@keyframes akFloat {
+  from { transform: translateY(0) scale(1); }
+  to   { transform: translateY(-1.3px) scale(1.018); }
+}
+@keyframes akSheen {
+  0%   { transform: rotate(20deg) translateX(0); opacity: 0; }
+  5%   { opacity: 1; }
+  18%  { transform: rotate(20deg) translateX(74px); opacity: 1; }
+  26%  { transform: rotate(20deg) translateX(74px); opacity: 0; }
+  100% { transform: rotate(20deg) translateX(74px); opacity: 0; }
+}
+@keyframes akOrbit {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
 }
 
 .anaking-brand-text { display: flex; flex-direction: column; justify-content: center; }
@@ -349,15 +393,29 @@ textarea:focus-visible {
   text-transform: uppercase;
 }
 .live-pulse-dot {
+  position: relative;
   width: 5px;
   height: 5px;
   border-radius: 50%;
   background: var(--an-accent-bright);
-  animation: liveDotPulse 3.2s ease-in-out infinite;
+  animation: liveDotPulse 2.6s ease-in-out infinite;
+}
+.live-pulse-dot::after {
+  content: "";
+  position: absolute;
+  inset: -2px;
+  border-radius: 50%;
+  border: 1px solid currentColor;
+  opacity: 0;
+  animation: liveDotRing 2.6s cubic-bezier(0, 0, .2, 1) infinite;
 }
 @keyframes liveDotPulse {
-  0%, 100% { transform: scale(1); opacity: .75; }
+  0%, 100% { transform: scale(1); opacity: .8; }
   50% { transform: scale(1.35); opacity: 1; }
+}
+@keyframes liveDotRing {
+  0% { transform: scale(.6); opacity: .7; }
+  70%, 100% { transform: scale(2.2); opacity: 0; }
 }
 .anaking-tagline {
   display: inline-flex;
@@ -369,7 +427,16 @@ textarea:focus-visible {
   font-weight: 550;
   white-space: nowrap;
 }
-.tagline-spark { color: var(--an-accent-bright); font-size: 9px; }
+.tagline-spark {
+  color: var(--an-accent-bright);
+  font-size: 9px;
+  display: inline-block;
+  animation: sparkTwinkle 3.4s ease-in-out infinite alternate;
+}
+@keyframes sparkTwinkle {
+  0%   { transform: scale(1) rotate(0deg); opacity: .7; }
+  100% { transform: scale(1.3) rotate(24deg); opacity: 1; }
+}
 
 /* Footer shared by the public surfaces. */
 .an-foot {

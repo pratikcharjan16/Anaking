@@ -96,8 +96,17 @@ neon facets disappeared against dark bars and mushed at small sizes. Companion r
 
 * The wordmark is **solid** (`--an-ink`, white on dark bars). No gradient text — it muddies
   below 20px and washes out on dark chrome.
-* The badge is a calm pill (`--an-accent-soft` / accent, translucent white on dark bars).
-* Motion is hover-only: a gentle lift and shadow. No perpetual float/orbit/glow.
+* The badge is a calm pill (`--an-accent-soft` / accent, translucent white on dark bars)
+  with a **live indicator**: a breathing dot that pings an expanding ring.
+* **The living gem** — the mark's "live" feel is three calm, perpetual motions (all CSS,
+  all collapsed under `prefers-reduced-motion`):
+  * `akSheen` — a light sweep crossing the tile every 7s, like light moving over a cut
+    stone (clipped to the tile, soft white gradient);
+  * `akFloat` — the gem breathes with a ~1.3px float;
+  * `akOrbit` — a small gold spark (`#c9a227`, the identity's single metallic note)
+    orbits the gem every 11s.
+  Hover lifts the lockup with a spring, brightens the stone and runs the sweep faster.
+  No neon, no glow — motion, not noise.
 * Tests ban the old neon palette (`#00f5a0`, `#00d9f5`, `#7928ca`, `#38bdf8`, …) and
   gradient text anywhere in CSS, so the look cannot silently regress.
 
