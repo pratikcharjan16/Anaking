@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Anaking · Design the question. Trust the answer.',
-        'Anaking — an intelligent insight platform: build surveys, screen and quota your sample, and read the evidence live. Sign in with Google and start building.') }}
+{{ head('Anaking · AI-enabled research, from need to evidence',
+        'Anaking is an AI-enabled insight platform: describe your research need and it drafts the questionnaire, screens and quotas the right respondents, and reads the answers live. Register with Google.') }}
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
 <link rel="stylesheet" href="{{ asset('css/landing.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
@@ -20,62 +20,121 @@
   {% with active='home' %}{% include '_nav.html' %}{% endwith %}
   <div class="ln-auth" id="ln-auth">
     {% if config.STAFF_AUTH %}
-    <a class="ln-btn ln-btn-primary" href="/auth/google">Sign in with Google</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/register">Register</a>
+    <a class="ln-btn ln-btn-primary sm" href="/signin">Sign in</a>
     {% else %}
-    <a class="ln-btn ln-btn-primary" href="/workspace/">Open workspace</a>
+    <a class="ln-btn ln-btn-primary sm" href="/workspace/">Open workspace</a>
     {% endif %}
   </div>
 </header>
 
 <main id="main">
 
-  {#- ---------------- hero ---------------- -#}
-  <section class="ln-hero">
-    <div class="ln-hero-copy">
-      <p class="an-eyebrow">An intelligent insight platform</p>
-      <h1>Design the question.<br>Trust the answer.</h1>
-      <p class="ln-hero-sub">Build the survey, screen and quota who answers, and read the
-        evidence live — one studio from first draft to final data extract.</p>
-      <div class="ln-hero-cta" id="ln-cta">
+  {#- ---------------- hero: the AI understands and acts ---------------- -#}
+  <section class="ln-hero2">
+    <div class="ln-hero2-copy ln-reveal">
+      <p class="ln-aichip"><i></i>AI-enabled research platform</p>
+      <h1>Say what you need.<br><em>Watch it act.</em></h1>
+      <p class="ln-hero2-sub">Anaking understands your research need in plain language — then
+        moves: it drafts the questionnaire, screens and quotas the right people, and reads
+        the answers live. From brief to field in minutes, not weeks.</p>
+      <div class="ln-hero2-cta">
         {% if config.STAFF_AUTH %}
-        <a class="ln-btn ln-btn-primary lg" href="/auth/google">
+        <a class="ln-btn ln-btn-primary lg" href="/auth/google?mode=register">
           <svg class="ln-gicon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          Sign in with Google</a>
-        <a class="ln-btn ln-btn-ghost lg" href="#demos">See it move</a>
+          Register with Google</a>
+        <a class="ln-btn ln-btn-ghost lg" href="/auth/google?mode=login">Sign in with Google</a>
         {% else %}
         <a class="ln-btn ln-btn-primary lg" href="/workspace/">Open workspace</a>
-        <a class="ln-btn ln-btn-ghost lg" href="#demos">See it move</a>
         {% endif %}
       </div>
-      <p class="ln-hero-note" id="ln-hero-note">Every new account is reviewed and approved by the
-        platform admin — one profile per Google e-mail.</p>
+      <p class="ln-hero2-note">One profile per Google e-mail · every new account is reviewed and
+        approved by the platform admin · <a href="/recover">forgot user ID or password?</a></p>
     </div>
 
-    {#- living hero scene: the studio assembling a survey -#}
-    <div class="ln-hero-scene" aria-hidden="true">
-      <div class="ln-frame">
-        <div class="ln-frame-bar"><i></i><i></i><i></i><span>anaking · studio</span></div>
-        <div class="ln-frame-body">
-          <div class="hs-row hs-q"><span class="hs-chip">Q1</span><span class="hs-line w70"></span></div>
-          <div class="hs-row hs-opt o1"><span class="hs-dot"></span><span class="hs-line w50"></span></div>
-          <div class="hs-row hs-opt o2"><span class="hs-dot"></span><span class="hs-line w60"></span></div>
-          <div class="hs-row hs-opt o3"><span class="hs-dot"></span><span class="hs-line w40"></span></div>
-          <div class="hs-scan"></div>
-          <div class="hs-badge">Screened in ✓</div>
+    {#- the signature AI moment: a need typed in, the studio acting on it -#}
+    <div class="ln-hero2-stage ln-reveal" aria-hidden="true">
+      <div class="ai-stage">
+        <div class="ai-stage-bar"><i></i><i></i><i></i><span>anaking · ai research agent</span>
+          <em class="ai-live">live</em></div>
+        <div class="ai-stage-body">
+          <div class="ai-msg you"><span class="ai-who">You</span>
+            <p id="ai-type"></p></div>
+          <div class="ai-msg bot" id="ai-reply" hidden><span class="ai-who">Anaking AI</span>
+            <p>Understood. Drafting your study — screener first, then the decision-driving
+              questions. Setting quotas and a live read on answers.</p></div>
+          <div class="ai-actions" id="ai-actions" hidden>
+            <div class="ai-card a1"><b>Q1</b> Primary specialty <em>screener</em></div>
+            <div class="ai-card a2"><b>Q2</b> First-line therapy choice</div>
+            <div class="ai-card a3"><b>Q3</b> What drives the switch?</div>
+            <div class="ai-flowrow">
+              <span class="ai-pill ok">screened in</span>
+              <span class="ai-pill fill">quota 2/4/4 filling</span>
+              <span class="ai-pill spark">answers reading live</span>
+            </div>
+          </div>
+          <div class="ai-fast" id="ai-fast" hidden>From brief to field · minutes</div>
         </div>
       </div>
     </div>
   </section>
 
-  {#- ---------------- animated feature demos (marketing) ---------------- -#}
+  {#- ---------------- capability strip ---------------- -#}
+  <section class="ln-strip" aria-label="Capabilities">
+    <div class="ln-strip-track">
+      <span>Understands plain language</span><i>◆</i>
+      <span>Drafts questionnaires</span><i>◆</i>
+      <span>Screens &amp; terminates</span><i>◆</i>
+      <span>Fills quotas</span><i>◆</i>
+      <span>Reads answers live</span><i>◆</i>
+      <span>Flags low-effort text</span><i>◆</i>
+      <span>Private workspaces</span><i>◆</i>
+      <span>Admin-approved access</span><i>◆</i>
+    </div>
+  </section>
+
+  {#- ---------------- understand -> act: three moves ---------------- -#}
+  <section class="ln-moves">
+    <h2 class="ln-reveal">It understands the need.<br>Then it acts — fast.</h2>
+    <p class="ln-sec-sub ln-reveal">Not a blank canvas. Describe the decision your research must
+      support, and the platform turns intent into fieldwork.</p>
+    <div class="ln-move-grid">
+      <div class="ln-move ln-reveal">
+        <div class="ln-move-stage m-tell"><div class="mv-bubble">Why do oncologists switch
+          first-line therapy?</div><div class="mv-cursor"></div></div>
+        <h3><span>1</span> Tell it what you need</h3>
+        <p>Plain words, a brief, or an existing questionnaire. The AI reads the intent — audience,
+          decision, market — not just keywords.</p>
+      </div>
+      <div class="ln-move ln-reveal">
+        <div class="ln-move-stage m-build">
+          <div class="mv-card x1"></div><div class="mv-card x2"></div><div class="mv-card x3"></div>
+          <div class="mv-spark">✦</div></div>
+        <h3><span>2</span> It drafts and structures</h3>
+        <p>Screeners, question flows, quotas and quality rules appear as an editable study — you
+          approve every word before anything goes live.</p>
+      </div>
+      <div class="ln-move ln-reveal">
+        <div class="ln-move-stage m-run">
+          <div class="mv-bar r1"><i></i></div><div class="mv-bar r2"><i></i></div>
+          <div class="mv-bar r3"><i></i></div><div class="mv-check">✓ fielding</div></div>
+        <h3><span>3</span> It runs and reads</h3>
+        <p>Links go out, screeners route people, quotas cap the sample, and the analysis refreshes
+          with every complete — with the caveats attached.</p>
+      </div>
+    </div>
+  </section>
+
+  {#- ---------------- animated demos: watch it act ---------------- -#}
   <section class="ln-demos" id="demos">
-    <h2>Watch the studio work</h2>
-    <p class="ln-sec-sub">Four things researchers do every day — animated, exactly as the studio behaves.</p>
+    <h2 class="ln-reveal">Watch the platform act</h2>
+    <p class="ln-sec-sub ln-reveal">The moments that matter in every study — moving exactly as the
+      studio behaves.</p>
 
     <div class="ln-demo-grid">
 
       {#- demo 1: question builder -#}
-      <article class="ln-demo" data-demo="build">
+      <article class="ln-demo ln-reveal" data-demo="build">
         <div class="ln-demo-stage">
           <div class="dm-build">
             <div class="dm-q-title"><span class="dm-caret"></span>What is your primary specialty?</div>
@@ -88,13 +147,13 @@
             <div class="dm-save-pill">Saved</div>
           </div>
         </div>
-        <h3>Build in minutes</h3>
+        <h3><span class="ln-demo-tag">AI drafts</span>Build in minutes</h3>
         <p>Pick from the question library — single choice, grids, scales, deltas, conjoint —
-          and the respondent view assembles itself as you type.</p>
+          or let the agent draft from your brief and refine the wording with you.</p>
       </article>
 
       {#- demo 2: screener -#}
-      <article class="ln-demo" data-demo="screen">
+      <article class="ln-demo ln-reveal" data-demo="screen">
         <div class="ln-demo-stage">
           <div class="dm-screen">
             <div class="dm-resp r1"><span class="dm-av"></span><span class="dm-line w55"></span>
@@ -106,13 +165,13 @@
             <div class="dm-rule">rule: specialty ∉ panel → thank &amp; close</div>
           </div>
         </div>
-        <h3>Screen the right people in</h3>
+        <h3><span class="ln-demo-tag">Smart routing</span>Screen the right people in</h3>
         <p>Write screening rules on any question. Unqualified respondents are thanked and
           closed; the ones you need continue without ever seeing a dead end.</p>
       </article>
 
       {#- demo 3: quota filling -#}
-      <article class="ln-demo" data-demo="quota">
+      <article class="ln-demo ln-reveal" data-demo="quota">
         <div class="ln-demo-stage">
           <div class="dm-quota">
             <div class="dm-qbar b1"><span class="dm-qlabel">Medical Onc · 2</span>
@@ -124,14 +183,14 @@
             <div class="dm-toast">R003 completed over quota — saved as “Quota Full”</div>
           </div>
         </div>
-        <h3>Fill quotas, not spreadsheets</h3>
+        <h3><span class="ln-demo-tag">Auto-pilot</span>Fill quotas, not spreadsheets</h3>
         <p>Set completes per option group. When a group fills, the studio says stop sharing
           links for it — late arrivals still complete and land tagged “Quota Full” in the
           extract.</p>
       </article>
 
       {#- demo 4: live analysis -#}
-      <article class="ln-demo" data-demo="analysis">
+      <article class="ln-demo ln-reveal" data-demo="analysis">
         <div class="ln-demo-stage">
           <div class="dm-analysis">
             <div class="dm-donut"><svg viewBox="0 0 42 42" aria-hidden="true">
@@ -146,62 +205,72 @@
             <div class="dm-livechip">updating live</div>
           </div>
         </div>
-        <h3>Read it while it fields</h3>
+        <h3><span class="ln-demo-tag">Live read</span>Read it while it fields</h3>
         <p>Charts, crosstabs and significance tests refresh as completes land. Export to
           Excel, CSV, JSON or a deck — the same numbers, caveats attached.</p>
       </article>
     </div>
   </section>
 
-  {#- ---------------- feature grid ---------------- -#}
+  {#- ---------------- AI capability grid ---------------- -#}
   <section class="ln-features">
-    <h2>Everything the field needs</h2>
+    <h2 class="ln-reveal">AI where it helps. Human where it matters.</h2>
     <div class="ln-feat-grid">
-      <div class="ln-feat"><h4>Question library</h4><p>Single &amp; multi choice, scales, matrices,
-        grids, deltas, open text with AI answer-quality checks.</p></div>
-      <div class="ln-feat"><h4>Screening &amp; termination</h4><p>Plain-language rules on any
-        question, with the exact routing written into the questionnaire document.</p></div>
-      <div class="ln-feat"><h4>Quotas</h4><p>Per-option completes targets, live fill status,
-        over-quota tagging in the normal extracts.</p></div>
-      <div class="ln-feat"><h4>Test view</h4><p>Every open of the test link is a fresh run at Q1 —
-        rehearsals never pollute field data.</p></div>
-      <div class="ln-feat"><h4>Translations</h4><p>Language versions with voice answering and
-        per-translation review, parent-linked so edits stay in sync.</p></div>
-      <div class="ln-feat"><h4>Walkthroughs</h4><p>Narrated product walkthroughs from a deck or a
-        recording, embedded right in the survey.</p></div>
-      <div class="ln-feat"><h4>Data validation</h4><p>Flag, review and invalidate poor completes
-        with a full audit trail — exports respect your decisions.</p></div>
-      <div class="ln-feat"><h4>Live monitor</h4><p>Field status, quality signals, verbatims and
-        exports in one dashboard.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Research agent</h4><p>Describe the decision your study
+        must support; the agent drafts the questionnaire, screeners and structure — nothing
+        goes live without your approval.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Answer-quality checks</h4><p>Open-text answers are
+        reviewed automatically for gibberish, copy-paste and low effort — flagged for your
+        judgement, never silently dropped.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Questionnaire review</h4><p>Ask the assistant to review
+        wording, routing and logic before launch. Suggestions, not decisions — every change is
+        yours to accept.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Screening &amp; quotas</h4><p>Plain-language rules and
+        per-option completes targets, with live fill and over-quota tagging in the normal
+        extracts.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Fresh test runs</h4><p>Every open of the test link is a
+        fresh run at Q1 — rehearsals never pollute field data.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Translations &amp; voice</h4><p>Language versions with
+        voice answering and per-translation review, parent-linked so edits stay in sync.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Walkthroughs</h4><p>Narrated product walkthroughs from a
+        deck or a recording, embedded right in the survey.</p></div>
+      <div class="ln-feat ln-reveal"><h4>Live monitor</h4><p>Field status, quality signals,
+        verbatims and exports in one dashboard — while the data is still coming in.</p></div>
     </div>
   </section>
 
-  {#- ---------------- how it works / accounts ---------------- -#}
-  <section class="ln-how">
-    <h2>Your own workspace, reviewed by an admin</h2>
-    <div class="ln-steps">
-      <div class="ln-step"><span class="ln-step-n">1</span><h4>Sign in with Google</h4>
-        <p>One profile per e-mail address. No passwords, no new accounts to remember.</p></div>
-      <div class="ln-step"><span class="ln-step-n">2</span><h4>Admin approval</h4>
-        <p>The platform admin reviews each new profile and decides who gets in.</p></div>
-      <div class="ln-step"><span class="ln-step-n">3</span><h4>Build your projects</h4>
-        <p>Everything you create is private to your account — the admin can oversee and
-          help, other users never see it.</p></div>
-    </div>
-  </section>
-
-  {#- ---------------- closing sign-in ---------------- -#}
+  {#- ---------------- accounts: register vs sign in ---------------- -#}
   <section class="ln-join" id="join">
-    <h2>Start building your survey</h2>
-    <p class="ln-sec-sub">Sign in with your Google account. New profiles are approved by the
-      platform admin — you'll get a note on this page the moment you're in.</p>
-    <div class="ln-join-cta" id="ln-join-cta">
-      {% if config.STAFF_AUTH %}
-      <a class="ln-btn ln-btn-primary lg" href="/auth/google">Sign in with Google</a>
-      {% else %}
-      <a class="ln-btn ln-btn-primary lg" href="/workspace/">Open workspace</a>
-      {% endif %}
+    <h2 class="ln-reveal">Your own workspace, reviewed by an admin</h2>
+    <p class="ln-sec-sub ln-reveal">One profile per Google e-mail. New accounts are approved by
+      the platform admin; everything you build stays private to you.</p>
+    <div class="ln-join-cards">
+      <div class="ln-join-card ln-reveal">
+        <p class="an-eyebrow">New here?</p>
+        <h3>Create your account</h3>
+        <p>Register with Google in one click. The admin reviews new profiles — you'll get a note
+          on this page the moment you're approved.</p>
+        {% if config.STAFF_AUTH %}
+        <a class="ln-btn ln-btn-primary" href="/auth/google?mode=register">Register with Google</a>
+        {% else %}
+        <a class="ln-btn ln-btn-primary" href="/workspace/">Open workspace</a>
+        {% endif %}
+      </div>
+      <div class="ln-join-card ln-reveal">
+        <p class="an-eyebrow">Already registered?</p>
+        <h3>Sign in</h3>
+        <p>Sign in with Google and pick up exactly where you left off — your projects, drafts
+          and data are waiting in your workspace.</p>
+        {% if config.STAFF_AUTH %}
+        <a class="ln-btn ln-btn-ghost" href="/auth/google?mode=login">Sign in with Google</a>
+        {% else %}
+        <a class="ln-btn ln-btn-ghost" href="/workspace/">Open workspace</a>
+        {% endif %}
+      </div>
     </div>
+    <p class="ln-join-recover ln-reveal">Forgot which address you used, or your password?
+      <a href="/recover">Find your account</a> — your user ID is your Google e-mail, and the
+      password is your Google password.</p>
     <div id="ln-devbox" class="ln-devbox" hidden>
       <form id="ln-devform">
         <label>Development sign-in

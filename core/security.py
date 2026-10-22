@@ -107,7 +107,7 @@ def init_security(app):
         if not g.staff and not g.user:
             if path.startswith('/api/') or request.method != 'GET':
                 return jsonify(error='Sign-in required'), 401
-            return redirect('/?signin=1')
+            return redirect('/signin')
         if g.user is not None and g.user.get('status') != 'approved':
             msgs = {
                 'pending': 'Your account is waiting for admin approval.',

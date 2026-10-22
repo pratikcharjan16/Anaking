@@ -37,16 +37,17 @@ CLAIMS = {
 }
 
 
-def signin(client, email):
+def signin(client, email, mode="register"):
     """Walk the real /auth/google -> /auth/google/callback flow with mocked claims.
 
+    ``register`` creates the profile if this e-mail is new; ``login`` never does.
     Leaves the session signed in as ``email`` (a fresh session, so we also set the
     CSRF token the way the first template render would).
     """
     with mock.patch("routes.auth.exchange_and_verify",
                     return_value=CLAIMS.get(email, {"email": email, "email_verified": True,
                                                     "sub": "g-" + email, "name": email.split("@")[0]})):
-        r = client.get("/auth/google")
+        r = client.get("/auth/google", query_string={"mode": mode})
         assert r.status_code == 302
         with client.session_transaction() as sess:
             state = sess["oauth_state"]
@@ -111,6 +112,56 @@ def test_admin_emails_bootstrap_as_approved_admins(app, client):
     assert "/workspace/" in loc                              # straight through
     me = client.get("/api/me").get_json()
     assert me["user"]["role"] == "admin" and me["user"]["status"] == "approved"
+
+
+def test_login_mode_never_silently_registers(app, client):
+    loc = signin(client, "stranger@research.co", mode="login")
+    assert "/signin" in loc and "unknown=1" in loc          # sent to register, not signed in
+    with app.app_context():
+        n = models.get_db().execute("SELECT COUNT(*) FROM users WHERE email=?",
+                                    ("stranger@research.co",)).fetchone()[0]
+    assert n == 0
+    assert client.get("/api/me").get_json()["user"] is None
+
+
+def test_register_mode_on_an_existing_email_just_signs_in(app, client):
+    signin(client, "ana@research.co", mode="register")
+    loc = signin(client, "ana@research.co", mode="register")     # already registered
+    assert "/?welcome=1" in loc                                  # still pending, no duplicate
+    with app.app_context():
+        n = models.get_db().execute("SELECT COUNT(*) FROM users WHERE email=?",
+                                    ("ana@research.co",)).fetchone()[0]
+    assert n == 1
+    # and an approved account registering again lands in the workspace
+    approve_direct(app, "ana@research.co")
+    loc = signin(client, "ana@research.co", mode="register")
+    assert "/workspace/" in loc
+
+
+def test_login_mode_still_bootstraps_admin_emails(app, client):
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    loc = signin(client, "chief@platform.co", mode="login")
+    assert "/workspace/" in loc                                  # admin cannot be locked out
+    assert client.get("/api/me").get_json()["user"]["role"] == "admin"
+
+
+def test_signin_register_and_recover_pages_exist(app, client):
+    auth_on(app)                                   # the Google buttons render with the gate on
+    for path in ("/signin", "/register", "/recover"):
+        assert client.get(path).status_code == 200, path
+    assert b"Register with Google" in client.get("/register").data
+    assert b"Sign in with Google" in client.get("/signin").data
+    assert b"Google Account Recovery" in client.get("/recover").data
+
+
+def test_recover_lookup_tells_you_where_your_account_stands(app, client):
+    signin(client, "ana@research.co")                            # pending
+    out(client)
+    r = client.post("/api/auth/recover", json={"email": "ana@research.co"})
+    assert r.get_json()["found"] is True and r.get_json()["status"] == "pending"
+    r = client.post("/api/auth/recover", json={"email": "ghost@research.co"})
+    assert r.get_json()["found"] is False and "register" in r.get_json()["message"].lower()
+    assert client.post("/api/auth/recover", json={"email": "nonsense"}).status_code == 400
 
 
 def test_forged_oauth_state_is_refused(client):
@@ -269,7 +320,10 @@ def test_console_page_requires_an_admin(app, client):
 def test_dev_login_exists_only_when_explicitly_enabled(app, client):
     assert client.post("/auth/dev", json={"email": "x@y.co"}).status_code == 404
     app.config["DEV_LOGIN"] = True
-    r = client.post("/auth/dev", json={"email": "dev@local.test", "name": "Dev"})
+    # login mode refuses to create; register mode creates the profile
+    r = client.post("/auth/dev", json={"email": "dev@local.test", "name": "Dev", "mode": "login"})
+    assert r.status_code == 404 and r.get_json()["need_register"] is True
+    r = client.post("/auth/dev", json={"email": "dev@local.test", "name": "Dev", "mode": "register"})
     assert r.status_code == 200 and r.get_json()["user"]["email"] == "dev@local.test"
     # structurally impossible in production, whatever the environment says
     from config import Config

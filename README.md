@@ -84,7 +84,12 @@ Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/su
 
 The team apps (Projects / Studio / Monitor) are multi-user:
 
-- **Sign in with Google** — one profile per e-mail address, created on first sign-in.
+- **Register vs sign in** — new users **register** with Google (`/register`, creates the
+  profile); existing users **sign in** (`/signin`). Sign-in never silently registers anyone -
+  an unknown Google e-mail is pointed at registration instead. Both carry a
+  **forgot user ID or password** link (`/recover`): the user ID is your Google e-mail, the
+  password is your Google password (Google recovers it), and the page can look up where any
+  address stands.
 - **Admin approval** — new profiles are *pending* until the platform admin approves them in
   the **Admin console** (`/admin/console`): Approve / Reject / Disable / Re-enable, Make
   admin / Make user, and a per-account list of every project they have built.
