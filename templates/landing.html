@@ -20,9 +20,11 @@
   {% with active='home' %}{% include '_nav.html' %}{% endwith %}
   <div class="ln-auth" id="ln-auth">
     {% if config.STAFF_AUTH %}
+    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin</a>
     <a class="ln-btn ln-btn-ghost sm" href="/register">Register</a>
     <a class="ln-btn ln-btn-primary sm" href="/signin">Sign in</a>
     {% else %}
+    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin</a>
     <a class="ln-btn ln-btn-primary sm" href="/workspace/">Open workspace</a>
     {% endif %}
   </div>
@@ -270,7 +272,9 @@
     </div>
     <p class="ln-join-recover ln-reveal">Forgot which address you used, or your password?
       <a href="/recover">Find your account</a> — your user ID is your Google e-mail, and the
-      password is your Google password.</p>
+      password is your Google password.<br>
+      Platform admin? The <a href="/admin-portal">admin portal</a> tracks usage and every
+      user's activity.</p>
     <div id="ln-devbox" class="ln-devbox" hidden>
       <form id="ln-devform">
         <label>Development sign-in

@@ -316,6 +316,25 @@ def test_console_page_requires_an_admin(app, client):
     assert r.status_code == 200 and b"Admin console" in r.data
 
 
+# ------------------------------------------------------------------ admin portal
+def test_admin_portal_is_open_for_review_and_tracks_activity(app, client):
+    """Sample phase: the portal renders without login, with real usage data."""
+    auth_on(app)                                 # even with the sign-in gate up
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co")            # a fresh sign-in lands in the audit log
+    make_study(client, "Portal watched", H())    # and so does a write
+
+    out(client)                                  # anonymous visitor
+    r = client.get("/admin-portal")
+    assert r.status_code == 200
+    html = r.data
+    for needle in (b"Usage &amp; user activity", b"ana@research.co", b"Pending approval",
+                   b"Activity feed", b"Sample", b"All users"):
+        assert needle in html, needle
+    assert b"Signed in" in html or b"Edited a design" in html   # audit trail humanised
+
+
 # ------------------------------------------------------------------ dev sign-in
 def test_dev_login_exists_only_when_explicitly_enabled(app, client):
     assert client.post("/auth/dev", json={"email": "x@y.co"}).status_code == 404

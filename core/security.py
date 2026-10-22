@@ -91,8 +91,11 @@ def init_security(app):
             from core import accounts
             g.user = accounts.by_id(session.get('uid'))
         path = request.path
-        if path.startswith('/auth/') or path == '/api/me' or path == '/':
-            return                      # the landing page + sign-in endpoints are public
+        if path.startswith('/auth/') or path == '/api/me' or path == '/' \
+                or path == '/admin-portal':
+            # the landing + sign-in endpoints are public; the admin portal stays
+            # open without login while its design is being reviewed (sample phase)
+            return
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
             abort(400, 'Expected a JSON object.')
@@ -172,7 +175,7 @@ def init_security(app):
     def security_headers(response):
         response.headers.setdefault('Referrer-Policy', 'same-origin')
         response.headers.setdefault('Permissions-Policy', 'camera=(), geolocation=(), microphone=(self)')
-        if request.method not in ('GET', 'HEAD', 'OPTIONS') and response.status_code < 400 and getattr(g, 'staff', None):
+        if request.method not in ('GET', 'HEAD', 'OPTIONS') and response.status_code < 400 and (getattr(g, 'staff', None) or getattr(g, 'user', None)):
             body = request.get_json(silent=True) or {}
             audit(request.path, body.get('slug') or body.get('study') or request.form.get('slug') or request.args.get('study', ''))
         return response

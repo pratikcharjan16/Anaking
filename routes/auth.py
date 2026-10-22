@@ -169,10 +169,15 @@ def _complete(claims: dict, mode: str):
     if existing is None and mode == "login" and not accounts.is_admin_email(email):
         # signing in must never silently register someone
         return redirect("/signin?unknown=1&email=" + email)
+    fresh = accounts.by_email(str(claims.get("email") or "").strip().lower()) is None
     user = accounts.upsert_from_claims(claims)
     next_path = _safe_next(session.pop("oauth_next", None))
     session.clear()                              # session fixation: full reset on sign-in
     session["uid"] = user["id"]
+    from flask import g
+    g.user = user                                # so the audit line carries the right actor
+    from core.security import audit
+    audit("auth/register" if fresh else "auth/signin")
     if user["status"] == "pending":
         return redirect("/?welcome=1")
     return redirect(next_path)
@@ -200,6 +205,10 @@ def dev_login():
         user = accounts.upsert_from_claims(claims)
     session.clear()
     session["uid"] = user["id"]
+    from flask import g
+    g.user = user
+    from core.security import audit
+    audit("auth/signin")
     return jsonify({"ok": True, "user": session_user_payload(user)})
 
 
