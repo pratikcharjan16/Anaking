@@ -46,6 +46,14 @@
       }
     }).catch(function () {});
 
+  var adminBtn = document.getElementById("ln-dev-admin");
+  if (adminBtn) adminBtn.addEventListener("click", function () {
+    var email = document.getElementById("ln-dev-email"), name = document.getElementById("ln-dev-name");
+    if (email) email.value = "admin@anaking.test";
+    if (name) name.value = "Admin";
+    if (devform && devform.requestSubmit) devform.requestSubmit();
+  });
+
   if (devform) devform.addEventListener("submit", function (e) {
     e.preventDefault();
     fetch("/auth/dev", {

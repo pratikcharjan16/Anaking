@@ -294,6 +294,25 @@ textarea:focus-visible {
 }
 .linkbtn:hover { background: rgba(255, 255, 255, .22); }
 
+/* The marketing landing wears the bar in warm linen instead of ink: same lockup
+   and chrome, flipped to ink-on-paper with the gold spark accent. */
+body.landing .an-appbar {
+  color: var(--an-ink);
+  background: linear-gradient(180deg, #faf6ee 0%, #f3ecdd 100%);
+  border-bottom: 1px solid #e0d5c0;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .8), 0 12px 30px rgba(122, 96, 40, .10);
+}
+body.landing .an-appbar .brand-anaking { color: var(--an-ink); }
+body.landing .an-appbar .anaking-tagline { color: var(--an-muted); }
+body.landing .an-appbar .tagline-spark { color: #c9a227; }
+body.landing .an-appbar .brand-sub-badge,
+body.landing .an-appbar .brand-studio-badge {
+  border-color: #e0d5c0;
+  background: #efe7d6;
+  color: #7a6a43;
+}
+body.landing .an-appbar .live-pulse-dot { background: #c9a227; box-shadow: none; }
+
 
 /* ---- brand lockup --------------------------------------------------
    Markup lives in templates/_brand.html: an ivory cameo tile with a cut-green

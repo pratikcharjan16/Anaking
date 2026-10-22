@@ -126,6 +126,15 @@
     .catch(function () { /* page works signed out */ });
 
   // ---- dev sign-in (register semantics; only when the server enables it) --
+  var adminBtn = document.getElementById("ln-dev-admin");
+  if (adminBtn) adminBtn.addEventListener("click", function () {
+    var email = document.getElementById("ln-dev-email"), name = document.getElementById("ln-dev-name");
+    if (email) email.value = "admin@anaking.test";
+    if (name) name.value = "Admin";
+    var f = document.getElementById("ln-devform");
+    if (f && f.requestSubmit) f.requestSubmit();
+  });
+
   var form = document.getElementById("ln-devform");
   if (form) form.addEventListener("submit", function (e) {
     e.preventDefault();
