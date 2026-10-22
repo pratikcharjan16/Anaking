@@ -20,6 +20,7 @@ data/*.db-shm
 data/*.db-wal
 uploads/voice/
 uploads/narration/
+my_env
 
 # legacy location, never commit
 oncology_launch_study/
