@@ -78,6 +78,16 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
 
+**A test link is always a fresh rehearsal.** Opening /survey/<slug>/test starts a brand-new run
+from the first question with blank answers, and it always renders the design as it is saved in the
+Studio right now — edits appear on the next open, with no browser cache or saved run to clear. The
+previous test run from that browser is retired when the next one starts, so test data never
+accumulates pre-filled answers. The team strip shows a short **design** fingerprint of the version
+being tested so it is obvious that the link is bound to the current design. Two internal links
+carry a run forward on purpose: `?review=<token>` (a shared team review restores its saved answers
+and notes) and `?keep=1` (used by the in-page language switch, so changing language mid-test does
+not throw the answers away).
+
 Every page header carries the same **Home · Survey · Studio · Admin** switcher, so the team can hop
 between apps without retyping anything. Respondents see none of this — the team strip on the survey
 only renders in test mode (`/survey/<slug>/test`), which is also where drafts are previewed; the

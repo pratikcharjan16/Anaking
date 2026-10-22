@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="{{ url_for('static', filename='css/explainer.css') }}?v=201020e">
 <link rel="stylesheet" href="{{ url_for('static', filename='css/survey.css') }}?v=261021b">
 {% if is_test %}<link rel="stylesheet" href="{{ url_for('static', filename='css/nav.css') }}?v=260921g">
-<link rel="stylesheet" href="{{ url_for('static', filename='css/survey-test.css') }}?v=261008b">{% endif %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/survey-test.css') }}?v=261022a">{% endif %}
 {% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="/static/js/security.js"></script>{% endif %}
 </head>
@@ -17,7 +17,8 @@
 {% if is_test %}
 <div class="teambar">
   <span class="teambar-note">Research-team view &middot; <strong>{{ study_title }}</strong>
-    &middot; {{ 'draft preview' if is_draft else 'test mode - stored as T-codes' }}</span>
+    &middot; {{ 'draft preview' if is_draft else 'test mode - stored as T-codes' }}
+    {% if design_version %}<span class="teambar-ver" title="Fingerprint of the saved design this test link is running. It changes every time the survey is saved; a fresh test run always starts on the latest one.">design {{ design_version }}</span>{% endif %}</span>
   {% with active='survey', nav_study=slug, survey_href=request.path %}{% include '_nav.html' %}{% endwith %}
 </div>
 {% endif %}
@@ -194,6 +195,6 @@ window.__beaconEscape = function () {
 <script src="{{ url_for('static', filename='js/qlogic.js') }}?v=261006a"></script>
 <script src="{{ url_for('static', filename='js/voice.js') }}?v=261020g"></script>
 <script src="{{ url_for('static', filename='js/explainer.js') }}?v=201020e"></script>
-<script src="{{ url_for('static', filename='js/survey.js') }}?v=261021b"></script>
+<script src="{{ url_for('static', filename='js/survey.js') }}?v=261022a"></script>
 </body>
 </html>

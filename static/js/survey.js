@@ -15,6 +15,19 @@
   var NS = (STUDY.slug === "beacon" ? "beacon" : "study_" + STUDY.slug) +
            (IS_TEST ? "_test_" : "_");
 
+  // A test link is a rehearsal, not a saved interview.  Every fresh open of
+  // /survey/<slug>/test starts at the first question with blank answers against the design
+  // that is saved right now.  Two internal cases may carry a run forward instead:
+  //   ?review=<token>  a shared team review (its saved answers + notes are restored), and
+  //   ?keep=1          the language switch, which reloads the page mid-run.
+  var QS = (function () {
+    try { return new URLSearchParams(location.search); } catch (e) { return null; }
+  })();
+  var REVIEW_PARAM = (IS_TEST && QS) ? (QS.get("review") || "") : "";
+  var KEEP_TEST_RUN = IS_TEST && !!(QS && QS.get("keep"));
+  var FRESH_TEST = IS_TEST && !KEEP_TEST_RUN;
+  var PREV_SESSION = "";   // the retired test run, so the server can clear its answers
+
   var SPEC = null, SESSION = null, CONJOINT = null, NARR = null, SCENES = null;
   var answers = {};
   var steps = [];
@@ -43,15 +56,41 @@
     return e;
   };
 
+  // Every spec request bypasses caches and (in test mode) any pinned session snapshot, so a
+  // test link always loads the design as it stands in the Studio right now.
+  function specUrl(lang) {
+    var url = "/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(lang);
+    if (IS_TEST) {
+      url += "&preview=1";
+    } else {
+      var sid = recall("session_id");
+      if (sid) url += "&sid=" + encodeURIComponent(sid);
+    }
+    return url + "&_=" + Date.now();
+  }
+
   function loadSpecLang(lang) {
     if (SESSION && lang !== (SPEC.render_language || SPEC.default_language)) {
-      store('session_id'); store('answers'); store('cur');
-      location.href = location.pathname + '?lang=' + encodeURIComponent(lang);
+      if (IS_TEST) {
+        // keep this test run alive across the language switch - it is not a new test link
+        store('session_id', SESSION.session_id); store('answers', answers); store('cur', cur);
+        var q;
+        try { q = new URLSearchParams(location.search); } catch (e) { q = null; }
+        if (q) {
+          q.set('lang', lang); q.set('keep', '1'); q.delete('review');
+          location.href = location.pathname + '?' + q.toString();
+        } else {
+          location.href = location.pathname + '?lang=' + encodeURIComponent(lang) + '&keep=1';
+        }
+      } else {
+        store('session_id'); store('answers'); store('cur');
+        location.href = location.pathname + '?lang=' + encodeURIComponent(lang);
+      }
       return Promise.resolve();
     }
     LANG = lang;
     try { store("lang", lang); } catch (e) {}
-    return fetch("/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(lang) + (IS_TEST ? "&preview=1" : ""))
+    return fetch(specUrl(lang), { cache: "no-store", credentials: "same-origin" })
       .then(function (r) { return r.json(); })
       .then(function (spec) {
         SPEC = spec;
@@ -86,6 +125,15 @@
       if (m && m.child && m.code !== SPEC.default_language) {
         // each language is its own child survey with its own link and data
         var qs = location.search.replace(/^\?/, "");
+        if (IS_TEST) {
+          // the child is a different study: never carry this run's session or review over
+          ["session_id", "answers", "cur"].forEach(function (k) { store(k); });
+          try {
+            var cq = new URLSearchParams(qs);
+            ["keep", "review", "_"].forEach(function (k) { cq.delete(k); });
+            qs = cq.toString();
+          } catch (e) {}
+        }
         location.href = "/survey/" + m.child + (IS_TEST ? "/test" : "") + (qs ? "?" + qs : "");
       } else {
         loadSpecLang(sel.value);
@@ -4125,7 +4173,7 @@
           : "This respondent continues.") + "</i></div>";
       }
     }
-    box.innerHTML = '<div class="tc-head"><b>Test workspace</b><span>Not shown to respondents</span><button id="tc-collapse">−</button></div><div class="tc-current">Reviewing <b>'+escHtml(qid)+'</b> · use <i>Jump to</i> beside Next to navigate</div>' + scrBits + '<div class="tc-actions"><button id="tc-ai">✦ AI fill test answers</button><a href="/studio/#'+encodeURIComponent(STUDY.slug)+'" target="_blank">Edit in Studio ↗</a></div><label>Review note for '+escHtml(qid)+'<textarea id="tc-note" placeholder="Describe an error, wording issue or logic discrepancy…">'+escHtml(testNotes[qid] || '')+'</textarea></label><button class="tc-save" id="tc-share">Save notes & copy review link</button><small id="tc-state">The link preserves answers, position and notes for your team.</small>';
+    box.innerHTML = '<div class="tc-head"><b>Test workspace</b><span>Not shown to respondents</span><button id="tc-collapse">−</button></div><div class="tc-current">Reviewing <b>'+escHtml(qid)+'</b> · use <i>Jump to</i> beside Next to navigate</div>' + scrBits + '<div class="tc-actions"><button id="tc-ai">✦ AI fill test answers</button><a href="/studio/#'+encodeURIComponent(STUDY.slug)+'" target="_blank">Edit in Studio ↗</a></div><label>Review note for '+escHtml(qid)+'<textarea id="tc-note" placeholder="Describe an error, wording issue or logic discrepancy…">'+escHtml(testNotes[qid] || '')+'</textarea></label><button class="tc-save" id="tc-share">Save notes & copy review link</button><small id="tc-state">Every open of this test link starts a fresh run - blank answers, current design. The review link you copy preserves answers, position and notes for your team.</small>';
     $("#tc-note").oninput=function(){ testNotes[qid]=this.value; store('test_notes',testNotes); };
     $("#tc-ai").onclick=aiFillTest;
     $("#tc-share").onclick=saveTestReview;
@@ -4504,20 +4552,35 @@
 
   // ============================================================ boot
   function boot() {
-    // ?new=1 / ?reset=1 / ?fresh=1 - wipe this browser's saved session and start over
     try {
-      if (/[?&](new|reset|fresh)=1/.test(location.search)) {
+      if (IS_TEST && FRESH_TEST) {
+        // Opening a test link again is a new rehearsal: remember the previous run so the
+        // server can retire it, then drop this browser's copy.  Without this the old
+        // session_id was resumed with its pinned design and its already-given answers,
+        // which is why a test link looked stale and arrived pre-filled.
+        PREV_SESSION = recall("session_id") || "";
+        ["session_id", "answers", "cur"].forEach(function (k) { store(k); });
+      } else if (!IS_TEST && /[?&](new|reset|fresh)=1/.test(location.search)) {
+        // ?new=1 / ?reset=1 / ?fresh=1 - wipe this browser's saved session and start over
         ["session_id", "answers", "cur"].forEach(function (k) { store(k); });
       }
     } catch (e) {}
     try {
       LANG = new URLSearchParams(location.search).get("lang") || recall("lang") || "";
+      if (KEEP_TEST_RUN) {
+        // The carry-over flag only applies to the language reload that set it.  Strip it from
+        // the address bar so a refresh or a copied URL is an ordinary, fresh test link again.
+        var clean = new URLSearchParams(location.search);
+        clean.delete("keep");
+        history.replaceState(null, "", location.pathname +
+                             (clean.toString() ? "?" + clean.toString() : ""));
+      }
     } catch (e) {}
     loadSpec();
   }
 
   function loadSpec() {
-    fetch("/api/spec/" + STUDY.slug + "?lang=" + encodeURIComponent(LANG) + (IS_TEST ? "&preview=1" : "") + (recall("session_id") ? "&sid=" + encodeURIComponent(recall("session_id")) : "")).then(function (r) { return r.json(); }).then(function (spec) {
+    fetch(specUrl(LANG), { cache: "no-store", credentials: "same-origin" }).then(function (r) { return r.json(); }).then(function (spec) {
       SPEC = spec;
       CONJOINT = spec.conjoint;
       NARR = spec.narration;
@@ -4554,7 +4617,8 @@
       setupLangPicker();
       applyWelcomeCopy();
 
-      var savedSid = recall("session_id");
+      // A fresh test run never resumes: it starts at question 1 with blank answers.
+      var savedSid = (!IS_TEST || KEEP_TEST_RUN) ? recall("session_id") : null;
       var resume = savedSid
         ? fetch("/api/progress?sid=" + encodeURIComponent(savedSid)).then(function (r) { return r.json(); })
         : Promise.resolve({ exists: false });
@@ -4605,7 +4669,10 @@
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ is_test: IS_TEST, study: STUDY.slug,
                              language: SPEC.render_language || LANG || "",
-                             embedded: readEmbedded(), survey_version: SPEC.survey_version })
+                             embedded: readEmbedded(), survey_version: SPEC.survey_version,
+                             // the previous test run from this browser is retired server-side,
+                             // so test data stays clean and no answer can carry over
+                             previous_session: IS_TEST ? PREV_SESSION : "" })
     }).then(function (r) { return r.json(); }).then(function (s) {
       if (s && s.paused) { showPaused(); return; }
       if (!s || !s.session_id) {
@@ -4638,7 +4705,7 @@
   function afterSession(waitForClick) {
     buildSteps();
     testNotes = recall("test_notes") || {};
-    if (IS_TEST) { try { reviewToken = new URLSearchParams(location.search).get("review") || ""; } catch(e) {}
+    if (IS_TEST) { reviewToken = REVIEW_PARAM || "";
       if (reviewToken) fetch('/api/test-review/'+encodeURIComponent(reviewToken)).then(function(r){return r.json();}).then(function(d){if(d.payload){answers=d.payload.answers||{};testNotes=d.payload.notes||{};cur=Math.min(Number(d.payload.current||0),steps.length-1);store('answers',answers);render();toastTest('Shared review loaded — answers and team notes restored.');}});
     }
     $("#respondent-code").textContent = (IS_TEST ? "TEST " : "") + SESSION.respondent_code;
@@ -4762,6 +4829,11 @@
   };
 
   if (PREVIEW) return;
+  // A browser can restore a previous test page from its back/forward cache without running
+  // the boot code again - answers and all.  A test link is always a new run, so reload.
+  window.addEventListener("pageshow", function (e) {
+    if (e.persisted && IS_TEST && FRESH_TEST) location.reload();
+  });
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", boot);
   else boot();
 })();

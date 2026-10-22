@@ -603,6 +603,25 @@ class Respondent:
                 conn.execute('INSERT INTO response_versions(respondent_id,cfg,digest) VALUES(?,?,?)', (rid, json.dumps(snapshot), fingerprint(snapshot)))
         return Respondent.by_session(sid)
 
+    @staticmethod
+    def discard_test_session(study: Study, session_id: str) -> bool:
+        """Delete a previous *test* session of ``study`` so the next test run starts blank.
+
+        A test link is a rehearsal, not data collection: opening it again should never
+        inherit the answers (or the frozen design snapshot) of the run before it.  Only
+        test records are touched, and only when they belong to the same study.
+        """
+        resp = Respondent.by_session(session_id)
+        if not resp or not resp.is_test or resp.study_id != study.id:
+            return False
+        conn = get_db()
+        with write_lock, conn:
+            for table in ("response_versions", "verbatim_codes", "response_validations",
+                          "response_validation_events", "answers"):
+                conn.execute("DELETE FROM " + table + " WHERE respondent_id=?", (resp.id,))
+            conn.execute("DELETE FROM respondents WHERE id=?", (resp.id,))
+        return True
+
     def set_assignment(self, task_order: list, alt_positions: dict) -> None:
         conn = get_db()
         with write_lock, conn:

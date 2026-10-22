@@ -362,6 +362,27 @@
     el.innerHTML = html;
     var sw = document.getElementById("st-autosave"); if (sw) sw.checked = auto.on;
   }
+  // ---------------------------------------------------------- test link freshness
+  // Any preview / test link in the Studio saves the builder first, so the test environment
+  // can never open an older design than the one on screen.  (The main "Test survey" button
+  // does the same in its own handler; these are the plain <a> links on the cards and tabs.)
+  var TEST_LINK_RE = /^\/survey\/[A-Za-z0-9\-]+\/test(?:\?|$)/;
+  document.addEventListener("click", function (e) {
+    if (!e.target || !e.target.closest) return;
+    var a = e.target.closest("a[href]");
+    if (!a || a.target !== "_blank") return;
+    var href = a.getAttribute("href") || "";
+    if (!TEST_LINK_RE.test(href) || !cur) return;
+    if (!auto.dirty && !auto.saving) return;      // nothing pending: let the link behave normally
+    e.preventDefault();
+    // Opening waits for the save: if it fails the studio banner says so and the link is not
+    // opened against stale content.
+    flushSave(function () {
+      var w = window.open(href, "_blank", "noopener");
+      if (!w) window.location.assign(href);       // pop-up blocked: show it in this tab
+    });
+  }, true);
+
   window.addEventListener("beforeunload", function (e) {
     if (cur && auto.dirty) { e.preventDefault(); e.returnValue = ""; }
   });
