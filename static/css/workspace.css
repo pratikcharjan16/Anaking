@@ -564,7 +564,7 @@
   font-size: 12.5px;
 }
 
-/* ---------- Anaking Global Brand Lockup for Workspace & Login ---------- */
+/* ---------- SurveyKart Brand Lockup & Mobile Chrome for Workspace & Login ---------- */
 .sidebar .anaking-brand-lockup {
   margin-bottom: 22px;
   padding: 0 4px;
@@ -572,10 +572,25 @@
 .login-card .anaking-brand-lockup {
   margin-bottom: 28px;
 }
-}
 
 /* signed-in account chip */
 .account-chip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;
   font-weight:700;padding:8px 4px}
 .account-chip .console-link{font-size:11px;font-weight:750;color:var(--accent,#1c6652)}
 .account-chip .logout{margin-left:auto}
+
+@media(max-width:850px){
+  .sidebar{flex-wrap:wrap;gap:12px 16px}
+  .sidebar .anaking-brand-lockup{margin-bottom:0;padding:0}
+  .sidebar .account-chip{width:100%;padding:6px 0 0;border-top:1px solid var(--line)}
+  .sidebar .account-chip .logout{display:inline-flex;margin:0 0 0 auto}
+  .sidebar .account-chip .logout button{width:auto;padding:5px 10px}
+  .workspace-top{min-height:55px;height:auto;padding:10px 20px;flex-wrap:wrap}
+  .header-actions{flex-wrap:wrap;gap:8px 10px}
+}
+@media(max-width:560px){
+  .workspace-top{padding:10px 14px}
+  .scope-switch-banner{flex-wrap:wrap;gap:8px}
+  .login-card{width:min(430px,94vw);padding:26px 20px}
+  .login-card h1{font-size:24px}
+}

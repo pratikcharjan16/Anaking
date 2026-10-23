@@ -30,7 +30,7 @@ def test_workspace_shares_the_same_chrome(app, client):
     app.config["WORKSPACE_ENABLED"] = True
     html = _html(client, "/workspace/")
     for needle in ("css/design-system.css", "js/workspace.js", 'class="skip-link"',
-                   "favicon.svg", "theme-color", "Anaking"):
+                   "favicon.svg", "theme-color", "SurveyKart"):
         assert needle in html, needle
 
 
@@ -44,7 +44,7 @@ def test_every_page_has_consistent_document_chrome(client):
     for path in TEAM_PAGES + ("/survey/",):
         html = _html(client, path)
         title = re.search(r"<title>(.*?)</title>", html).group(1)
-        assert "Anaking" in title, (path, title)
+        assert "SurveyKart" in title, (path, title)
         assert 'rel="icon"' in html and "favicon.svg" in html, path
         assert 'name="theme-color"' in html, path
         assert 'name="viewport"' in html, path
@@ -55,7 +55,8 @@ def test_brand_markup_is_rendered_from_one_macro(client):
     for path in ("/", "/admin/", "/survey/", "/survey/test"):
         html = _html(client, path)
         assert html.count('class="anaking-svg-logo"') == 1, path
-        assert 'aria-label="Anaking"' in html, path
+        assert 'aria-label="SurveyKart"' in html, path
+        assert "surveykart-3d-logo.gif" in html, path
     # ...and the studio uses the same macro with its own link class
     assert 'class="anaking-svg-logo"' in _html(client, "/studio/")
 

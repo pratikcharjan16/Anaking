@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head(study_title ~ ' · Anaking', 'A short research survey. Your answers are stored on the study server and used for research only.') }}
+{{ head(study_title ~ ' · SurveyKart', 'SurveyKart — Insights Delivered. Your answers are stored on the study server and used for research only.') }}
 <link rel="stylesheet" href="{{ asset('css/explainer.css') }}">
 <link rel="stylesheet" href="{{ asset('css/survey.css') }}">
 {% if is_test %}<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
@@ -27,7 +27,7 @@
 {% endif %}
 <header class="topbar">
   {% from "_brand.html" import brand %}
-  {{ brand('SURVEY', '', 38, 'srv') }}
+  {{ brand('SURVEY', '/', 38, 'srv', title='SurveyKart — Insights Delivered') }}
   <div class="hud" id="hud" hidden>
     <div class="hud-item" title="Survey progress">
       <svg class="ring" viewBox="0 0 36 36">
@@ -140,7 +140,7 @@
 
 {% if is_test %}<aside class="test-console" id="test-console" hidden></aside>{% endif %}
 <footer class="foot">
-  <span>{{ study_title }} &middot; Anaking research instrument &middot; responses are stored on the study server</span>
+  <span>{{ study_title }} &middot; SurveyKart research instrument &middot; Insights Delivered</span>
 </footer>
 
 <script>

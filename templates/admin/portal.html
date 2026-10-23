@@ -2,44 +2,53 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Admin portal · Usage & activity · Anaking',
-        'Platform admin portal: track every account, sign-ups, projects and user activity in one place.') }}
+{{ head('Admin Portal · Usage & Kart Telemetry · SurveyKart',
+        'SurveyKart Admin Portal: protected usage dashboard, Kart point balances, projects and live user activity.') }}
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
 <link rel="stylesheet" href="{{ asset('css/portal.css') }}">
+<link rel="stylesheet" href="{{ asset('css/console.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
 </head>
 <body class="landing portal">
 <a class="skip-link" href="#main">Skip to content</a>
 
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
-  {{ brand('ADMIN', '/admin-portal', 38, 'ptl') }}
-  <nav class="appnav" aria-label="Sections">
-    <a class="appnav-link" href="/">Landing</a>
-    <a class="appnav-link on" href="/admin-portal" aria-current="page">Admin portal</a>
-    <a class="appnav-link" href="/admin/console">Console</a>
+  {{ brand('ADMIN', '/', 38, 'ptl', title='SurveyKart — Insights Delivered (Go to main page)') }}
+  <nav class="appnav" aria-label="Admin navigation">
+    <a class="appnav-link" href="/">Home</a>
+    <a class="appnav-link" href="{{ '/workspace/' if config.WORKSPACE_ENABLED else '/' }}">Projects</a>
+    <a class="appnav-link" href="/studio/">Studio</a>
     <a class="appnav-link" href="/admin/">Monitor</a>
+    <a class="appnav-link" href="/admin/console">Console</a>
+    <a class="appnav-link on" href="/admin-portal" aria-current="page">Admin Portal</a>
   </nav>
-  <div class="ln-auth">
-    <span class="ptl-sample" title="This page is open while its design is reviewed">Sample · no login yet</span>
+  <div class="ln-auth" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+    <span class="ptl-sample" title="Protected Master Admin Control">Protected · Admin Control</span>
+    {% if account() %}
+    <form method="post" action="/auth/logout" style="display:inline;margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="linkbtn">Sign out</button>
+    </form>
+    {% endif %}
   </div>
 </header>
 
 <main id="main">
   <section class="ptl-hero">
     <div>
-      <p class="ln-aichip"><i></i>Platform admin</p>
-      <h1>Usage &amp; user activity</h1>
-      <p class="ptl-hero-sub">Everything that happens on the platform — who signed in, who
-        registered, what they built and what they touched — in one live view.</p>
+      <p class="ln-aichip"><i></i>SurveyKart Master Admin</p>
+      <h1>Usage, Kart Points &amp; Activity</h1>
+      <p class="ptl-hero-sub">Protected control portal for <code>Anaking.admin</code> — review every registered
+        SurveyKart account, adjust Kart point limits up or down, and monitor live activity across Studio and fieldwork.</p>
     </div>
     <div class="ptl-hero-note">
-      <b>Sample preview</b>
-      <p>This page is open without login while the design is being reviewed. When access
-        rules are finalised it will require an approved admin account.</p>
+      <b>Protected Admin Boundary</b>
+      <p>All administrative rights are reserved to Admin (<code>Anaking.admin</code>). Manage Kart balances directly
+        below or open the <a href="/admin/console" style="color:#14614f;font-weight:800">Admin Console &rarr;</a>.</p>
     </div>
   </section>
 
@@ -48,9 +57,9 @@
     <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.users }}">0</span>
       <span class="ptl-kpi-l">Total users</span>
       <em class="ptl-kpi-t up">{{ stats.approved }} approved</em></div>
-    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.pending }}">0</span>
-      <span class="ptl-kpi-l">Pending approval</span>
-      <em class="ptl-kpi-t {% if stats.pending %}warn{% else %}up{% endif %}">review queue</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.pending_point_requests }}">0</span>
+      <span class="ptl-kpi-l">Kart pt requests</span>
+      <em class="ptl-kpi-t {% if stats.pending_point_requests %}warn{% else %}up{% endif %}">point queue</em></div>
     <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.active_week }}">0</span>
       <span class="ptl-kpi-l">Active accounts</span>
       <em class="ptl-kpi-t up">in the activity log</em></div>
@@ -86,37 +95,56 @@
     </article>
   </section>
 
-  {#- ---------------- users table ---------------- -#}
+  {#- ---------------- users & Kart balances table ---------------- -#}
   <section class="ptl-card ptl-users">
     <div class="ptl-card-head">
-      <h2>All users</h2>
-      <input id="ptl-search" type="search" placeholder="Search name or e-mail…" aria-label="Search users">
+      <h2>All SurveyKart users &amp; Kart balances</h2>
+      <input id="ptl-search" type="search" placeholder="Search name, username or e-mail…" aria-label="Search users">
     </div>
-    <table class="ptl-table">
-      <thead><tr>
-        <th>Person</th><th>Status</th><th>Role</th><th>Projects</th>
-        <th>Completes</th><th>Actions</th><th>Last seen</th>
-      </tr></thead>
-      <tbody id="ptl-rows">
-      {% for u in users %}
-      <tr data-search="{{ (u.name ~ ' ' ~ u.email) | lower }}">
-        <td class="ptl-person">
-          <i class="ptl-av">{{ (u.name or u.email)[:2] | upper }}</i>
-          <span><b>{{ u.name or '—' }}</b><small>{{ u.email }}</small></span>
-        </td>
-        <td><span class="ptl-pill st-{{ u.status }}">{{ u.status }}</span></td>
-        <td>{{ u.role }}</td>
-        <td>{{ u.projects }}</td>
-        <td>{{ u.completes }}</td>
-        <td>{{ u.events }}</td>
-        <td class="ptl-when">{{ (u.last_login or u.created_at or '')[:16] | replace('T', ' ') }}</td>
-      </tr>
-      {% endfor %}
-      {% if not users %}
-      <tr><td colspan="7" class="ptl-empty">No accounts yet — the first registration will land here.</td></tr>
-      {% endif %}
-      </tbody>
-    </table>
+    <div style="overflow-x:auto">
+      <table class="ptl-table">
+        <thead><tr>
+          <th>Person</th><th>Status</th><th>Role</th><th>Kart Balance</th>
+          <th>Adjust Kart Limit</th><th>Projects</th><th>Completes</th><th>Last seen</th>
+        </tr></thead>
+        <tbody id="ptl-rows">
+        {% for u in users %}
+        <tr data-search="{{ (u.name ~ ' ' ~ (u.username or '') ~ ' ' ~ u.email) | lower }}">
+          <td class="ptl-person">
+            <i class="ptl-av">{{ (u.name or u.username or u.email)[:2] | upper }}</i>
+            <span><b>{{ u.name or u.username or '—' }}</b><small>{{ u.username ~ ' · ' if u.username else '' }}{{ u.email }}</small></span>
+          </td>
+          <td><span class="ptl-pill st-{{ u.status }}">{{ u.status }}</span></td>
+          <td><b>{{ u.role }}</b></td>
+          <td>
+            {% if u.role == 'admin' %}
+            <span class="cs-kart-badge">&#9733; Unlimited Admin</span>
+            {% else %}
+            <span class="cs-kart-badge" id="ptl-bal-{{ u.id }}">{{ u.points_balance }} left ({{ u.points_used }}/{{ u.points_limit }})</span>
+            {% endif %}
+          </td>
+          <td>
+            {% if u.role == 'admin' %}
+            <small style="color:var(--an-muted)">Master rights</small>
+            {% else %}
+            <div class="cs-kart-ctrls">
+              <button type="button" class="cs-btn sm no" data-ptl-pts="-20" data-uid="{{ u.id }}">&minus;20</button>
+              <button type="button" class="cs-btn sm ok" data-ptl-pts="20" data-uid="{{ u.id }}">+20</button>
+              <button type="button" class="cs-btn sm gold" data-ptl-pts="50" data-uid="{{ u.id }}">+50</button>
+            </div>
+            {% endif %}
+          </td>
+          <td>{{ u.projects }}</td>
+          <td>{{ u.completes }}</td>
+          <td class="ptl-when">{{ (u.last_login or u.created_at or '')[:16] | replace('T', ' ') }}</td>
+        </tr>
+        {% endfor %}
+        {% if not users %}
+        <tr><td colspan="8" class="ptl-empty">No accounts yet — new registrations automatically receive 100 Kart points.</td></tr>
+        {% endif %}
+        </tbody>
+      </table>
+    </div>
   </section>
 
   {#- ---------------- activity feed ---------------- -#}
@@ -141,8 +169,8 @@
     </ul>
   </section>
 
-  <p class="ptl-footnote">Sample preview · open without login for review · when finalised this
-    page will require an approved admin account (<a href="/admin/console">admin console →</a>).</p>
+  <p class="ptl-footnote">SurveyKart Admin Portal &middot; Protected by Admin credentials &middot;
+    Full account &amp; project controls in <a href="/admin/console">Admin Console &rarr;</a>.</p>
 </main>
 
 {% include '_footer.html' %}

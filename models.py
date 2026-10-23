@@ -169,8 +169,23 @@ def init_db(path: str | None = None) -> None:
             conn.executescript(GOVERNANCE_SCHEMA)
             from core.data_validation import SCHEMA as VALIDATION_SCHEMA
             conn.executescript(VALIDATION_SCHEMA)
-            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA
+            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA, ensure_master_admin
             conn.executescript(ACCOUNTS_SCHEMA)
+            from core.kart import SCHEMA as KART_SCHEMA
+            conn.executescript(KART_SCHEMA)
+            user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+            if "username" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+            if "password_hash" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+            if "points_limit" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN points_limit INTEGER NOT NULL DEFAULT 100")
+            try:
+                is_testing = bool(current_app.config.get("TESTING"))
+            except RuntimeError:
+                is_testing = False
+            if not is_testing:
+                ensure_master_admin(conn)
             study_cols = {r["name"] for r in conn.execute("PRAGMA table_info(studies)")}
             if "owner_id" not in study_cols:
                 conn.execute("ALTER TABLE studies ADD COLUMN owner_id INTEGER DEFAULT 0")
@@ -274,6 +289,7 @@ class Study:
             "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='failed') AS if_, "
             "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='queued') AS iq_ "
             "FROM studies s ORDER BY s.id").fetchall()
+        from core.kart import study_points
         out = []
         for r in rows:
             cfg = json.loads(r["cfg"]) if r["cfg"] else {}
@@ -282,6 +298,7 @@ class Study:
                         "updated_at": r["updated_at"], "started": r["n"], "complete": r["c"],
                         "owner_id": r["owner_id"] or 0,
                         "owner_email": r["owner_email"] or "",
+                        "points_used": study_points(cfg),
                         "study_id": f"STU-{r['id']:06d}",
                         "parent": cfg.get("parent") or "", "language": cfg.get("language") or "",
                         "group_name": cfg.get("group_name") or "",
@@ -334,7 +351,7 @@ class Study:
 
     # ---- mutations
     @staticmethod
-    def save(body: dict, owner_id: int | None = None) -> str:
+    def save(body: dict, owner_id: int | None = None, actor_is_admin: bool = False) -> str:
         """Create or update from a Studio payload ``{slug?, title?, cfg}``. Returns slug.
 
         A study created here is owned by ``owner_id`` (the signed-in platform user);
@@ -358,6 +375,9 @@ class Study:
         conn, ts = get_db(), now()
         with write_lock, conn:
             old = Study.get(slug)
+            from core.kart import enforce_kart_budget
+            effective_owner = old.owner_id if old else int(owner_id or 0)
+            enforce_kart_budget(effective_owner, slug if old else "", cfg, actor_is_admin=actor_is_admin)
             from core.governance import revision
             if old:
                 from core.research import fingerprint
@@ -402,7 +422,7 @@ class Study:
                          (status, now(), slug))
 
     @staticmethod
-    def duplicate(slug: str, owner_id: int | None = None) -> str:
+    def duplicate(slug: str, owner_id: int | None = None, actor_is_admin: bool = False) -> str:
         """Copy a study (config and all) under a new slug. Returns the new slug.
 
         The copy is a draft with its own recipient list and no respondents; uploaded media
@@ -427,6 +447,8 @@ class Study:
                                .replace(f"/narration/{slug}/", f"/narration/{new_slug}/")
         cfg = json.loads(text)
         cfg["title"] = title
+        from core.kart import enforce_kart_budget
+        enforce_kart_budget(int(owner_id or 0), "", cfg, actor_is_admin=actor_is_admin)
         conn, ts = get_db(), now()
         with write_lock, conn:
             conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, updated_at, owner_id) "
@@ -491,6 +513,7 @@ class Study:
             return
         conn = get_db()
         with write_lock, conn:
+            conn.execute("DELETE FROM study_shares WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM research_agent_sessions WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM answers WHERE respondent_id IN "
                          "(SELECT id FROM respondents WHERE study_id=?)", (s.id,))

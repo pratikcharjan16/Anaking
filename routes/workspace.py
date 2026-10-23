@@ -37,8 +37,22 @@ def page():
     return render_template('workspace.html')
 
 
+def _actor_is_admin() -> bool:
+    u = getattr(g, 'user', None)
+    if u and u.get('role') == 'admin':
+        return True
+    st = getattr(g, 'staff', None)
+    if st and st.get('role') == 'owner':
+        return True
+    return False
+
+
 @bp.get('/api/workspace/projects')
 def projects():
+    from core.kart import can_collaborate, shared_studies_for_user, user_kart_summary
+    u = getattr(g, 'user', None)
+    uid = u['id'] if u else 0
+    uemail = u.get('email', '') if u else ''
     out = []
     for row in Study.list_with_counts():
         if not allowed(row['slug']):
@@ -46,13 +60,25 @@ def projects():
         s = Study.get(row['slug'])
         checks = readiness(base(s))
         publication = get_db().execute('SELECT revision_id FROM publications WHERE study_id=?', (s.id,)).fetchone()
+        is_shared = bool(uid and row.get('owner_id') != uid and can_collaborate(uid, row['slug'], uemail))
         row.update(questions=checks['questions'], errors=checks['errors'], warnings=checks['warnings'],
-                   minutes=checks['estimated_minutes'], publication=publication['revision_id'] if publication else None)
+                   minutes=checks['estimated_minutes'],
+                   publication=publication['revision_id'] if publication else None,
+                   is_shared=is_shared,
+                   points_debited=0 if is_shared else row.get('points_used', 0))
         out.append(row)
-    return jsonify(projects=out, capabilities={
-        'auth': current_app.config['STAFF_AUTH'], 'ai': bool(current_app.config['LOCAL_AI_URL'] and current_app.config['LOCAL_AI_MODEL']),
-        'ai_model': current_app.config['LOCAL_AI_MODEL'], 'mode': 'production' if current_app.config['PRODUCTION'] else 'preview',
-        'role': (getattr(g, 'staff', None) or {}).get('role', 'owner')})
+    shared_surveys = [
+        sh for sh in (shared_studies_for_user(uid, uemail) if uid else [])
+        if sh.get('permission') == 'respond'
+    ]
+    return jsonify(projects=out, shared_surveys=shared_surveys,
+                   kart=user_kart_summary(uid) if uid else None,
+                   capabilities={
+                       'auth': current_app.config['STAFF_AUTH'],
+                       'ai': bool(current_app.config['LOCAL_AI_URL'] and current_app.config['LOCAL_AI_MODEL']),
+                       'ai_model': current_app.config['LOCAL_AI_MODEL'],
+                       'mode': 'production' if current_app.config['PRODUCTION'] else 'preview',
+                       'role': (getattr(g, 'staff', None) or {}).get('role', 'owner')})
 
 
 @bp.get('/api/workspace/study')
@@ -88,7 +114,7 @@ def settings():
             cfg['quota_target'] = max(0, min(10000000, int(body['quota_target'])))
         except (TypeError, ValueError):
             abort(400, 'Target must be a whole number.')
-    Study.save({'slug': s.slug, 'title': s.title, 'cfg': cfg})
+    Study.save({'slug': s.slug, 'title': s.title, 'cfg': cfg}, actor_is_admin=_actor_is_admin())
     return jsonify(ok=True)
 
 
@@ -161,7 +187,7 @@ def restore():
     row = get_db().execute('SELECT * FROM study_revisions WHERE id=? AND study_id=?', (request.get_json().get('revision'), s.id)).fetchone()
     if not row:
         abort(404)
-    Study.save({'slug': s.slug, 'title': row['title'], 'cfg': json.loads(row['cfg'])})
+    Study.save({'slug': s.slug, 'title': row['title'], 'cfg': json.loads(row['cfg'])}, actor_is_admin=_actor_is_admin())
     audit('Restored draft from revision ' + str(row['id']), s.slug)
     return jsonify(ok=True, note='Draft restored. Published survey is unchanged until republished.')
 
