@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head(study_title ~ ' · Not launched · Anaking', 'This study is not open to respondents yet.') }}
+{{ head(study_title ~ ' · Not launched · SurveyKart', 'This study is not open to respondents yet.') }}
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
@@ -11,7 +11,7 @@
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
-  {{ brand('SURVEY', '', 38, 'nl') }}
+  {{ brand('SURVEY', '/', 38, 'nl', title='SurveyKart — Insights Delivered') }}
   {% with nav_study=slug %}{% include '_nav.html' %}{% endwith %}
 </header>
 <main id="main" class="panel-main">

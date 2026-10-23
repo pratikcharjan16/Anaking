@@ -1,8 +1,20 @@
-<!doctype html><html lang="en"><head>
-{% from "_head.html" import head %}
-{{ head('Sign in · Anaking') }}
+<!doctype html>
+<html lang="en"><head>{% from "_head.html" import head %}
+{{ head('Sign in · SurveyKart') }}
 <link rel="stylesheet" href="{{ asset('css/workspace.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
 </head>
 <body class="login-page"><main class="login-card">{% from "_brand.html" import brand %}
-{{ brand('PLATFORM', '', 44, 'lg') }}<p class="eyebrow">YOUR RESEARCH WORKSPACE</p><h1>Welcome back.</h1><p>Sign in to design, review and understand your research.</p>{% if error %}<p role="alert" class="notice danger">{{error}}</p>{% endif %}<form method="post"><input type="hidden" name="csrf" value="{{csrf_token()}}"><label>Username<input name="username" autocomplete="username" required autofocus></label><label>Password<input name="password" type="password" autocomplete="current-password" required></label><button class="primary">Sign in →</button></form><small>Need access? Ask your workspace owner.</small></main></body></html>
+{{ brand('KART', '/', 44, 'lg', title='SurveyKart — Insights Delivered (Go to landing page)') }}
+<p class="eyebrow">SURVEYKART · INSIGHTS DELIVERED</p>
+<h1>Welcome back.</h1>
+<p>Sign in with your SurveyKart credentials to design, collaborate and deliver insights.</p>
+{% if error %}<p role="alert" class="notice danger">{{error}}</p>{% endif %}
+<form method="post">
+  <input type="hidden" name="csrf" value="{{csrf_token()}}">
+  <label>Username or E-mail<input name="username" autocomplete="username" required autofocus></label>
+  <label>Password<input name="password" type="password" autocomplete="current-password" required></label>
+  <button class="primary">Sign in &rarr;</button>
+</form>
+<small>New to SurveyKart? <a href="/register">Register for 100 free Kart points &rarr;</a></small>
+</main></body></html>

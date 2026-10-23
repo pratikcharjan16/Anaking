@@ -317,20 +317,26 @@ def test_console_page_requires_an_admin(app, client):
 
 
 # ------------------------------------------------------------------ admin portal
-def test_admin_portal_is_open_for_review_and_tracks_activity(app, client):
-    """Sample phase: the portal renders without login, with real usage data."""
-    auth_on(app)                                 # even with the sign-in gate up
+def test_admin_portal_is_protected_for_admin_and_tracks_activity(app, client):
+    """Protected Admin Portal: requires Admin credentials and renders live usage & Kart data."""
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
     signin(client, "ana@research.co")
     approve_direct(app, "ana@research.co")
     signin(client, "ana@research.co")            # a fresh sign-in lands in the audit log
     make_study(client, "Portal watched", H())    # and so does a write
+    assert client.get("/admin-portal").status_code == 403   # regular user cannot access
 
-    out(client)                                  # anonymous visitor
+    out(client)                                  # anonymous visitor -> redirected to sign-in
+    r_anon = client.get("/admin-portal")
+    assert r_anon.status_code == 302 and "/signin" in r_anon.headers["Location"]
+
+    signin(client, "chief@platform.co")
     r = client.get("/admin-portal")
     assert r.status_code == 200
     html = r.data
-    for needle in (b"Usage &amp; user activity", b"ana@research.co", b"Pending approval",
-                   b"Activity feed", b"Sample", b"All users"):
+    for needle in (b"Usage, Kart Points &amp; Activity", b"ana@research.co",
+                   b"Activity feed", b"Protected", b"All SurveyKart users"):
         assert needle in html, needle
     assert b"Signed in" in html or b"Edited a design" in html   # audit trail humanised
 

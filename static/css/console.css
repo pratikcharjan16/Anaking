@@ -1,26 +1,28 @@
-/* ---------- admin console ---------- */
+/* ---------- SurveyKart Admin Console (3D controls + Kart point allocation) ---------- */
 .cs-head{display:flex;justify-content:space-between;align-items:flex-start;gap:20px;
   flex-wrap:wrap;margin:26px clamp(16px,4vw,48px) 10px}
 .cs-head h1{margin:0 0 6px;font-size:26px;letter-spacing:-.02em}
 .cs-head p{margin:0;max-width:52em;font-size:13.5px;line-height:1.6;color:var(--muted,#5c574e)}
 .cs-stats{display:flex;gap:12px;flex-wrap:wrap}
-.cs-stat{background:#fff;border:1.5px solid var(--line,#e6ddd2);border-radius:12px;
-  padding:12px 18px;text-align:center;min-width:92px}
+.cs-stat{background:linear-gradient(180deg,#ffffff 0%,#f7faf8 100%);border:1.5px solid var(--line,#e6ddd2);
+  border-radius:12px;padding:12px 18px;text-align:center;min-width:94px;
+  box-shadow:inset 0 1px 0 #fff,0 3px 0 #cfd9d2,0 6px 14px rgba(18,42,32,.06)}
 .cs-stat b{display:block;font-size:22px;letter-spacing:-.02em}
 .cs-stat span{font-size:10.5px;font-weight:750;text-transform:uppercase;letter-spacing:.07em;
   color:var(--muted,#5c574e)}
-.cs-pending{margin:12px clamp(16px,4vw,48px);padding:18px;border:1.5px solid #ecd6a8;
-  background:#fffdf6;border-radius:14px}
-.cs-pending h2{margin:0 0 12px;font-size:16px}
+.cs-pending,.cs-point-reqs{margin:14px clamp(16px,4vw,48px);padding:18px;border:1.5px solid #ecd6a8;
+  background:#fffdf6;border-radius:14px;box-shadow:0 4px 12px rgba(138,90,18,.07)}
+.cs-pending h2,.cs-point-reqs h2{margin:0 0 12px;font-size:16px}
 .cs-pending-list{display:flex;flex-wrap:wrap;gap:12px}
 .cs-pending-card{display:flex;flex-direction:column;gap:6px;background:#fff;
-  border:1px solid var(--line,#e6ddd2);border-radius:12px;padding:14px 16px;min-width:260px}
+  border:1px solid var(--line,#e6ddd2);border-radius:12px;padding:14px 16px;min-width:min(270px,100%);flex:1 1 260px;
+  box-shadow:0 3px 8px rgba(18,42,32,.06)}
 .cs-pending-card small{color:var(--muted,#5c574e);font-size:11.5px}
-.cs-pending-card span{display:flex;gap:8px;margin-top:4px}
+.cs-pending-card span{display:flex;gap:8px;margin-top:4px;flex-wrap:wrap}
 .cs-users,.cs-projects{margin:18px clamp(16px,4vw,48px) 40px}
 .cs-users h2,.cs-projects h2{font-size:18px;margin:0 0 12px}
-.cs-table{width:100%;border-collapse:collapse;background:#fff;border:1.5px solid var(--line,#e6ddd2);
-  border-radius:14px;overflow:hidden;font-size:13px}
+.cs-table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:14px;border:1.5px solid var(--line,#e6ddd2);background:#fff}
+.cs-table{width:100%;min-width:680px;border-collapse:collapse;background:#fff;font-size:13px}
 .cs-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
   color:var(--muted,#5c574e);padding:11px 14px;border-bottom:1.5px solid var(--line,#e6ddd2);
   background:var(--soft2,#f3eee5)}
@@ -30,7 +32,7 @@
 .cs-person{display:flex;align-items:center;gap:10px}
 .cs-person img,.cs-av{width:30px;height:30px;border-radius:50%;flex:none;
   border:1.5px solid var(--line,#e6ddd2);object-fit:cover}
-.cs-av{background:var(--soft,#eef4f1)}
+.cs-av{background:var(--soft,#eef4f1);display:grid;place-items:center;font-weight:800;font-size:11px;color:var(--accent,#14614f)}
 .cs-person span{display:flex;flex-direction:column;gap:1px}
 .cs-person small{color:var(--muted,#5c574e);font-size:11px}
 .cs-pill{display:inline-block;padding:3px 10px;border-radius:999px;font-size:10px;
@@ -39,17 +41,57 @@
 .cs-pill.st-pending{background:#fff4e2;color:var(--warn,#8a6d1f)}
 .cs-pill.st-no{background:#fdeeee;color:#b34a3c}
 .cs-when{white-space:nowrap;color:var(--muted,#5c574e);font-size:11.5px}
+
+/* Kart points inline adjuster */
+.cs-kart-cell{display:flex;flex-direction:column;gap:5px;min-width:190px}
+.cs-kart-meter{display:flex;align-items:center;gap:7px;font-size:12px;font-weight:750}
+.cs-kart-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:999px;
+  background:#f7f1de;border:1px solid #dfd09e;color:#6e5310;font-size:11px;font-weight:800}
+.cs-kart-ctrls{display:flex;align-items:center;gap:5px;flex-wrap:wrap}
+.cs-pts-input{width:68px;padding:4px 7px;border:1.5px solid var(--line,#cfd9d2);border-radius:8px;
+  font:inherit;font-size:12px;font-weight:700;text-align:center;background:#fff}
+
+/* 3D console buttons */
 .cs-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
-.cs-btn{border:1.5px solid transparent;border-radius:999px;padding:6px 13px;font-size:11.5px;
-  font-weight:750;cursor:pointer;text-decoration:none;color:var(--ink,#23211c);background:#fff;
-  transition:transform .2s cubic-bezier(.34,1.4,.64,1)}
-.cs-btn:hover{transform:translateY(-1px)}
-.cs-btn.ok{background:var(--accent,#1c6652);color:#fff}
-.cs-btn.no{background:#fdeeee;border-color:#f0c9c4;color:#b34a3c}
-.cs-btn.ghost{border-color:var(--line,#e6ddd2)}
+.cs-btn{
+  display:inline-flex;align-items:center;justify-content:center;gap:4px;
+  border:1px solid #c2cec6;border-radius:999px;padding:6px 13px;font-size:11.5px;
+  font-weight:750;cursor:pointer;text-decoration:none;color:var(--ink,#16241f);
+  background:linear-gradient(180deg,#ffffff 0%,#f0f4f1 100%);
+  box-shadow:inset 0 1px 0 #ffffff,0 2.5px 0 #b8c6bd,0 5px 10px rgba(18,42,32,.08);
+  transform:translateY(0);
+  transition:transform .16s cubic-bezier(.34,1.4,.64,1),box-shadow .16s ease,background .16s ease}
+.cs-btn:hover{transform:translateY(-1.5px);
+  box-shadow:inset 0 1px 0 #ffffff,0 3.5px 0 #a8b9ae,0 7px 14px rgba(18,42,32,.12)}
+.cs-btn:active{transform:translateY(1.5px);
+  box-shadow:inset 0 1px 0 #ffffff,0 1px 0 #b8c6bd}
+.cs-btn.ok{
+  border-color:var(--an-accent-strong,#0d4638);
+  background:linear-gradient(180deg,var(--an-accent-bright,#1d8a6f) 0%,var(--an-accent,#14614f) 100%);
+  color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.34),0 2.5px 0 var(--an-accent-strong,#0d4638),0 5px 12px rgba(20,97,79,.22)}
+.cs-btn.gold{
+  border-color:#b8921f;
+  background:linear-gradient(180deg,#f9e8ad 0%,#e2c35c 100%);
+  color:#312506;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.8),0 2.5px 0 #9b7914,0 5px 12px rgba(155,121,20,.18)}
+.cs-btn.no{
+  background:linear-gradient(180deg,#fff5f4 0%,#fde6e4 100%);
+  border-color:#e8b3ad;color:#a33228;
+  box-shadow:inset 0 1px 0 #ffffff,0 2.5px 0 #dca099,0 5px 10px rgba(163,50,40,.10)}
+.cs-btn.ghost{border-color:var(--line,#cfd9d2)}
+.cs-btn.sm{padding:4px 9px;font-size:11px}
 .cs-empty{padding:26px;text-align:center;color:var(--muted,#5c574e)}
 
 /* project manage row */
 .cs-status{padding:5px 9px;border:1.5px solid var(--line,#e6ddd2);border-radius:999px;
   font:inherit;font-size:11.5px;font-weight:700;background:#fff;cursor:pointer}
-.cs-acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
+
+@media (max-width: 640px) {
+  .cs-head { margin: 18px 12px 10px; gap: 14px; }
+  .cs-head h1 { font-size: 22px; }
+  .cs-stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: 100%; gap: 8px; }
+  .cs-stat { min-width: 0; padding: 10px 12px; }
+  .cs-pending, .cs-point-reqs { margin: 12px; padding: 14px; }
+  .cs-users, .cs-projects { margin: 16px 12px 32px; }
+}

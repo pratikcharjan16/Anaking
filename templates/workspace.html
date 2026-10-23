@@ -1,21 +1,21 @@
 <!doctype html>
-<html lang="en"><head>{% from "_head.html" import head %}{{ head('Anaking · Research workspace') }}<meta name="csrf-token" content="{{csrf_token()}}"><link rel="stylesheet" href="{{ asset('css/workspace.css') }}"><link rel="stylesheet" href="{{ asset('css/design-system.css') }}"><script src="{{ asset('js/security.js') }}"></script></head>
+<html lang="en"><head>{% from "_head.html" import head %}{{ head('SurveyKart · Research Workspace') }}<meta name="csrf-token" content="{{csrf_token()}}"><link rel="stylesheet" href="{{ asset('css/workspace.css') }}"><link rel="stylesheet" href="{{ asset('css/design-system.css') }}"><script src="{{ asset('js/security.js') }}"></script></head>
 <body><a href="#main" class="skip-link">Skip to workspace</a><div class="workspace-shell">
 <aside class="sidebar">{% from "_brand.html" import brand %}
-{{ brand('WORKSPACE', '/workspace/', 40, 'ws') }}
+{{ brand('WORKSPACE', '/', 40, 'ws', title='SurveyKart — Insights Delivered (Go to landing page)') }}
 <div class="workspace-label"><span class="workspace-avatar">R</span><div><strong>Research team</strong><small id="role-label">Your shared workspace</small></div><span class="status-dot"></span></div>
 <p class="nav-caption">WORKSPACE</p><nav class="side-nav" aria-label="Workspace"><a href="#" class="active" id="projects-link" aria-current="page"><span>▦</span> Projects <span id="project-count" class="nav-count">0</span></a><a href="/studio/"><span>✎</span> Studio</a><a href="/admin/"><span>◴</span> Monitor</a><button id="open-assistant"><span>✧</span> Research assistant <i>NEW</i></button></nav>
 <div class="sidebar-note"><span class="note-orbit">✧</span><strong>Better questions.<br>Clearer decisions.</strong><p>Design thoughtfully. Review together. Let the evidence lead.</p><button id="guide-button" class="text-button">Explore the workflow →</button></div>
 <div class="sidebar-bottom"><span class="status-dot"></span> <span id="deployment-mode">Workspace ready</span><a href="/healthz" aria-label="Service health">↗</a></div>
 {% if config.STAFF_AUTH %}{% if account() %}
 <div class="account-chip">{{ account().name or account().email }}
-  {% if account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin console</a>{% endif %}
+  {% if account() and account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin Console</a> · <a class="console-link" href="/admin-portal">Admin Portal</a>{% else %}<div style="font-size:11px;color:var(--an-muted);margin-top:2px">&#128722; Kart: <strong>{{ account().points_balance }}</strong> / {{ account().points_limit }} pts</div>{% endif %}
   <form method="post" action="/auth/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>
 </div>
 {% else %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}{% endif %}
 </aside>
 <div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Signed in account">{% if account() %}{{ (account().name or account().email)[:2] | upper }}{% else %}RT{% endif %}</span>
-  {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console →</a>{% endif %}</div></header>
+  {% if is_admin_actor() %}<a class="linkbtn gold" href="/admin/console">Admin Console</a><a class="linkbtn accent" href="/admin-portal">Admin Portal</a>{% endif %}</div></header>
 <main id="main" tabindex="-1"><div class="skeleton" aria-label="Loading projects"></div><div class="skeleton short"></div></main>
 <footer class="workspace-footer"><span>Made for considered research.</span><span>Human judgment. Transparent automation.</span></footer></div></div>
 <div id="toast" class="workspace-toast" role="status" hidden></div>

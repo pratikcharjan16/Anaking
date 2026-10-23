@@ -5,7 +5,7 @@
   const esc = v => String(v == null ? '' : v).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
   const plain = v => String(v || '').replace(/<[^>]+>/g, '').trim();
   const enc = encodeURIComponent;
-  let projects = [], caps = {}, current = null, filter = 'all', query = '', sequence = 0, activeTab = 'overview';
+  let projects = [], sharedSurveys = [], kartState = null, caps = {}, current = null, filter = 'all', query = '', sequence = 0, activeTab = 'overview';
   let currentAnalysisParams = '&scope=real', latestAnalysisData = null;
   const tabs = {overview:'Overview',checks:'Design checks',review:'Review',versions:'Versions',validation:'Data Validation',analysis:'Analyze',coding:'Verbatims',settings:'Settings'};
   const editable = () => ['owner','editor'].includes(caps.role);
@@ -33,7 +33,8 @@
   function endpoint(name, extra='') { return '/api/workspace/'+name+'?study='+enc(current.slug)+extra; }
   function selectOptions(qs) { return qs.map(q => '<option value="'+esc(q.id)+'">'+esc(q.id+' · '+(q.stem || q.title || q.type))+'</option>').join(''); }
   async function loadProjects() {
-    const d = await api('/api/workspace/projects'); projects = d.projects; caps = d.capabilities;
+    const d = await api('/api/workspace/projects');
+    projects = d.projects; sharedSurveys = d.shared_surveys || []; kartState = d.kart || null; caps = d.capabilities;
     $('#project-count').textContent = projects.length;
     $('#role-label').textContent = caps.auth ? caps.role+' access' : 'Local preview · access open';
     $('#deployment-mode').textContent = caps.auth ? 'Staff access protected' : 'Preview · no sign-in';
@@ -44,11 +45,21 @@
   function dashboard() {
     current = null; $('#breadcrumb').textContent = 'Projects';
     const sum = key => projects.reduce((n,p) => n+(Number(p[key])||0),0);
-    main.innerHTML = '<div class="page-heading"><div><span class="eyebrow green">A CLEARER VIEW OF YOUR RESEARCH</span><h1>Good questions start here.</h1><p>Your studies, your team, your next discovery. All in one place.</p></div>'+
+    const kartTile = kartState
+      ? (kartState.is_admin ? metric('Kart balance', 'Unlimited', 'Master Admin rights')
+         : metric('Kart balance', kartState.points_balance + ' / ' + kartState.points_limit + ' pts', kartState.points_used + ' pts used across owned projects'))
+      : metric('Draft projects', projects.filter(p=>p.status==='draft').length, 'Ready for your next idea');
+    const sharedBox = sharedSurveys.length
+      ? '<section class="panel" style="margin-bottom:18px"><h2>Shared Surveys to Fill Out (0 Kart pts debited)</h2><div class="projects-grid">' +
+        sharedSurveys.map(sh => '<article class="project-card"><div class="project-card-main"><h2>'+esc(sh.study_title)+'</h2><p>Shared by '+esc(sh.shared_by_email||'SurveyKart creator')+' · <strong>0 pts debited</strong></p></div><div class="project-card-footer"><span>Respondent link</span><a href="/survey/'+enc(sh.study_slug)+'">Fill out survey →</a></div></article>').join('') +
+        '</div></section>'
+      : '';
+    main.innerHTML = '<div class="page-heading"><div><span class="eyebrow green">SURVEYKART · INSIGHTS DELIVERED</span><h1>Good questions start here.</h1><p>Shop question types in Studio, collaborate on shared links at zero Kart cost, and follow the evidence.</p></div>'+
       (editable()?'<button class="primary" data-action="new">+ New project</button>':'')+'</div>'+
       (!caps.auth ? notice('Preview workspace: staff pages are open to anyone with this link. Configure staff authentication before collecting sensitive data.','warning'):'')+
-      '<div class="metric-grid">'+metric('All projects',projects.length,'Across your accessible workspace')+metric('In the field',projects.filter(p=>p.status==='live').length,'Live studies')+metric('Completed responses',sum('complete'),'Includes test and real responses')+metric('Draft projects',projects.filter(p=>p.status==='draft').length,'Ready for your next idea')+'</div>'+
-      '<div class="welcome-banner"><div><span class="eyebrow green">THOUGHTFUL BY DESIGN</span><h2>From a research question to a confident next step.</h2><p>Design your study, review it together, and follow the evidence. Automated guidance is here when you need a second look.</p></div><div class="banner-mark" aria-hidden="true">✧</div></div>'+
+      '<div class="metric-grid">'+metric('All projects',projects.length,'Owned & shared studies')+metric('In the field',projects.filter(p=>p.status==='live').length,'Live studies')+metric('Completed responses',sum('complete'),'Includes test and real responses')+kartTile+'</div>'+
+      sharedBox+
+      '<div class="welcome-banner"><div><span class="eyebrow green">SURVEYKART POINT SYSTEM</span><h2>100 free Kart points on registration · 0 points debited on shared links.</h2><p>Add questions from the SurveyKart library in Studio, share single-link collaborations with teammates, or request extra points from Admin anytime.</p></div><div class="banner-mark" aria-hidden="true">🛒</div></div>'+
       '<div class="projects-toolbar"><div class="filter-tabs" aria-label="Project status">'+['all','live','draft','paused','closed'].map(x=>'<button data-filter="'+x+'" class="'+(filter===x?'on':'')+'" aria-pressed="'+(filter===x)+'">'+(x==='all'?'All projects':x[0].toUpperCase()+x.slice(1))+' <span>'+projects.filter(p=>x==='all'||p.status===x).length+'</span></button>').join('')+'</div><label class="search-box"><span aria-hidden="true">⌕</span><input id="project-search" type="search" aria-label="Search projects" placeholder="Search your projects" value="'+esc(query)+'"></label></div><div class="projects-grid" id="project-grid"></div><p class="section-kicker">Every project starts as a draft. Published versions and real responses are kept separate from your design work.</p>';
     drawCards();
   }
@@ -56,7 +67,8 @@
     const visible = projects.filter(p => (filter==='all'||p.status===filter) && (p.title+' '+p.slug).toLowerCase().includes(query.toLowerCase()));
     $('#project-grid').innerHTML = visible.map((p,i) => {
       const complete = Number(p.complete)||0, started=Number(p.started)||0, pct = started ? Math.round(100*complete/started):0;
-      return '<article class="project-card"><div class="project-card-main"><div class="project-card-top"><span class="project-icon '+(['','lavender','sand'][i%3])+'" aria-hidden="true">'+(['◈','▥','◎'][i%3])+'</span>'+pill(p.status)+'</div><h2><a href="'+link(p.slug)+'">'+esc(p.title)+'</a></h2><p>'+esc(p.parent ? 'Translation of '+p.parent : p.study_id || p.slug)+'</p><div class="project-meta"><span>'+p.questions+' questions</span><span>~'+p.minutes+' min</span><span>'+ (p.errors ? p.errors+' blocking checks' : 'No blocking checks')+'</span></div><div class="project-progress-label"><span>Responses · all data</span><b>'+complete+' / '+started+' completed</b></div><div class="progress-line" aria-hidden="true"><i style="width:'+pct+'%"></i></div></div><div class="project-card-footer"><span>'+esc(p.publication?'Published v'+p.publication:'Not version-published')+'</span><a href="'+link(p.slug)+'">Open project →</a></div></article>';
+      const ptsTag = p.is_shared ? '🔗 Shared · 0 pts debited' : ('🛒 ' + (p.points_used||0) + ' Kart pts');
+      return '<article class="project-card"><div class="project-card-main"><div class="project-card-top"><span class="project-icon '+(['','lavender','sand'][i%3])+'" aria-hidden="true">'+(['◈','▥','◎'][i%3])+'</span>'+pill(p.status)+'</div><h2><a href="'+link(p.slug)+'">'+esc(p.title)+'</a></h2><p>'+esc(p.parent ? 'Translation of '+p.parent : p.study_id || p.slug)+'</p><div class="project-meta"><span>'+p.questions+' questions</span><span>'+esc(ptsTag)+'</span><span>~'+p.minutes+' min</span></div><div class="project-progress-label"><span>Responses · all data</span><b>'+complete+' / '+started+' completed</b></div><div class="progress-line" aria-hidden="true"><i style="width:'+pct+'%"></i></div></div><div class="project-card-footer"><span>'+esc(p.publication?'Published v'+p.publication:'Not version-published')+'</span><a href="/studio/#'+enc(p.slug)+'">Open in Studio →</a></div></article>';
     }).join('')+(editable()?'<article class="project-card new"><button class="new-card-button" data-action="new"><span aria-hidden="true">+</span><b>Your next discovery</b><small>Create a new research project</small></button></article>':'');
     if (!visible.length && !editable()) $('#project-grid').innerHTML = empty('No matching projects','Try a different search or ask your owner for study access.');
   }

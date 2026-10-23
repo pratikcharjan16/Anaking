@@ -1,5 +1,6 @@
 /* ---------- admin portal (usage & activity) ---------- */
 .portal{background:var(--bg,#faf7f2)}
+body.portal main{max-width:none;margin:0;padding:0}
 .ptl-hero{display:flex;justify-content:space-between;align-items:flex-end;gap:26px;flex-wrap:wrap;
   padding:52px clamp(20px,5vw,64px) 10px;max-width:1240px;margin:0 auto;
   background:radial-gradient(760px 380px at 88% 10%, rgba(201,162,39,.12), transparent 62%)}
@@ -46,11 +47,11 @@
 @keyframes ptlGrow{from{transform:scaleY(0)}to{transform:scaleY(1)}}
 
 /* users table */
-.ptl-users{margin:16px clamp(20px,5vw,64px) 6px;max-width:1240px}
+.ptl-users{margin:16px auto 6px;width:calc(100% - clamp(40px,10vw,128px));max-width:1112px}
 .ptl-card-head{display:flex;justify-content:space-between;align-items:center;gap:14px;flex-wrap:wrap}
 .ptl-card-head input{padding:8px 13px;border:1.5px solid var(--line,#e6ddd2);border-radius:999px;
-  font:inherit;font-size:12.5px;min-width:220px;background:var(--soft2,#f3eee5)}
-.ptl-table{width:100%;border-collapse:collapse;margin-top:12px;font-size:13px}
+  font:inherit;font-size:12.5px;min-width:0;width:min(260px,100%);background:var(--soft2,#f3eee5)}
+.ptl-table{width:100%;min-width:680px;border-collapse:collapse;margin-top:12px;font-size:13px}
 .ptl-table th{text-align:left;font-size:10.5px;text-transform:uppercase;letter-spacing:.07em;
   color:var(--muted,#5c574e);padding:9px 10px;border-bottom:1.5px solid var(--line,#e6ddd2)}
 .ptl-table td{padding:10px;border-bottom:1px solid var(--line2,#e6ddd2);vertical-align:middle}
@@ -69,7 +70,7 @@
 .ptl-when{white-space:nowrap;color:var(--muted,#5c574e);font-size:11.5px}
 
 /* activity timeline */
-.ptl-feed{margin:16px clamp(20px,5vw,64px) 10px;max-width:1240px}
+.ptl-feed{margin:16px auto 10px;width:calc(100% - clamp(40px,10vw,128px));max-width:1112px}
 .ptl-timeline{list-style:none;margin:12px 0 0;padding:0;position:relative}
 .ptl-timeline::before{content:"";position:absolute;left:7px;top:8px;bottom:8px;width:2px;
   background:var(--line2,#e6ddd2)}
@@ -93,8 +94,25 @@
 .ptl-footnote a{color:var(--accent,#1c6652);font-weight:750}
 
 @media(max-width:980px){
-  .ptl-kpis{grid-template-columns:repeat(2,1fr)}
+  .ptl-kpis{grid-template-columns:repeat(2,minmax(0,1fr))}
   .ptl-charts{grid-template-columns:1fr}
+  .ptl-hero-note{max-width:none;width:100%}
+}
+@media(max-width:600px){
+  .ptl-hero{padding:28px 14px 8px;gap:16px}
+  .ptl-kpis{padding:18px 14px 6px;gap:10px}
+  .ptl-kpi{padding:14px}
+  .ptl-kpi-n{font-size:26px}
+  .ptl-charts{padding:12px 14px 6px}
+  .ptl-card{padding:16px 14px;border-radius:15px}
+  .ptl-bars{gap:4px;height:130px;overflow-x:auto}
+  .ptl-bar{min-width:18px}
+  .ptl-users,.ptl-feed{width:calc(100% - 28px);margin:12px auto 8px}
+  .ptl-ev{flex-wrap:wrap;gap:6px 12px}
+  .ptl-footnote{padding:0 14px}
+}
+@media(max-width:420px){
+  .ptl-kpis{grid-template-columns:1fr}
 }
 @media(prefers-reduced-motion:reduce){
   .portal *,.portal *::before,.portal *::after{animation:none!important;transition:none!important}

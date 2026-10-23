@@ -2,58 +2,77 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Admin console · Anaking', 'Platform admin: approve who joins, manage accounts and see what every account has built.') }}
+{{ head('Admin Console · SurveyKart', 'SurveyKart Admin Console: manage accounts, approve Kart point requests, adjust user Kart balances, and govern every project.') }}
 <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
 <link rel="stylesheet" href="{{ asset('css/console.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
 </head>
 <body>
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
-  {{ brand('ADMIN', '/admin/console', 38, 'con') }}
-  <div class="meta">
-    <span class="appnav-link on" aria-current="page">Admin console</span>
-    {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
+  {{ brand('ADMIN', '/', 38, 'con', title='SurveyKart — Insights Delivered (Go to main page)') }}
+  <div class="meta" style="flex-wrap:wrap;gap:10px">
+    <a class="linkbtn gold" href="/admin/console" aria-current="page">Admin Console</a>
+    <a class="linkbtn" href="/admin-portal">Admin Portal</a>
+    {% with active='' %}{% include '_nav.html' %}{% endwith %}
+    {% if account() %}
+    <form method="post" action="/auth/logout" style="display:inline;margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="linkbtn">Sign out</button>
+    </form>
+    {% endif %}
   </div>
 </header>
 
 <main id="main">
   <section class="cs-head">
     <div>
-      <h1>Admin console</h1>
-      <p>Every new profile waits for your approval here — one account per Google e-mail.
-        Approved accounts see only their own projects; you see everything.</p>
+      <h1>Admin console &middot; SurveyKart</h1>
+      <p>All platform rights reserved to Admin (<code>Anaking.admin</code>). Manage registered users,
+        increase or decrease each user's Kart point allocation (default <strong>100 pts</strong> on registration),
+        approve extra point requests, and govern every project across SurveyKart.</p>
     </div>
     <div class="cs-stats" id="cs-stats"></div>
   </section>
 
+  <section class="cs-point-reqs" id="cs-point-reqs" hidden>
+    <h2>Kart Point Allocation Requests</h2>
+    <div class="cs-pending-list" id="cs-point-req-list"></div>
+  </section>
+
   <section class="cs-pending" id="cs-pending" hidden>
-    <h2>Waiting for approval</h2>
+    <h2>Accounts waiting for approval</h2>
     <div class="cs-pending-list" id="cs-pending-list"></div>
   </section>
 
   <section class="cs-users">
-    <h2>Accounts</h2>
-    <table class="cs-table" id="cs-table">
-      <thead><tr>
-        <th>Person</th><th>Status</th><th>Role</th><th>Projects</th>
-        <th>Completes</th><th>Signed up</th><th>Last seen</th><th></th>
-      </tr></thead>
-      <tbody id="cs-rows"></tbody>
-    </table>
+    <h2>SurveyKart Accounts &amp; Kart Balances</h2>
+    <div class="cs-table-wrap">
+      <table class="cs-table" id="cs-table">
+        <thead><tr>
+          <th>Person</th><th>Status</th><th>Role</th><th>Kart Points (Used / Limit)</th>
+          <th>Projects</th><th>Completes</th><th>Last seen</th><th>Admin Controls</th>
+        </tr></thead>
+        <tbody id="cs-rows"></tbody>
+      </table>
+    </div>
   </section>
 
   <section class="cs-projects" id="cs-projects" hidden>
     <h2 id="cs-projects-title">Projects</h2>
-    <table class="cs-table">
-      <thead><tr><th>Study</th><th>Slug</th><th>Status</th><th>Completes</th><th>Updated</th><th></th></tr></thead>
-      <tbody id="cs-project-rows"></tbody>
-    </table>
-    <button class="cs-btn ghost" id="cs-projects-close" type="button">Close</button>
+    <div class="cs-table-wrap">
+      <table class="cs-table">
+        <thead><tr><th>Study</th><th>Slug</th><th>Status</th><th>Kart Pts</th><th>Completes</th><th>Updated</th><th></th></tr></thead>
+        <tbody id="cs-project-rows"></tbody>
+      </table>
+    </div>
+    <div style="margin-top:12px">
+      <button class="cs-btn ghost" id="cs-projects-close" type="button">Close</button>
+    </div>
   </section>
 </main>
 
