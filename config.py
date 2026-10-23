@@ -21,6 +21,19 @@ class Config:
     SESSION_COOKIE_SECURE = PRODUCTION
     LOCAL_AI_URL = os.environ.get("LOCAL_AI_URL", "")
     LOCAL_AI_MODEL = os.environ.get("LOCAL_AI_MODEL", "")
+
+    # ---- platform accounts (Google sign-in) ------------------------------------
+    # OAuth client from Google Cloud Console -> APIs & Services -> Credentials.
+    # With these unset the Google button reports "not configured" and only the
+    # explicitly enabled DEV_LOGIN shortcut works (never in production).
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+    GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    # Comma-separated emails that become platform admins (auto-approved) on first
+    # sign-in - the bootstrap so the admin console can never be locked out.
+    ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
+    # Development-only e-mail sign-in shortcut (demo / QA without Google credentials).
+    # Forced off whenever ANAKING_ENV=production, whatever the environment says.
+    DEV_LOGIN = (not PRODUCTION) and os.environ.get("DEV_LOGIN", "0") == "1"
     SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
 
     # SQLite database holding studies, respondents and answers.

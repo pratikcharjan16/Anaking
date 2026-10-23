@@ -51,12 +51,18 @@ def _survey_page(slug: str):
     # the team can preview a draft (the Studio's "Preview" button opens /survey/<slug>/test).
     paused = study.status == "paused"
     if not study.effective_live() and not is_test and not paused:
-        return render_template("survey/not_live.html", slug=slug), 403
+        return render_template("survey/not_live.html", slug=slug, study_title=study.title), 403
     # A paused study still serves the page: nobody can *start* (the client shows a paused
     # notice and /api/start refuses), but anyone already answering can resume and finish.
+    design_version = ""
+    if is_test:
+        # Stamped into the team strip so it is obvious that the open test link is tied to the
+        # design as it stands right now (and visibly changes whenever the design is saved).
+        design_version = fingerprint(survey_config(study, True))[:10]
     return render_template("survey/survey.html", slug=slug, study_title=study.title,
                            is_test=is_test, is_draft=not study.effective_live(),
-                           is_paused=paused and not is_test)
+                           is_paused=paused and not is_test,
+                           design_version=design_version)
 
 
 @bp.get("/survey/")
@@ -117,7 +123,15 @@ def spec(slug="beacon"):
         abort(403, 'Session belongs to another study.')
     if current_app.config['STAFF_AUTH'] and not study.effective_live() and not resp and not preview:
         abort(403, 'Study is not live.')
-    merged_src = response_cfg(resp, survey_config(study, resp.is_test, request.args.get('lang'))) if resp else survey_config(study, preview, request.args.get('lang'))
+    # A test page must always show the study as it is *now*.  Test sessions used to pin the
+    # snapshot they started with, which meant edits made in the Studio stayed invisible in
+    # the test link until the browser's saved run was wiped.  Real respondents keep their
+    # pinned version; test runs follow the live design.
+    test_view = resp.is_test if resp is not None else preview
+    if resp is not None and not test_view:
+        merged_src = response_cfg(resp, survey_config(study, False, request.args.get('lang')))
+    else:
+        merged_src = survey_config(study, test_view, request.args.get('lang'))
     base = merged_src
     home = study.parent_study() if study.is_child() else study
     lang = merged_src.get('_selected_language') or (study.cfg.get('language') if study.is_child() else request.args.get('lang')) or default_language(base)
@@ -127,6 +141,9 @@ def spec(slug="beacon"):
         conj = dict(conj, tasks={str(i + 1): t for i, t in enumerate(conj["tasks"])})
     return jsonify({
         "survey_version": fingerprint(merged_src),
+        # which study / design this page is showing - the test link is always the current one
+        "study": slug,
+        "test_mode": bool(test_view),
         "privacy_notice": cfg.get("privacy_notice", ""),
         "research_contact": cfg.get("research_contact", ""),
         "consent_statement": cfg.get("consent_statement", "I agree to take part in this research."),
@@ -181,6 +198,11 @@ def start():
     cfg = survey_config(study, bool(body.get('is_test')), lang)
     if body.get('survey_version') and body['survey_version'] != fingerprint(cfg):
         return jsonify(error='The survey changed before you started. Reload to use the current version.'), 409
+    # A new test run replaces the previous one from this browser: test links start blank
+    # instead of inheriting old answers. Real respondent sessions are never touched.
+    previous = str(body.get('previous_session') or '')
+    if body.get('is_test') and previous:
+        Respondent.discard_test_session(study, previous)
     wanted = [e.get("name") for e in cfg.get("embedded", []) or [] if e.get("name")]
     sent = body.get("embedded") if isinstance(body.get("embedded"), dict) else {}
     embedded = {k: str(v)[:200] for k, v in sent.items() if k in wanted}

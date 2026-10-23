@@ -1,53 +1,21 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="csrf-token" content="{{csrf_token()}}"><title>Anaking · Research workspace</title><link rel="stylesheet" href="/static/css/workspace.css"><script src="/static/js/security.js"></script></head>
+<html lang="en"><head>{% from "_head.html" import head %}{{ head('Anaking · Research workspace') }}<meta name="csrf-token" content="{{csrf_token()}}"><link rel="stylesheet" href="{{ asset('css/workspace.css') }}"><link rel="stylesheet" href="{{ asset('css/design-system.css') }}"><script src="{{ asset('js/security.js') }}"></script></head>
 <body><a href="#main" class="skip-link">Skip to workspace</a><div class="workspace-shell">
-<aside class="sidebar"><a class="anaking-brand-lockup" href="/workspace/" title="Anaking — An Intelligent Insight Platform">
-  <svg class="anaking-svg-logo" viewBox="0 0 44 44" width="40" height="40" fill="none" xmlns="http://www.w3.org/2000/svg" aria-label="Anaking Logo">
-    <defs>
-      <linearGradient id="ak-ws-bg" x1="0" y1="0" x2="44" y2="44" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#0f172a"/>
-        <stop offset="50%" stop-color="#1e293b"/>
-        <stop offset="100%" stop-color="#090d16"/>
-      </linearGradient>
-      <linearGradient id="ak-ws-crown" x1="6" y1="8" x2="38" y2="36" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#00f5a0"/>
-        <stop offset="50%" stop-color="#00d9f5"/>
-        <stop offset="100%" stop-color="#7928ca"/>
-      </linearGradient>
-      <linearGradient id="ak-ws-facet" x1="12" y1="12" x2="32" y2="32" gradientUnits="userSpaceOnUse">
-        <stop offset="0%" stop-color="#ffffff" stop-opacity="0.9"/>
-        <stop offset="100%" stop-color="#00d9f5" stop-opacity="0.2"/>
-      </linearGradient>
-      <filter id="ak-ws-glow" x="-20%" y="-20%" width="140%" height="140%">
-        <feGaussianBlur stdDeviation="1.8" result="blur"/>
-        <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-      </filter>
-    </defs>
-    <rect class="ak-ring" x="2" y="2" width="40" height="40" rx="12" fill="url(#ak-ws-bg)" stroke="url(#ak-ws-crown)" stroke-width="1.5"/>
-    <g class="ak-crown-group" filter="url(#ak-ws-glow)">
-      <path d="M 22 9 L 28 20 L 22 25 L 16 20 Z" fill="url(#ak-ws-crown)"/>
-      <path d="M 10 14 L 16 20 L 12 28 L 8 21 Z" fill="url(#ak-ws-crown)" opacity="0.9"/>
-      <path d="M 34 14 L 36 21 L 32 28 L 28 20 Z" fill="url(#ak-ws-crown)" opacity="0.9"/>
-      <path d="M 12 28 L 22 25 L 32 28 L 22 36 Z" fill="url(#ak-ws-crown)" opacity="0.8"/>
-      <polygon points="22,14 25,20 22,23 19,20" fill="url(#ak-ws-facet)"/>
-    </g>
-    <circle class="ak-particle" cx="22" cy="4" r="2" fill="#00f5a0"/>
-  </svg>
-  <div class="anaking-brand-text">
-    <div class="anaking-brand-title">
-      <b class="brand-anaking">Anaking</b>
-      <span class="brand-sub-badge">WORKSPACE<span class="live-pulse-dot"></span></span>
-    </div>
-    <span class="anaking-tagline"><span class="tagline-spark">✦</span> An Intelligent Insight Platform</span>
-  </div>
-</a>
+<aside class="sidebar">{% from "_brand.html" import brand %}
+{{ brand('WORKSPACE', '/workspace/', 40, 'ws') }}
 <div class="workspace-label"><span class="workspace-avatar">R</span><div><strong>Research team</strong><small id="role-label">Your shared workspace</small></div><span class="status-dot"></span></div>
-<p class="nav-caption">WORKSPACE</p><nav class="side-nav" aria-label="Workspace"><a href="#" class="active" id="projects-link"><span>▦</span> Projects <span id="project-count" class="nav-count">0</span></a><a href="/studio/"><span>✎</span> Survey studio</a><a href="/admin/"><span>◴</span> Fieldwork monitor</a><button id="open-assistant"><span>✧</span> Research assistant <i>NEW</i></button></nav>
+<p class="nav-caption">WORKSPACE</p><nav class="side-nav" aria-label="Workspace"><a href="#" class="active" id="projects-link" aria-current="page"><span>▦</span> Projects <span id="project-count" class="nav-count">0</span></a><a href="/studio/"><span>✎</span> Studio</a><a href="/admin/"><span>◴</span> Monitor</a><button id="open-assistant"><span>✧</span> Research assistant <i>NEW</i></button></nav>
 <div class="sidebar-note"><span class="note-orbit">✧</span><strong>Better questions.<br>Clearer decisions.</strong><p>Design thoughtfully. Review together. Let the evidence lead.</p><button id="guide-button" class="text-button">Explore the workflow →</button></div>
 <div class="sidebar-bottom"><span class="status-dot"></span> <span id="deployment-mode">Workspace ready</span><a href="/healthz" aria-label="Service health">↗</a></div>
-{% if config.STAFF_AUTH %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}
+{% if config.STAFF_AUTH %}{% if account() %}
+<div class="account-chip">{{ account().name or account().email }}
+  {% if account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin console</a>{% endif %}
+  <form method="post" action="/auth/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>
+</div>
+{% else %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}{% endif %}
 </aside>
-<div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● No paid services required</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Research team">RT</span></div></header>
+<div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Signed in account">{% if account() %}{{ (account().name or account().email)[:2] | upper }}{% else %}RT{% endif %}</span>
+  {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console →</a>{% endif %}</div></header>
 <main id="main" tabindex="-1"><div class="skeleton" aria-label="Loading projects"></div><div class="skeleton short"></div></main>
 <footer class="workspace-footer"><span>Made for considered research.</span><span>Human judgment. Transparent automation.</span></footer></div></div>
 <div id="toast" class="workspace-toast" role="status" hidden></div>
@@ -56,6 +24,6 @@
 <dialog aria-label="Research workflow guide" id="guide-dialog"><div class="dialog-heading"><span class="eyebrow">THE RESEARCH JOURNEY</span><button data-close aria-label="Close">×</button></div><h2>From a good question to a clear decision.</h2><ol class="guide-list"><li><b>Design</b><p>Define objectives, audience and questionnaire. Keep advanced settings tucked away until needed.</p></li><li><b>Test & translate</b><p>Run readiness checks, manually test every route and review translations with a native speaker.</p></li><li><b>Review & publish</b><p>Approve an exact draft. Publishing locks a version; subsequent edits stay in draft.</p></li><li><b>Monitor & understand</b><p>Keep real and test data separate. Inspect answered bases and review original verbatims.</p></li></ol><p class="notice">Checks are not a certification of research validity or legal compliance. Automated guidance uses rules; model assistance is optional and requires configuration.</p></dialog>
 <dialog aria-label="Compare a saved revision" id="revision-dialog"><div class="dialog-heading"><span class="eyebrow">VERSION COMPARISON</span><button data-close aria-label="Close">×</button></div><h2>Review before restoring.</h2><div id="revision-content"></div></dialog>
 <dialog aria-label="Customize PowerPoint Export" id="ppt-dialog" class="assistant-dialog"><div class="dialog-heading"><span class="eyebrow">POWERPOINT REPORT EXPORT</span><button data-close aria-label="Close">×</button></div><h2>Download editable PPT report</h2><p>Select which questions to include in the presentation deck. Charts and tables are completely editable in PowerPoint.</p><div class="toolbar" style="margin-bottom:12px;display:flex;gap:8px"><button type="button" class="btn sm" id="ppt-select-all">Select all</button><button type="button" class="btn sm" id="ppt-deselect-all">Deselect all</button></div><div id="ppt-question-list" style="max-height:280px;overflow-y:auto;margin-bottom:16px;border:1px solid #e2e8f0;padding:8px 12px;border-radius:8px;background:#f8fafc"></div><div class="dialog-actions"><button type="button" data-close>Cancel</button><button type="button" class="primary" id="ppt-start-download">Download presentation ↓</button></div></dialog>
-<script src="/static/js/chart-visuals.js"></script>
-<script src="/static/js/data-validation.js"></script>
-<script src="/static/js/workspace.js"></script></body></html>
+<script src="{{ asset('js/chart-visuals.js') }}"></script>
+<script src="{{ asset('js/data-validation.js') }}"></script>
+<script src="{{ asset('js/workspace.js') }}"></script></body></html>

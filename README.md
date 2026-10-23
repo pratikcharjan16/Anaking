@@ -67,7 +67,9 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 
 | App | URL | What it is |
 |---|---|---|
-| **Home** | `/` | Landing page: links to the three apps + list of studies on the server |
+| **Home** | `/` | Marketing landing: animated feature demos + Google sign-in (the classic study list stays at `/?legacy=1`) |
+| | `/workspace/` | Project hub — what every account has built (with readiness checks, publishing, revisions) |
+| | `/admin/console` | Admin console — approve who joins, manage accounts, inspect projects (platform admins only) |
 | **Survey** | `/survey/` | Respondent link — the live BEACON survey. Respondents never see which section a question belongs to (screeners / main are team-only), and while a question is on screen the project details and progress line are hidden; the gamified strip (ring, points, rank, mic, sound) stays on top when *Gamified feel* is on — see below |
 | | `/survey/test` | Same survey, stored as **test data** (codes T001, T002 …) |
 | | `/survey/<slug>` , `/survey/<slug>/test` | Any study launched from the Studio (test mode also previews drafts) |
@@ -78,8 +80,72 @@ Three separate apps, each on its own URL (the home page at `/` links to all of t
 
 Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/survey/…` paths.
 
-Every page header carries the same **Home · Survey · Studio · Admin** switcher, so the team can hop
-between apps without retyping anything. Respondents see none of this — the team strip on the survey
+### Accounts & sign-in (Google)
+
+The team apps (Projects / Studio / Monitor) are multi-user:
+
+- **Register vs sign in** — new users **register** with Google (`/register`, creates the
+  profile); existing users **sign in** (`/signin`). Sign-in never silently registers anyone -
+  an unknown Google e-mail is pointed at registration instead. Both carry a
+  **forgot user ID or password** link (`/recover`): the user ID is your Google e-mail, the
+  password is your Google password (Google recovers it), and the page can look up where any
+  address stands.
+- **Admin approval** — new profiles are *pending* until the platform admin approves them in
+  the **Admin console** (`/admin/console`): Approve / Reject / Disable / Re-enable, Make
+  admin / Make user, and a per-account list of every project they have built.
+- **Private projects** — everything an account creates belongs to that account. Others never
+  see it; admins see and can open everything. Legacy studies with no owner are admin-only.
+- **Admin bootstrap** — put your address in `ADMIN_EMAILS` (comma-separated); those accounts
+  are auto-approved as admins on first sign-in, so the console can never be locked out.
+  The console refuses to lock out or demote the last admin.
+- **Respondent links stay public** — fieldwork never signs in; `/survey/…` keeps working
+  with the gate up.
+
+`/auth/dev` is a development-only e-mail sign-in shortcut (`DEV_LOGIN=1`, never available
+when `ANAKING_ENV=production`) for demos and QA without Google credentials.
+
+### Deploying to production
+
+```bash
+pip install -r requirements.txt            # includes google-auth + gunicorn
+export ANAKING_ENV=production
+export SECRET_KEY="..."                     # required; a long random string
+export STAFF_AUTH=1                         # forced on in production anyway
+export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
+export GOOGLE_CLIENT_SECRET="..."
+export ADMIN_EMAILS="you@your.org"
+export DB_PATH=/var/lib/anaking/survey.db   # optional; default data/survey.db
+gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
+```
+
+In Google Cloud Console create an **OAuth 2.0 Client ID** (Web application) and add the
+platform's exact callback URL: `https://<your-host>/auth/google/callback`. The app refuses
+to start in production without `STAFF_AUTH` and a non-default `SECRET_KEY`; `DEV_LOGIN`
+cannot be enabled there. Behind a reverse proxy the app trusts `X-Forwarded-*` (set those
+headers), and session cookies are `Secure` + `HttpOnly` + `SameSite=Lax` automatically.
+
+**The test survey opens in its own tab.** The Studio's **Test survey** button (and every Preview
+link on the cards, tabs and home page) saves any pending builder edits and then opens the test
+environment in a new tab, leaving the editing tab exactly as it was - same study, same question,
+same scroll position. Where a browser blocks pop-ups the link falls back to opening in the current
+tab, so the button never appears to do nothing.
+
+**A test link is always a fresh rehearsal.** Opening /survey/<slug>/test starts a brand-new run
+from the first question with blank answers, and it always renders the design as it is saved in the
+Studio right now — edits appear on the next open, with no browser cache or saved run to clear. The
+previous test run from that browser is retired when the next one starts, so test data never
+accumulates pre-filled answers. The team strip shows a short **design** fingerprint of the version
+being tested so it is obvious that the link is bound to the current design. Two internal links
+carry a run forward on purpose: `?review=<token>` (a shared team review restores its saved answers
+and notes) and `?keep=1` (used by the in-page language switch, so changing language mid-test does
+not throw the answers away).
+
+Every page header carries the same **Projects · Studio · Monitor** switcher, with the current
+section marked for assistive technology, so the team can hop between apps without retyping
+anything. The respondent survey is deliberately **not** a tab: previewing and testing happens
+in the Studio (▶ Test survey) and through the per-study test/preview links. Inside a test
+link the team strip keeps a small **▶ Test view** marker that returns to that study's test
+link. Respondents see none of this — the team strip on the survey
 only renders in test mode (`/survey/<slug>/test`), which is also where drafts are previewed; the
 respondent link of a draft or closed study shows a "not launched yet" page instead.
 
@@ -87,8 +153,15 @@ respondent link of a draft or closed study shows a "not launched yet" page inste
 open to anyone who can reach the server. Restrict access at the network or reverse-proxy layer
 (VPN, IP allow-list, HTTP basic auth in nginx/Caddy, …) before exposing the platform publicly.
 
+**Design system.** One token layer (`static/css/design-system.css`) owns the palette, type,
+radii, elevation, motion and focus treatment; app stylesheets only lay out their own screens.
+Two themes share those foundations — the team tools use the deep-green editorial identity, the
+respondent survey keeps its clinical navy instrument. The brand lockup, document head, section
+switcher and footer are shared macros, and every asset URL is stamped with one build version by
+`asset()` (no hand-typed `?v=` strings). See `docs/design-system.md`.
+
 Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
-`MEDIA_DIR`, `SECRET_KEY`. Defaults put the database in `data/survey.db`, respondent recordings in
+`MEDIA_DIR`, `SECRET_KEY`, `ASSET_VERSION`. Defaults put the database in `data/survey.db`, respondent recordings in
 `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
 
 ### Respondent survey: answer by voice & the gamified feel
@@ -289,6 +362,26 @@ exported as a `language` column.
 (middle sections shuffle per respondent, seeded by their session) and **Embedded
 Variables** (names captured from the respondent link, e.g. `?panel=A` → exported as
 `ev_panel`).
+
+### Quotas (Studio → **Quota**)
+
+Say how many completed responses each option group needs — typically on a screener
+like "What is your primary specialty": Medical Oncologist 2, Hem Onc 4, Surgeons 4 out
+of 10 completes. A quota cell = a question + one or more of its options + the number of
+completes needed.
+
+- The **Quota tab** (beside Analysis) shows the fill of every cell live: `2 / 2 completes ·
+  Quota full · stop sharing links`, with a bar per cell and the totals.
+- When a cell fills, the team is **notified** (toast + the notices panel) and should
+  **stop sharing new respondent links for that option** — the other options keep taking
+  respondents until they fill too.
+- Respondents who arrive after the cut are **never blocked**: they complete as usual, and
+  their response is saved as **"Quota Full"** in the `quota_category` column of the normal
+  data extract (csv / Excel / json — no separate quota file). Every later over-quota
+  completion is notified too.
+- Quotas count **real completes** by default (partials and test runs never fill them);
+  "count test runs too" is there for rehearsal. Over-quota order is first-come — the first
+  `target` completes fill the quota.
 
 ### The add-item library (Studio → + Add question)
 

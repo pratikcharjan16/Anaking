@@ -26,10 +26,11 @@ def approve_publish(client, slug):
 
 def test_workspace_enabled_pages_and_assets(app,client):
     app.config['WORKSPACE_ENABLED']=True
-    for path in ('/','/workspace/'):
-        r=client.get(path)
-        assert r.status_code == 200
-        assert b'js/workspace.js' in r.data
+    r=client.get('/workspace/')
+    assert r.status_code == 200
+    assert b'js/workspace.js' in r.data
+    # the landing page is its own marketing surface
+    assert b'js/landing.js' in client.get('/').data
     assert client.get('/static/js/workspace.js').status_code == 200
     assert client.get('/static/css/workspace.css').status_code == 200
     assert client.get('/?legacy=1').status_code == 200
