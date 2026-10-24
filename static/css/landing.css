@@ -56,9 +56,7 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 /* ---------- hero: say it, watch it act ---------- */
 .ln-hero2{display:grid;grid-template-columns:1.02fr .98fr;gap:52px;align-items:center;
   padding:76px clamp(20px,6vw,88px) 52px;max-width:1280px;margin:0 auto;
-  background:
-    radial-gradient(900px 480px at 88% 16%, rgba(201,162,39,.13), transparent 62%),
-    radial-gradient(760px 520px at 6% 90%, rgba(58,168,134,.10), transparent 62%)}
+  background:transparent}
 .ln-aichip{display:inline-flex;align-items:center;gap:8px;background:#f7ecd4;color:#8a6d1f;
   border:1px solid #e2cf9c;font-size:11.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;
   padding:7px 14px;border-radius:999px;margin:0 0 18px}
@@ -1327,23 +1325,14 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 }
 
 /* =====================================================================
-   WARM SURVEYKART FULL-CANVAS ARCHITECTURE & WIDESCREEN LAYOUT
-   Eliminates plain empty side margins by expanding section containers
-   across the viewport and layering a warm, welcoming SurveyKart canvas.
+   NEUTRAL SURVEYKART FULL-CANVAS ARCHITECTURE & WIDESCREEN LAYOUT
+   A quiet paper canvas keeps copy and controls readable. Brand colour is
+   reserved for content; the decorative layer only tints the outer gutters.
    ===================================================================== */
 body.landing{
   position:relative;
-  background-color:#faf6ec;
-  background-image:
-    radial-gradient(1200px 660px at 4% 4%, rgba(245,158,11,0.20), transparent 62%),
-    radial-gradient(1100px 660px at 96% 8%, rgba(20,97,79,0.16), transparent 64%),
-    radial-gradient(1240px 760px at 94% 44%, rgba(234,88,12,0.12), transparent 65%),
-    radial-gradient(1160px 720px at 6% 70%, rgba(212,175,55,0.17), transparent 64%),
-    radial-gradient(900px 620px at 50% 104%, rgba(29,138,111,0.12), transparent 64%),
-    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23b48430' stroke-opacity='.10' stroke-width='1.1'%3E%3Ccircle cx='80' cy='80' r='58' stroke-dasharray='2 9'/%3E%3Ccircle cx='80' cy='80' r='30' stroke-dasharray='1 7'/%3E%3Cpath d='M80 8v14M80 138v14M8 80h14M138 80h14'/%3E%3C/g%3E%3Cg fill='%23b48430' fill-opacity='.13'%3E%3Ccircle cx='20' cy='20' r='1.6'/%3E%3Ccircle cx='140' cy='140' r='1.6'/%3E%3C/g%3E%3C/svg%3E"),
-    radial-gradient(rgba(180,130,45,0.14) 1px, transparent 1px),
-    linear-gradient(180deg, #fdfaf3 0%, #f7f0e1 34%, #fbf6ea 68%, #f3ebd8 100%);
-  background-size:auto, auto, auto, auto, auto, 160px 160px, 28px 28px, 100% 100%;
+  background-color:#f8f9f6;
+  background-image:linear-gradient(180deg, #fbfcf9 0%, #f8f9f6 38%, #f6f7f4 100%);
   background-attachment:scroll;
 }
 body.landing .an-appbar{
@@ -1473,8 +1462,8 @@ body.landing .an-appbar{
   gap:18px;
 }
 
-/* Warm Ambient Side-Rails (Decorative SurveyKart Telemetry Tokens on Wide Screens) */
-/* Decorative aurora + forensic instrumentation that fills the wide side gutters */
+/* Quiet ambient side-rails: decorative detail stays in the outer gutters and
+   never competes with the reading column. */
 .sk-ambient-canvas{
   position:fixed;
   inset:70px 0 0 0;
@@ -1485,46 +1474,42 @@ body.landing .an-appbar{
 .sk-ambient-canvas::before{
   content:"";
   position:absolute;
-  inset:-12% -6%;
+  inset:-8% -4%;
   background:
-    radial-gradient(34vw 34vw at 12% 16%, rgba(245,158,11,0.22), transparent 62%),
-    radial-gradient(30vw 30vw at 88% 12%, rgba(20,97,79,0.20), transparent 64%),
-    radial-gradient(32vw 32vw at 84% 82%, rgba(234,88,12,0.14), transparent 62%),
-    radial-gradient(30vw 30vw at 14% 80%, rgba(29,138,111,0.18), transparent 62%),
-    radial-gradient(26vw 26vw at 50% 48%, rgba(212,175,55,0.13), transparent 66%);
+    radial-gradient(30vw 40vw at 0% 18%, rgba(201,162,39,0.055), transparent 70%),
+    radial-gradient(30vw 40vw at 100% 22%, rgba(20,97,79,0.045), transparent 70%),
+    radial-gradient(28vw 36vw at 0% 88%, rgba(20,97,79,0.035), transparent 72%),
+    radial-gradient(28vw 36vw at 100% 84%, rgba(201,162,39,0.04), transparent 72%);
   animation:skAmbAurora 26s ease-in-out infinite alternate;
 }
 .sk-ambient-canvas::after{
   content:"";
   position:absolute;
   inset:0;
-  background-image:
-    radial-gradient(rgba(180,130,45,0.20) 1px, transparent 1.4px),
-    linear-gradient(to right, rgba(180,130,45,0.10) 1px, transparent 1px),
-    linear-gradient(to bottom, rgba(180,130,45,0.10) 1px, transparent 1px);
-  background-size:26px 26px, 130px 130px, 130px 130px;
-  -webkit-mask-image:radial-gradient(ellipse 62% 58% at 50% 42%, transparent 42%, #000 100%);
-  mask-image:radial-gradient(ellipse 62% 58% at 50% 42%, transparent 42%, #000 100%);
-  opacity:.7;
+  background-image:radial-gradient(rgba(86,104,95,0.16) .75px, transparent .9px);
+  background-size:30px 30px;
+  -webkit-mask-image:linear-gradient(90deg, #000 0%, transparent 19%, transparent 81%, #000 100%);
+  mask-image:linear-gradient(90deg, #000 0%, transparent 19%, transparent 81%, #000 100%);
+  opacity:.32;
 }
 @keyframes skAmbAurora{
   0%{transform:translate3d(0,0,0) scale(1)}
   50%{transform:translate3d(1.6%,-1.4%,0) scale(1.05)}
   100%{transform:translate3d(-1.4%,1.6%,0) scale(1.02)}
 }
-.sk-amb-orbs{position:absolute;inset:0}
+.sk-amb-orbs{position:absolute;inset:0;opacity:.38}
 .sk-amb-orb{
   position:absolute;
   border-radius:50%;
-  filter:blur(2px);
-  background:radial-gradient(circle at 34% 30%, rgba(255,252,240,.92), rgba(246,226,156,.42) 46%, rgba(29,138,111,.16) 78%, transparent 82%);
-  box-shadow:0 24px 60px -28px rgba(120,70,20,.35), inset 0 1px 0 rgba(255,255,255,.85);
+  filter:blur(1px);
+  background:radial-gradient(circle at 34% 30%, rgba(255,255,255,.72), rgba(229,234,227,.24) 48%, rgba(20,97,79,.045) 76%, transparent 82%);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.72);
   animation:skAmbDrift 22s ease-in-out infinite;
 }
-.sk-amb-orb.o1{width:150px;height:150px;left:5%;top:16%}
-.sk-amb-orb.o2{width:96px;height:96px;right:7%;top:34%;animation-delay:-6s;animation-duration:26s}
-.sk-amb-orb.o3{width:184px;height:184px;left:9%;bottom:14%;animation-delay:-11s;animation-duration:30s;opacity:.72}
-.sk-amb-orb.o4{width:120px;height:120px;right:4%;bottom:22%;animation-delay:-3s;opacity:.8}
+.sk-amb-orb.o1{width:150px;height:150px;left:3%;top:16%}
+.sk-amb-orb.o2{width:96px;height:96px;right:4%;top:34%;animation-delay:-6s;animation-duration:26s}
+.sk-amb-orb.o3{width:184px;height:184px;left:4%;bottom:14%;animation-delay:-11s;animation-duration:30s;opacity:.72}
+.sk-amb-orb.o4{width:120px;height:120px;right:3%;bottom:22%;animation-delay:-3s;opacity:.8}
 @keyframes skAmbDrift{
   0%,100%{transform:translate3d(0,0,0) rotate(0deg)}
   33%{transform:translate3d(10px,-18px,0) rotate(6deg)}
@@ -1551,7 +1536,7 @@ body.landing .an-appbar{
   top:6%;
   bottom:6%;
   width:0;
-  border-left:1.5px dashed rgba(180,130,45,.26);
+  border-left:1.5px dashed rgba(86,104,95,.16);
 }
 .sk-ambient-rail.left .sk-amb-spine{left:50%}
 .sk-ambient-rail.right .sk-amb-spine{right:50%}
@@ -1595,7 +1580,7 @@ body.landing .an-appbar{
   border-radius:50%;
   pointer-events:none;
   background-image:
-    repeating-conic-gradient(from 0deg, rgba(180,130,45,.22) 0deg 0.7deg, transparent 0.7deg 12deg);
+    repeating-conic-gradient(from 0deg, rgba(86,104,95,.12) 0deg 0.7deg, transparent 0.7deg 12deg);
   -webkit-mask-image:radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
   mask-image:radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
   animation:skAmbSpin 90s linear infinite;
@@ -1607,7 +1592,7 @@ body.landing .an-appbar{
   width:320px;
   height:320px;
   border-radius:50%;
-  border:1.5px dashed rgba(180,130,45,.20);
+  border:1.5px dashed rgba(86,104,95,.12);
   pointer-events:none;
 }
 .sk-amb-ring.r1{left:-160px;bottom:-90px}
