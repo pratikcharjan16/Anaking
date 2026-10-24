@@ -119,3 +119,36 @@ body.portal main{max-width:none;margin:0;padding:0}
 @media(prefers-reduced-motion:reduce){
   .portal *,.portal *::before,.portal *::after{animation:none!important;transition:none!important}
 }
+
+/* "Desk" shortcut on each row — the portal stays a bird's-eye view, the desk is
+   where the admin actually works an account. */
+.ptl-open{display:inline-flex;align-items:center;gap:3px;white-space:nowrap;
+  padding:4px 10px;border-radius:var(--an-radius-pill);
+  border:1px solid var(--an-line-strong);background:var(--an-panel);
+  color:var(--an-accent);font-size:10.5px;font-weight:800;text-decoration:none;
+  box-shadow:inset 0 1px 0 var(--an-panel),0 2px 0 var(--an-line-strong);
+  transition:transform var(--an-fast) var(--an-ease),box-shadow var(--an-fast) var(--an-ease)}
+.ptl-open:hover{transform:translateY(-1px);color:var(--an-accent-strong);
+  box-shadow:inset 0 1px 0 var(--an-panel),0 3px 0 var(--an-line-strong)}
+.ptl-open:active{transform:translateY(1px);box-shadow:none}
+
+/* Kart cells in the users table. Point *edits* live in the Account desk (they
+   carry a reason and land in the ledger); the portal keeps the quick nudge. */
+.ptl-kart-badge{display:inline-flex;align-items:center;gap:4px;padding:3px 10px;
+  border-radius:var(--an-radius-pill);background:var(--an-warn-soft);
+  border:1px solid var(--an-line-strong);color:var(--an-warn);
+  font-size:10.5px;font-weight:800;white-space:nowrap}
+.ptl-kart-badge small{font-weight:700;color:var(--an-muted)}
+.ptl-master{color:var(--an-muted);font-size:10.5px}
+.ptl-kart-ctrls{display:flex;align-items:center;gap:3px;white-space:nowrap}
+.ptl-kbtn{border:1px solid var(--an-line-strong);border-radius:var(--an-radius-pill);
+  padding:3px 8px;font:inherit;font-size:10px;font-weight:800;cursor:pointer;
+  background:linear-gradient(180deg,var(--an-panel) 0%,var(--an-line-soft) 100%);
+  color:var(--an-ink);box-shadow:inset 0 1px 0 var(--an-panel),0 2px 0 var(--an-line-strong);
+  transition:transform var(--an-fast) var(--an-ease),box-shadow var(--an-fast) var(--an-ease)}
+.ptl-kbtn:hover{transform:translateY(-1px);box-shadow:inset 0 1px 0 var(--an-panel),0 3px 0 var(--an-line-strong)}
+.ptl-kbtn:active{transform:translateY(1px);box-shadow:none}
+.ptl-kbtn.ok{color:var(--an-good);border-color:var(--an-good)}
+.ptl-kbtn.gold{color:var(--an-warn);border-color:var(--an-warn)}
+.ptl-kbtn.no{color:var(--an-bad);border-color:var(--an-bad)}
+.ptl-kbtn[disabled]{opacity:.5;cursor:progress;transform:none;box-shadow:none}

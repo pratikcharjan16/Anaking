@@ -10,6 +10,7 @@
 <script src="{{ asset('js/security.js') }}"></script>
 </head>
 <body class="landing auth-gate" data-status="{{ user.status }}">
+{% include '_support.html' %}
 <main class="ln-gate">
   {% from "_brand.html" import brand %}
   {{ brand('KART', '/', 42, 'gm', tagline=true, link_class='anaking-brand-lockup', title='SurveyKart — Insights Delivered (Go to landing page)') }}

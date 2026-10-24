@@ -14,6 +14,7 @@
 </head>
 <body class="landing portal">
 <a class="skip-link" href="#main">Skip to content</a>
+{% include '_support.html' %}
 
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
@@ -23,7 +24,7 @@
     <a class="appnav-link" href="{{ '/workspace/' if config.WORKSPACE_ENABLED else '/' }}">Projects</a>
     <a class="appnav-link" href="/studio/">Studio</a>
     <a class="appnav-link" href="/admin/">Monitor</a>
-    <a class="appnav-link" href="/admin/console">Console</a>
+    <a class="appnav-link" href="/admin/console">Account desk</a>
     <a class="appnav-link on" href="/admin-portal" aria-current="page">Admin Portal</a>
   </nav>
   <div class="ln-auth" style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -48,7 +49,7 @@
     <div class="ptl-hero-note">
       <b>Protected Admin Boundary</b>
       <p>All administrative rights are reserved to Admin (<code>Anaking.admin</code>). Manage Kart balances directly
-        below or open the <a href="/admin/console" style="color:#14614f;font-weight:800">Admin Console &rarr;</a>.</p>
+        below, or open the <a href="/admin/console" style="color:#14614f;font-weight:800">Account desk &rarr;</a> to edit any profile, project or Kart.</p>
     </div>
   </section>
 
@@ -105,7 +106,7 @@
       <table class="ptl-table">
         <thead><tr>
           <th>Person</th><th>Status</th><th>Role</th><th>Kart Balance</th>
-          <th>Adjust Kart Limit</th><th>Projects</th><th>Completes</th><th>Last seen</th>
+          <th>Adjust Kart Limit</th><th>Projects</th><th>Completes</th><th>Last seen</th><th><span class="sr-only">Account desk</span></th>
         </tr></thead>
         <tbody id="ptl-rows">
         {% for u in users %}
@@ -118,29 +119,30 @@
           <td><b>{{ u.role }}</b></td>
           <td>
             {% if u.role == 'admin' %}
-            <span class="cs-kart-badge">&#9733; Unlimited Admin</span>
+            <span class="ptl-kart-badge">&#9733; Unlimited</span>
             {% else %}
-            <span class="cs-kart-badge" id="ptl-bal-{{ u.id }}">{{ u.points_balance }} left ({{ u.points_used }}/{{ u.points_limit }})</span>
+            <span class="ptl-kart-badge" id="ptl-bal-{{ u.id }}">{{ u.points_balance }} left <small>({{ u.points_used }}/{{ u.points_limit }})</small></span>
             {% endif %}
           </td>
           <td>
             {% if u.role == 'admin' %}
-            <small style="color:var(--an-muted)">Master rights</small>
+            <small class="ptl-master">Master rights</small>
             {% else %}
-            <div class="cs-kart-ctrls">
-              <button type="button" class="cs-btn sm no" data-ptl-pts="-20" data-uid="{{ u.id }}">&minus;20</button>
-              <button type="button" class="cs-btn sm ok" data-ptl-pts="20" data-uid="{{ u.id }}">+20</button>
-              <button type="button" class="cs-btn sm gold" data-ptl-pts="50" data-uid="{{ u.id }}">+50</button>
+            <div class="ptl-kart-ctrls">
+              <button type="button" class="ptl-kbtn no" data-ptl-pts="-20" data-uid="{{ u.id }}" title="Reduce the Kart limit by 20 pts">&minus;20</button>
+              <button type="button" class="ptl-kbtn ok" data-ptl-pts="20" data-uid="{{ u.id }}" title="Increase the Kart limit by 20 pts">+20</button>
+              <button type="button" class="ptl-kbtn gold" data-ptl-pts="50" data-uid="{{ u.id }}" title="Increase the Kart limit by 50 pts">+50</button>
             </div>
             {% endif %}
           </td>
           <td>{{ u.projects }}</td>
           <td>{{ u.completes }}</td>
           <td class="ptl-when">{{ (u.last_login or u.created_at or '')[:16] | replace('T', ' ') }}</td>
+          <td><a class="ptl-open" href="/admin/console#user-{{ u.id }}" title="Open {{ u.name or u.email }} in the account desk">Desk &rarr;</a></td>
         </tr>
         {% endfor %}
         {% if not users %}
-        <tr><td colspan="8" class="ptl-empty">No accounts yet — new registrations automatically receive 100 Kart points.</td></tr>
+        <tr><td colspan="9" class="ptl-empty">No accounts yet — new registrations automatically receive 100 Kart points.</td></tr>
         {% endif %}
         </tbody>
       </table>
@@ -170,7 +172,7 @@
   </section>
 
   <p class="ptl-footnote">SurveyKart Admin Portal &middot; Protected by Admin credentials &middot;
-    Full account &amp; project controls in <a href="/admin/console">Admin Console &rarr;</a>.</p>
+    Full account &amp; project controls in the <a href="/admin/console">Account desk &rarr;</a>.</p>
 </main>
 
 {% include '_footer.html' %}

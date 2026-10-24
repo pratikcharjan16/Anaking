@@ -1,0 +1,15 @@
+{#- Audited support view strip. Shown on every team page while an admin is inside
+    another person's account, with a one-click way back to the account desk. -#}
+{% set _support = support_mode() if support_mode is defined else None %}
+{% if _support %}
+<div class="support-strip" role="status">
+  <span class="support-strip-dot" aria-hidden="true"></span>
+  <p><b>Support view</b> &mdash; you are working inside
+    <strong>{{ _support.user.name or _support.user.email if _support.user else 'a user account' }}</strong>'s
+    account as <code>{{ _support.admin_email }}</code>. Every action is recorded.</p>
+  <form method="post" action="/auth/impersonate/end" class="support-strip-exit">
+    <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+    <button type="submit">Exit to account desk &rarr;</button>
+  </form>
+</div>
+{% endif %}

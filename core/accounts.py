@@ -18,6 +18,7 @@ Supports:
 
 from __future__ import annotations
 
+import re
 import secrets
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -584,3 +585,161 @@ def projects_of(user_id: int) -> list[dict]:
         d["points_used"] = study_points(cfg)
         out.append(d)
     return out
+
+
+# ====================================================================================
+# ADMIN ACCOUNT DESK
+# ====================================================================================
+# One account, in every context: identity, access, Kart ledger, projects and the
+# audit trail. The Admin Console renders this as a master/detail "desk"; the helpers
+# below keep the SQL (and the safety rules) out of the route module.
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")
+
+
+def _clean_identity(name=None, email=None, username=None) -> dict:
+    """Validate the editable identity fields; only the supplied ones are returned."""
+    out = {}
+    if name is not None:
+        clean_name = str(name).strip()[:120]
+        if not clean_name:
+            raise ValueError("A display name is required.")
+        out["name"] = clean_name
+    if email is not None:
+        clean_email = str(email).strip().lower()
+        if not EMAIL_RE.match(clean_email):
+            raise ValueError("Enter a valid e-mail address.")
+        out["email"] = clean_email
+    if username is not None:
+        clean_username = str(username).strip()
+        if clean_username and not USERNAME_RE.match(clean_username):
+            raise ValueError("Usernames use 2-40 letters, numbers, dots, dashes or underscores.")
+        out["username"] = clean_username
+    return out
+
+
+def update_profile(user_id: int, name=None, email=None, username=None) -> dict | None:
+    """Admin edit of a profile's display name, e-mail or username.
+
+    The protected master admin's sign-in identity (e-mail + username) is immutable by
+    design - only its display name may change. Uniqueness is checked the same way
+    registration checks it, so the admin can never create a duplicate identity.
+    """
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    clean = _clean_identity(name=name, email=email, username=username)
+    if not clean:
+        raise ValueError("Nothing to update.")
+    protected = is_protected_admin(target)
+    if protected and ("email" in clean or "username" in clean):
+        changed_email = clean.get("email", target["email"]) != target["email"]
+        changed_user = clean.get("username", target.get("username") or "") != (target.get("username") or "")
+        if changed_email or changed_user:
+            raise ValueError("The master admin's sign-in identity is protected and cannot be changed.")
+
+    if "email" in clean:
+        if clean["email"] == MASTER_ADMIN_EMAIL and not protected:
+            raise ValueError("That e-mail is reserved for the platform administrator.")
+        other = by_email(clean["email"])
+        if other and other["id"] != target["id"]:
+            raise ValueError("Another account already uses this e-mail address.")
+    if "username" in clean and clean["username"]:
+        if clean["username"].lower() == MASTER_ADMIN_USERNAME.lower() and not protected:
+            raise ValueError("That username is reserved for the platform administrator.")
+        other = by_username(clean["username"])
+        if other and other["id"] != target["id"]:
+            raise ValueError("That username is already taken.")
+
+    fields = list(clean.keys())
+    values = [clean[f] for f in fields]
+    with get_db() as db:
+        db.execute(f"UPDATE users SET {', '.join(f'{f}=?' for f in fields)} WHERE id=?",
+                   (*values, target["id"]))
+    return by_id(target["id"])
+
+
+def delete_user(user_id: int) -> dict:
+    """Delete an account that no longer owns anything.
+
+    Projects are never destroyed implicitly: the admin must transfer or delete them
+    first, which keeps a delete from taking a whole study (and its responses) with it.
+    """
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    if is_protected_admin(target):
+        raise ValueError("The master admin account Anaking.admin cannot be deleted.")
+    db = get_db()
+    if target["role"] == "admin" and count_admins() <= 1:
+        raise ValueError("The last admin cannot be deleted.")
+    owned = db.execute("SELECT COUNT(*) FROM studies WHERE owner_id=?", (target["id"],)).fetchone()[0]
+    if owned:
+        raise ValueError(
+            f"This account still owns {owned} project{'s' if owned != 1 else ''}. "
+            "Transfer or delete them first."
+        )
+    teams = [r[0] for r in db.execute(
+        "SELECT id FROM workspace_teams WHERE creator_id=?", (target["id"],)).fetchall()]
+    with db:
+        # Team spaces this account created go with it; the studies inside them are
+        # already transferred or deleted, so no research data is lost.
+        for team_id in teams:
+            db.execute("DELETE FROM team_projects WHERE team_id=?", (team_id,))
+            db.execute("DELETE FROM team_members WHERE team_id=?", (team_id,))
+            db.execute("DELETE FROM workspace_teams WHERE id=?", (team_id,))
+        # The change log is history, not state: it keeps the account's denormalised
+        # name/e-mail so the record of what happened stays readable after a delete.
+        for table, column in (("point_transactions", "user_id"), ("point_requests", "user_id"),
+                              ("team_members", "user_id"), ("study_shares", "shared_with_user_id")):
+            db.execute(f"DELETE FROM {table} WHERE {column}=?", (target["id"],))
+        db.execute("DELETE FROM users WHERE id=?", (target["id"],))
+    return {"id": target["id"], "email": target["email"], "teams_removed": len(teams)}
+
+
+def account_detail(user_id: int) -> dict | None:
+    """A single account in full context: profile, projects, Kart ledger and audit trail."""
+    from core.kart import user_points_usage
+    user = by_id(user_id)
+    if not user:
+        return None
+    user.pop("password_hash", None)
+    user["auth_source"] = auth_source(user)
+    db = get_db()
+    limit = int(user.get("points_limit") if user.get("points_limit") is not None else DEFAULT_POINTS)
+    used = user_points_usage(user["id"])
+    user["points_limit"] = limit
+    user["points_used"] = used
+    user["points_balance"] = (ADMIN_UNLIMITED_POINTS if user["role"] == "admin"
+                              else max(0, limit - used))
+    user["welcome_points_pending"] = welcome_points_pending(user)
+    user["welcome_points_granted"] = has_welcome_allocation(user["id"])
+
+    ledger = [dict(r) for r in db.execute(
+        "SELECT id, delta, balance_after, reason, actor, created_at FROM point_transactions "
+        "WHERE user_id=? ORDER BY id DESC LIMIT 40", (user["id"],)).fetchall()]
+    requests = [dict(r) for r in db.execute(
+        "SELECT id, requested_points, reason, status, reviewed_by, reviewed_at, created_at "
+        "FROM point_requests WHERE user_id=? ORDER BY id DESC LIMIT 20", (user["id"],)).fetchall()]
+    # The account's own actions *and* the admin actions taken on it (every admin
+    # audit row names the target in its detail), so the trail is one story.
+    activity = [dict(r) for r in db.execute(
+        "SELECT actor, action, study, created_at, detail FROM audit_events "
+        "WHERE actor=? OR detail LIKE ? ORDER BY id DESC LIMIT 60",
+        (user.get("email") or "", "%" + (user.get("email") or "") + "%")).fetchall()]
+    projects = projects_of(user["id"])
+    shared_with = [dict(r) for r in db.execute(
+        "SELECT study_slug, permission, created_at, accepted_at FROM study_shares "
+        "WHERE shared_with_user_id=? OR (shared_with_email=? AND shared_with_email!='') "
+        "ORDER BY id DESC LIMIT 20", (user["id"], user.get("email") or "")).fetchall()]
+    stats = {
+        "projects": len(projects),
+        "completes": sum(int(p.get("completes") or 0) for p in projects),
+        "points_used": used,
+        "actions": len(activity),
+        "ledger_rows": len(ledger),
+        "shared_with": len(shared_with),
+    }
+    return {"user": user, "projects": projects, "ledger": ledger, "requests": requests,
+            "activity": activity, "shared_with": shared_with, "stats": stats}

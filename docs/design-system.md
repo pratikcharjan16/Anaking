@@ -82,6 +82,38 @@ instrument.
 * `.linkbtn` — secondary action inside a bar.
 * `.skip-link`, `.sr-only`, `.an-eyebrow` — utilities.
 
+## The Admin account desk
+
+`/admin/console` is the platform admin's working surface, not a second dashboard. It is a
+master/detail **desk**: the roster on the left is an index of people; the pane on the right
+is one person's whole context.
+
+```
+roster (search · status filters)   passport → metrics → tabs
+                                   Overview   identity · access · role · delete
+                                   Projects   status · Studio · Monitor · transfer
+                                   Kart       limit, ledger, open requests
+                                   Activity   the audit trail for this account
+```
+
+Rules that keep it honest:
+
+* **Nothing destructive is one click away.** Deleting an account is blocked while it owns
+  projects (transfer or delete them first); the master admin cannot be deleted, demoted or
+  paused anywhere in the UI or the API.
+* **The Kart is a ledger, never a silent number.** Every admin change writes a reason and an
+  actor into `point_transactions`, which the Kart tab renders as a table.
+* **The support view is visible and reversible.** "Open as *person*" swaps the session to
+  that account for one purpose — seeing what they see — and renders `.support-strip` on
+  every team page (design-system chrome) with the way back. The admin desk is out of reach
+  while a support view is open, every action still lands in the audit trail as the admin,
+  and admin accounts can never be opened this way.
+* The tokens are the shared ones: the desk is warm paper + ink + the green accent, with the
+  gold admin note (`--an-warn`) reserved for "this needs your decision".
+
+`static/css/console.css` owns layout only; `.support-strip` lives in `design-system.css`
+because it is shared chrome.
+
 ## Brand
 
 `templates/_brand.html` renders the lockup (mark, wordmark, badge, tagline). Pass the badge

@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head>{% from "_head.html" import head %}{{ head('SurveyKart · Research Workspace') }}<meta name="csrf-token" content="{{csrf_token()}}"><link rel="stylesheet" href="{{ asset('css/workspace.css') }}"><link rel="stylesheet" href="{{ asset('css/design-system.css') }}"><script src="{{ asset('js/security.js') }}"></script></head>
-<body><a href="#main" class="skip-link">Skip to workspace</a><div class="workspace-shell">
+<body><a href="#main" class="skip-link">Skip to workspace</a>{% include '_support.html' %}<div class="workspace-shell">
 <aside class="sidebar">{% from "_brand.html" import brand %}
 {{ brand('WORKSPACE', '/', 40, 'ws', title='SurveyKart — Insights Delivered (Go to landing page)') }}
 <div class="workspace-label"><span class="workspace-avatar">R</span><div><strong>Research team</strong><small id="role-label">Your shared workspace</small></div><span class="status-dot"></span></div>

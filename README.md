@@ -104,6 +104,20 @@ The team apps (Projects / Studio / Monitor) are multi-user:
   and — when SMTP is configured — e-mailed to `ADMIN_EMAILS`; the user gets a best-effort
   "you're approved" e-mail in return. (Direct e-mail/password registration on `/register`
   is separate and unchanged: it is active immediately with its 100 pts.)
+- **Account desk** (`/admin/console`) — one account in every context. A roster with search and
+  status filters sits beside a dossier for the selected person: **Overview** (identity edit
+  with validation, approve / pause / re-enable, role, delete), **Projects** (status, open in
+  Studio or Monitor, transfer ownership, delete), **Kart & ledger** (set the limit, ±20/±50,
+  a reason written to the ledger, open point requests) and **Activity** (that account's audit
+  trail). "Waiting on you" puts pending approvals and Kart requests at the top, handled in
+  place. Two rules keep it safe: an account that still owns projects cannot be deleted until
+  they are transferred or deleted, and the master admin (`Anaking.admin`) can never be
+  disabled, demoted or deleted.
+- **Support view** — *Open as person* swaps the admin's session to that account so they see
+  exactly what the user sees (Workspace, Studio, Kart). A `Support view` strip is pinned to
+  every team page with a one-click **Exit to account desk**; the admin desk is out of reach
+  while it is open, admin accounts can never be opened this way, and both entering and
+  leaving are written to the audit trail.
 - **Private projects** — everything an account creates belongs to that account. Others never
   see it; admins see and can open everything. Legacy studies with no owner are admin-only.
 - **Admin bootstrap** — put your address in `ADMIN_EMAILS` (comma-separated); those accounts
