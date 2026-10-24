@@ -6,8 +6,11 @@ Supports:
      ``ADMIN_PASSWORD`` (password sign-in is disabled when the password is unset)
   2. Direct SurveyKart registration & sign-in (Name, Email/Username, Password) —
      automatically allocates 100 Kart points upon registration
-  3. Google OAuth sign-in & registration — one profile per e-mail, also starts with
-     100 Kart points
+  3. Google OAuth sign-in & registration — one profile per e-mail. A brand-new
+     Google account (whether they clicked "Sign in" or "Register") is created as
+     ``pending`` with an empty Kart and becomes an approval request for the admin;
+     the one-time 100 Kart point welcome allocation is added at the exact moment
+     the admin approves (see :func:`set_status` / :func:`approve_user`).
 
     status:  pending | approved | rejected | disabled
     role:    user | admin
@@ -55,6 +58,11 @@ CREATE TABLE IF NOT EXISTS users (
 STATUSES = ("pending", "approved", "rejected", "disabled")
 ROLES = ("user", "admin")
 
+# Every welcome-allocation ledger row starts with this prefix (legacy rows from
+# "…on SurveyKart registration" included). Its presence is what makes the 100 pt
+# welcome grant exactly-once: approval grants only when no such row exists yet.
+WELCOME_REASON_PREFIX = "Welcome allocation"
+
 
 def _enrich_user(row) -> dict | None:
     if not row:
@@ -93,6 +101,44 @@ def by_username(username: str) -> dict | None:
     return _enrich_user(
         get_db().execute("SELECT * FROM users WHERE LOWER(username)=?", (clean,)).fetchone()
     )
+
+
+def auth_source(user: dict | None) -> str:
+    """How this account was created: ``google`` | ``password`` | ``dev`` | ``surveykart``."""
+    if not user:
+        return "surveykart"
+    sub = str(user.get("google_sub") or "")
+    if sub.startswith("dev:"):
+        return "dev"
+    if sub:
+        return "google"
+    if user.get("password_hash"):
+        return "password"
+    return "surveykart"
+
+
+def _has_welcome_tx(db, user_id) -> bool:
+    if not user_id:
+        return False
+    return db.execute(
+        "SELECT 1 FROM point_transactions WHERE user_id=? AND reason LIKE ? LIMIT 1",
+        (int(user_id), WELCOME_REASON_PREFIX + "%"),
+    ).fetchone() is not None
+
+
+def has_welcome_allocation(user_id) -> bool:
+    """True once the one-time welcome Kart allocation is on the ledger for this user."""
+    return _has_welcome_tx(get_db(), user_id)
+
+
+def welcome_points_pending(user: dict | None) -> int:
+    """Kart points a pending (not-yet-approved) account will receive on approval.
+
+    100 for a regular pending account still awaiting its welcome allocation,
+    0 for admins, approved users, and accounts that already received it."""
+    if not user or user.get("role") == "admin" or user.get("status") != "pending":
+        return 0
+    return 0 if has_welcome_allocation(user["id"]) else DEFAULT_POINTS
 
 
 def ensure_master_admin(conn=None) -> dict | None:
@@ -231,7 +277,13 @@ def authenticate_credentials(identifier: str, password: str) -> dict | None:
 
 
 def upsert_from_claims(claims: dict) -> dict:
-    """Create or refresh the profile for a verified Google identity (allocating 100 Kart pts on signup)."""
+    """Create or refresh the profile for a verified Google identity.
+
+    A brand-new regular account starts ``pending`` with an *empty* Kart
+    (``points_limit=0``): it is an approval request for the admin, and the
+    100 Kart point welcome allocation is added by :func:`set_status` at the
+    moment of approval.  ``ADMIN_EMAILS`` accounts are approved admins with
+    an unlimited Kart straight away, so the console can never be locked out."""
     email = str(claims.get("email") or "").strip().lower()
     if not email:
         raise ValueError("Google account has no e-mail address.")
@@ -249,16 +301,19 @@ def upsert_from_claims(claims: dict) -> dict:
         if picture and picture != existing["picture"]:
             fields.append("picture=?"); vals.append(picture)
         if is_admin_email(email) and (existing["role"] != "admin" or existing["status"] != "approved"):
-            fields += ["role=?", "status=?", "approved_at=?", "approved_by=?"]
-            vals += ["admin", "approved", existing["approved_at"] or ts, "admin-emails"]
+            fields += ["role=?", "status=?", "approved_at=?", "approved_by=?", "points_limit=?"]
+            vals += ["admin", "approved", existing["approved_at"] or ts, "admin-emails",
+                     ADMIN_UNLIMITED_POINTS]
         vals.append(existing["id"])
         with db:
             db.execute(f"UPDATE users SET {', '.join(fields)} WHERE id=?", vals)
         return by_id(existing["id"])
     admin = is_admin_email(email)
-    pts = ADMIN_UNLIMITED_POINTS if admin else DEFAULT_POINTS
+    # Pending accounts hold an empty Kart until approval (welcome_points_pending()
+    # advertises the 100 pts that land on approval); admins are unlimited.
+    pts = ADMIN_UNLIMITED_POINTS if admin else 0
     with db:
-        cur = db.execute(
+        db.execute(
             "INSERT INTO users (email,username,password_hash,name,picture,google_sub,role,status,"
             "points_limit,created_at,approved_at,approved_by,last_login) "
             "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -266,12 +321,6 @@ def upsert_from_claims(claims: dict) -> dict:
              "admin" if admin else "user",
              "approved" if admin else "pending",
              pts, ts, ts if admin else "", "admin-emails" if admin else "", ts))
-        uid = cur.lastrowid
-        db.execute(
-            "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (uid, DEFAULT_POINTS, pts, "Welcome allocation on SurveyKart registration (100 pts)", "system", ts),
-        )
     return by_email(email)
 
 
@@ -290,21 +339,133 @@ def create_dev_user(email: str, name: str = "", role: str = "") -> dict:
     return user
 
 
-def set_status(user_id: int, status: str, approved_by: str = "") -> dict | None:
-    """Admin decision: pending -> approved / rejected; also disable / re-enable."""
+def set_status(user_id: int, status: str, approved_by: str = "",
+               welcome_points: int | None = None) -> dict | None:
+    """Admin decision: pending -> approved / rejected; also disable / re-enable.
+
+    Approving (or re-enabling) a regular account also lands its one-time
+    welcome allocation in the Kart — 100 pts by default, or ``welcome_points``
+    when the admin chooses a different amount while approving.  The grant is
+    exactly-once: it only happens when no ``Welcome allocation…`` ledger row
+    exists yet, tops the Kart limit up to the granted amount, and is skipped
+    for admins (unlimited) and for accounts that already received it (incl.
+    legacy pending accounts credited at signup under the old rules).  The
+    returned profile carries ``welcome_points_granted`` (pts actually added).
+    """
     if status not in STATUSES:
         raise ValueError("unknown status")
     target = by_id(user_id)
     if target and is_protected_admin(target) and status != "approved":
         raise ValueError("The master admin account Anaking.admin is protected and cannot be disabled.")
+    if welcome_points is not None:
+        try:
+            welcome_points = max(0, min(100_000, int(welcome_points)))
+        except (TypeError, ValueError):
+            raise ValueError("welcome points must be a number")
     ts, db = now(), get_db()
     approved_at, by = "", ""
     if status == "approved":
         approved_at, by = ts, approved_by or "admin"
+    granted = 0
     with db:
         db.execute("UPDATE users SET status=?, approved_at=?, approved_by=? WHERE id=?",
                    (status, approved_at, by, user_id))
-    return by_id(user_id)
+        if status == "approved":
+            row = db.execute("SELECT role, points_limit FROM users WHERE id=?",
+                             (user_id,)).fetchone()
+            if row and row["role"] != "admin" and not _has_welcome_tx(db, user_id):
+                pts = DEFAULT_POINTS if welcome_points is None else welcome_points
+                cur_limit = int(row["points_limit"] or 0)
+                new_limit = max(cur_limit, pts)
+                granted = new_limit - cur_limit
+                db.execute("UPDATE users SET points_limit=? WHERE id=?", (new_limit, user_id))
+                db.execute(
+                    "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
+                    "VALUES (?,?,?,?,?,?)",
+                    (int(user_id), granted, new_limit,
+                     f"Welcome allocation on admin approval ({pts} pts)",
+                     str(approved_by or "admin")[:120], ts),
+                )
+    user = by_id(user_id)
+    if user is not None:
+        user["welcome_points_granted"] = granted
+    return user
+
+
+def approve_user(user_id: int, approved_by: str = "admin",
+                 welcome_points: int | None = None) -> dict | None:
+    """Approve an account and add its welcome Kart points (100 by default), once."""
+    return set_status(user_id, "approved", approved_by=approved_by,
+                      welcome_points=welcome_points)
+
+
+# --------------------------------------------------------------------- admin/user e-mail nudges
+def _admin_notification_emails() -> list[str]:
+    try:
+        from flask import current_app
+        emails = current_app.config.get("ADMIN_EMAILS") or []
+    except RuntimeError:
+        emails = Config.ADMIN_EMAILS
+    return [str(e).strip().lower() for e in emails if str(e).strip()]
+
+
+def notify_admins_pending_signup(user: dict | None) -> bool:
+    """Best-effort e-mail to ``ADMIN_EMAILS``: a new account awaits approval.
+
+    Only sends when SMTP is configured (see core.mailer); never raises, so a
+    mail problem can never break a Google sign-in.  Returns True if sent."""
+    try:
+        if not user or user.get("status") != "pending":
+            return False
+        from core import mailer
+        if not mailer.smtp_settings():
+            return False
+        recipients = _admin_notification_emails()
+        if not recipients:
+            return False
+        name = str(user.get("name") or user.get("email") or "A new user")
+        source = auth_source(user)
+        source_label = {"google": "Google", "dev": "dev sign-in"}.get(source, "SurveyKart")
+        subject = f"SurveyKart approval request: {name} ({user.get('email')})"
+        body = (
+            f"{name} <{user.get('email')}> just signed in with {source_label} and is "
+            f"waiting for your approval on SurveyKart.\n\n"
+            f"Approve (or reject) them in the Admin Console — under "
+            f"\"Accounts waiting for approval\". Their {DEFAULT_POINTS} Kart points "
+            f"welcome allocation is added to their Kart automatically the moment "
+            f"you approve (you can adjust the amount while approving).\n\n"
+            f"Requested: {user.get('created_at') or ''}\n"
+            f"Admin Console: /admin/console\n"
+        )
+        for to in recipients:
+            mailer.send_mail(to, subject, body)
+        return True
+    except Exception:                                          # noqa: BLE001 - best-effort only
+        return False
+
+
+def notify_user_approved(user: dict | None, granted_points: int = 0) -> bool:
+    """Best-effort e-mail to the user: approved, welcome points are in the Kart."""
+    try:
+        if not user or user.get("status") != "approved" or not user.get("email"):
+            return False
+        from core import mailer
+        if not mailer.smtp_settings():
+            return False
+        name = str(user.get("name") or "there")
+        pts = int(granted_points or 0)
+        kart_line = (f"{pts} Kart points have been added to your Kart" if pts
+                     else "Your Kart points are ready in your Kart")
+        body = (
+            f"Hi {name},\n\n"
+            f"Great news — your SurveyKart account has been approved! "
+            f"{kart_line}, so you can start building your first study right away.\n\n"
+            f"Sign in any time with the same Google account: /signin\n"
+        )
+        mailer.send_mail(str(user["email"]), "You're approved on SurveyKart 🎉", body)
+        return True
+    except Exception:                                          # noqa: BLE001 - best-effort only
+        return False
 
 
 def set_role(user_id: int, role: str) -> dict | None:
@@ -359,15 +520,27 @@ def list_users() -> list[dict]:
         " WHERE s.owner_id=u.id AND r.status='complete') AS completes "
         "FROM users u ORDER BY "
         "CASE u.status WHEN 'pending' THEN 0 ELSE 1 END, u.created_at DESC").fetchall()
+    welcomed_ids = {
+        r[0] for r in get_db().execute(
+            "SELECT DISTINCT user_id FROM point_transactions WHERE reason LIKE ?",
+            (WELCOME_REASON_PREFIX + "%",)).fetchall()
+    }
     out = []
     for r in rows:
         d = _enrich_user(r)
+        d["auth_source"] = auth_source(d)
         d.pop("password_hash", None)
         used = user_points_usage(d["id"])
         limit = int(d.get("points_limit") if d.get("points_limit") is not None else DEFAULT_POINTS)
         d["points_limit"] = limit
         d["points_used"] = used
         d["points_balance"] = ADMIN_UNLIMITED_POINTS if d["role"] == "admin" else max(0, limit - used)
+        d["welcome_points_granted"] = d["id"] in welcomed_ids
+        d["welcome_points_pending"] = (
+            DEFAULT_POINTS
+            if (d["status"] == "pending" and d["role"] != "admin" and d["id"] not in welcomed_ids)
+            else 0
+        )
         out.append(d)
     return out
 

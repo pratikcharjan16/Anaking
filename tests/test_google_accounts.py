@@ -40,7 +40,8 @@ CLAIMS = {
 def signin(client, email, mode="register"):
     """Walk the real /auth/google -> /auth/google/callback flow with mocked claims.
 
-    ``register`` creates the profile if this e-mail is new; ``login`` never does.
+    Either mode creates the profile if this e-mail is new (as a pending
+    approval request); a returning account simply signs in.
     Leaves the session signed in as ``email`` (a fresh session, so we also set the
     CSRF token the way the first template render would).
     """
@@ -94,9 +95,13 @@ def make_study(client, title, headers=None):
 # ------------------------------------------------------------------ the Google flow
 def test_first_google_signin_creates_one_pending_profile(app, client):
     loc = signin(client, "ana@research.co")
-    assert "/?welcome=1" in loc                              # awaiting admin approval
+    assert "/welcome" in loc                                  # live status page, awaiting approval
     me = client.get("/api/me").get_json()
     assert me["user"]["email"] == "ana@research.co" and me["user"]["status"] == "pending"
+    # the Kart starts empty; 100 pts are promised and land at approval time
+    assert me["user"]["points_limit"] == 0 and me["user"]["points_balance"] == 0
+    assert me["user"]["welcome_points_pending"] == 100
+    assert me["user"]["auth_source"] == "google"
 
     # one profile per e-mail: signing in again reuses the row, never duplicates
     signin(client, "ana@research.co")
@@ -114,20 +119,29 @@ def test_admin_emails_bootstrap_as_approved_admins(app, client):
     assert me["user"]["role"] == "admin" and me["user"]["status"] == "approved"
 
 
-def test_login_mode_never_silently_registers(app, client):
+def test_first_signin_via_login_mode_creates_an_approval_request(app, client):
+    """Easy for users: the very first "Sign in with Google" (mode=login) also
+    registers the person — as a pending approval request for the admin —
+    instead of bouncing them to find a separate register page."""
     loc = signin(client, "stranger@research.co", mode="login")
-    assert "/signin" in loc and "unknown=1" in loc          # sent to register, not signed in
+    assert "/welcome" in loc                                  # friendly status page, not a bounce
     with app.app_context():
-        n = models.get_db().execute("SELECT COUNT(*) FROM users WHERE email=?",
-                                    ("stranger@research.co",)).fetchone()[0]
-    assert n == 0
-    assert client.get("/api/me").get_json()["user"] is None
+        db = models.get_db()
+        n = db.execute("SELECT COUNT(*) FROM users WHERE email=?",
+                       ("stranger@research.co",)).fetchone()[0]
+        status = db.execute("SELECT status FROM users WHERE email=?",
+                            ("stranger@research.co",)).fetchone()[0]
+        asked = db.execute("SELECT COUNT(*) FROM audit_events "
+                           "WHERE action='auth/approval-request'").fetchone()[0]
+    assert n == 1 and status == "pending" and asked == 1      # the admin has a request to review
+    me = client.get("/api/me").get_json()["user"]
+    assert me["email"] == "stranger@research.co" and me["welcome_points_pending"] == 100
 
 
 def test_register_mode_on_an_existing_email_just_signs_in(app, client):
     signin(client, "ana@research.co", mode="register")
     loc = signin(client, "ana@research.co", mode="register")     # already registered
-    assert "/?welcome=1" in loc                                  # still pending, no duplicate
+    assert "/welcome" in loc                                     # still pending, no duplicate
     with app.app_context():
         n = models.get_db().execute("SELECT COUNT(*) FROM users WHERE email=?",
                                     ("ana@research.co",)).fetchone()[0]
@@ -177,7 +191,7 @@ def test_pending_accounts_cannot_use_the_team_apps(app, client):
     signin(client, "ana@research.co")
     assert client.get("/api/studio/list").get_json() == {
         "error": "Your account is waiting for admin approval."}
-    assert "/?welcome=1" in client.get("/studio/").headers["Location"]
+    assert "/welcome" in client.get("/studio/").headers["Location"]
 
 
 def test_admin_decisions_open_and_close_access(app, client):
@@ -402,11 +416,161 @@ def test_admin_can_take_and_give_ownership_from_the_console(app, client):
 def test_dev_login_exists_only_when_explicitly_enabled(app, client):
     assert client.post("/auth/dev", json={"email": "x@y.co"}).status_code == 404
     app.config["DEV_LOGIN"] = True
-    # login mode refuses to create; register mode creates the profile
+    # mirrors Google: a first dev sign-in (either mode) creates a pending
+    # approval request; the response points at the live status page
     r = client.post("/auth/dev", json={"email": "dev@local.test", "name": "Dev", "mode": "login"})
-    assert r.status_code == 404 and r.get_json()["need_register"] is True
+    assert r.status_code == 200 and r.get_json()["user"]["status"] == "pending"
+    assert r.get_json()["redirect"] == "/welcome"
     r = client.post("/auth/dev", json={"email": "dev@local.test", "name": "Dev", "mode": "register"})
     assert r.status_code == 200 and r.get_json()["user"]["email"] == "dev@local.test"
     # structurally impossible in production, whatever the environment says
     from config import Config
     assert not (Config.PRODUCTION and Config.DEV_LOGIN)
+
+
+# ------------------------------------------------------------------ approval + 100 Kart pts
+def _welcome_txs(app, email):
+    with app.app_context():
+        return [dict(r) for r in models.get_db().execute(
+            "SELECT pt.* FROM point_transactions pt JOIN users u ON u.id=pt.user_id "
+            "WHERE u.email=? AND pt.reason LIKE 'Welcome allocation%' ORDER BY pt.id",
+            (email,)).fetchall()]
+
+
+def test_admin_approval_adds_exactly_100_kart_points_once(app, client):
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    signin(client, "ana@research.co", mode="login")           # pending, empty Kart
+    assert _welcome_txs(app, "ana@research.co") == []          # nothing granted yet
+    signin(client, "chief@platform.co")                       # admin session
+    uid = uid_of(app, "ana@research.co")
+
+    # the console shows the pending request with its promised points
+    ov = client.get("/api/admin/console/overview").get_json()
+    ana_row = next(u for u in ov["users"] if u["email"] == "ana@research.co")
+    assert ana_row["welcome_points_pending"] == 100 and ana_row["points_limit"] == 0
+
+    r = client.post("/api/admin/console/decision",
+                    json={"user_id": uid, "decision": "approve"}, headers=H())
+    out = r.get_json()
+    assert out["ok"] and out["welcome_points_granted"] == 100
+    assert out["user"]["points_limit"] == 100 and out["user"]["points_balance"] == 100
+    txs = _welcome_txs(app, "ana@research.co")
+    assert len(txs) == 1 and txs[0]["delta"] == 100 and txs[0]["balance_after"] == 100
+
+    # the user now sees the points in their Kart
+    signin(client, "ana@research.co", mode="login")
+    me = client.get("/api/me").get_json()["user"]
+    assert me["status"] == "approved" and me["points_balance"] == 100
+    assert me["welcome_points_pending"] == 0
+
+    # disable -> re-enable must never grant the welcome points twice
+    signin(client, "chief@platform.co")
+    client.post("/api/admin/console/decision", json={"user_id": uid, "decision": "disable"}, headers=H())
+    r = client.post("/api/admin/console/decision", json={"user_id": uid, "decision": "enable"}, headers=H())
+    assert r.get_json()["welcome_points_granted"] == 0
+    assert r.get_json()["user"]["points_limit"] == 100
+    assert len(_welcome_txs(app, "ana@research.co")) == 1
+
+
+def test_admin_can_choose_welcome_points_while_approving(app, client):
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    signin(client, "bo@research.co", mode="login")
+    signin(client, "chief@platform.co")
+    uid = uid_of(app, "bo@research.co")
+    r = client.post("/api/admin/console/decision",
+                    json={"user_id": uid, "decision": "approve", "points": 250}, headers=H())
+    assert r.get_json()["welcome_points_granted"] == 250
+    assert r.get_json()["user"]["points_limit"] == 250
+
+
+def test_legacy_pending_account_keeps_its_100_without_a_double_grant(app, client):
+    """Accounts created under the old rules already hold 100 pts + a welcome
+    ledger row; approving them must not top them up to 200."""
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    signin(client, "ana@research.co", mode="login")
+    with app.app_context():
+        db = models.get_db()
+        uid = uid_of(app, "ana@research.co")
+        with db:
+            db.execute("UPDATE users SET points_limit=100 WHERE id=?", (uid,))
+            db.execute(
+                "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (uid, 100, 100, "Welcome allocation on SurveyKart registration (100 pts)",
+                 "system", "2026-01-01T00:00:00"))
+    signin(client, "chief@platform.co")
+    r = client.post("/api/admin/console/decision",
+                    json={"user_id": uid, "decision": "approve"}, headers=H())
+    assert r.get_json()["welcome_points_granted"] == 0
+    assert r.get_json()["user"]["points_limit"] == 100
+    assert len(_welcome_txs(app, "ana@research.co")) == 1
+
+
+def test_fresh_google_signup_notifies_admins_once(app, client):
+    with mock.patch("core.accounts.notify_admins_pending_signup") as notify:
+        signin(client, "ana@research.co", mode="login")
+        assert notify.call_count == 1
+        # signing in again while still pending does not spam the admin
+        signin(client, "ana@research.co", mode="login")
+        assert notify.call_count == 1
+
+
+def test_notify_helpers_send_only_when_smtp_is_configured(app):
+    import core.accounts as accounts
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    pending = {"email": "ana@research.co", "name": "Ana", "status": "pending",
+               "google_sub": "g-ana", "created_at": "2026-10-24T10:00:00"}
+    with app.app_context():
+        with mock.patch("core.mailer.smtp_settings", return_value=None):
+            assert accounts.notify_admins_pending_signup(pending) is False
+        sent = []
+        with mock.patch("core.mailer.smtp_settings", return_value={"host": "smtp.test"}), \
+                mock.patch("core.mailer.send_mail", side_effect=lambda *a: sent.append(a)):
+            assert accounts.notify_admins_pending_signup(pending) is True
+            approved = dict(pending, status="approved")
+            assert accounts.notify_user_approved(approved, 100) is True
+    assert [s[0] for s in sent] == ["chief@platform.co", "ana@research.co"]
+    assert "approval" in sent[0][1].lower() and "100" in sent[1][2]
+
+
+# ------------------------------------------------------------------ the /welcome status page
+def test_welcome_page_shows_each_account_state(app, client):
+    auth_on(app)
+    app.config["ADMIN_EMAILS"] = ["chief@platform.co"]
+    out(client)
+    assert client.get("/welcome").status_code == 302           # signed-out -> sign in first
+
+    signin(client, "ana@research.co", mode="login")
+    html = client.get("/welcome").data.decode()
+    assert "approval request has been sent" in html            # pending: request is with the admin
+    assert "ana@research.co" in html and "100 Kart points" in html
+
+    approve_direct(app, "ana@research.co")                     # set_status grants the 100 too
+    html = client.get("/welcome").data.decode()
+    assert "Welcome to SurveyKart" in html and "100 Kart points" in html
+    assert 'href="/workspace/"' in html
+
+    # rejected accounts get a clear explanation instead of a dead end
+    signin(client, "bo@research.co", mode="login")
+    signin(client, "chief@platform.co")
+    client.post("/api/admin/console/decision",
+                json={"user_id": uid_of(app, "bo@research.co"), "decision": "reject"}, headers=H())
+    loc = signin(client, "bo@research.co", mode="login")
+    assert "/welcome" in loc
+    html = client.get("/welcome").data.decode()
+    assert "wasn't approved" in html
+
+    # legacy pending landing URL forwards to the real status page
+    assert "/welcome" in client.get("/?welcome=1").headers["Location"]
+
+
+def test_google_unconfigured_is_a_friendly_detour_not_an_error_page(app, client):
+    app.config["GOOGLE_CLIENT_ID"] = ""
+    app.config["STAFF_AUTH"] = True
+    r = client.get("/auth/google", query_string={"mode": "login"})
+    assert r.status_code == 302 and "notice=google-off" in r.headers["Location"]
+    html = client.get(r.headers["Location"]).data.decode()
+    assert "Google sign-in isn't switched on yet" in html

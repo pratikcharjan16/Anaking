@@ -307,9 +307,12 @@ def user_kart_summary(user_id: int) -> dict:
     if not u:
         return {
             "authenticated": False,
+            "status": "",
             "points_limit": DEFAULT_INITIAL_POINTS,
             "points_used": 0,
             "points_balance": DEFAULT_INITIAL_POINTS,
+            "welcome_points_pending": 0,
+            "welcome_points_granted": False,
             "owned_projects": [],
             "shared_projects": [],
             "requests": [],
@@ -355,13 +358,22 @@ def user_kart_summary(user_id: int) -> dict:
             (int(user_id),),
         ).fetchall()
     ]
+    # Welcome-allocation state (one-time 100 pts, added on admin approval for
+    # Google accounts). Reused from core.accounts to keep one definition.
+    from core.accounts import DEFAULT_POINTS as _WELCOME_PTS, has_welcome_allocation
+    welcomed = has_welcome_allocation(int(u["id"]))
     return {
         "authenticated": True,
         "user_id": int(u["id"]),
         "email": u["email"],
         "name": u["name"],
         "role": u["role"],
+        "status": u["status"],
         "is_admin": is_admin,
+        "welcome_points_granted": welcomed,
+        "welcome_points_pending": (
+            _WELCOME_PTS if (u["status"] == "pending" and not is_admin and not welcomed) else 0
+        ),
         "points_limit": limit,
         "points_used": used,
         "points_balance": 999999 if is_admin else max(0, limit - used),

@@ -51,6 +51,12 @@
         '<span class="cs-kart-badge">&#9733; Unlimited Admin Kart (' + (u.points_used || 0) + ' pts used)</span>' +
       '</div>';
     }
+    if (u.status === "pending") {
+      return '<div class="cs-kart-cell">' +
+        '<span class="cs-kart-badge">&#8987; ' + (u.welcome_points_pending || 100) + ' Kart pts on approval</span>' +
+        '<small style="display:block;color:var(--muted,#5c574e);margin-top:4px">added automatically when you approve</small>' +
+      '</div>';
+    }
     var used = u.points_used || 0;
     var limit = u.points_limit != null ? u.points_limit : 100;
     var bal = Math.max(0, limit - used);
@@ -97,6 +103,7 @@
     var rows = users.map(function (u) {
       var initials = esc((u.name || u.username || u.email || "U").slice(0, 2).toUpperCase());
       var subline = u.username ? (esc(u.username) + " · " + esc(u.email)) : esc(u.email);
+      if (u.auth_source === "google") subline += ' · <span class="cs-pill st-ok">Google</span>';
       return '<tr class="' + (u.status === "pending" ? "is-pending" : "") + '">' +
         '<td class="cs-person">' +
           (u.picture ? '<img src="' + esc(u.picture) + '" alt="">' : '<i class="cs-av">' + initials + '</i>') +
@@ -116,10 +123,16 @@
     var box = document.getElementById("cs-pending");
     box.hidden = pending.length === 0;
     document.getElementById("cs-pending-list").innerHTML = pending.map(function (u) {
-      return '<div class="cs-pending-card"><b>' + esc(u.name || u.email) + '</b>' +
+      var src = u.auth_source === "google" ? ' <span class="cs-pill st-ok">Google</span>' : '';
+      var pts = u.welcome_points_pending || 100;
+      return '<div class="cs-pending-card"><b>' + esc(u.name || u.email) + src + '</b>' +
         '<small>' + esc(u.email) + ' · signed up ' + esc((u.created_at || "").replace("T", " ").slice(0, 16)) + '</small>' +
-        '<span><button class="cs-btn ok" data-act="approve" data-id="' + u.id + '">Approve</button>' +
-        '<button class="cs-btn no" data-act="reject" data-id="' + u.id + '">Reject</button></span></div>';
+        '<small>&#8987; Approval adds the welcome allocation below to their Kart (exactly once).</small>' +
+        '<span>' +
+          '<input type="number" class="cs-pts-input" id="approve-pts-' + u.id + '" value="' + pts + '" min="0" max="100000" title="Welcome Kart points to add on approval" aria-label="Welcome Kart points">' +
+          '<button class="cs-btn ok" data-act="approve" data-id="' + u.id + '">Approve &amp; add pts</button>' +
+          '<button class="cs-btn no" data-act="reject" data-id="' + u.id + '">Reject</button>' +
+        '</span></div>';
     }).join("");
   }
 
@@ -133,11 +146,19 @@
   }
 
   function decide(id, act) {
-    var labels = { approve: "Approve this account?", reject: "Reject this account?",
+    var body = { user_id: +id, decision: act };
+    var labels = { reject: "Reject this account?",
                    disable: "Disable this account? They lose access immediately.",
                    enable: "Re-enable this account?" };
+    if (act === "approve") {
+      var inp = document.getElementById("approve-pts-" + id);
+      var pts = inp ? parseInt(inp.value || "100", 10) : 100;
+      if (isNaN(pts) || pts < 0) pts = 100;
+      body.points = pts;
+      labels.approve = "Approve this account and add " + pts + " welcome Kart points to their Kart?";
+    }
     if (!confirm(labels[act] || act)) return;
-    api("/api/admin/console/decision", { user_id: +id, decision: act }).then(function (out) {
+    api("/api/admin/console/decision", body).then(function (out) {
       if (out.error) alert(out.error); else load();
     });
   }

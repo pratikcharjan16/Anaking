@@ -1,0 +1,124 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Welcome · SurveyKart', 'Your SurveyKart account status — admin approval and your 100 Kart point welcome allocation.') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/landing.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
+</head>
+<body class="landing auth-gate" data-status="{{ user.status }}">
+<main class="ln-gate">
+  {% from "_brand.html" import brand %}
+  {{ brand('KART', '/', 42, 'gm', tagline=true, link_class='anaking-brand-lockup', title='SurveyKart — Insights Delivered (Go to landing page)') }}
+
+  {% set first = (user.name or user.email).split(' ')[0].split('@')[0] %}
+  <section class="ln-gate-card">
+    {% if user.status == 'approved' %}
+      <p class="an-eyebrow">You're approved · Welcome aboard</p>
+      <h1>Welcome to SurveyKart, {{ first }}! 🎉</h1>
+      <ol class="sk-status-steps">
+        <li class="done"><span class="sk-dot">✓</span>Signed in{% if user.auth_source == 'google' %} with Google{% endif %}</li>
+        <li class="done"><span class="sk-dot">✓</span>Admin approved</li>
+        <li class="done"><span class="sk-dot">🛒</span>Kart points added</li>
+      </ol>
+    {% elif user.status == 'pending' %}
+      <p class="an-eyebrow">Almost there · Account approval</p>
+      <h1>You're signed in, {{ first }} — just one quick approval to go</h1>
+      <ol class="sk-status-steps">
+        <li class="done"><span class="sk-dot">✓</span>Signed in{% if user.auth_source == 'google' %} with Google{% endif %}</li>
+        <li class="now"><span class="sk-dot">⏳</span>Admin approval</li>
+        <li><span class="sk-dot">🛒</span>{{ user.welcome_points_pending or 100 }} Kart points</li>
+      </ol>
+    {% else %}
+      <p class="an-eyebrow">Account status</p>
+      <h1>{% if user.status == 'rejected' %}This account wasn't approved{% else %}This account is currently disabled{% endif %}</h1>
+      <ol class="sk-status-steps">
+        <li class="done"><span class="sk-dot">✓</span>Signed in{% if user.auth_source == 'google' %} with Google{% endif %}</li>
+        <li class="bad"><span class="sk-dot">!</span>Admin approval</li>
+        <li><span class="sk-dot">🛒</span>Kart points</li>
+      </ol>
+    {% endif %}
+
+    <div class="sk-status-who">
+      {% if user.picture %}<img src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
+      {% else %}<i class="sk-av">{{ (user.name or user.email)[:1]|upper }}</i>{% endif %}
+      <span>
+        <b>{{ user.name or user.email }}</b>
+        <small>{{ user.email }}{% if user.auth_source == 'google' %} · via Google{% endif %}</small>
+      </span>
+    </div>
+
+    {% if user.status == 'approved' %}
+      <div class="sk-status-kart">
+        {% if user.role == 'admin' %}
+          <span class="sk-pts">★ Unlimited Kart</span><br>
+          Your admin account can build without point limits.
+        {% else %}
+          <span class="sk-pts">🛒 {{ user.points_balance }} Kart points</span> in your Kart
+          <small>({{ user.points_used }} used of {{ user.points_limit }} allocated)</small><br>
+          Shop question types in Studio and launch your first study — running low later?
+          You can request more points from the admin anytime.
+        {% endif %}
+      </div>
+      {% if redeemed %}
+      <p class="ln-gate-sub">🔗 Your shared link is attached to your account
+        (<strong>0 Kart points debited</strong>) — continue to open it.</p>
+      {% endif %}
+      <div class="sk-status-actions">
+        <a class="ln-btn ln-btn-primary lg" href="{{ next_url }}">Continue to SurveyKart →</a>
+        <a class="ln-btn ln-btn-ghost" href="/studio/">Open Studio</a>
+        <a class="ln-btn ln-btn-ghost" href="/workspace/">My projects</a>
+      </div>
+
+    {% elif user.status == 'pending' %}
+      <p class="ln-gate-sub"><strong>Your approval request has been sent to the SurveyKart admin.</strong>
+        New Google accounts get a quick one-time review, and you're already in the queue —
+        there's nothing else you need to do.</p>
+      <div class="sk-status-kart warn">
+        🛒 <span class="sk-pts">{{ user.welcome_points_pending or 100 }} Kart points</span> are reserved for you.<br>
+        They're added to your Kart <strong>automatically the moment the admin approves</strong> your account.
+      </div>
+      {% if has_share %}
+      <p class="ln-gate-sub">🔗 The shared link you opened is saved and will open right after approval
+        (<strong>0 Kart points debited</strong>).</p>
+      {% endif %}
+      <ul class="sk-status-next">
+        <li><strong>Keep this tab open</strong> — this page checks for you and changes by itself the second you're approved.</li>
+        <li><strong>Or come back later</strong> — close the tab anytime; just sign in with the same Google account and you'll land right back here (or straight into SurveyKart once approved).</li>
+      </ul>
+      <div class="sk-status-actions">
+        <button class="ln-btn ln-btn-primary" type="button" id="sk-check-now">Check status now</button>
+        <p class="sk-status-checkhint" id="sk-check-hint" role="status">Waiting for admin approval · checking automatically…</p>
+      </div>
+
+    {% else %}
+      <p class="ln-gate-sub">
+        {% if user.status == 'rejected' %}
+          The platform admin reviewed this account and didn't approve it, so Studio access
+          and Kart points haven't been activated for <code>{{ user.email }}</code>.
+        {% else %}
+          This account has been disabled by the platform admin, so Studio access is paused
+          for <code>{{ user.email }}</code>.
+        {% endif %}
+      </p>
+      <p class="ln-gate-sub">Think this is a mistake, or signed in with the wrong Google account?
+        Contact the SurveyKart platform admin (<code>Anaking.admin</code>) — or sign out and try a different account.</p>
+    {% endif %}
+
+    <div class="ln-gate-alt">
+      <form class="sk-status-signout" method="post" action="/auth/logout" id="sk-signout-form" style="display:inline">
+        <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+        <button type="submit" class="ln-btn ln-btn-ghost sm" data-signout="/signin">Sign out{% if user.status != 'approved' %} · use a different account{% endif %}</button>
+      </form>
+      {% if user.status == 'pending' %} · <a href="/recover">Check a different e-mail's status</a>{% endif %}
+    </div>
+  </section>
+
+  <p class="ln-gate-foot"><a href="/">&larr; Back to SurveyKart home</a></p>
+</main>
+<script src="{{ asset('js/account-status.js') }}"></script>
+</body>
+</html>

@@ -329,6 +329,9 @@ def index():
     if request.args.get("legacy") == "1":
         from core.security import allowed
         return render_template("home.html", studies=[s for s in Study.list_with_counts() if allowed(s["slug"])])
+    if request.args.get("welcome") == "1":
+        # Legacy landing target for pending accounts — now the real status page.
+        return redirect("/welcome")
     return render_template("landing.html")
 
 

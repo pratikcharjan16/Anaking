@@ -1756,7 +1756,7 @@
       })
     }).then(function (r) { return r.json(); }).then(function (out) {
       if (out.error) alert(out.error);
-      else location.href = "/studio/";
+      else location.href = out.redirect || (out.user && out.user.status !== "approved" ? "/welcome" : "/studio/");
     });
   });
 })();
