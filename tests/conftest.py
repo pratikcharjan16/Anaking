@@ -5,6 +5,10 @@ import pytest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
+# Never use a developer's real .env admin credentials in the test suite.
+os.environ["ADMIN_USERNAME"] = "Anaking.admin"
+os.environ["ADMIN_PASSWORD"] = "test-only-admin-password"
+
 from app import create_app  # noqa: E402
 
 

@@ -1,5 +1,5 @@
 """End-to-end tests for SurveyKart:
-  1. Protected Admin & Studio access (Anaking.admin / Anaking@1996) + 3D visible Admin nav
+  1. Protected Admin & Studio access (environment-configured credentials) + 3D visible Admin nav
   2. SurveyKart rebrand ("Insights Delivered") & 3D animated GIF logo button on every page
   3. 100-pt default Kart allocation, 13-type point catalog, 70-pt shopping deduction,
      multi-project balance & Admin point adjustments / request approvals
@@ -101,9 +101,10 @@ def test_master_admin_credentials_protect_studio_and_admin_surfaces(app, client)
                       json={"identifier": "Anaking.admin", "password": "wrong-password"})
     assert bad.status_code == 401
 
-    # Master Admin logs in with Anaking.admin / Anaking@1996
+    # Master Admin logs in with the test-only environment-configured password.
     ok = client.post("/api/auth/login", headers=_h(client),
-                     json={"identifier": "Anaking.admin", "password": "Anaking@1996", "next": "/studio/"})
+                     json={"identifier": "Anaking.admin", "password": os.environ["ADMIN_PASSWORD"],
+                           "next": "/studio/"})
     assert ok.status_code == 200, ok.get_json()
     payload = ok.get_json()
     assert payload["user"]["role"] == "admin"
@@ -146,7 +147,7 @@ def test_rebrand_3d_animated_logo_button_and_visible_3d_admin_nav(app, client):
 
     # Sign in as Master Admin and verify every page has the clickable 3D logo button -> "/"
     client.post("/api/auth/login", headers=_h(client),
-                json={"identifier": "Anaking.admin", "password": "Anaking@1996"})
+                json={"identifier": "Anaking.admin", "password": os.environ["ADMIN_PASSWORD"]})
     for page in ("/", "/signin", "/register", "/studio/", "/admin/", "/admin/console",
                  "/admin-portal", "/workspace/", "/survey/", "/survey/test"):
         html = client.get(page).data.decode()
@@ -227,7 +228,7 @@ def test_100pt_registration_70pt_shopping_deduction_and_admin_point_allocation(a
     # 6. Admin signs in, approves the request (+60 -> limit 160), and tests decreasing (-10 -> limit 150)
     client.post("/auth/logout", headers=_h(client))
     client.post("/api/auth/login", headers=_h(client),
-                json={"identifier": "Anaking.admin", "password": "Anaking@1996"})
+                json={"identifier": "Anaking.admin", "password": os.environ["ADMIN_PASSWORD"]})
     dec = client.post("/api/admin/console/point-requests/decide", headers=_h(client),
                       json={"request_id": req_id, "decision": "approve"})
     assert dec.status_code == 200
@@ -386,7 +387,7 @@ def test_responsive_viewport_and_layout_across_desktop_browser_and_mobile(app, c
 
     # Sign in as reserved admin and check authenticated routes across Workspace, Studio, Monitor, Console, Portal & Survey
     login = client.post("/api/auth/login", headers=_h(client), json={
-        "email": "Anaking.admin", "password": "Anaking@1996"
+        "email": "Anaking.admin", "password": os.environ["ADMIN_PASSWORD"]
     })
     assert login.status_code == 200
 

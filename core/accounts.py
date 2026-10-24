@@ -2,7 +2,8 @@
 Platform accounts — SurveyKart profiles, protected Admin account, and Kart points.
 
 Supports:
-  1. Protected Master Admin credentials: username ``Anaking.admin`` / ``Anaking@1996``
+  1. Protected Master Admin credentials configured with ``ADMIN_USERNAME`` and
+     ``ADMIN_PASSWORD`` (password sign-in is disabled when the password is unset)
   2. Direct SurveyKart registration & sign-in (Name, Email/Username, Password) —
      automatically allocates 100 Kart points upon registration
   3. Google OAuth sign-in & registration — one profile per e-mail, also starts with
@@ -17,15 +18,19 @@ from __future__ import annotations
 import secrets
 from werkzeug.security import check_password_hash, generate_password_hash
 
+from config import Config
 from models import get_db, now
 
-MASTER_ADMIN_USERNAME = "Anaking.admin"
+MASTER_ADMIN_USERNAME = Config.ADMIN_USERNAME
 MASTER_ADMIN_EMAIL = "anaking.admin@surveykart.local"
 DEFAULT_POINTS = 100
 ADMIN_UNLIMITED_POINTS = 999999
 
-# Precomputed PBKDF2-SHA256 hash so test DB creation stays sub-millisecond
-_MASTER_ADMIN_HASH = generate_password_hash("Anaking@1996", method="pbkdf2:sha256:260000")
+# Keep only a hash in the application and database. An unset password becomes an
+# unknown random value, disabling master-admin password sign-in until configured.
+_MASTER_ADMIN_HASH = generate_password_hash(
+    Config.ADMIN_PASSWORD or secrets.token_urlsafe(32), method="pbkdf2:sha256:260000"
+)
 _DUMMY_HASH = generate_password_hash("surveykart-dummy-verification-secret", method="pbkdf2:sha256:260000")
 
 SCHEMA = """
@@ -196,13 +201,13 @@ def register_credentials(name: str, email: str, password: str, username: str = "
 
 
 def authenticate_credentials(identifier: str, password: str) -> dict | None:
-    """Verify username or e-mail + password. Supports protected Admin ``Anaking.admin``."""
+    """Verify username or e-mail + password, including the configured protected admin."""
     ident = str(identifier or "").strip()
     pw = str(password or "")
     if not ident or not pw:
         return None
 
-    # Protected Master Admin check (Anaking.admin / Anaking@1996)
+    # Protected Master Admin check using the environment-configured password hash.
     if ident.lower() in (MASTER_ADMIN_USERNAME.lower(), MASTER_ADMIN_EMAIL):
         if check_password_hash(_MASTER_ADMIN_HASH, pw):
             admin_user = ensure_master_admin()
