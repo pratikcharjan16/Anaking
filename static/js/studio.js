@@ -91,6 +91,119 @@
   var GROUPS = ["Questions", "Methodologies", "Survey flow", "Objects"];
   function tinfo(t) { return TYPE_INFO[t] || { name: t, icon: "?", desc: "" }; }
 
+  // ------------------------------------------------------------ SurveyKart points & shopping
+  var KART_POINTS = {
+    single_select: 10, multi_select: 15, rating_grid: 20, numeric_matrix: 20,
+    rating_scale: 20, sum_to_100: 20, concept_test: 30, heatmap: 30,
+    delta: 30, gauge_meter: 10, walk_through: 40, numeric: 15,
+    open_text: 15, text_grid: 25, choice_task: 40,
+    date: 10, rank: 15, slider: 15, semantic_diff: 15, emoji_grid: 15,
+    loop: 25, maxdiff: 35, text_block: 0
+  };
+  var KART_SHOP_ITEMS = [
+    { key: "single_select", type: "single_select", label: "Single select", points: 10 },
+    { key: "multi_select", type: "multi_select", label: "Multi-select", points: 15 },
+    { key: "rank", type: "rank", label: "Rank order", points: 15 },
+    { key: "grid_matrix", type: "rating_grid", label: "Grid / matrix", points: 20 },
+    { key: "numeric_matrix", type: "numeric_matrix", label: "Numeric matrix", points: 20 },
+    { key: "text_grid", type: "text_grid", label: "Text grid", points: 25 },
+    { key: "rating_scale", type: "rating_scale", label: "Rating scale", points: 20 },
+    { key: "gauge_meter", type: "gauge_meter", label: "Gauge meter", points: 10 },
+    { key: "semantic_diff", type: "semantic_diff", label: "NPS / semantic scale", points: 15 },
+    { key: "emoji_grid", type: "emoji_grid", label: "Emoji reaction", points: 15 },
+    { key: "numeric", type: "numeric", label: "Numeric entry", points: 15 },
+    { key: "open_text", type: "open_text", label: "Text entry (open-ended)", points: 15 },
+    { key: "slider", type: "slider", label: "Scale slider", points: 15 },
+    { key: "constant_sum", type: "sum_to_100", label: "Constant sum", points: 20 },
+    { key: "date", type: "date", label: "Date picker", points: 10 },
+    { key: "delta_question", type: "delta", label: "Delta question", points: 30 },
+    { key: "concept_test", type: "concept_test", label: "Concept test", points: 30 },
+    { key: "heat_map", type: "heatmap", label: "Heat map", points: 30 },
+    { key: "walkthrough", type: "walk_through", label: "Walkthrough", points: 40 },
+    { key: "maxdiff", type: "maxdiff", label: "MaxDiff", points: 35 },
+    { key: "conjoint", type: "choice_task", label: "Conjoint", points: 40 },
+    { key: "loop", type: "loop", label: "Question loop", points: 25 },
+    { key: "text_block", type: "text_block", label: "Text block", points: 0 }
+  ];
+  var kartState = null;
+  var kartShopCounts = { single_select: 2, constant_sum: 1, delta_question: 1 };
+
+  function qPoints(type) {
+    return KART_POINTS[type] != null ? KART_POINTS[type] : 10;
+  }
+  function cfgPoints(cfg) {
+    if (!cfg || cfg.parent) return 0;
+    return (cfg.questions || []).reduce(function (sum, q) {
+      return sum + (q && typeof q === "object" ? qPoints(q.type) : 0);
+    }, 0);
+  }
+  function updateKartBadges() {
+    var topTxt = document.getElementById("sk-top-kart-txt");
+    if (topTxt && kartState) {
+      if (kartState.is_admin) topTxt.textContent = "Unlimited Admin Kart";
+      else topTxt.textContent = kartState.points_balance + " / " + kartState.points_limit + " pts";
+    }
+    var studyEl = document.getElementById("st-study-kart");
+    if (studyEl && cur) {
+      if (cur.is_shared) {
+        studyEl.innerHTML = "\uD83D\uDD17 Shared \u00B7 <b>0 pts debited</b>";
+      } else {
+        var pts = cfgPoints(cur.cfg);
+        studyEl.innerHTML = "\uD83D\uDED2 <b>" + pts + "</b> Kart pts";
+      }
+    }
+  }
+  function refreshKartState() {
+    api("/api/kart/me").then(function (d) {
+      if (d && d.kart) { kartState = d.kart; updateKartBadges(); }
+    }).catch(function () {});
+  }
+  refreshKartState();
+  var topKartBtn = document.getElementById("sk-top-kart");
+  if (topKartBtn) topKartBtn.addEventListener("click", function () { openKartModal(); });
+
+  function openKartModal() {
+    api("/api/kart/me").then(function (d) {
+      var k = (d && d.kart) || kartState || { points_limit: 100, points_used: 0, points_balance: 100, owned_projects: [], shared_projects: [], requests: [] };
+      kartState = k; updateKartBadges();
+      var ownedRows = (k.owned_projects || []).map(function (p) {
+        return '<div class="st-kart-proj"><span><b>' + esc(p.title) + '</b> <small>/' + esc(p.slug) + '</small></span><b>' + p.points + ' pts</b></div>';
+      }).join("") || '<div class="st-meta">No owned projects yet &mdash; create one with your Kart points!</div>';
+      var sharedRows = (k.shared_projects || []).map(function (s) {
+        return '<div class="st-kart-proj"><span><b>' + esc(s.study_title) + '</b> <small>shared (' + esc(s.permission) + ')</small></span><b style="color:#1c6b47">0 pts debited</b></div>';
+      }).join("");
+      var reqRows = (k.requests || []).slice(0, 4).map(function (r) {
+        return '<div class="st-meta">Request #' + r.id + ': <b>+' + r.requested_points + ' pts</b> &middot; <em>' + esc(r.status) + '</em></div>';
+      }).join("");
+      openModal(
+        '<div class="st-modal-head"><strong>\uD83D\uDED2 Your SurveyKart Wallet</strong>' +
+          '<span class="st-meta">Default registration allocation: 100 pts</span>' +
+          '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+          '<div class="st-kpis">' +
+            kpi(k.is_admin ? "Unlimited" : k.points_limit, "Allocated Limit") +
+            kpi(k.points_used || 0, "Used in Projects") +
+            kpi(k.is_admin ? "Unlimited" : k.points_balance, "Available Balance") +
+          '</div>' +
+          '<div class="st-field"><span>Owned projects (deducted from your Kart)</span>' + ownedRows + '</div>' +
+          (sharedRows ? '<div class="st-field"><span>Shared links attached to your account (0 pts debited)</span>' + sharedRows + '</div>' : '') +
+          (!k.is_admin ?
+            '<div class="st-field" style="border-top:1px solid var(--line);padding-top:12px">' +
+              '<span>Need more Kart points for another project? Request Admin allocation</span>' +
+              '<div class="st-form-2">' +
+                '<label class="st-field"><span>Points to request</span><input type="number" id="kr-pts" value="100" min="10" max="10000" step="10"></label>' +
+                '<label class="st-field"><span>Project reason</span><input type="text" id="kr-reason" placeholder="e.g. Wave 2 multi-country study"></label>' +
+              '</div>' +
+              (reqRows ? '<div style="margin-top:6px">' + reqRows + '</div>' : '') +
+            '</div>' : '<div class="st-note">You are signed in with Master Admin rights &mdash; unlimited Kart budget and full user point controls in the <a href="/admin/console">Admin Console</a>.</div>') +
+          '<div class="st-modal-actions">' +
+            '<button class="st-btn" data-act="modal-close" type="button">Close</button>' +
+            (!k.is_admin ? '<button class="st-btn on" data-act="kart-req-submit" type="button">Request Admin Points</button>' : '<a class="st-btn on" href="/admin/console">Open Admin Console</a>') +
+          '</div>' +
+        '</div>', "st-kart-modal");
+    });
+  }
+
   function qTemplate(type, id, secId) {
     var q = { id: id, section: secId, type: type, required: true,
               stem: "New " + tinfo(type).name.toLowerCase() + " question" };
@@ -306,6 +419,7 @@
     if (!cur) return;
     auto.dirty = true; auto.seq++;
     renderSaveState();
+    updateKartBadges();
     if (auto.on) { clearTimeout(auto.timer); auto.timer = setTimeout(function () { flushSave(); }, 1100); }
   }
   // Rendering the Screening card seeds an empty rule set on the question being edited, and
@@ -340,7 +454,14 @@
     auto.saving = true; auto.error = null; renderSaveState();
     api("/api/studio/save", { slug: cur.slug, title: cur.title, cfg: cur.cfg }).then(function (r) {
       auto.saving = false;
-      if (r.error) { auto.error = r.error; renderSaveState(); toast("Could not save: " + r.error); return; }
+      if (r.error) {
+        auto.error = r.error; renderSaveState();
+        if (/Kart|point/i.test(r.error)) toast(r.error, "Request points", openKartModal);
+        else toast("Could not save: " + r.error);
+        return;
+      }
+      if (r.kart) { kartState = r.kart; }
+      updateKartBadges();
       if (cur && cur.slug === slug && auto.seq === seq) { auto.dirty = false; auto.lastSaved = new Date(); }
       renderSaveState();
       var cbs = auto.cbs || []; auto.cbs = [];
@@ -482,8 +603,8 @@
       '<div class="st-hero"><div><h1>Your studies</h1><p>Draft questions, preview exactly what respondents see, then launch. ' +
       tops.length + " stud" + (tops.length === 1 ? "y" : "ies") + (live ? " \u00B7 " + live + " live" : "") +
       (kidsN ? " \u00B7 " + kidsN + " translation" + (kidsN === 1 ? "" : "s") : "") + "</p></div>" +
-      '<div class="st-hero-actions"><button class="st-btn big on" data-act="new">+ New study</button></div></div>' +
-      '<div class="st-ai-banner"><span class="st-ai-spark">✦</span><div><b>Research design, with a saved agent</b><p>Turn research objectives or an uploaded questionnaire into an editable, Studio-ready survey. Review the flow, test it and export the questionnaire to Word.</p></div><button class="st-btn sm" data-act="new">Explore ways to start</button></div>' +
+      '<div class="st-hero-actions"><button class="st-btn" data-act="open-kart">\uD83D\uDED2 Kart Wallet</button><button class="st-btn big on" data-act="new">+ New study</button></div></div>' +
+      '<div class="st-ai-banner"><span class="st-ai-spark">\uD83D\uDED2</span><div><b>SurveyKart &middot; Insights Delivered</b><p>Shop question types from the dedicated Kart library (100 default points on registration), collaborate on single shared links with 0 points debited, or draft with the saved AI agent.</p></div><button class="st-btn sm on" data-act="new-kart">Shop Question Kart</button></div>' +
       '<div class="st-home-tools"><input id="home-search" class="st-search" placeholder="Search studies\u2026" value="' + esc(homeSearch) + '">' +
       '<div class="st-seg">' + [["all", "All"], ["draft", "Draft"], ["live", "Live"], ["paused", "Paused"], ["closed", "Closed"]].map(function (f) {
         return '<button class="st-seg-btn' + (homeFilter === f[0] ? " on" : "") + '" data-act="home-filter" data-f="' + f[0] + '">' + f[1] + "</button>"; }).join("") + "</div></div>" +
@@ -518,8 +639,10 @@
         : "";
       return '<div class="st-card" data-slug="' + esc(s.slug) + '">' +
         '<div class="st-card-top"><h3>' + esc(s.title) + '</h3><span class="st-pill ' + s.status + '">' + s.status + "</span></div>" +
-        '<div class="st-study-id">' + esc(s.study_id || "") + (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') +
-          (s.owner_email && window.ME && s.owner_email !== window.ME.email ? ' <span class="st-owner-chip" title="This project belongs to another account - you have full admin access">· ' + esc(s.owner_email) + '</span>' : '') + '</div>' +
+        '<div class="st-study-id">' + esc(s.study_id || "") +
+          (s.is_shared ? ' <span class="st-kart-tag shared">\uD83D\uDD17 Shared \u00B7 0 pts debited</span>' : ' <span class="st-kart-tag">\uD83D\uDED2 ' + (s.points_used || 0) + ' Kart pts</span>') +
+          (s.group_name ? ' <span>· ' + esc(s.group_name) + '</span>' : '') + (s.parent_study ? ' <span>· child of ' + esc(s.parent_study) + '</span>' : '') +
+          (s.owner_email && window.ME && s.owner_email !== window.ME.email ? ' <span class="st-owner-chip" title="Shared or admin-visible study">· ' + esc(s.owner_email) + '</span>' : '') + '</div>' +
         '<div class="st-meta">/survey/' + esc(s.slug) + " \u00B7 updated " + esc(ago(s.updated_at)) + "</div>" + kidHtml +
         '<div class="st-stats"><div><strong>' + s.started + "</strong><span>started</span></div><div><strong>" + s.complete + "</strong><span>complete</span></div>" +
         '<div class="st-stat-bar"><i style="width:' + pct + '%"></i></div><span class="st-meta">' + pct + "% completion</span></div>" +
@@ -697,21 +820,25 @@
   function renderEditor() {
     if (cur && cur.cfg && cur.cfg.parent) { renderChildEditor(); return; }
     var c = cur.cfg;
-    // Admin oversight: when the open project belongs to someone else, say so -
-    // the admin is the platform owner and edits with full rights.
-    var ownerBanner = (cur.owner_email && window.ME && cur.owner_email !== window.ME.email)
-      ? '<div class="st-owner-banner"><b>Admin access</b> — you are editing <code>' + esc(cur.owner_email) +
-        '</code>\u2019s project with full rights: read, edit, publish, export and manage.</div>'
-      : "";
+    var ownerBanner = "";
+    if (cur.is_shared) {
+      ownerBanner = '<div class="st-owner-banner"><b>Shared Collaboration Link</b> &mdash; attached to your SurveyKart account from <code>' + esc(cur.owner_email || "owner") + '</code> &middot; <strong>0 Kart points debited</strong> from your balance.</div>';
+    } else if (cur.owner_email && window.ME && cur.owner_email !== window.ME.email) {
+      ownerBanner = '<div class="st-owner-banner"><b>Admin access</b> — you are editing <code>' + esc(cur.owner_email) +
+        '</code>\u2019s project with full rights: read, edit, publish, export and manage.</div>';
+    }
+    var initStudyKart = cur.is_shared ? "\uD83D\uDD17 Shared \u00B7 <b>0 pts debited</b>" : ("\uD83D\uDED2 <b>" + cfgPoints(c) + "</b> Kart pts");
     var html = ownerBanner + '<div class="st-bar">' +
       '<button class="st-btn ghost" data-act="back" title="Back to all studies">\u2190 Studies</button>' +
       '<input type="text" id="ed-title" class="st-title" value="' + esc(cur.title) + '" title="Study title">' +
+      '<span class="st-study-kart" id="st-study-kart" title="Kart points used in this project">' + initStudyKart + '</span>' +
       '<div class="st-status-seg" title="Draft: only the team can open it. Live: respondents can answer. Paused: nobody new can start. Closed: no new starts or submissions.">' +
         ["draft", "live", "paused", "closed"].map(function (s) {
           return '<button class="st-status-btn ' + s + (s === cur.status ? " on" : "") + '" data-act="setstatus" data-status="' + s + '">' + s + "</button>"; }).join("") + "</div>" +
       '<div id="st-savestate" class="st-savestate"></div>' +
       '<label class="st-switch" title="Save automatically a moment after every change"><input type="checkbox" id="st-autosave"' + (auto.on ? " checked" : "") + '><i></i>Autosave</label>' +
       '<button class="st-btn" data-act="save" title="Ctrl/Cmd + S">Save now</button>' +
+      '<button class="st-btn" data-act="so-share" title="Share single-link collaboration or respondent survey link (0 pts debited)">\uD83D\uDD17 Share</button>' +
       '<button class="st-btn play" data-act="viewlive" title="Open the full test environment in a new tab - question jump, notes, AI answers and team review links. This builder stays open.">\u25B6 Test survey</button>' +
       '<div class="st-menu-wrap"><button class="st-btn" data-act="sopts" title="Survey options">SURVEY OPTIONS \u25BE</button>' +
         '<div class="st-menu" id="st-sopts" hidden>' +
@@ -1016,14 +1143,19 @@
   }
   function closeModal() { var m = document.getElementById("st-modal"); if (m) { m.hidden = true; m.innerHTML = ""; } }
   function openTypePicker(secId, afterQi) {
-    var html = '<div class="st-modal-head"><strong>Add a question</strong><span class="st-meta">Pick the kind of answer you need - you can change it later.</span>' +
+    var curPts = cur ? cfgPoints(cur.cfg) : 0;
+    var balNote = cur && cur.is_shared
+      ? "Shared collaboration &middot; <b>0 Kart pts debited</b> from you"
+      : ("Project Kart: <b>" + curPts + " pts</b>" + (kartState && !kartState.is_admin ? " &middot; Account limit: <b>" + kartState.points_limit + " pts</b>" : ""));
+    var html = '<div class="st-modal-head"><strong>\uD83D\uDED2 SurveyKart Question Library</strong><span class="st-meta">' + balNote + '</span>' +
       '<button class="st-btn sm ghost" data-act="modal-close" type="button">\u2190 Back</button><button class="ex-close" data-act="modal-close" type="button">&times;</button></div>';
     GROUPS.forEach(function (g) {
       html += '<div class="st-type-group">' + g + '</div><div class="st-type-grid">';
       TYPES.filter(function (t) { return TYPE_INFO[t].group === g; }).forEach(function (t) {
-        var i = TYPE_INFO[t];
+        var i = TYPE_INFO[t], pts = qPoints(t);
         html += '<button class="st-type" data-act="qadd-type" data-type="' + t + '" data-sec="' + esc(secId) + '" data-after="' + afterQi + '">' +
-          '<span class="st-type-ic">' + i.icon + '</span><span><b>' + esc(i.name) + "</b><small>" + esc(i.desc) + (i.noprev ? " \u00B7 no live preview yet" : "") + "</small></span></button>";
+          '<span class="st-type-ic">' + i.icon + '</span>' +
+          '<span style="flex:1"><b>' + esc(i.name) + ' <em class="st-qpts-chip">' + pts + ' pts</em></b><small>' + esc(i.desc) + (i.noprev ? " \u00B7 no live preview yet" : "") + "</small></span></button>";
       });
       html += "</div>";
     });
@@ -1354,14 +1486,51 @@
   }
   function shareModal() {
     var base = location.origin + "/survey/" + cur.slug;
-    openModal('<div class="st-modal-head"><strong>Share survey preview</strong><span class="st-meta">' +
-      (cur.status === "live" ? "The study is live - the respondent link answers for real" : "Draft study - the respondent link is blocked until you go live") +
-      '</span><button class="st-btn sm ghost" data-act="modal-close" type="button">\u2190 Back</button><button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
-      '<div class="st-field"><label>Preview / test link <span class="st-opt">answers are marked as test data</span></label>' +
-      '<div class="st-linkbox"><code>' + esc(base + "/test") + '</code><button class="st-btn sm" data-act="copylink" data-slug="' + esc(cur.slug) + '">Copy</button></div></div>' +
-      '<div class="st-field"><label>Respondent link</label><div class="st-linkbox"><code>' + esc(base) + "</code></div></div>" +
-      '<div class="st-note">Both links open exactly what respondents see, in whichever language they pick.</div>' +
-      '<div class="st-modal-actions"><button class="st-btn on" data-act="modal-close">Done</button></div>');
+    api("/api/studio/shares?study=" + encodeURIComponent(cur.slug)).then(function (d) {
+      var shares = (d && d.shares) || [];
+      var rows = shares.map(function (sh) {
+        var url = sh.share_url || (location.origin + "/share/" + sh.token);
+        return '<div class="st-share-row">' +
+          '<div style="flex:1;min-width:0">' +
+            '<b>' + (sh.permission === "collaborate" ? "\uD83E\uDD1D Collaborate" : "\uD83D\uDCDD Fill Survey") + '</b>' +
+            (sh.shared_with_email ? ' &middot; <code>' + esc(sh.shared_with_email) + '</code>' : ' &middot; <small>Any invited registrant</small>') +
+            (sh.claimed_by_user_id ? ' &middot; <span style="color:#1c6b47;font-weight:700">Attached to account</span>' : ' &middot; <span style="color:#8a5a12">Awaiting registration</span>') +
+            ' &middot; <strong style="color:#1c6b47">0 pts debited</strong>' +
+            '<div style="margin-top:4px"><input readonly class="st-link-in" value="' + esc(url) + '" style="width:100%"></div>' +
+          '</div>' +
+          '<div style="display:flex;gap:6px;align-items:center">' +
+            '<button class="st-btn sm" type="button" data-act="share-copy" data-url="' + esc(url) + '">Copy</button>' +
+            '<button class="st-btn sm danger" type="button" data-act="share-revoke" data-id="' + sh.id + '">Revoke</button>' +
+          '</div>' +
+        '</div>';
+      }).join("") || '<div class="st-meta">No collaboration links created yet &mdash; generate one below!</div>';
+
+      openModal(
+        '<div class="st-modal-head"><strong>\uD83D\uDD17 Share &amp; Collaborate &middot; 0 Kart Points Debited</strong>' +
+          '<span class="st-meta">' + (cur.status === "live" ? "Live study &middot; respondents can fill out" : "Draft study &middot; collaborators can co-edit now") + '</span>' +
+          '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div class="st-new-form">' +
+          '<div class="st-note"><b>Zero-Point Sharing Rules:</b><br>' +
+            '1) <b>Single-Link Collaboration:</b> New recipients are asked to register first so this shared link attaches to their SurveyKart account; both of you open and collaborate on the single link with <b>0 points debited</b> from the recipient.<br>' +
+            '2) <b>Respondent Survey Link:</b> Sharing a survey link for anyone to fill out debits <b>0 points</b>.</div>' +
+          '<div class="st-field"><span>Create a Single-Link Collaboration or Respondent Invite</span>' +
+            '<div class="st-form-2">' +
+              '<label class="st-field"><span>Recipient E-mail <em>optional</em></span><input id="sh-email" type="email" placeholder="teammate@company.com (or leave blank for open link)"></label>' +
+              '<label class="st-field"><span>Access Mode</span><select id="sh-perm">' +
+                '<option value="collaborate">Collaborate in Studio (attach to account &middot; 0 pts)</option>' +
+                '<option value="respond">Fill out Survey only (respondent &middot; 0 pts)</option>' +
+              '</select></label>' +
+            '</div>' +
+            '<div style="margin-top:8px"><button class="st-btn on" type="button" data-act="share-create">+ Generate Share Link (0 Pts Debited)</button></div>' +
+          '</div>' +
+          '<div class="st-field"><span>Active Shared Links</span>' + rows + '</div>' +
+          '<div class="st-field"><span>Direct Respondent Link (0 pts debited to fill survey)</span>' +
+            '<div class="st-linkbox"><code>' + esc(base) + '</code><button class="st-btn sm" type="button" data-act="share-copy" data-url="' + esc(base) + '">Copy Respondent Link</button></div></div>' +
+          '<div class="st-field"><span>Team Test / Preview Link <em class="st-opt">answers stored as T-codes</em></span>' +
+            '<div class="st-linkbox"><code>' + esc(base + "/test") + '</code><button class="st-btn sm" type="button" data-act="share-copy" data-url="' + esc(base + "/test") + '">Copy Test Link</button></div></div>' +
+          '<div class="st-modal-actions"><button class="st-btn on" data-act="modal-close" type="button">Done</button></div>' +
+        '</div>', "st-share-modal");
+    });
   }
   function openTitleLang() {
     openModal('<div class="st-modal-head"><strong>Edit title and language</strong><span class="st-meta">The authoring language - translations are made from it</span>' +
@@ -6005,6 +6174,40 @@
     if (act === "new-mode") showNewStudyForm(b.getAttribute("data-mode"));
     if (act === "new-back") openNewStudy();
     if (act === "new-create") createFromWizard();
+    if (act === "open-kart") openKartModal();
+    if (act === "kart-shop-inc") { var ik = b.getAttribute("data-k"); kartShopCounts[ik] = (kartShopCounts[ik] || 0) + 1; renderKartShopGrid(); }
+    if (act === "kart-shop-dec") { var dk = b.getAttribute("data-k"); kartShopCounts[dk] = Math.max(0, (kartShopCounts[dk] || 0) - 1); renderKartShopGrid(); }
+    if (act === "kart-shop-preset") { kartShopCounts = { single_select: 2, constant_sum: 1, delta_question: 1 }; renderKartShopGrid(); }
+    if (act === "kart-shop-clear") { kartShopCounts = {}; renderKartShopGrid(); }
+    if (act === "kart-req-submit") {
+      var rpts = Number((document.getElementById("kr-pts") || {}).value || 100);
+      var rrsn = ((document.getElementById("kr-reason") || {}).value || "").trim();
+      api("/api/kart/request-points", { requested_points: rpts, reason: rrsn }).then(function (out) {
+        if (out.error) { toast(out.error); return; }
+        if (out.kart) { kartState = out.kart; updateKartBadges(); }
+        closeModal();
+        toast("Requested +" + rpts + " Kart points from Admin!");
+      });
+    }
+    if (act === "share-create") {
+      var shEm = ((document.getElementById("sh-email") || {}).value || "").trim();
+      var shPerm = ((document.getElementById("sh-perm") || {}).value || "collaborate");
+      api("/api/studio/share", { slug: cur.slug, email: shEm, permission: shPerm }).then(function (out) {
+        if (out.error) { toast(out.error); return; }
+        toast("Share link created (0 Kart pts debited)!");
+        shareModal();
+      });
+    }
+    if (act === "share-copy") {
+      var surl = b.getAttribute("data-url") || "";
+      if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(surl).then(function () { toast("Copied: " + surl); }, function () { prompt("Share link", surl); });
+      else prompt("Share link", surl);
+    }
+    if (act === "share-revoke") {
+      api("/api/studio/share/revoke", { id: Number(b.getAttribute("data-id")), slug: cur.slug }).then(function () {
+        toast("Share link revoked."); shareModal();
+      });
+    }
     if (act === "agent-submit") submitAgentTurn(null);
     if (act === "agent-download") downloadAgentQuestionnaire();
     if (act === "agent-review-toggle") { var review = document.getElementById("agent-review-list"); if (review) { review.hidden = !review.hidden; b.textContent = review.hidden ? "Review questions" : "Hide question review"; } }
@@ -6752,21 +6955,91 @@
   var newStudyMode = "scratch";
   var agentModalData = null;
   var agentModalSlug = "";
+  function kartShopSubtotal() {
+    return KART_SHOP_ITEMS.reduce(function (s, it) {
+      return s + (kartShopCounts[it.key] || 0) * it.points;
+    }, 0);
+  }
+  function renderKartShopGrid() {
+    var box = document.getElementById("ns-kart-shop");
+    if (!box) return;
+    var sub = kartShopSubtotal();
+    var avail = (kartState && !kartState.is_admin) ? kartState.points_balance : 100;
+    var isUnlimited = !!(kartState && kartState.is_admin);
+    var after = isUnlimited ? "Unlimited" : (avail - sub) + " pts";
+    box.innerHTML =
+      '<div class="st-kart-shop-head">' +
+        '<div><b>Select Question Types for This Project</b><br><small class="st-meta">All selected questions go into this project; remaining balance stays in your Kart for future projects.</small></div>' +
+        '<div style="display:flex;gap:6px;flex-wrap:wrap">' +
+          '<button type="button" class="st-btn sm" data-act="kart-shop-preset">70-Pt Example (2 Single + 1 Sum + 1 Delta)</button>' +
+          '<button type="button" class="st-btn sm ghost" data-act="kart-shop-clear">Clear Kart</button>' +
+        '</div>' +
+      '</div>' +
+      '<div class="st-kart-shop-grid">' +
+        KART_SHOP_ITEMS.map(function (it) {
+          var q = kartShopCounts[it.key] || 0;
+          return '<div class="st-kshop-card' + (q ? ' on' : '') + '">' +
+            '<div class="st-kshop-top"><b>' + esc(it.label) + '</b><span class="st-qpts-chip">' + it.points + ' pts</span></div>' +
+            '<div class="st-kshop-ctrl">' +
+              '<button type="button" class="st-btn sm ghost" data-act="kart-shop-dec" data-k="' + it.key + '">&minus;</button>' +
+              '<span><b>' + q + '</b> <small>(' + (q * it.points) + ' pts)</small></span>' +
+              '<button type="button" class="st-btn sm on" data-act="kart-shop-inc" data-k="' + it.key + '">+</button>' +
+            '</div>' +
+          '</div>';
+        }).join("") +
+      '</div>' +
+      '<div class="st-kart-shop-summary' + (!isUnlimited && sub > avail ? ' over' : '') + '">' +
+        '<span>Kart Subtotal: <b>' + sub + ' pts</b></span>' +
+        '<span>Available Balance: <b>' + (isUnlimited ? "Unlimited Admin" : avail + " pts") + '</b></span>' +
+        '<span>Remaining After Project: <b>' + after + '</b></span>' +
+        (!isUnlimited && sub > avail ? '<button type="button" class="st-btn sm warnb" data-act="open-kart">Request Admin Points</button>' : '') +
+      '</div>';
+  }
+  function buildKartShopCfg(title, group, parent) {
+    var cfg = blankCfg();
+    cfg.title = title; cfg.group_name = group; cfg.parent_study = parent;
+    cfg.creation_mode = "kart"; cfg.ai_assistant = false;
+    var secId = (cfg.sections && cfg.sections[0] && cfg.sections[0].id) || "S1";
+    var qs = [];
+    var idx = 1;
+    var firstMatrixId = "";
+    KART_SHOP_ITEMS.forEach(function (it) {
+      var n = kartShopCounts[it.key] || 0;
+      for (var k = 0; k < n; k++) {
+        var qid = "Q" + idx++;
+        var q = qTemplate(it.type, qid, secId);
+        q.stem = it.label + " question " + (n > 1 ? (k + 1) : "");
+        if (it.type === "rating_grid" || it.type === "numeric_matrix" || it.type === "sum_to_100" || it.type === "text_grid") {
+          if (!firstMatrixId) firstMatrixId = qid;
+        }
+        if (it.type === "delta" && firstMatrixId) {
+          q.source_question = firstMatrixId;
+        }
+        qs.push(q);
+      }
+    });
+    cfg.questions = qs;
+    return cfg;
+  }
+
   function openNewStudy() {
     var cards = [
+      ["kart", "\uD83D\uDED2", "Shop with SurveyKart", "Select question types like shopping — deducts points from your Kart allocation."],
       ["scratch", "＋", "Build from scratch", "Start with a clean, flexible questionnaire."],
       ["agent", "◈", "Design with AI agent", "Describe your objectives and build a research-ready, editable questionnaire."],
       ["draft", "✎", "Draft survey", "Read an existing questionnaire, map each question and its answers to Studio types, and create the survey draft directly."],
       ["upload", "⇧", "Upload a document", "Convert a brief or other source with the research-design workflow; questionnaires are also supported."]
     ];
-    openModal('<div class="st-modal-head"><strong>Create a new study</strong><span class="st-meta">Choose a starting point. Everything remains editable.</span><button class="ex-close" data-act="modal-close">&times;</button></div>' +
+    openModal('<div class="st-modal-head"><strong>Create a new SurveyKart study</strong><span class="st-meta">Choose a starting point. Everything remains editable.</span><button class="ex-close" data-act="modal-close">&times;</button></div>' +
       '<div class="st-start-grid">' + cards.map(function (x) { return '<button class="st-start-card" data-act="new-mode" data-mode="' + x[0] + '"><i>' + x[1] + '</i><b>' + x[2] + '</b><span>' + x[3] + '</span></button>'; }).join('') + '</div>', 'st-newstudy');
   }
   function showNewStudyForm(mode) {
     newStudyMode = mode;
-    var labels = {scratch:"Build from scratch", agent:"Design with AI agent", draft:"Draft survey", upload:"Upload a document"};
+    var labels = {kart:"\uD83D\uDED2 Shop with SurveyKart", scratch:"Build from scratch", agent:"Design with AI agent", draft:"Draft survey", upload:"Upload a document"};
     var source = "";
-    if (mode === "agent") {
+    if (mode === "kart") {
+      source = '<div id="ns-kart-shop"></div>';
+    } else if (mode === "agent") {
       source = '<label class="st-field"><span>Business need or research objectives <em>required</em></span><textarea id="ns-objectives" rows="5" placeholder="What decision should this research support? What do you need to learn or measure? Include products, hypotheses, audiences or concepts if known."></textarea></label>' +
         '<div class="st-form-2"><label class="st-field"><span>Target respondents <em>optional, but helps define screeners</em></span><input id="ns-audience" placeholder="e.g. current customers, category buyers, decision-makers"></label><label class="st-field"><span>Market / geography <em>optional</em></span><input id="ns-market" placeholder="e.g. India, Bengaluru, urban adults"></label></div>' +
         (window.STUDIO_AGENT_MODEL ? '<label class="st-agent-consent"><input id="ns-model-consent" type="checkbox"><span>Use the configured local model (' + esc(window.STUDIO_AGENT_MODEL_NAME || 'on-premises') + ') to draft this questionnaire. The brief and current study context will be sent to that configured endpoint.</span></label>' : '<div class="st-agent-note">The guided research designer will use your saved brief, audience and conversation history. It will not apply an unstated screen-out rule.</div>');
@@ -6780,16 +7053,25 @@
     }
     var scratchParent = '<label class="st-field"><span>Parent study ID <em>optional</em></span><input id="ns-parent" placeholder="e.g. STU-000014"><small>Create a child wave or related survey under a parent.</small></label>';
     var meta = '<div class="st-form-2"><label class="st-field"><span>Study title</span><input id="ns-title" value="New research study" autofocus></label><label class="st-field"><span>Study group <em>optional</em></span><input id="ns-group" placeholder="e.g. Brand tracking 2027"></label></div>' + scratchParent;
-    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">' + (mode === "scratch" ? 'Everything remains editable.' : 'Review the questions and routing before testing or launch.') + '</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
+    openModal('<div class="st-modal-head"><strong>' + labels[mode] + '</strong><span class="st-meta">' + (mode === "kart" ? 'Shop question types for this project.' : mode === "scratch" ? 'Everything remains editable.' : 'Review the questions and routing before testing or launch.') + '</span><button class="st-btn sm ghost" data-act="new-back">← Back</button><button class="ex-close" data-act="modal-close">&times;</button></div><div class="st-new-form">' +
       meta + source +
-      '<div class="st-modal-actions"><button class="st-btn" data-act="new-back">Back</button><button class="st-btn on" data-act="new-create">' + (mode === "scratch" ? 'Create study' : mode === "draft" ? 'Create survey draft' : mode === "upload" ? 'Convert document to questionnaire' : 'Generate editable questionnaire') + '</button></div></div>', 'st-newstudy');
+      '<div class="st-modal-actions"><button class="st-btn" data-act="new-back">Back</button><button class="st-btn on" data-act="new-create">' + (mode === "kart" ? '\uD83D\uDED2 Checkout &amp; Create Study' : mode === "scratch" ? 'Create study' : mode === "draft" ? 'Create survey draft' : mode === "upload" ? 'Convert document to questionnaire' : 'Generate editable questionnaire') + '</button></div></div>', 'st-newstudy');
+    if (mode === "kart") renderKartShopGrid();
   }
   function createFromWizard() {
     var title = (document.getElementById('ns-title') || {}).value || 'New research study';
     var group = ((document.getElementById('ns-group') || {}).value || '').trim();
     var parent = ((document.getElementById('ns-parent') || {}).value || '').trim().toUpperCase();
+    if (newStudyMode === 'kart') {
+      var kcfg = buildKartShopCfg(title, group, parent);
+      closeModal(); createStudy(kcfg); return;
+    }
     if (newStudyMode === 'scratch') {
       var cfg = blankCfg(); cfg.title = title; cfg.group_name = group; cfg.parent_study = parent;
+      if (window.ME && window.ME.role !== 'admin') {
+        var avail = kartState ? kartState.points_balance : (window.ME.points_balance != null ? window.ME.points_balance : 100);
+        if (cfgPoints(cfg) > avail) cfg.questions = [];
+      }
       cfg.creation_mode = 'scratch'; cfg.ai_assistant = false;
       closeModal(); createStudy(cfg); return;
     }
@@ -6911,8 +7193,15 @@
   }
   function createStudy(cfg) {
     api("/api/studio/save", { slug: "", title: cfg.title, cfg: cfg }).then(function (r) {
-      if (r.error) { toast(r.error); return; }
-      toast("Created /" + r.slug); openEditor(r.slug);
+      if (r.error) {
+        if (/Kart|point/i.test(r.error)) toast(r.error, "Request points", openKartModal);
+        else toast(r.error);
+        return;
+      }
+      if (r.kart) { kartState = r.kart; updateKartBadges(); }
+      else refreshKartState();
+      toast("Created /" + r.slug + " (" + cfgPoints(cfg) + " Kart pts)");
+      openEditor(r.slug);
     });
   }
   function copyLink(slug) {
@@ -6952,6 +7241,8 @@
     var i = Number(b.getAttribute("data-i"));
 
     if (act === "new") openNewStudy();
+    if (act === "new-kart") showNewStudyForm("kart");
+    if (act === "open-kart") openKartModal();
     if (act === "ai-guide") { if (cur && cur.slug) flushSave(function () { openDesignAgent(cur.slug); }); }
     if (act === "dup-beacon") {
       api("/api/studio/study?slug=beacon").then(function (s) {

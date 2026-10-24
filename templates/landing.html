@@ -2,8 +2,8 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Anaking · AI-enabled research, from need to evidence',
-        'Anaking is an AI-enabled insight platform: describe your research need and it drafts the questionnaire, screens and quotas the right respondents, and reads the answers live. Register with Google.') }}
+{{ head('SurveyKart · Insights Delivered',
+        'SurveyKart — Insights Delivered. Register for 100 free Kart points, shop research question types into your survey Kart, collaborate on single shared links with zero point debit, and read live insights.') }}
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
 <link rel="stylesheet" href="{{ asset('css/landing.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
@@ -16,66 +16,70 @@
 
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
-  {{ brand('RESEARCH', '/', 38, 'hm') }}
+  {{ brand('KART', '/', 40, 'hm', title='SurveyKart — Insights Delivered (Main page)') }}
   {% with active='home' %}{% include '_nav.html' %}{% endwith %}
   <div class="ln-auth" id="ln-auth">
+    <a class="ln-btn ln-btn-gold sm" href="#kart-demo">&#128722; Kart Demo</a>
     {% if config.STAFF_AUTH %}
-    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin</a>
-    <a class="ln-btn ln-btn-ghost sm" href="/register">Register</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin Portal</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/register">Register (+100 pts)</a>
     <a class="ln-btn ln-btn-primary sm" href="/signin">Sign in</a>
     {% else %}
-    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin</a>
-    <a class="ln-btn ln-btn-primary sm" href="/workspace/">Open workspace</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Admin Portal</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/workspace/">Workspace</a>
+    <a class="ln-btn ln-btn-primary sm" href="/studio/">Open Studio</a>
     {% endif %}
   </div>
 </header>
 
 <main id="main">
 
-  {#- ---------------- hero: the AI understands and acts ---------------- -#}
+  {#- ---------------- hero: SurveyKart — Insights Delivered ---------------- -#}
   <section class="ln-hero2">
     <div class="ln-hero2-copy ln-reveal">
-      <p class="ln-aichip"><i></i>AI-enabled research platform</p>
-      <h1>Say what you need.<br><em>Watch it act.</em></h1>
-      <p class="ln-hero2-sub">Anaking understands your research need in plain language — then
-        moves: it drafts the questionnaire, screens and quotas the right people, and reads
-        the answers live. From brief to field in minutes, not weeks.</p>
+      <div class="sk-hero-badge-row">
+        <a class="sk-hero-gif-pod" href="#kart-demo" title="Jump to the SurveyKart Point System Demo">
+          <img src="{{ asset('images/surveykart-3d-logo.gif') }}" alt="SurveyKart 3D animated logo">
+          <span>SurveyKart &middot; Insights Delivered<br><small style="color:#785b11;font-weight:750">100 Free Kart Points on Registration</small></span>
+        </a>
+        <p class="ln-aichip" style="margin:0"><i></i>AI-Enabled Survey Shopping</p>
+      </div>
+      <h1>Shop your questions.<br><em>Insights Delivered.</em></h1>
+      <p class="ln-hero2-sub">Welcome to <strong>SurveyKart</strong> &mdash; build research instruments like shopping in a curated store. Every new registration starts with <strong>100 Kart points</strong>: pick Single Select, Constant Sum, Delta, Conjoint or AI-drafted flows, collaborate on a single shared link at <strong>0 point cost</strong>, and watch answers stream live.</p>
       <div class="ln-hero2-cta">
         {% if config.STAFF_AUTH %}
-        <a class="ln-btn ln-btn-primary lg" href="/auth/google?mode=register">
-          <svg class="ln-gicon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
-          Register with Google</a>
-        <a class="ln-btn ln-btn-ghost lg" href="/auth/google?mode=login">Sign in with Google</a>
+        <a class="ln-btn ln-btn-primary lg" href="/register">&#128722; Register &amp; Get 100 Kart Points</a>
+        <a class="ln-btn ln-btn-ghost lg" href="/signin">Sign in to Studio</a>
+        <a class="ln-btn ln-btn-gold lg" href="#kart-demo">&#9654; Watch Kart Point Demo</a>
         {% else %}
-        <a class="ln-btn ln-btn-primary lg" href="/workspace/">Open workspace</a>
+        <a class="ln-btn ln-btn-primary lg" href="/studio/">Open SurveyKart Studio</a>
+        <a class="ln-btn ln-btn-gold lg" href="#kart-demo">&#9654; Watch Kart Point Demo</a>
         {% endif %}
       </div>
-      <p class="ln-hero2-note">One profile per Google e-mail · every new account is reviewed and
-        approved by the platform admin · <a href="/recover">forgot user ID or password?</a></p>
+      <p class="ln-hero2-note">100 default Kart points on registration &middot; 0 points debited on shared collaboration &amp; respondent links &middot; Protected Admin governance</p>
     </div>
 
-    {#- the signature AI moment: a need typed in, the studio acting on it -#}
+    {#- the signature AI + Kart moment -#}
     <div class="ln-hero2-stage ln-reveal" aria-hidden="true">
       <div class="ai-stage">
-        <div class="ai-stage-bar"><i></i><i></i><i></i><span>anaking · ai research agent</span>
-          <em class="ai-live">live</em></div>
+        <div class="ai-stage-bar"><i></i><i></i><i></i><span>surveykart &middot; insights delivered</span>
+          <em class="ai-live">100 pts ready</em></div>
         <div class="ai-stage-body">
           <div class="ai-msg you"><span class="ai-who">You</span>
             <p id="ai-type"></p></div>
-          <div class="ai-msg bot" id="ai-reply" hidden><span class="ai-who">Anaking AI</span>
-            <p>Understood. Drafting your study — screener first, then the decision-driving
-              questions. Setting quotas and a live read on answers.</p></div>
+          <div class="ai-msg bot" id="ai-reply" hidden><span class="ai-who">SurveyKart AI</span>
+            <p>Added to your Kart: 2 Single Select (20 pts), 1 Constant Sum (20 pts), and 1 Delta Question (30 pts) &mdash; 70 pts used, 30 pts remaining!</p></div>
           <div class="ai-actions" id="ai-actions" hidden>
-            <div class="ai-card a1"><b>Q1</b> Primary specialty <em>screener</em></div>
-            <div class="ai-card a2"><b>Q2</b> First-line therapy choice</div>
-            <div class="ai-card a3"><b>Q3</b> What drives the switch?</div>
+            <div class="ai-card a1"><b>2&times; Single select</b> Primary specialty &amp; setting <em>20 pts</em></div>
+            <div class="ai-card a2"><b>1&times; Constant sum</b> Patient share allocation <em>20 pts</em></div>
+            <div class="ai-card a3"><b>1&times; Delta question</b> Therapy switch driver <em>30 pts</em></div>
             <div class="ai-flowrow">
-              <span class="ai-pill ok">screened in</span>
-              <span class="ai-pill fill">quota 2/4/4 filling</span>
-              <span class="ai-pill spark">answers reading live</span>
+              <span class="ai-pill ok">70 pts deducted</span>
+              <span class="ai-pill fill">30 pts balance left</span>
+              <span class="ai-pill spark">shared links = 0 pts</span>
             </div>
           </div>
-          <div class="ai-fast" id="ai-fast" hidden>From brief to field · minutes</div>
+          <div class="ai-fast" id="ai-fast" hidden>SurveyKart &middot; Insights Delivered in minutes</div>
         </div>
       </div>
     </div>
@@ -84,58 +88,160 @@
   {#- ---------------- capability strip ---------------- -#}
   <section class="ln-strip" aria-label="Capabilities">
     <div class="ln-strip-track">
-      <span>Understands plain language</span><i>◆</i>
-      <span>Drafts questionnaires</span><i>◆</i>
-      <span>Screens &amp; terminates</span><i>◆</i>
-      <span>Fills quotas</span><i>◆</i>
-      <span>Reads answers live</span><i>◆</i>
-      <span>Flags low-effort text</span><i>◆</i>
-      <span>Private workspaces</span><i>◆</i>
-      <span>Admin-approved access</span><i>◆</i>
+      <span>100 Free Kart Points on Signup</span><i>◆</i>
+      <span>All 23 Platform Question Types</span><i>◆</i>
+      <span>Shop-to-Build Studio</span><i>◆</i>
+      <span>Single-Link Collaboration (0 Pts)</span><i>◆</i>
+      <span>Zero-Debit Respondent Links</span><i>◆</i>
+      <span>Responder-First Walkthroughs</span><i>◆</i>
+      <span>Rating-Scale Straight-Line Guard</span><i>◆</i>
+      <span>Open-Text Voice &amp; Live Dictation</span><i>◆</i>
+      <span>Open-Ended AI Verbatim Shield</span><i>◆</i>
+      <span>Admin Point Allocation Controls</span><i>◆</i>
+      <span>Screens &amp; Fills Quotas</span><i>◆</i>
+      <span>Insights Delivered Live</span><i>◆</i>
+      <span>100 Free Kart Points on Signup</span><i>◆</i>
+      <span>All 23 Platform Question Types</span><i>◆</i>
+      <span>Responder-First Walkthroughs</span><i>◆</i>
+      <span>Rating-Scale Straight-Line Guard</span><i>◆</i>
+      <span>Open-Text Voice &amp; Live Dictation</span><i>◆</i>
+      <span>Open-Ended AI Verbatim Shield</span><i>◆</i>
+      <span>Insights Delivered Live</span><i>◆</i>
+    </div>
+  </section>
+
+  {#- ---------------- SPOTLIGHT CALLOUT BANNER: OPEN-ENDED AI RESPONSE DETECTION ---------------- -#}
+  <section class="sk-ai-ribbon-wrap" aria-label="AI Open-Ended Response Detection Spotlight">
+    <div class="sk-ai-ribbon ln-reveal">
+      <div class="sk-ai-ribbon-left">
+        <span class="sk-ai-radar-orb" aria-hidden="true"><i></i></span>
+        <div>
+          <div class="sk-ai-ribbon-kicker">
+            <span class="sk-ai-live-tag">LIVE QC SHIELD</span>
+            <span>Verbatim Authenticity X-Ray for Open-Ended Questions</span>
+          </div>
+          <p>Detects pasted ChatGPT &amp; LLM verbatims in real time using <strong>linguistic fingerprints</strong> + <strong>browser keystroke &amp; paste telemetry</strong> across typing, submit, and Admin review.</p>
+        </div>
+      </div>
+      <div class="sk-ai-ribbon-cta">
+        <a class="ln-btn ln-btn-ghost sm" href="#walkthrough-demo">&#10022; Walkthroughs</a>
+        <a class="ln-btn ln-btn-ghost sm" href="#straightline-demo">&#9547; Straight-Line</a>
+        <a class="ln-btn ln-btn-ghost sm" href="#voice-open-demo">&#127897;&#65039; Voice &amp; Dictate</a>
+        <a class="ln-btn ln-btn-gold sm" href="#ai-detect-demo">&#9889; Verbatim X-Ray &darr;</a>
+      </div>
+    </div>
+  </section>
+
+  {#- ---------------- ANIMATED & INTERACTIVE SURVEYKART POINT SYSTEM DEMO ---------------- -#}
+  <section class="sk-kart-sec" id="kart-demo">
+    <div class="sk-kart-head ln-reveal">
+      <p class="ln-aichip"><i></i>Animated Point System Demo</p>
+      <h2>How the SurveyKart Point System Works</h2>
+      <p>Every new SurveyKart registration allocates <strong>100 Kart points</strong> by default. Shop question types from the dedicated library below to assemble your project &mdash; watch the animated <strong>70-point walkthrough</strong> or click any question type to test the live Kart calculator yourself!</p>
+    </div>
+
+    <div class="sk-kart-showcase ln-reveal">
+      <div class="sk-shop-panel">
+        <div class="sk-shop-top">
+          <div>
+            <span class="an-eyebrow">Question Type Storefront &middot; All 23 Platform Types</span>
+            <h3>SurveyKart Dedicated Point Library</h3>
+          </div>
+          <div class="sk-demo-controls">
+            <button type="button" class="ln-btn ln-btn-gold sm" id="sk-demo-replay">&#9654; Play 70-Pt Walkthrough</button>
+            <button type="button" class="ln-btn ln-btn-ghost sm" id="sk-demo-reset">Reset Kart (100 pts)</button>
+          </div>
+        </div>
+        <div class="sk-cat-tabs" id="sk-cat-tabs" role="tablist" aria-label="Filter question types by category">
+          <button type="button" class="sk-cat-tab is-active" data-cat-filter="all">All Platform Types <b>23</b></button>
+          <button type="button" class="sk-cat-tab" data-cat-filter="Questions">Questions <b>16</b></button>
+          <button type="button" class="sk-cat-tab" data-cat-filter="Methodologies">Methodologies <b>5</b></button>
+          <button type="button" class="sk-cat-tab" data-cat-filter="Flow">Survey Flow &amp; Objects <b>2</b></button>
+        </div>
+        <div class="sk-catalog-grid" id="sk-demo-catalog" aria-label="SurveyKart question point catalog"></div>
+        <p class="sk-catalog-foot">Includes every Studio question, methodology, loop, and stimulus type &mdash; plus Welcome Page, Thank You Page, Question Pages, Page Randomizers &amp; Embedded Variables included free (<strong>0 pts</strong>).</p>
+      </div>
+
+      <aside class="sk-receipt-panel" aria-live="polite">
+        <div class="sk-receipt-head">
+          <h3>&#128722; Your Project Kart</h3>
+          <span class="sk-alloc-pill">Default Allocation: 100 pts</span>
+        </div>
+        <div class="sk-demo-gif-frame">
+          <img src="{{ asset('images/surveykart-kart-demo.gif') }}" alt="Animated SurveyKart 100-point deduction demo: 2 Single select (20) + 1 Constant sum (20) + 1 Delta question (30) = 70 pts used, 30 pts remaining">
+        </div>
+        <div class="sk-step-caption" id="sk-demo-caption">Animated Demo: 100 pts &minus; 70 pts = 30 pts remaining</div>
+        <div class="sk-meter-box">
+          <div class="sk-meter-nums">
+            <span>Deducted: <b id="sk-demo-used">70</b> pts</span>
+            <span>Balance: <strong id="sk-demo-left">30</strong> / 100 pts</span>
+          </div>
+          <div class="sk-meter-track"><div class="sk-meter-fill" id="sk-demo-bar" style="width:70%"></div></div>
+        </div>
+        <ul class="sk-kart-lines" id="sk-demo-lines"></ul>
+        <div class="sk-kart-summary-row">
+          <span>Project 1 Total Deduction</span>
+          <span id="sk-demo-total">70 pts (30 pts left for Project 2)</span>
+        </div>
+        <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+          <a class="ln-btn ln-btn-primary sm" href="/register" style="flex:1">Start with 100 Kart Pts &rarr;</a>
+          <a class="ln-btn ln-btn-gold sm" href="/studio/">Open Studio Kart</a>
+        </div>
+      </aside>
+    </div>
+
+    <div class="sk-kart-rules ln-reveal">
+      <article class="sk-rule-card">
+        <span class="sk-rule-tag">1 &middot; Per-Project Balance</span>
+        <h4>One Kart Session per Project</h4>
+        <p>All questions added in your Kart belong to that project (e.g. <strong>70 pts</strong> used). When you create a second project, use your remaining <strong>30 balance points</strong> or send a one-click request for Admin to allocate more points.</p>
+      </article>
+      <article class="sk-rule-card">
+        <span class="sk-rule-tag">2 &middot; Collaborate at 0 Pts</span>
+        <h4>Single-Link Collaboration (0 Pts Debited)</h4>
+        <p>Share a project collaboration link with a new teammate: SurveyKart asks them to register first, attaches the shared link to their account, and lets both users collaborate on that single link with <strong>0 points debited</strong> from the recipient.</p>
+      </article>
+      <article class="sk-rule-card">
+        <span class="sk-rule-tag">3 &middot; Free Respondent Access</span>
+        <h4>Shared Survey Fill Links = 0 Pts</h4>
+        <p>Whenever a live survey link is shared with any respondent or user to fill out the survey, <strong>no points are ever debited</strong> and full access is granted to complete the survey.</p>
+      </article>
     </div>
   </section>
 
   {#- ---------------- understand -> act: three moves ---------------- -#}
   <section class="ln-moves">
-    <h2 class="ln-reveal">It understands the need.<br>Then it acts — fast.</h2>
-    <p class="ln-sec-sub ln-reveal">Not a blank canvas. Describe the decision your research must
-      support, and the platform turns intent into fieldwork.</p>
+    <h2 class="ln-reveal">Shop, collaborate, and field.<br>Insights Delivered — fast.</h2>
+    <p class="ln-sec-sub ln-reveal">Combine SurveyKart's shopping-style builder with AI drafting, smart screeners, and live quota monitoring.</p>
     <div class="ln-move-grid">
       <div class="ln-move ln-reveal">
-        <div class="ln-move-stage m-tell"><div class="mv-bubble">Why do oncologists switch
-          first-line therapy?</div><div class="mv-cursor"></div></div>
-        <h3><span>1</span> Tell it what you need</h3>
-        <p>Plain words, a brief, or an existing questionnaire. The AI reads the intent — audience,
-          decision, market — not just keywords.</p>
+        <div class="ln-move-stage m-tell"><div class="mv-bubble">2 Single select + Constant sum + Delta</div><div class="mv-cursor"></div></div>
+        <h3><span>1</span> Shop your question Kart</h3>
+        <p>Pick from all 23 point-priced Studio question types or upload a brief. Watch your Kart total update live before saving to your project.</p>
       </div>
       <div class="ln-move ln-reveal">
         <div class="ln-move-stage m-build">
           <div class="mv-card x1"></div><div class="mv-card x2"></div><div class="mv-card x3"></div>
           <div class="mv-spark">✦</div></div>
-        <h3><span>2</span> It drafts and structures</h3>
-        <p>Screeners, question flows, quotas and quality rules appear as an editable study — you
-          approve every word before anything goes live.</p>
+        <h3><span>2</span> Share &amp; collaborate on one link</h3>
+        <p>Invite teammates with a single shared link — once registered, both of you edit the same live design with zero points deducted from collaborators.</p>
       </div>
       <div class="ln-move ln-reveal">
         <div class="ln-move-stage m-run">
           <div class="mv-bar r1"><i></i></div><div class="mv-bar r2"><i></i></div>
           <div class="mv-bar r3"><i></i></div><div class="mv-check">✓ fielding</div></div>
-        <h3><span>3</span> It runs and reads</h3>
-        <p>Links go out, screeners route people, quotas cap the sample, and the analysis refreshes
-          with every complete — with the caveats attached.</p>
+        <h3><span>3</span> Field at zero respondent cost</h3>
+        <p>Send respondent links freely (0 points debited), cap quotas automatically, and read live statistical insights as completes arrive.</p>
       </div>
     </div>
   </section>
 
   {#- ---------------- animated demos: watch it act ---------------- -#}
   <section class="ln-demos" id="demos">
-    <h2 class="ln-reveal">Watch the platform act</h2>
-    <p class="ln-sec-sub ln-reveal">The moments that matter in every study — moving exactly as the
-      studio behaves.</p>
+    <h2 class="ln-reveal">Watch SurveyKart in action</h2>
+    <p class="ln-sec-sub ln-reveal">Every stage of your research workflow — moving smoothly from Studio to Monitor.</p>
 
     <div class="ln-demo-grid">
-
-      {#- demo 1: question builder -#}
       <article class="ln-demo ln-reveal" data-demo="build">
         <div class="ln-demo-stage">
           <div class="dm-build">
@@ -146,15 +252,13 @@
               <div class="dm-opt c"><span class="dm-k">3</span> Surgeons</div>
               <div class="dm-opt d"><span class="dm-k">+</span> Add option</div>
             </div>
-            <div class="dm-save-pill">Saved</div>
+            <div class="dm-save-pill">10 Kart pts</div>
           </div>
         </div>
-        <h3><span class="ln-demo-tag">AI drafts</span>Build in minutes</h3>
-        <p>Pick from the question library — single choice, grids, scales, deltas, conjoint —
-          or let the agent draft from your brief and refine the wording with you.</p>
+        <h3><span class="ln-demo-tag">Kart Builder</span>Build in minutes</h3>
+        <p>Shop Single Select (10), Constant Sum (20), Delta (30) or Conjoint (40) — or let the AI agent draft and refine with you.</p>
       </article>
 
-      {#- demo 2: screener -#}
       <article class="ln-demo ln-reveal" data-demo="screen">
         <div class="ln-demo-stage">
           <div class="dm-screen">
@@ -164,15 +268,13 @@
               <span class="dm-tag ok">screened in</span></div>
             <div class="dm-resp r3"><span class="dm-av"></span><span class="dm-line w45"></span>
               <span class="dm-tag no">screened out</span></div>
-            <div class="dm-rule">rule: specialty ∉ panel → thank &amp; close</div>
+            <div class="dm-rule">rule: specialty &notin; panel &rarr; thank &amp; close</div>
           </div>
         </div>
         <h3><span class="ln-demo-tag">Smart routing</span>Screen the right people in</h3>
-        <p>Write screening rules on any question. Unqualified respondents are thanked and
-          closed; the ones you need continue without ever seeing a dead end.</p>
+        <p>Write screening rules on any question. Unqualified respondents are thanked and closed cleanly.</p>
       </article>
 
-      {#- demo 3: quota filling -#}
       <article class="ln-demo ln-reveal" data-demo="quota">
         <div class="ln-demo-stage">
           <div class="dm-quota">
@@ -186,95 +288,776 @@
           </div>
         </div>
         <h3><span class="ln-demo-tag">Auto-pilot</span>Fill quotas, not spreadsheets</h3>
-        <p>Set completes per option group. When a group fills, the studio says stop sharing
-          links for it — late arrivals still complete and land tagged “Quota Full” in the
-          extract.</p>
+        <p>Set completes per option group and track live completion bars without manual spreadsheets.</p>
       </article>
 
-      {#- demo 4: live analysis -#}
       <article class="ln-demo ln-reveal" data-demo="analysis">
-        <div class="ln-demo-stage">
-          <div class="dm-analysis">
-            <div class="dm-donut"><svg viewBox="0 0 42 42" aria-hidden="true">
-              <circle class="dd-bg" cx="21" cy="21" r="15.9"></circle>
-              <circle class="dd-fg" cx="21" cy="21" r="15.9"></circle></svg>
-              <span class="dd-num"><b>64</b> completes</span></div>
-            <div class="dm-bars">
-              <div class="dm-brow"><i class="g1"></i></div>
-              <div class="dm-brow"><i class="g2"></i></div>
-              <div class="dm-brow"><i class="g3"></i></div>
-            </div>
+        <div class="ln-demo-stage dm-stage-analysis">
+          <div class="dm-analysis-head">
+            <span class="dm-chart-title">Q4 &middot; Switch Driver <em>(n = 64)</em></span>
             <div class="dm-livechip">updating live</div>
           </div>
+          <div class="dm-analysis">
+            <div class="dm-donut">
+              <svg viewBox="0 0 44 44" aria-hidden="true">
+                <circle class="dd-bg" cx="22" cy="22" r="16.5"></circle>
+                <circle class="dd-gold" cx="22" cy="22" r="16.5"></circle>
+                <circle class="dd-fg" cx="22" cy="22" r="16.5"></circle>
+                <circle class="dd-hole" cx="22" cy="22" r="12.6"></circle>
+              </svg>
+              <span class="dd-num"><b>64</b><small>completes</small></span>
+            </div>
+            <div class="dm-bars">
+              <div class="dm-bar-item">
+                <span class="dm-blabel">Efficacy</span>
+                <div class="dm-brow"><i class="g1"></i></div>
+                <b class="dm-bval">78%</b>
+              </div>
+              <div class="dm-bar-item">
+                <span class="dm-blabel">Dosing</span>
+                <div class="dm-brow"><i class="g2"></i></div>
+                <b class="dm-bval">54%</b>
+              </div>
+              <div class="dm-bar-item">
+                <span class="dm-blabel">Safety</span>
+                <div class="dm-brow"><i class="g3 gold"></i></div>
+                <b class="dm-bval">31%</b>
+              </div>
+              <div class="dm-export-strip">
+                <span>XLSX &#10003;</span><span>PPTX &#10003;</span><span>CSV &#10003;</span><span>Crosstab</span>
+              </div>
+            </div>
+          </div>
         </div>
-        <h3><span class="ln-demo-tag">Live read</span>Read it while it fields</h3>
-        <p>Charts, crosstabs and significance tests refresh as completes land. Export to
-          Excel, CSV, JSON or a deck — the same numbers, caveats attached.</p>
+        <h3><span class="ln-demo-tag">Insights Delivered</span>Read it while it fields</h3>
+        <p>Charts, crosstabs and exports to Excel, CSV, JSON or PowerPoint refresh automatically as completes arrive.</p>
+      </article>
+
+      {#- UNIQUE SIGNATURE DEMO CARD: RATING SCALE STRAIGHT-LINE LASER PLUMB-LINE & VARIANCE SEISMOGRAPH -#}
+      <article class="ln-demo ln-demo-sl ln-reveal" data-demo="straightline" id="straightline-demo" aria-labelledby="sl-demo-heading">
+        <div class="sl-card-top">
+          <div class="sl-card-titlewrap">
+            <div class="sl-eyebrow-row">
+              <span class="ln-demo-tag sl-tag-crimson">Straight-Line Guard</span>
+              <span class="sl-cal-chip">&#9547; Laser Plumb-Line &amp; Variance Seismograph</span>
+            </div>
+            <h3 id="sl-demo-heading">Catch Rating-Scale Straight-Liners <em>Before Flatlined Grids Skew Your Means</em></h3>
+            <p>When a rushing respondent clicks the exact same column down an entire 1&ndash;5 rating matrix, SurveyKart&rsquo;s <strong>Plumb-Line Variance Guard</strong> locks onto zero-spread columns (<code>&sigma; = 0.00</code>), spots mechanical diagonal staircases, nudges the respondent live, and stamps <code>straightliner_Q9</code> for one-click exclusion in Monitor.</p>
+          </div>
+          <div class="sl-presets" role="tablist" aria-label="Rating scale response patterns">
+            <button type="button" class="sl-preset is-active" data-sl-preset="col4">
+              <span class="sl-p-dot bad"></span>Column-4 Straight-Line
+            </button>
+            <button type="button" class="sl-preset" data-sl-preset="human">
+              <span class="sl-p-dot ok"></span>Considered Evaluator
+            </button>
+            <button type="button" class="sl-preset" data-sl-preset="diag">
+              <span class="sl-p-dot warn"></span>Diagonal Staircase
+            </button>
+            <button type="button" class="sl-preset" data-sl-preset="rush5">
+              <span class="sl-p-dot bad"></span>Top-Box Rush (All 5s)
+            </button>
+          </div>
+        </div>
+
+        <div class="sl-workbench">
+          {#- Left Instrument: Interactive 5x5 Rating Scale Blueprint + SVG Laser Plumb-Line -#}
+          <div class="sl-matrix-card" id="sl-matrix-card" data-sl-state="bad">
+            <span class="sl-crosshair tl" aria-hidden="true">&#10011;</span>
+            <span class="sl-crosshair tr" aria-hidden="true">&#10011;</span>
+            <span class="sl-crosshair bl" aria-hidden="true">&#10011;</span>
+            <span class="sl-crosshair br" aria-hidden="true">&#10011;</span>
+
+            <div class="sl-qbar">
+              <div>
+                <span class="sl-qcode">Q9 &middot; 5-Point Rating Scale Grid</span>
+                <strong class="sl-qstem">Rate Regimen X on each clinical attribute <em>(click any 1&ndash;5 pill to test live)</em></strong>
+              </div>
+              <span class="sl-status-badge bad" id="sl-status-badge">COLUMN LOCK &middot; &sigma; = 0.00</span>
+            </div>
+
+            <div class="sl-scale-ruler" aria-hidden="true">
+              <span class="sl-ruler-spacer">Clinical Attribute</span>
+              <div class="sl-ruler-cols">
+                <span><b>1</b><small>Poor</small></span>
+                <span><b>2</b><small>Fair</small></span>
+                <span><b>3</b><small>Good</small></span>
+                <span><b>4</b><small>Very Good</small></span>
+                <span><b>5</b><small>Exceptional</small></span>
+              </div>
+            </div>
+
+            <div class="sl-matrix-stage" id="sl-matrix-stage">
+              <svg class="sl-vector-svg" id="sl-vector-svg" viewBox="0 0 560 270" preserveAspectRatio="none" aria-hidden="true">
+                <line id="sl-laser-beam" class="sl-laser-beam is-visible" x1="466" y1="8" x2="466" y2="262"></line>
+                <polyline id="sl-traj-glow" class="sl-traj-glow bad" points="466,28 466,81 466,135 466,189 466,242"></polyline>
+                <polyline id="sl-traj-line" class="sl-traj-line bad" points="466,28 466,81 466,135 466,189 466,242"></polyline>
+              </svg>
+
+              <div class="sl-caliper-tag" id="sl-caliper-tag">LOCKED COL 4 &middot; 5/5 IDENTICAL</div>
+
+              <div class="sl-rows" id="sl-rows">
+                <div class="sl-row" data-sl-row="0">
+                  <div class="sl-attr"><i>R1</i><span>Progression-Free Survival</span></div>
+                  <div class="sl-cells" role="radiogroup" aria-label="Progression-Free Survival rating">
+                    <button type="button" class="sl-cell" data-val="1" aria-pressed="false">1</button>
+                    <button type="button" class="sl-cell" data-val="2" aria-pressed="false">2</button>
+                    <button type="button" class="sl-cell" data-val="3" aria-pressed="false">3</button>
+                    <button type="button" class="sl-cell is-picked is-locked" data-val="4" aria-pressed="true">4</button>
+                    <button type="button" class="sl-cell" data-val="5" aria-pressed="false">5</button>
+                  </div>
+                </div>
+
+                <div class="sl-row" data-sl-row="1">
+                  <div class="sl-attr"><i>R2</i><span>Oral Dosing Convenience</span></div>
+                  <div class="sl-cells" role="radiogroup" aria-label="Oral Dosing Convenience rating">
+                    <button type="button" class="sl-cell" data-val="1" aria-pressed="false">1</button>
+                    <button type="button" class="sl-cell" data-val="2" aria-pressed="false">2</button>
+                    <button type="button" class="sl-cell" data-val="3" aria-pressed="false">3</button>
+                    <button type="button" class="sl-cell is-picked is-locked" data-val="4" aria-pressed="true">4</button>
+                    <button type="button" class="sl-cell" data-val="5" aria-pressed="false">5</button>
+                  </div>
+                </div>
+
+                <div class="sl-row" data-sl-row="2">
+                  <div class="sl-attr"><i>R3</i><span>Grade 3+ Tolerability Profile</span></div>
+                  <div class="sl-cells" role="radiogroup" aria-label="Grade 3+ Tolerability Profile rating">
+                    <button type="button" class="sl-cell" data-val="1" aria-pressed="false">1</button>
+                    <button type="button" class="sl-cell" data-val="2" aria-pressed="false">2</button>
+                    <button type="button" class="sl-cell" data-val="3" aria-pressed="false">3</button>
+                    <button type="button" class="sl-cell is-picked is-locked" data-val="4" aria-pressed="true">4</button>
+                    <button type="button" class="sl-cell" data-val="5" aria-pressed="false">5</button>
+                  </div>
+                </div>
+
+                <div class="sl-row" data-sl-row="3">
+                  <div class="sl-attr"><i>R4</i><span>Payer &amp; Formulary Coverage</span></div>
+                  <div class="sl-cells" role="radiogroup" aria-label="Payer and Formulary Coverage rating">
+                    <button type="button" class="sl-cell" data-val="1" aria-pressed="false">1</button>
+                    <button type="button" class="sl-cell" data-val="2" aria-pressed="false">2</button>
+                    <button type="button" class="sl-cell" data-val="3" aria-pressed="false">3</button>
+                    <button type="button" class="sl-cell is-picked is-locked" data-val="4" aria-pressed="true">4</button>
+                    <button type="button" class="sl-cell" data-val="5" aria-pressed="false">5</button>
+                  </div>
+                </div>
+
+                <div class="sl-row" data-sl-row="4">
+                  <div class="sl-attr"><i>R5</i><span>Patient &amp; Nurse Support</span></div>
+                  <div class="sl-cells" role="radiogroup" aria-label="Patient and Nurse Support rating">
+                    <button type="button" class="sl-cell" data-val="1" aria-pressed="false">1</button>
+                    <button type="button" class="sl-cell" data-val="2" aria-pressed="false">2</button>
+                    <button type="button" class="sl-cell" data-val="3" aria-pressed="false">3</button>
+                    <button type="button" class="sl-cell is-picked is-locked" data-val="4" aria-pressed="true">4</button>
+                    <button type="button" class="sl-cell" data-val="5" aria-pressed="false">5</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="sl-nudge-strip bad" id="sl-nudge-strip">
+              <strong id="sl-nudge-label">Live Respondent Nudge:</strong>
+              <span id="sl-nudge-text">All 5 attributes are rated &ldquo;4 &middot; Very Good&rdquo; in 1.6s &mdash; please review each row individually before continuing.</span>
+            </div>
+          </div>
+
+          {#- Right Telemetry Deck: Variance Seismograph (Flatline vs Heartbeat) + Metrics + QC Stamp -#}
+          <aside class="sl-telemetry-card" aria-live="polite">
+            <div class="sl-seismo-box">
+              <div class="sl-seismo-head">
+                <span>VARIANCE SEISMOGRAPH <em>(ROW-TO-ROW DELTA)</em></span>
+                <button type="button" class="sl-tour-btn" id="sl-tour-btn" title="Replay animated straight-line vs human comparison">&#8635; Auto-Compare</button>
+              </div>
+              <div class="sl-seismo-screen">
+                <svg viewBox="0 0 320 84" class="sl-seismo-svg" aria-hidden="true">
+                  <line x1="0" y1="21" x2="320" y2="21" class="sl-seismo-grid"/>
+                  <line x1="0" y1="42" x2="320" y2="42" class="sl-seismo-mid"/>
+                  <line x1="0" y1="63" x2="320" y2="63" class="sl-seismo-grid"/>
+                  <path id="sl-seismo-path" class="sl-seismo-path bad" d="M 10 42 L 82 42 L 154 42 L 226 42 L 310 42"/>
+                  <g id="sl-seismo-dots" class="sl-seismo-dots bad">
+                    <circle cx="10" cy="42" r="4"/>
+                    <circle cx="82" cy="42" r="4"/>
+                    <circle cx="154" cy="42" r="4"/>
+                    <circle cx="226" cy="42" r="4"/>
+                    <circle cx="310" cy="42" r="4"/>
+                  </g>
+                </svg>
+                <div class="sl-seismo-caption" id="sl-seismo-caption">FLATLINE DETECTED &middot; ZERO DIFFERENTIATION ACROSS ITEMS</div>
+              </div>
+            </div>
+
+            <div class="sl-metrics-grid">
+              <div class="sl-metric">
+                <span>Scale Spread (&sigma;)</span>
+                <strong id="sl-m-sigma">0.00</strong>
+                <small id="sl-m-sigma-sub">Zero variance</small>
+              </div>
+              <div class="sl-metric">
+                <span>Same-Col Streak</span>
+                <strong id="sl-m-streak">5 / 5</strong>
+                <small id="sl-m-streak-sub">100% Col 4 lock</small>
+              </div>
+              <div class="sl-metric">
+                <span>Row Pace</span>
+                <strong id="sl-m-pace">0.32s</strong>
+                <small id="sl-m-pace-sub">Speed-click burst</small>
+              </div>
+            </div>
+
+            <div class="sl-qc-ticket bad" id="sl-qc-ticket">
+              <div class="sl-qc-ticket-top">
+                <span class="sl-qc-label">SURVEYKART QC ENGINE VERDICT</span>
+                <code id="sl-qc-flag">straightliner_Q9</code>
+              </div>
+              <p id="sl-qc-desc">Uniform column selection triggered automatic QC flag. Response is preserved in audit history and can be excluded from means &amp; PowerPoint charts in one click.</p>
+              <div class="sl-qc-steps">
+                <span class="is-on" id="sl-step-1">1. Soft Nudge</span>
+                <span class="is-on" id="sl-step-2">2. Flag <code>straightliner_Q9</code></span>
+                <span class="is-on" id="sl-step-3">3. Clean Means Filter</span>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </article>
+
+      {#- UNIQUE SIGNATURE DEMO CARD: DICTATE & VOICE RECORDING FOR OPEN-TEXT QUESTIONS (ACOUSTIC FIELD RECORDER) -#}
+      <article class="ln-demo ln-demo-voice ln-reveal" data-demo="voiceopen" id="voice-open-demo" aria-labelledby="vc-demo-heading">
+        <div class="vc-card-top">
+          <div class="vc-card-titlewrap">
+            <div class="vc-eyebrow-row">
+              <span class="ln-demo-tag vc-tag-copper">Open-Text Voice Studio</span>
+              <span class="vc-studio-lamp"><i id="vc-lamp-dot"></i> <span id="vc-lamp-label">ON AIR &middot; 48kHz OPUS + LIVE STT</span></span>
+            </div>
+            <h3 id="vc-demo-heading">Let Respondents Speak Their Mind &mdash; <em>Live Dictation &amp; Attached Voice Clips</em></h3>
+            <p>Busy clinicians and mobile respondents share <strong>3&ndash;4&times; richer nuance</strong> when they speak instead of thumb-typing. Every SurveyKart Open-Text box and Text-Grid cell pairs <strong>real-time speech-to-text dictation</strong> with <strong>server-stored voice recording</strong> (<code>/api/voice</code>) so you capture both editable text and authentic spoken nuance.</p>
+          </div>
+
+          <div class="vc-presets" role="tablist" aria-label="Open-text voice capture modes">
+            <button type="button" class="vc-preset is-active" data-vc-preset="clinician">
+              <span class="vc-p-ico">&#127897;&#65039;</span>Live Clinician Dictation
+            </button>
+            <button type="button" class="vc-preset" data-vc-preset="clip">
+              <span class="vc-p-ico">&#127908;</span>Attached Voice Clip
+            </button>
+            <button type="button" class="vc-preset" data-vc-preset="mobile">
+              <span class="vc-p-ico">&#128241;</span>Mobile Hands-Free
+            </button>
+            <button type="button" class="vc-preset vc-preset-mic" data-vc-preset="mic" id="vc-try-mic-tab">
+              <span class="vc-p-ico">&#9679;</span>Speak With Your Mic
+            </button>
+          </div>
+        </div>
+
+        <div class="vc-workbench">
+          {#- Left Studio Console: Twin-Reel Acoustic Deck + 28-Bar Spectrum + Streaming Open-Text Sheet -#}
+          <div class="vc-console-card" id="vc-console-card" data-vc-mode="dictate">
+            <div class="vc-deck-bezel">
+              <div class="vc-grille" aria-hidden="true"></div>
+              <div class="vc-deck-top">
+                <div class="vc-reel-cluster" aria-hidden="true">
+                  <svg class="vc-reel is-spinning" id="vc-reel-l" viewBox="0 0 40 40">
+                    <circle cx="20" cy="20" r="17" class="vc-reel-rim"/>
+                    <circle cx="20" cy="20" r="6" class="vc-reel-hub"/>
+                    <line x1="20" y1="4" x2="20" y2="12" class="vc-reel-spoke"/>
+                    <line x1="6" y1="28" x2="13" y2="24" class="vc-reel-spoke"/>
+                    <line x1="34" y1="28" x2="27" y2="24" class="vc-reel-spoke"/>
+                  </svg>
+                  <div class="vc-tape-bridge">
+                    <span class="vc-mode-chip" id="vc-mode-chip">&#127897;&#65039; DICTATE STREAM</span>
+                    <b class="vc-timecode" id="vc-timecode">00:14.8</b>
+                  </div>
+                  <svg class="vc-reel is-spinning" id="vc-reel-r" viewBox="0 0 40 40">
+                    <circle cx="20" cy="20" r="17" class="vc-reel-rim"/>
+                    <circle cx="20" cy="20" r="6" class="vc-reel-hub"/>
+                    <line x1="20" y1="4" x2="20" y2="12" class="vc-reel-spoke"/>
+                    <line x1="6" y1="28" x2="13" y2="24" class="vc-reel-spoke"/>
+                    <line x1="34" y1="28" x2="27" y2="24" class="vc-reel-spoke"/>
+                  </svg>
+                </div>
+
+                <div class="vc-transport">
+                  <button type="button" class="vc-tbtn primary" id="vc-play-btn">&#9654; Replay Stream</button>
+                  <button type="button" class="vc-tbtn" id="vc-sound-toggle" aria-pressed="false" title="Play gentle acoustic voice-envelope preview">&#128264; Audio Off</button>
+                </div>
+              </div>
+
+              {#- 28-Bar Sculpted Acoustic Spectrum Visualizer + Scrub Playhead -#}
+              <div class="vc-wave-stage" id="vc-wave-stage" title="Click anywhere along the waveform to scrub">
+                <div class="vc-wave-bars" id="vc-wave-bars" aria-hidden="true">
+                  <i style="--h:28%"></i><i style="--h:52%"></i><i style="--h:76%"></i><i style="--h:44%"></i>
+                  <i style="--h:88%"></i><i style="--h:64%"></i><i style="--h:34%"></i><i style="--h:72%"></i>
+                  <i style="--h:94%"></i><i style="--h:58%"></i><i style="--h:40%"></i><i style="--h:82%"></i>
+                  <i style="--h:68%"></i><i style="--h:30%"></i><i style="--h:74%"></i><i style="--h:90%"></i>
+                  <i style="--h:56%"></i><i style="--h:46%"></i><i style="--h:84%"></i><i style="--h:62%"></i>
+                  <i style="--h:36%"></i><i style="--h:78%"></i><i style="--h:92%"></i><i style="--h:54%"></i>
+                  <i style="--h:42%"></i><i style="--h:70%"></i><i style="--h:48%"></i><i style="--h:32%"></i>
+                </div>
+                <div class="vc-playhead" id="vc-playhead" style="left:68%"></div>
+              </div>
+
+              <div class="vc-clip-bar" id="vc-clip-bar">
+                <span class="vc-file-pill" id="vc-file-pill">&#128190; R042_Q11.webm &middot; stored on study server</span>
+                <span class="vc-vu-meter">VU <b id="vc-vu-db">-6.2 dB</b></span>
+              </div>
+            </div>
+
+            {#- Tactile Open-Text Question Sheet with Streaming Phoneme Cursor -#}
+            <div class="vc-sheet">
+              <div class="vc-sheet-head">
+                <div>
+                  <span class="vc-qbadge">Q11 &middot; Open-Text Question</span>
+                  <strong class="vc-qprompt">What practical real-world factors shape your regimen choice in older patients?</strong>
+                </div>
+                <span class="vc-live-pill" id="vc-live-pill">&#9679; Streaming to Box</span>
+              </div>
+
+              <div class="vc-transcript-box" id="vc-transcript-box" aria-live="polite">
+                <span id="vc-final-words"></span><span class="vc-interim-words" id="vc-interim-words"></span><span class="vc-voice-caret" id="vc-voice-caret" aria-hidden="true"></span>
+              </div>
+
+              <div class="vc-sheet-foot">
+                <div class="vc-key-terms" id="vc-key-terms"></div>
+                <span class="vc-edit-note" id="vc-edit-note">&#9998; Editable before Next &rarr;</span>
+              </div>
+            </div>
+          </div>
+
+          {#- Right Spec & Impact Panel: Spoken vs Typed Multiplier + Dual Capture Architecture -#}
+          <aside class="vc-spec-card" aria-live="polite">
+            <div class="vc-compare-box">
+              <div class="vc-compare-head">
+                <span>SPOKEN VS. THUMB-TYPED DEPTH</span>
+                <strong id="vc-mult-badge">3.7&times; Richer</strong>
+              </div>
+              <div class="vc-compare-bars">
+                <div class="vc-cbar">
+                  <div class="vc-cbar-label">
+                    <span>&#127897;&#65039; Voice / Dictated</span>
+                    <b id="vc-spoken-stat">52 words &middot; 15s</b>
+                  </div>
+                  <div class="vc-cbar-track"><i class="spoken" id="vc-spoken-fill" style="width:92%"></i></div>
+                </div>
+                <div class="vc-cbar">
+                  <div class="vc-cbar-label">
+                    <span>&#9000;&#65039; Typical Typed Box</span>
+                    <b>14 words &middot; 48s</b>
+                  </div>
+                  <div class="vc-cbar-track"><i class="typed" style="width:26%"></i></div>
+                </div>
+              </div>
+            </div>
+
+            <div class="vc-kpis">
+              <div class="vc-kpi">
+                <span>Word Count</span>
+                <strong id="vc-k-words">52</strong>
+                <small id="vc-k-words-sub">4 clinical themes</small>
+              </div>
+              <div class="vc-kpi">
+                <span>Speak Rate</span>
+                <strong id="vc-k-wpm">198</strong>
+                <small id="vc-k-wpm-sub">words / min</small>
+              </div>
+              <div class="vc-kpi">
+                <span>Origin Signal</span>
+                <strong id="vc-k-auth">Human</strong>
+                <small id="vc-k-auth-sub">0% clipboard paste</small>
+              </div>
+            </div>
+
+            <div class="vc-dual-arch">
+              <div class="vc-arch-title">DUAL IN-SURVEY CAPTURE CHANNELS</div>
+              <div class="vc-arch-item is-active" id="vc-arch-dictate">
+                <span class="vc-arch-ico">&#127897;&#65039;</span>
+                <div>
+                  <b>1. Live Dictate Button (<code>.tg-voice-btn</code>)</b>
+                  <p>Streams spoken words live into Open-Text &amp; Text-Grid boxes via browser speech recognition.</p>
+                </div>
+              </div>
+              <div class="vc-arch-item" id="vc-arch-record">
+                <span class="vc-arch-ico">&#127908;</span>
+                <div>
+                  <b>2. Server Voice Recorder (<code>POST /api/voice</code>)</b>
+                  <p>Captures <code>webm</code> / <code>m4a</code> voice answers with instant respondent replay &amp; delete controls.</p>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </article>
+
+      {#- UNIQUE SIGNATURE DEMO CARD: INTERACTIVE WALKTHROUGH QUESTIONS (RESPONDER TIME RESPECT BEYOND HONORARIUM) -#}
+      <article class="ln-demo ln-demo-walk ln-reveal" data-demo="walkthrough" id="walkthrough-demo" aria-labelledby="wt-demo-heading">
+        <div class="wt-card-top">
+          <div class="wt-card-titlewrap">
+            <div class="wt-eyebrow-row">
+              <span class="ln-demo-tag wt-tag-plum">Interactive Walkthrough Questions</span>
+              <span class="wt-empathy-chip">&#9203; Responder-Time Empathy &middot; Beyond Honorarium</span>
+            </div>
+            <h3 id="wt-demo-heading">Built With Every Survey Responder&rsquo;s Time in Heart &mdash; <em>Valuing Their Attention Beyond Just an Honorarium</em></h3>
+            <p>Providing an honorarium thanks a responder&rsquo;s calendar, but thoughtful experience design honors their mind and energy. Instead of fatiguing busy physicians and participants with dense walls of stimulus text, SurveyKart <strong>Walkthrough Questions</strong> unfold complex profiles into <strong>bite-sized animated visual chapters</strong>, live Insight milestones, and interactive micro-check-ins &mdash; making every responder feel genuinely engaged, respected, and heard.</p>
+          </div>
+
+          <div class="wt-chapters" role="tablist" aria-label="Walkthrough Storyboard Chapters">
+            <button type="button" class="wt-ch-tab is-active" data-wt-ch="0">
+              <span class="wt-ch-num">01</span>Patient Context
+            </button>
+            <button type="button" class="wt-ch-tab" data-wt-ch="1">
+              <span class="wt-ch-num">02</span>Guided Trial Split
+            </button>
+            <button type="button" class="wt-ch-tab" data-wt-ch="2">
+              <span class="wt-ch-num">03</span>Animated Outcomes
+            </button>
+            <button type="button" class="wt-ch-tab" data-wt-ch="3">
+              <span class="wt-ch-num">04</span>Interactive Pulse
+            </button>
+          </div>
+        </div>
+
+        <div class="wt-workbench">
+          {#- Left Illuminated Storyboard Lantern Stage -#}
+          <div class="wt-theater-card" id="wt-theater-card">
+            <div class="wt-hud-bar">
+              <div class="wt-hud-left">
+                <span class="wt-time-pill" id="wt-time-pill">&#9201; 10s visual chapter &middot; saves 3m reading</span>
+              </div>
+              <div class="wt-hud-right">
+                <span class="wt-pts-pill" id="wt-pts-pill">&#9733; <b id="wt-pts-num">25</b> Insight Pts</span>
+                <span class="wt-rank-pill" id="wt-rank-pill">Engaged Responder</span>
+              </div>
+            </div>
+
+            <div class="wt-stage-viewport" id="wt-stage-viewport">
+              {#- Chapter 01: Animated Patient Story & Empathy Ripples -#}
+              <div class="wt-scene is-active" data-wt-scene="0">
+                <svg viewBox="0 0 520 220" class="wt-svg" aria-hidden="true">
+                  <defs>
+                    <radialGradient id="wt-glow-1" cx="28%" cy="50%" r="55%">
+                      <stop offset="0%" stop-color="#d4af37" stop-opacity=".28"/>
+                      <stop offset="100%" stop-color="#d4af37" stop-opacity="0"/>
+                    </radialGradient>
+                  </defs>
+                  <rect width="520" height="220" fill="url(#wt-glow-1)"/>
+                  <circle cx="136" cy="104" r="56" class="wt-ripple r1"/>
+                  <circle cx="136" cy="104" r="78" class="wt-ripple r2"/>
+                  <g class="wt-avatar-fig">
+                    <circle cx="136" cy="78" r="24" fill="#235c4b" stroke="#f6e7c1" stroke-width="2.5"/>
+                    <path d="M92 156c0-24 20-43 44-43s44 19 44 43v8H92z" fill="#235c4b" stroke="#f6e7c1" stroke-width="2"/>
+                  </g>
+                  <path class="wt-ecg-line" d="M24 190 H96 L108 172 L120 202 L134 152 L148 196 L158 186 H244 L256 170 L268 198 L280 160 L292 192 L302 186 H496"/>
+                  <g class="wt-float-card c1">
+                    <rect x="248" y="28" width="236" height="36" rx="18" fill="#173d31" stroke="#539980" stroke-width="1.5"/>
+                    <circle cx="270" cy="46" r="5" fill="#f3d27a"/>
+                    <text x="286" y="50" fill="#ffffff" font-size="12.5" font-weight="700">68-yr Post-IO NSCLC Patient</text>
+                  </g>
+                  <g class="wt-float-card c2">
+                    <rect x="248" y="76" width="236" height="36" rx="18" fill="#4f3563" stroke="#9d7bb8" stroke-width="1.5"/>
+                    <circle cx="270" cy="94" r="5" fill="#f7d889"/>
+                    <text x="286" y="98" fill="#ffffff" font-size="12.5" font-weight="700">Values Home Time &amp; Independence</text>
+                  </g>
+                  <g class="wt-float-card c3">
+                    <rect x="248" y="124" width="236" height="36" rx="18" fill="#705319" stroke="#e0be66" stroke-width="1.5"/>
+                    <circle cx="270" cy="142" r="5" fill="#ffffff"/>
+                    <text x="286" y="146" fill="#ffffff" font-size="12.5" font-weight="700">Zero 600-Word Wall of Text</text>
+                  </g>
+                </svg>
+              </div>
+
+              {#- Chapter 02: Guided Visual Trial Flow (Animated Traveling Pulses) -#}
+              <div class="wt-scene" data-wt-scene="1">
+                <svg viewBox="0 0 520 220" class="wt-svg" aria-hidden="true">
+                  <rect x="30" y="84" width="118" height="52" rx="14" fill="#183f32" stroke="#5ca389" stroke-width="1.6"/>
+                  <text x="89" y="107" text-anchor="middle" fill="#fff" font-size="12" font-weight="800">Eligible Cohort</text>
+                  <text x="89" y="123" text-anchor="middle" fill="#b9dfd0" font-size="10.5">N = 420 &middot; ECOG 0&ndash;1</text>
+
+                  <path d="M148 110 H206 L252 58 H312" class="wt-flow-path"/>
+                  <path d="M148 110 H206 L252 162 H312" class="wt-flow-path gold"/>
+
+                  <circle cx="206" cy="110" r="18" fill="#5b3d70" stroke="#e2c8f5" stroke-width="2"/>
+                  <text x="206" y="114" text-anchor="middle" fill="#fff" font-size="11" font-weight="900">1:1</text>
+
+                  <g class="wt-float-card c1">
+                    <rect x="312" y="28" width="178" height="62" rx="14" fill="#22332d" stroke="#5c786e" stroke-width="1.4"/>
+                    <text x="401" y="54" text-anchor="middle" fill="#d9e7e1" font-size="12" font-weight="750">IV Standard of Care</text>
+                    <text x="401" y="73" text-anchor="middle" fill="#9cb5ab" font-size="10.5">Clinic infusion every 3 wks</text>
+                  </g>
+                  <g class="wt-float-card c2">
+                    <rect x="312" y="130" width="178" height="62" rx="14" fill="#174c3b" stroke="#f0ca6d" stroke-width="2"/>
+                    <text x="401" y="155" text-anchor="middle" fill="#fff8e6" font-size="12.5" font-weight="850">Regimen X &middot; Oral Daily</text>
+                    <text x="401" y="174" text-anchor="middle" fill="#f3d27a" font-size="10.5" font-weight="700">Taken at home &middot; 1 tablet/day</text>
+                  </g>
+                </svg>
+              </div>
+
+              {#- Chapter 03: Self-Drawing Kaplan-Meier Clinical Curves -#}
+              <div class="wt-scene" data-wt-scene="2">
+                <svg viewBox="0 0 520 220" class="wt-svg" aria-hidden="true">
+                  <line x1="58" y1="28" x2="58" y2="182" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
+                  <line x1="58" y1="182" x2="476" y2="182" stroke="rgba(255,255,255,.25)" stroke-width="1.5"/>
+                  <line x1="58" y1="105" x2="476" y2="105" stroke="rgba(255,255,255,.12)" stroke-dasharray="4 4"/>
+                  <text x="46" y="36" text-anchor="end" fill="#bfd6cc" font-size="10">100%</text>
+                  <text x="46" y="109" text-anchor="end" fill="#bfd6cc" font-size="10">50%</text>
+                  <text x="46" y="182" text-anchor="end" fill="#bfd6cc" font-size="10">0%</text>
+                  <text x="472" y="200" text-anchor="end" fill="#bfd6cc" font-size="10">Months (0 &rarr; 24)</text>
+
+                  <path class="wt-km-ctrl" d="M58 34 H118 V68 H176 V105 H238 V142 H318 V166 H448"/>
+                  <path class="wt-km-exp" d="M58 34 H158 V54 H248 V80 H336 V105 H418 V126 H468"/>
+
+                  <g class="wt-delta-pop">
+                    <rect x="262" y="30" width="194" height="44" rx="12" fill="#6b4e12" stroke="#f5d47e" stroke-width="1.8"/>
+                    <text x="359" y="49" text-anchor="middle" fill="#fff7e2" font-size="12" font-weight="850">+6.6 mo Median PFS Gain</text>
+                    <text x="359" y="65" text-anchor="middle" fill="#f5d47e" font-size="10.5" font-weight="700">14.8 mo vs. 8.2 mo &middot; HR 0.58</text>
+                  </g>
+                </svg>
+              </div>
+
+              {#- Chapter 04: Interactive Two-Way Micro-Check-In Inside the Walkthrough -#}
+              <div class="wt-scene wt-scene-interact" data-wt-scene="3">
+                <div class="wt-interact-box">
+                  <span class="wt-interact-kicker">&#10024; TWO-WAY RESPONDER MOMENT &middot; TAP AN INSIGHT</span>
+                  <h4>Before we move on &mdash; which part of this walkthrough stood out most for your patients?</h4>
+                  <div class="wt-react-row" id="wt-react-row">
+                    <button type="button" class="wt-react-btn is-selected" data-wt-pick="pfs">
+                      <span>&#128200;</span> +6.6 mo PFS Separation
+                    </button>
+                    <button type="button" class="wt-react-btn" data-wt-pick="oral">
+                      <span>&#127968;</span> Once-Daily Home Freedom
+                    </button>
+                    <button type="button" class="wt-react-btn" data-wt-pick="care">
+                      <span>&#129309;</span> Clear 45s Visual Format
+                    </button>
+                  </div>
+                  <div class="wt-coach-reply" id="wt-coach-reply">
+                    <span class="wt-coach-orb" aria-hidden="true">&#10022;</span>
+                    <p id="wt-coach-text"><strong>Thank you for sharing!</strong> You unlocked <b>+25 Insight Pts</b> &mdash; we&rsquo;ll tailor the next two questions around <em>+6.6 mo PFS Separation</em> so we never waste a minute of your time.</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {#- Synced Story Caption + 4-Segment Progress Scrubber + Controls -#}
+            <div class="wt-caption-bar">
+              <p class="wt-caption-text" id="wt-caption-text">Chapter 01 &mdash; Instead of a 600-word dense table, the responder meets the patient case in 10 calm, visual seconds.</p>
+              <div class="wt-controls-row">
+                <div class="wt-seg-progress" id="wt-seg-progress" aria-hidden="true">
+                  <span class="is-active"><i id="wt-seg-fill-0" style="width:65%"></i></span>
+                  <span><i id="wt-seg-fill-1"></i></span>
+                  <span><i id="wt-seg-fill-2"></i></span>
+                  <span><i id="wt-seg-fill-3"></i></span>
+                </div>
+                <div class="wt-nav-btns">
+                  <button type="button" class="wt-ctrl-btn" id="wt-prev-btn" aria-label="Previous chapter">&larr;</button>
+                  <button type="button" class="wt-ctrl-btn primary" id="wt-play-btn">&#9208; Auto-Story</button>
+                  <button type="button" class="wt-ctrl-btn" id="wt-next-btn" aria-label="Next chapter">&rarr;</button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {#- Right Empathy & Engagement Ledger: Valuing Responder Time Beyond Honorarium -#}
+          <aside class="wt-empathy-card" aria-live="polite">
+            <div class="wt-contrast-box">
+              <div class="wt-contrast-head">
+                <span>RESPONDER EXPERIENCE SHIFT</span>
+                <strong id="wt-save-badge">62% Less Fatigue</strong>
+              </div>
+              <div class="wt-contrast-pair">
+                <div class="wt-c-row old">
+                  <span class="wt-c-tag">Static Text Wall</span>
+                  <p>4m squinting at dense tables &middot; passive honorarium-only chore &middot; 38% mid-grid drop-off</p>
+                </div>
+                <div class="wt-c-row new">
+                  <span class="wt-c-tag">SurveyKart Walkthrough</span>
+                  <p>45s guided visual story &middot; two-way interaction &amp; milestones &middot; <strong>94% engaged completion</strong></p>
+                </div>
+              </div>
+            </div>
+
+            <div class="wt-kpis">
+              <div class="wt-kpi">
+                <span>Responder Time</span>
+                <strong id="wt-k-time">45 sec</strong>
+                <small>vs. 4 min dense read</small>
+              </div>
+              <div class="wt-kpi">
+                <span>Engagement</span>
+                <strong id="wt-k-eng">94%</strong>
+                <small id="wt-k-eng-sub">Active story focus</small>
+              </div>
+              <div class="wt-kpi">
+                <span>Kart Cost</span>
+                <strong>15 pts</strong>
+                <small>Walkthrough Stimulus</small>
+              </div>
+            </div>
+
+            <div class="wt-pillars">
+              <div class="wt-pillar">
+                <span class="wt-p-ico">&#9203;</span>
+                <div>
+                  <b>Respects Responder Time First</b>
+                  <p>Visual pacing delivers clinical clarity in seconds so busy specialists never feel bogged down.</p>
+                </div>
+              </div>
+              <div class="wt-pillar">
+                <span class="wt-p-ico">&#128155;</span>
+                <div>
+                  <b>Valued Beyond Just an Honorarium</b>
+                  <p>Interactive check-ins, Coach warmth &amp; Insight milestones turn a paid task into a respected dialogue.</p>
+                </div>
+              </div>
+            </div>
+          </aside>
+        </div>
       </article>
     </div>
   </section>
 
-  {#- ---------------- AI capability grid ---------------- -#}
-  <section class="ln-features">
-    <h2 class="ln-reveal">AI where it helps. Human where it matters.</h2>
-    <div class="ln-feat-grid">
-      <div class="ln-feat ln-reveal"><h4>Research agent</h4><p>Describe the decision your study
-        must support; the agent drafts the questionnaire, screeners and structure — nothing
-        goes live without your approval.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Answer-quality checks</h4><p>Open-text answers are
-        reviewed automatically for gibberish, copy-paste and low effort — flagged for your
-        judgement, never silently dropped.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Questionnaire review</h4><p>Ask the assistant to review
-        wording, routing and logic before launch. Suggestions, not decisions — every change is
-        yours to accept.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Screening &amp; quotas</h4><p>Plain-language rules and
-        per-option completes targets, with live fill and over-quota tagging in the normal
-        extracts.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Fresh test runs</h4><p>Every open of the test link is a
-        fresh run at Q1 — rehearsals never pollute field data.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Translations &amp; voice</h4><p>Language versions with
-        voice answering and per-translation review, parent-linked so edits stay in sync.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Walkthroughs</h4><p>Narrated product walkthroughs from a
-        deck or a recording, embedded right in the survey.</p></div>
-      <div class="ln-feat ln-reveal"><h4>Live monitor</h4><p>Field status, quality signals,
-        verbatims and exports in one dashboard — while the data is still coming in.</p></div>
+  {#- ---------------- UNIQUE FEATURE BANNER + INTERACTIVE DEMO: AI RESPONSE DETECTION FOR OPEN-ENDED QUESTIONS ---------------- -#}
+  <section class="sk-ai-banner-sec" id="ai-detect-demo" aria-labelledby="sk-ai-banner-heading">
+    <div class="sk-ai-banner-shell ln-reveal">
+      <div class="sk-ai-banner-top">
+        <div>
+          <p class="sk-ai-eyebrow"><span class="sk-ai-pulse"></span> FORENSIC VERBATIM X-RAY &middot; OPEN-ENDED QUALITY ENGINE</p>
+          <h2 id="sk-ai-banner-heading">Catch AI-Generated Open-Ended Responses <em>While Respondents Type</em></h2>
+          <p class="sk-ai-sub">Open-ended verbatims carry your richest qualitative insight &mdash; and are the first target for copy-pasted LLM replies. SurveyKart runs a <strong>dual-lens forensic scan</strong> (linguistic AI hallmarks + live browser paste/keystroke cadence) on every free-text box, text grid cell, and &ldquo;Other, specify&rdquo; answer.</p>
+        </div>
+        <div class="sk-ai-mode-bar" role="tablist" aria-label="Verbatim AI Detection Scenarios">
+          <button type="button" class="sk-ai-preset is-active" data-ai-preset="chatgpt">&#129302; Pasted ChatGPT Reply</button>
+          <button type="button" class="sk-ai-preset" data-ai-preset="human">&#9997;&#65039; Authentic Clinician</button>
+          <button type="button" class="sk-ai-preset" data-ai-preset="list">&#128203; Structured LLM List</button>
+          <button type="button" class="sk-ai-preset" data-ai-preset="custom">&#9000;&#65039; Type / Paste Your Own</button>
+        </div>
+      </div>
+
+      <div class="sk-ai-workbench">
+        {#- Left Lens: Simulated Survey Open-Ended Question with X-Ray Scan Beam -#}
+        <div class="sk-ai-lens-card">
+          <div class="sk-ai-qhead">
+            <span class="sk-ai-qbadge">Q7 &middot; Open-Ended Verbatim</span>
+            <span class="sk-ai-scan-status" id="sk-ai-scan-status">&#9679; Live X-Ray Active</span>
+          </div>
+          <p class="sk-ai-qstem">In your own words, what clinical factors make you switch a patient&rsquo;s first-line oncology regimen?</p>
+
+          <div class="sk-ai-xray-viewport" id="sk-ai-viewport">
+            <div class="sk-ai-scanbeam" id="sk-ai-scanbeam" aria-hidden="true"></div>
+            <div class="sk-ai-xray-text" id="sk-ai-xray-text" aria-live="polite"></div>
+            <textarea class="sk-ai-custom-input" id="sk-ai-custom-input" rows="5" hidden
+              placeholder="Type naturally in your own words — or paste an AI-style paragraph with words like 'moreover', 'delve', 'pivotal role', '**bold**' to watch the live detector react..."></textarea>
+          </div>
+
+          <div class="sk-ai-legend-row">
+            <span class="sk-xtag ai"><i></i> LLM / Paste Signal</span>
+            <span class="sk-xtag human"><i></i> Human Authenticity Marker</span>
+            <button type="button" class="sk-ai-autocycle" id="sk-ai-autocycle" title="Replay animated scenario tour">&#8635; Auto-Tour</button>
+          </div>
+
+          <div class="sk-ai-nudge" id="sk-ai-nudge">
+            <strong id="sk-ai-nudge-title">Respondent Live Prompt:</strong>
+            <span id="sk-ai-nudge-msg">Evaluating open-ended response&hellip;</span>
+          </div>
+        </div>
+
+        {#- Right HUD: 180-deg Arc Forensic Gauge + Telemetry Matrix + 3-Gate Pipeline -#}
+        <div class="sk-ai-hud-card">
+          <div class="sk-ai-gauge-row">
+            <div class="sk-ai-arc-wrap">
+              <svg viewBox="0 0 180 108" class="sk-ai-arc-svg" aria-hidden="true">
+                <path d="M 20 92 A 70 70 0 0 1 160 92" class="sk-arc-track"/>
+                <path d="M 20 92 A 70 70 0 0 1 73 24" class="sk-arc-zone ok"/>
+                <path d="M 73 24 A 70 70 0 0 1 118 28" class="sk-arc-zone warn"/>
+                <path d="M 118 28 A 70 70 0 0 1 160 92" class="sk-arc-zone bad"/>
+                <path d="M 20 92 A 70 70 0 0 1 160 92" class="sk-arc-fill" id="sk-ai-arc-fill"/>
+                <g id="sk-ai-needle" transform="rotate(-90 90 92)">
+                  <line x1="90" y1="92" x2="90" y2="32" stroke="#faf6ee" stroke-width="3" stroke-linecap="round"/>
+                  <circle cx="90" cy="92" r="6" fill="#d4af37" stroke="#faf6ee" stroke-width="2"/>
+                </g>
+              </svg>
+              <div class="sk-ai-score-readout">
+                <b id="sk-ai-score-num">88</b>
+                <span>/ 100 AI Suspicion</span>
+              </div>
+            </div>
+
+            <div class="sk-ai-verdict-panel">
+              <span class="sk-ai-verdict-pill bad" id="sk-ai-verdict-pill">LIKELY AI &middot; QC FLAGGED</span>
+              <p class="sk-ai-verdict-desc" id="sk-ai-verdict-desc">High-confidence synthetic &amp; pasted prose detected across both linguistic and browser telemetry layers.</p>
+              <div class="sk-ai-thresholds">
+                <span><i></i>0&ndash;34 Human</span>
+                <span><i class="w"></i>35&ndash;59 Nudge</span>
+                <span><i class="b"></i>60+ Flagged</span>
+              </div>
+            </div>
+          </div>
+
+          <div class="sk-ai-telemetry-grid">
+            <div class="sk-tel-cell">
+              <span>Keystrokes</span>
+              <strong id="sk-tel-keys">2 keys</strong>
+            </div>
+            <div class="sk-tel-cell">
+              <span>Paste Ratio</span>
+              <strong id="sk-tel-paste">98% burst</strong>
+            </div>
+            <div class="sk-tel-cell">
+              <span>Cadence</span>
+              <strong id="sk-tel-speed">142 ch/s</strong>
+            </div>
+            <div class="sk-tel-cell">
+              <span>Word Count</span>
+              <strong id="sk-tel-words">47 words</strong>
+            </div>
+          </div>
+
+          <div class="sk-ai-signals-box">
+            <div class="sk-ai-signals-head">
+              <span>Forensic Evidence Extracted</span>
+              <em id="sk-ai-engine-tag">Live /api/check_text Engine</em>
+            </div>
+            <div class="sk-ai-signal-chips" id="sk-ai-signals"></div>
+          </div>
+
+          <div class="sk-ai-gates" id="sk-ai-gates">
+            <div class="sk-gate" data-gate="typing">
+              <b>1 &middot; Live Typing</b>
+              <span id="sk-gate-1">Own-words prompt shown</span>
+            </div>
+            <div class="sk-gate" data-gate="submit">
+              <b>2 &middot; On Submit</b>
+              <span id="sk-gate-2">Flagged in QC record</span>
+            </div>
+            <div class="sk-gate" data-gate="admin">
+              <b>3 &middot; Admin Monitor</b>
+              <span id="sk-gate-3">Queued in AI review &amp; XLSX</span>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
   </section>
 
   {#- ---------------- accounts: register vs sign in ---------------- -#}
   <section class="ln-join" id="join">
-    <h2 class="ln-reveal">Your own workspace, reviewed by an admin</h2>
-    <p class="ln-sec-sub ln-reveal">One profile per Google e-mail. New accounts are approved by
-      the platform admin; everything you build stays private to you.</p>
+    <h2 class="ln-reveal">Ready to fill your SurveyKart?</h2>
+    <p class="ln-sec-sub ln-reveal">Register in seconds to claim your <strong>100 Kart points</strong>, or sign in with your SurveyKart credentials.</p>
     <div class="ln-join-cards">
       <div class="ln-join-card ln-reveal">
-        <p class="an-eyebrow">New here?</p>
-        <h3>Create your account</h3>
-        <p>Register with Google in one click. The admin reviews new profiles — you'll get a note
-          on this page the moment you're approved.</p>
-        {% if config.STAFF_AUTH %}
-        <a class="ln-btn ln-btn-primary" href="/auth/google?mode=register">Register with Google</a>
-        {% else %}
-        <a class="ln-btn ln-btn-primary" href="/workspace/">Open workspace</a>
-        {% endif %}
+        <p class="an-eyebrow">New to SurveyKart?</p>
+        <h3>Register &amp; Claim 100 Kart Points</h3>
+        <p>Create your account to receive 100 default Kart points immediately. Build projects, share collaboration links at 0 point cost, or request extra points from Admin anytime.</p>
+        <a class="ln-btn ln-btn-primary" href="/register">&#128722; Create Account (+100 Pts)</a>
       </div>
       <div class="ln-join-card ln-reveal">
-        <p class="an-eyebrow">Already registered?</p>
-        <h3>Sign in</h3>
-        <p>Sign in with Google and pick up exactly where you left off — your projects, drafts
-          and data are waiting in your workspace.</p>
-        {% if config.STAFF_AUTH %}
-        <a class="ln-btn ln-btn-ghost" href="/auth/google?mode=login">Sign in with Google</a>
-        {% else %}
-        <a class="ln-btn ln-btn-ghost" href="/workspace/">Open workspace</a>
-        {% endif %}
+        <p class="an-eyebrow">Existing Member or Admin?</p>
+        <h3>Sign in to Studio &amp; Admin</h3>
+        <p>Sign in with your SurveyKart username/e-mail and password to open Studio, manage shared projects, or govern Kart balances in the Admin Console.</p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a class="ln-btn ln-btn-primary" href="/signin">Sign in to SurveyKart &rarr;</a>
+          <a class="ln-btn ln-btn-ghost" href="/auth/google?mode=login">Sign in with Google</a>
+        </div>
       </div>
     </div>
-    <p class="ln-join-recover ln-reveal">Forgot which address you used, or your password?
-      <a href="/recover">Find your account</a> — your user ID is your Google e-mail, and the
-      password is your Google password.<br>
-      Platform admin? The <a href="/admin-portal">admin portal</a> tracks usage and every
-      user's activity.</p>
+    <p class="ln-join-recover ln-reveal">Forgot which address you used? <a href="/recover">Look up your account</a> &middot;
+      Platform Admin? Sign in to open the <a href="/admin/console">Admin Console</a> and <a href="/admin-portal">Admin Portal</a>.</p>
     <div id="ln-devbox" class="ln-devbox" hidden>
       <form id="ln-devform">
         <label>Development sign-in

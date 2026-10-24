@@ -30,6 +30,15 @@ def login():
             db.execute('DELETE FROM login_attempts WHERE address=?', (address,))
             db.commit()
             return redirect('/workspace/')
+        from core import accounts
+        acct = accounts.authenticate_credentials(request.form.get('username', ''), request.form.get('password', ''))
+        if acct and acct.get('status') == 'approved':
+            session.clear()
+            session['uid'] = acct['id']
+            csrf_token()
+            db.execute('DELETE FROM login_attempts WHERE address=?', (address,))
+            db.commit()
+            return redirect('/workspace/')
         count = attempt['attempts'] + 1 if attempt and time.time() - attempt['since'] < 900 else 1
         since = attempt['since'] if count > 1 else time.time()
         db.execute('INSERT OR REPLACE INTO login_attempts VALUES(?,?,?)', (address, count, since))

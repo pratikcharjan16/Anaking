@@ -44,13 +44,16 @@ def owns_study(user_id, slug):
 def allowed(slug):
     """May the signed-in party work on this study?
 
-    Platform accounts (Google sign-in) see their own studies; platform admins see
-    everything.  Legacy staff rows keep their per-study scope list.  With the
-    boundary off (local dev), everything is open.
+    Platform accounts see their own studies plus studies shared with them for
+    collaboration; platform admins see everything. Legacy staff rows keep their
+    per-study scope list. With the boundary off (local testing), everything is open.
     """
     user = getattr(g, 'user', None)
     if user is not None:
-        return user['role'] == 'admin' or owns_study(user['id'], slug)
+        from core.kart import can_collaborate
+        return (user['role'] == 'admin'
+                or owns_study(user['id'], slug)
+                or can_collaborate(user['id'], slug, user.get('email', '')))
     staff = getattr(g, 'staff', None)
     return not current_app.config['STAFF_AUTH'] or bool(staff and ('*' in staff['studies'] or slug in staff['studies']))
 
@@ -91,10 +94,9 @@ def init_security(app):
             from core import accounts
             g.user = accounts.by_id(session.get('uid'))
         path = request.path
-        if path.startswith('/auth/') or path == '/api/me' or path == '/' \
-                or path == '/admin-portal':
-            # the landing + sign-in endpoints are public; the admin portal stays
-            # open without login while its design is being reviewed (sample phase)
+        if (path.startswith(('/auth/', '/api/auth/', '/share/'))
+                or path in ('/api/me', '/api/kart/catalog', '/')):
+            # landing, registration/sign-in, share redemption gate, and public Kart catalog
             return
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
@@ -104,13 +106,17 @@ def init_security(app):
         preview = (path.endswith('/test') or path == '/test' or
                    (path.startswith('/api/spec') and request.args.get('preview') == '1') or
                    (path == '/api/start' and body.get('is_test')))
-        staff_path = (path.startswith(('/workspace', '/studio', '/admin', '/api/studio', '/api/admin', '/api/workspace', '/api/test-review')) or preview or request.args.get('legacy') == '1')
+        staff_path = (path.startswith(('/workspace', '/studio', '/admin', '/admin-portal',
+                                       '/api/studio', '/api/admin', '/api/workspace',
+                                       '/api/test-review', '/api/kart'))
+                      or preview or request.args.get('legacy') == '1')
         if not staff_path:
             return
         if not g.staff and not g.user:
             if path.startswith('/api/') or request.method != 'GET':
                 return jsonify(error='Sign-in required'), 401
-            return redirect('/signin')
+            from urllib.parse import quote
+            return redirect('/signin?next=' + quote(request.full_path.rstrip('?'), safe='/'))
         if g.user is not None and g.user.get('status') != 'approved':
             msgs = {
                 'pending': 'Your account is waiting for admin approval.',
@@ -120,6 +126,12 @@ def init_security(app):
             if path.startswith('/api/') or request.method != 'GET':
                 return jsonify(error=msgs.get(g.user.get('status'), 'Account not approved.')), 403
             return redirect('/?welcome=1')
+        # Strict Admin-only boundary for Admin Portal & Admin Console
+        if path in ('/admin-portal', '/admin/console') or path.startswith('/api/admin/console'):
+            is_admin = (g.user is not None and g.user.get('role') == 'admin') or \
+                       (g.staff is not None and g.staff.get('role') == 'owner')
+            if not is_admin:
+                abort(403, 'All rights reserved to Admin.')
         # Check every supplied identity; conflicting body/query identities cannot bypass scopes.
         slugs = [v for v in (request.args.get('study'), request.args.get('slug'), body.get('slug'), body.get('study'), (request.view_args or {}).get('slug')) if v]
         if path.startswith('/admin/voice/'):
@@ -130,8 +142,11 @@ def init_security(app):
             review = Study.get_test_review((request.view_args or {}).get('token', ''))
             if review:
                 slugs.append(review['study'])
-        if not slugs and (path.startswith(('/api/admin', '/admin/export', '/admin/reset')) or preview or path == '/api/test-review' or path in ('/api/studio/analysis', '/api/studio/strings', '/api/studio/children', '/api/studio/outline.docx', '/api/studio/media', '/api/studio/narration')):
+        if not slugs and not path.startswith('/api/admin/console') and (path.startswith(('/api/admin', '/admin/export', '/admin/reset')) or preview or path == '/api/test-review' or path in ('/api/studio/analysis', '/api/studio/strings', '/api/studio/children', '/api/studio/outline.docx', '/api/studio/media', '/api/studio/narration')):
             slugs.append('beacon')
+        if g.user is not None and path == '/api/studio/save':
+            from models import Study
+            slugs = [s for s in slugs if Study.get(s) is not None]
         if any(not isinstance(slug, str) or not allowed(slug) for slug in slugs):
             abort(403, 'This study is outside your access scope.')
         role = g.staff['role'] if g.staff else 'owner'
@@ -164,12 +179,19 @@ def init_security(app):
                 if parent != existing.cfg.get('parent'):
                     abort(403, 'Changing study inheritance requires workspace-wide permission.')
         if g.user is not None and g.user['role'] != 'admin' and path == '/api/studio/save':
-            # a platform account may create freely (it becomes theirs) but may not
-            # take over a study that belongs to someone else or to nobody
+            # a platform account may create freely (it becomes theirs) or collaborate on a
+            # study shared with them, but may not take over someone else's unshared study
+            from models import Study
+            from core.kart import can_collaborate
+            existing = Study.get(body.get('slug') or '')
+            if existing and not (owns_study(g.user['id'], existing.slug)
+                                 or can_collaborate(g.user['id'], existing.slug, g.user.get('email', ''))):
+                abort(403, 'This project belongs to another account.')
+        if g.user is not None and g.user['role'] != 'admin' and path in ('/api/studio/delete', '/api/studio/move'):
             from models import Study
             existing = Study.get(body.get('slug') or '')
             if existing and not owns_study(g.user['id'], existing.slug):
-                abort(403, 'This project belongs to another account.')
+                abort(403, 'Only the project owner or Admin can delete or move this project.')
 
     @app.after_request
     def security_headers(response):

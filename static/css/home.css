@@ -29,9 +29,10 @@ main {
 /* ---- workspace cards ------------------------------------------------ */
 .apps {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 18px;
 }
+.studies { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .app {
   display: flex;
   flex-direction: column;
