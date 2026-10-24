@@ -176,7 +176,9 @@ def main() -> None:
     print(f"  studio builder  : {base}/studio/")
     print(f"  admin dashboard : {base}/admin/", flush=True)
     from core import userdata as _userdata
-    print(f"  accounts db     : {_userdata.resolve_path(app.config['DB_PATH'])}", flush=True)
+    with app.app_context():          # resolve_path reads the running config
+        accounts_db = _userdata.resolve_path(app.config["DB_PATH"])
+    print(f"  accounts db     : {accounts_db}", flush=True)
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
