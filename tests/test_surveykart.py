@@ -697,7 +697,7 @@ def test_verbatim_xray_card_is_a_grid_card_like_every_other_demo(app, client):
 
 
 def test_landing_fills_the_side_gutters_with_a_live_canvas(app, client):
-    """No dead white bands down the sides: an ambient canvas + a wrapping background."""
+    """A neutral reading canvas retains quiet decorative detail in the side gutters."""
     app.config["STAFF_AUTH"] = True
     html = client.get("/").data.decode("utf-8")
     for needle in ("sk-ambient-canvas", "sk-amb-orb", "sk-amb-dial", "sk-ambient-rail",
@@ -707,3 +707,11 @@ def test_landing_fills_the_side_gutters_with_a_live_canvas(app, client):
     for rule in (".sk-ambient-canvas::before", ".sk-ambient-canvas::after", "skAmbAurora",
                  ".sk-ambient-rail", "@media(max-width:1739px)"):
         assert rule in css, rule
+
+    # Keep the central reading column clear: only the outer 19% of each side gets
+    # texture, and the former saturated full-page colour washes must stay removed.
+    assert "background-color:#f8f9f6" in css
+    assert "transparent 19%, transparent 81%" in css
+    for heavy_wash in ("rgba(245,158,11,0.20)", "rgba(20,97,79,0.16)",
+                       "rgba(234,88,12,0.12)", "rgba(212,175,55,0.17)"):
+        assert heavy_wash not in css, heavy_wash
