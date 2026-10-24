@@ -664,3 +664,46 @@ def test_workspace_team_creation_collaboration_account_names_points_and_changelo
 
 
 
+
+
+def test_verbatim_xray_card_is_a_grid_card_like_every_other_demo(app, client):
+    """The AI X-Ray demo is one of the demo-grid signature cards, not a separate banner.
+
+    It used to sit in its own dark full-width banner section, which broke the rhythm of
+    "Watch SurveyKart in action". It now renders inside .ln-demo-grid with the shared
+    signature-card shape (.ln-demo.ln-demo-ai) and still owns the #ai-detect-demo anchor.
+    """
+    app.config["STAFF_AUTH"] = True
+    html = client.get("/").data.decode("utf-8")
+
+    # the card lives inside the demo grid, next to the other signature cards
+    grid_start = html.index('<div class="ln-demo-grid">')
+    grid_end = html.index('id="join"')
+    xray = html.index('class="ln-demo ln-demo-ai')
+    assert grid_start < xray < grid_end
+    for sibling in ("ln-demo-sl", "ln-demo-voice", "ln-demo-walk"):
+        assert sibling in html[grid_start:grid_end]
+
+    # the standalone banner shells are gone, the anchor and the live engine are not
+    for gone in ("sk-ai-banner-sec", "sk-ai-banner-shell", "sk-ai-mode-bar", "sk-ai-preset"):
+        assert gone not in html, gone
+    for kept in ('id="ai-detect-demo"', 'class="ai-presets"', 'data-ai-preset="chatgpt"',
+                 'id="sk-ai-arc-fill"', 'id="sk-ai-viewport"', 'id="sk-ai-autocycle"'):
+        assert kept in html, kept
+
+    # one <h1> on the page and the card's own heading is an h3 in the demo rhythm
+    assert html.count("<h1") == 1
+    assert '<h3 id="ai-demo-heading">' in html
+
+
+def test_landing_fills_the_side_gutters_with_a_live_canvas(app, client):
+    """No dead white bands down the sides: an ambient canvas + a wrapping background."""
+    app.config["STAFF_AUTH"] = True
+    html = client.get("/").data.decode("utf-8")
+    for needle in ("sk-ambient-canvas", "sk-amb-orb", "sk-amb-dial", "sk-ambient-rail",
+                   "sk-amb-chip", "sk-amb-spine"):
+        assert needle in html, needle
+    css = client.get("/static/css/landing.css").data.decode("utf-8")
+    for rule in (".sk-ambient-canvas::before", ".sk-ambient-canvas::after", "skAmbAurora",
+                 ".sk-ambient-rail", "@media(max-width:1739px)"):
+        assert rule in css, rule

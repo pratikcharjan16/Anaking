@@ -492,40 +492,68 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 .sk-ai-ribbon p strong{color:#fae596}
 .sk-ai-ribbon-cta{flex:none}
 
-.sk-ai-banner-sec{max-width:1280px;margin:0 auto;padding:24px clamp(20px,5vw,72px) 58px}
-.sk-ai-banner-shell{position:relative;border-radius:26px;padding:clamp(22px,3.2vw,36px);
-  background:linear-gradient(160deg,#12211b 0%,#172c24 52%,#1c362c 100%);
-  color:#f6f2e7;border:1.5px solid #2d5243;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.12),0 7px 0 #0a1511,0 28px 60px rgba(15,28,22,.22);
-  overflow:hidden}
-.sk-ai-banner-top{display:flex;justify-content:space-between;align-items:flex-end;gap:20px;flex-wrap:wrap;
-  padding-bottom:22px;border-bottom:1px solid rgba(255,255,255,.11);margin-bottom:24px}
-.sk-ai-eyebrow{display:inline-flex;align-items:center;gap:8px;margin:0 0 8px;
-  font-size:11px;font-weight:850;letter-spacing:.13em;text-transform:uppercase;color:#f6df8e}
+/* ---- SIGNATURE DEMO CARD: FORENSIC VERBATIM X-RAY (matches .ln-demo-sl / -voice / -walk) ---- */
+.ln-demo.ln-demo-ai{
+  grid-column:1 / -1;
+  padding:24px 24px 26px;
+  border-radius:22px;
+  border:2px solid #cbdbd2;
+  background:
+    radial-gradient(660px 280px at 0% 0%,rgba(29,138,111,.11),transparent 70%),
+    radial-gradient(640px 280px at 100% 100%,rgba(212,175,55,.13),transparent 70%),
+    linear-gradient(180deg,#fdfefb 0%,#f4f8f3 46%,#f8f2e5 100%);
+  box-shadow:0 16px 38px rgba(20,45,35,.09),0 4px 0 #d6e0d8;
+}
+.ln-demo.ln-demo-ai:hover{transform:translateY(-3px);box-shadow:0 24px 48px rgba(20,45,35,.13),0 4px 0 #cbd9d0}
+
+.ai-card-top{display:grid;grid-template-columns:minmax(0,1fr) minmax(300px,.68fr);
+  align-items:start;gap:16px 26px;margin-bottom:18px}
+.ai-card-titlewrap{max-width:none}
+.ai-eyebrow-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:8px}
+.ln-demo-tag.ai-tag-emerald{background:#e8f3ee;color:#14614f;border-color:#c5dfd3}
+.ai-engine-chip{display:inline-flex;align-items:center;gap:7px;padding:4px 11px;border-radius:999px;
+  background:#142d24;color:#f3d27a;font-size:10px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
+.ai-engine-chip .sk-ai-pulse{width:7px;height:7px}
+.ln-demo.ln-demo-ai h3{margin:0 0 8px;font-size:clamp(21px,2.5vw,28px);line-height:1.18;letter-spacing:-.02em;color:#16241d;display:block}
+.ln-demo.ln-demo-ai h3 em{font-style:normal;color:#1a7a5e}
+.ln-demo.ln-demo-ai .ai-card-titlewrap p{font-size:13.5px;line-height:1.62;color:#414d45;max-width:74ch}
+.ln-demo.ln-demo-ai .ai-card-titlewrap p strong{color:#142c21}
+
 .sk-ai-pulse{width:8px;height:8px;border-radius:50%;background:#3aa886;
   box-shadow:0 0 0 4px rgba(58,168,134,.26);animation:dmPulse 1.8s ease-in-out infinite}
-.sk-ai-banner-top h2{margin:0 0 10px;font-size:clamp(25px,3vw,36px);line-height:1.12;letter-spacing:-.025em;color:#fff;max-width:24ch}
-.sk-ai-banner-top h2 em{font-style:italic;color:#fae596}
-.sk-ai-sub{margin:0;max-width:64ch;font-size:14px;line-height:1.62;color:#cfe0d7}
-.sk-ai-sub strong{color:#fff}
 
-.sk-ai-mode-bar{display:flex;gap:8px;flex-wrap:wrap}
-.sk-ai-preset{border:1px solid rgba(255,255,255,.22);border-radius:12px;padding:8px 13px;
-  background:linear-gradient(180deg,rgba(255,255,255,.14) 0%,rgba(255,255,255,.06) 100%);
-  color:#eef5f0;font:inherit;font-size:12px;font-weight:800;cursor:pointer;
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.22),0 3px 0 #0a1511;
-  transition:transform .15s ease,background .15s ease,border-color .15s ease}
-.sk-ai-preset:hover{transform:translateY(-1px);background:rgba(255,255,255,.2)}
-.sk-ai-preset.is-active{background:linear-gradient(180deg,#f6e29c 0%,#d8b546 100%);
-  border-color:#e5c55a;color:#231b06;
-  box-shadow:inset 0 1px 0 #fff8dc,0 3px 0 #8a6c14}
+.ai-presets{display:grid;grid-template-columns:1fr 1fr;gap:6px;background:#e9efe9;padding:6px;
+  border-radius:14px;border:1px solid #d6e0d7;box-shadow:inset 0 2px 4px rgba(24,45,34,.06);
+  width:100%;max-width:430px;justify-self:end}
+.ai-preset:last-child{grid-column:1 / -1}
+.ai-preset{appearance:none;border:1px solid transparent;border-radius:10px;padding:8px 11px;
+  background:transparent;color:#33423a;font:inherit;font-size:12px;font-weight:750;cursor:pointer;
+  display:inline-flex;align-items:center;gap:7px;transition:all .16s ease;white-space:nowrap;
+  justify-content:flex-start;min-width:0}
+.ai-preset:last-child{justify-content:center}
+.ai-preset:hover{background:rgba(255,255,255,.72);color:#12251d}
+.ai-preset.is-active{background:#16382c;color:#fff;border-color:#26594a;
+  box-shadow:0 3px 0 #0b1f18,0 6px 14px rgba(18,45,35,.2)}
+.ai-preset b{font-weight:850;opacity:.72;font-variant-numeric:tabular-nums}
+.ai-preset.is-active b{opacity:.95}
+.ai-p-dot{width:8px;height:8px;border-radius:50%;flex-shrink:0}
+.ai-p-dot.bad{background:#e06c5a;box-shadow:0 0 0 2px rgba(224,108,90,.28)}
+.ai-p-dot.ok{background:#3aa886;box-shadow:0 0 0 2px rgba(58,168,134,.28)}
+.ai-p-dot.warn{background:#e0c165;box-shadow:0 0 0 2px rgba(224,193,101,.32)}
+.ai-p-dot.live{background:#5b8def;box-shadow:0 0 0 2px rgba(91,141,239,.28)}
 
-.sk-ai-workbench{display:grid;grid-template-columns:1.08fr .92fr;gap:22px;align-items:stretch}
+.sk-ai-workbench{display:grid;grid-template-columns:1.08fr .92fr;gap:16px;align-items:stretch}
+
+/* the shared .ln-demo p rule is scoped to the card copy only, so the instrument
+   panels keep their own type (dark stem, legible verdict line on the dark HUD) */
+.ln-demo.ln-demo-ai .sk-ai-qstem{font-size:15px;line-height:1.4;color:#18241e;font-weight:800}
+.ln-demo.ln-demo-ai .sk-ai-verdict-desc{font-size:12.5px;line-height:1.5;color:#e8f2ec}
+.ln-demo.ln-demo-ai .sk-ai-nudge{font-size:12.5px;line-height:1.5}
 
 /* Left X-Ray Lens Card */
-.sk-ai-lens-card{background:#fffdf8;color:#1e2923;border-radius:20px;padding:20px;
-  border:1.5px solid #dfd3bc;display:flex;flex-direction:column;gap:12px;
-  box-shadow:inset 0 1px 0 #fff,0 5px 0 #b8aa8f,0 16px 34px rgba(8,18,14,.26)}
+.sk-ai-lens-card{background:#fffdf8;color:#1e2923;border-radius:16px;padding:18px;
+  border:1.5px solid #dfd8c8;display:flex;flex-direction:column;gap:12px;
+  box-shadow:inset 0 1px 0 #fff,0 2px 10px rgba(24,45,34,.07)}
 .sk-ai-qhead{display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap}
 .sk-ai-qbadge{padding:4px 10px;border-radius:999px;background:#e8f3ee;border:1px solid #c5dfd3;
   color:#14614f;font-size:10.5px;font-weight:850;letter-spacing:.06em;text-transform:uppercase}
@@ -533,7 +561,13 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 .sk-ai-qstem{margin:0;font-size:15px;font-weight:800;line-height:1.4;color:#18241e}
 
 .sk-ai-xray-viewport{position:relative;min-height:142px;border-radius:14px;padding:14px 15px;
-  background:#f7f2e6;border:1.5px solid #ddd0b7;overflow:hidden;flex:1;display:flex;flex-direction:column}
+  background:
+    linear-gradient(180deg,rgba(255,255,255,.55),rgba(255,255,255,0) 40%),
+    repeating-linear-gradient(0deg,rgba(180,132,48,.07) 0 1px,transparent 1px 26px),
+    #f7f2e6;
+  border:1.5px solid #ddd0b7;overflow:hidden;flex:1;display:flex;flex-direction:column}
+.sk-ai-xray-viewport::after{content:"";position:absolute;inset:6px;border-radius:10px;
+  border:1px dashed rgba(180,132,48,.22);pointer-events:none}
 .sk-ai-scanbeam{position:absolute;left:0;right:0;top:-24px;height:26px;pointer-events:none;
   background:linear-gradient(180deg,rgba(201,162,39,0) 0%,rgba(201,162,39,.28) 65%,rgba(20,97,79,.45) 100%);
   border-bottom:2px solid #1d8a6f;opacity:0}
@@ -566,8 +600,10 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 .sk-ai-nudge strong{margin-right:5px}
 
 /* Right Forensic Radar HUD */
-.sk-ai-hud-card{background:rgba(10,22,18,.58);border:1.5px solid rgba(255,255,255,.14);
-  border-radius:20px;padding:20px;display:flex;flex-direction:column;justify-content:space-between;gap:14px}
+.sk-ai-hud-card{background:linear-gradient(160deg,#12241d 0%,#17332a 58%,#1a3a2f 100%);
+  border:1.5px solid #2a4c3f;border-radius:16px;padding:18px;
+  display:flex;flex-direction:column;justify-content:space-between;gap:14px;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10),0 2px 10px rgba(15,35,26,.18)}
 .sk-ai-gauge-row{display:grid;grid-template-columns:168px 1fr;gap:16px;align-items:center}
 .sk-ai-arc-wrap{position:relative;text-align:center}
 .sk-ai-arc-svg{display:block;width:100%;max-width:196px;margin:0 auto;height:auto;overflow:visible}
@@ -588,7 +624,7 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
 .sk-ai-verdict-pill.ok{background:rgba(58,168,134,.22);border:1px solid #3aa886;color:#a8efd3}
 .sk-ai-verdict-pill.warn{background:rgba(224,193,101,.22);border:1px solid #e0c165;color:#fae596}
 .sk-ai-verdict-pill.bad{background:rgba(224,108,90,.24);border:1px solid #e06c5a;color:#ffc4ba}
-.sk-ai-verdict-desc{margin:8px 0;font-size:12.5px;line-height:1.5;color:#d6e4dc}
+.sk-ai-verdict-desc{margin:8px 0;font-size:12.5px;line-height:1.5;color:#e8f2ec}
 .sk-ai-thresholds{display:flex;gap:10px;flex-wrap:wrap;font-size:10.5px;font-weight:750;color:#aec4b9}
 .sk-ai-thresholds span{display:inline-flex;align-items:center;gap:5px}
 .sk-ai-thresholds i{width:7px;height:7px;border-radius:50%;background:#3aa886;display:inline-block}
@@ -1208,6 +1244,10 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
   .sk-receipt-panel{position:static}
   .sk-kart-rules{grid-template-columns:1fr}
   .sk-ai-workbench{grid-template-columns:1fr}
+  .ai-card-top{grid-template-columns:1fr;gap:14px}
+  .ai-card-titlewrap{max-width:none}
+  .ai-presets{justify-self:stretch;max-width:none;grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}
+  .ai-preset:last-child{grid-column:auto}
   .sk-ai-gauge-row{grid-template-columns:1fr}
   .sk-ai-arc-wrap{max-width:210px;margin:0 auto}
   .sk-ai-telemetry-grid{grid-template-columns:repeat(2,1fr)}
@@ -1236,11 +1276,11 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
   .sk-shop-panel,.sk-receipt-panel{padding:16px;border-radius:18px}
   .sk-catalog-grid{grid-template-columns:1fr}
   .ln-moves,.ln-demos,.ln-features,.ln-join{padding:42px 14px}
-  .sk-ai-banner-sec{padding:14px 14px 44px}
-  .sk-ai-banner-shell{padding:18px 15px;border-radius:20px}
-  .sk-ai-mode-bar{display:grid;grid-template-columns:1fr 1fr;width:100%}
-  .sk-ai-preset{text-align:center;padding:8px 8px;font-size:11.5px}
-  .sk-ai-lens-card,.sk-ai-hud-card{padding:15px;border-radius:16px}
+  .ln-demo.ln-demo-ai{padding:18px 14px 20px;border-radius:18px}
+  .ai-presets{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .ai-preset{justify-content:center;padding:8px 8px;font-size:11.5px}
+  .ai-preset b{display:none}
+  .sk-ai-lens-card,.sk-ai-hud-card{padding:15px;border-radius:14px}
   .ln-demo.ln-demo-sl{padding:18px 14px 20px;border-radius:18px}
   .sl-presets{display:grid;grid-template-columns:1fr 1fr;width:100%}
   .sl-preset{justify-content:center;padding:8px 8px;font-size:11.5px}
@@ -1277,7 +1317,8 @@ body.landing .appnav-link.on{background:#fff;color:var(--accent,#1c6652)}
   .dm-donut{margin:0 auto}
   .dm-qbar{grid-template-columns:92px 1fr;gap:7px}
   .dm-toast,.dm-rule{position:static;margin-top:10px}
-  .sk-ai-mode-bar{grid-template-columns:1fr}
+  .ai-presets{grid-template-columns:1fr 1fr}
+  .ai-preset:last-child{grid-column:1 / -1}
   .sl-presets,.vc-presets,.wt-chapters{grid-template-columns:1fr}
   .sl-metrics-grid,.vc-kpis,.wt-kpis{grid-template-columns:1fr}
   .vc-reel-cluster{width:100%;justify-content:space-between}
@@ -1294,13 +1335,15 @@ body.landing{
   position:relative;
   background-color:#faf6ec;
   background-image:
-    radial-gradient(1100px 620px at 6% 8%, rgba(245,158,11,0.16), transparent 62%),
-    radial-gradient(1050px 640px at 94% 12%, rgba(20,83,45,0.11), transparent 64%),
-    radial-gradient(1200px 720px at 92% 48%, rgba(234,88,12,0.10), transparent 65%),
-    radial-gradient(1100px 680px at 8% 72%, rgba(212,175,55,0.14), transparent 64%),
-    radial-gradient(rgba(180,130,45,0.13) 1px, transparent 1px),
-    linear-gradient(180deg, #fcf9f2 0%, #f6efe0 36%, #faf5e8 72%, #f4ecda 100%);
-  background-size:auto, auto, auto, auto, 28px 28px, 100% 100%;
+    radial-gradient(1200px 660px at 4% 4%, rgba(245,158,11,0.20), transparent 62%),
+    radial-gradient(1100px 660px at 96% 8%, rgba(20,97,79,0.16), transparent 64%),
+    radial-gradient(1240px 760px at 94% 44%, rgba(234,88,12,0.12), transparent 65%),
+    radial-gradient(1160px 720px at 6% 70%, rgba(212,175,55,0.17), transparent 64%),
+    radial-gradient(900px 620px at 50% 104%, rgba(29,138,111,0.12), transparent 64%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160' viewBox='0 0 160 160'%3E%3Cg fill='none' stroke='%23b48430' stroke-opacity='.10' stroke-width='1.1'%3E%3Ccircle cx='80' cy='80' r='58' stroke-dasharray='2 9'/%3E%3Ccircle cx='80' cy='80' r='30' stroke-dasharray='1 7'/%3E%3Cpath d='M80 8v14M80 138v14M8 80h14M138 80h14'/%3E%3C/g%3E%3Cg fill='%23b48430' fill-opacity='.13'%3E%3Ccircle cx='20' cy='20' r='1.6'/%3E%3Ccircle cx='140' cy='140' r='1.6'/%3E%3C/g%3E%3C/svg%3E"),
+    radial-gradient(rgba(180,130,45,0.14) 1px, transparent 1px),
+    linear-gradient(180deg, #fdfaf3 0%, #f7f0e1 34%, #fbf6ea 68%, #f3ebd8 100%);
+  background-size:auto, auto, auto, auto, auto, 160px 160px, 28px 28px, 100% 100%;
   background-attachment:scroll;
 }
 body.landing .an-appbar{
@@ -1431,68 +1474,182 @@ body.landing .an-appbar{
 }
 
 /* Warm Ambient Side-Rails (Decorative SurveyKart Telemetry Tokens on Wide Screens) */
+/* Decorative aurora + forensic instrumentation that fills the wide side gutters */
 .sk-ambient-canvas{
   position:fixed;
-  inset:76px 0 0 0;
+  inset:70px 0 0 0;
   pointer-events:none;
   z-index:0;
   overflow:hidden;
 }
+.sk-ambient-canvas::before{
+  content:"";
+  position:absolute;
+  inset:-12% -6%;
+  background:
+    radial-gradient(34vw 34vw at 12% 16%, rgba(245,158,11,0.22), transparent 62%),
+    radial-gradient(30vw 30vw at 88% 12%, rgba(20,97,79,0.20), transparent 64%),
+    radial-gradient(32vw 32vw at 84% 82%, rgba(234,88,12,0.14), transparent 62%),
+    radial-gradient(30vw 30vw at 14% 80%, rgba(29,138,111,0.18), transparent 62%),
+    radial-gradient(26vw 26vw at 50% 48%, rgba(212,175,55,0.13), transparent 66%);
+  animation:skAmbAurora 26s ease-in-out infinite alternate;
+}
+.sk-ambient-canvas::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  background-image:
+    radial-gradient(rgba(180,130,45,0.20) 1px, transparent 1.4px),
+    linear-gradient(to right, rgba(180,130,45,0.10) 1px, transparent 1px),
+    linear-gradient(to bottom, rgba(180,130,45,0.10) 1px, transparent 1px);
+  background-size:26px 26px, 130px 130px, 130px 130px;
+  -webkit-mask-image:radial-gradient(ellipse 62% 58% at 50% 42%, transparent 42%, #000 100%);
+  mask-image:radial-gradient(ellipse 62% 58% at 50% 42%, transparent 42%, #000 100%);
+  opacity:.7;
+}
+@keyframes skAmbAurora{
+  0%{transform:translate3d(0,0,0) scale(1)}
+  50%{transform:translate3d(1.6%,-1.4%,0) scale(1.05)}
+  100%{transform:translate3d(-1.4%,1.6%,0) scale(1.02)}
+}
+.sk-amb-orbs{position:absolute;inset:0}
+.sk-amb-orb{
+  position:absolute;
+  border-radius:50%;
+  filter:blur(2px);
+  background:radial-gradient(circle at 34% 30%, rgba(255,252,240,.92), rgba(246,226,156,.42) 46%, rgba(29,138,111,.16) 78%, transparent 82%);
+  box-shadow:0 24px 60px -28px rgba(120,70,20,.35), inset 0 1px 0 rgba(255,255,255,.85);
+  animation:skAmbDrift 22s ease-in-out infinite;
+}
+.sk-amb-orb.o1{width:150px;height:150px;left:5%;top:16%}
+.sk-amb-orb.o2{width:96px;height:96px;right:7%;top:34%;animation-delay:-6s;animation-duration:26s}
+.sk-amb-orb.o3{width:184px;height:184px;left:9%;bottom:14%;animation-delay:-11s;animation-duration:30s;opacity:.72}
+.sk-amb-orb.o4{width:120px;height:120px;right:4%;bottom:22%;animation-delay:-3s;opacity:.8}
+@keyframes skAmbDrift{
+  0%,100%{transform:translate3d(0,0,0) rotate(0deg)}
+  33%{transform:translate3d(10px,-18px,0) rotate(6deg)}
+  66%{transform:translate3d(-12px,12px,0) rotate(-5deg)}
+}
+/* rails live strictly inside the page gutter — the same box the sections use, so a
+   chip can never sit on top of the content on smaller screens */
 .sk-ambient-rail{
   position:absolute;
   top:0;
   bottom:0;
-  width:180px;
+  width:calc((100vw - min(1680px, 96vw)) / 2);
   display:flex;
   flex-direction:column;
   justify-content:space-around;
-  padding:40px 14px;
-  opacity:0.72;
+  align-items:center;
+  padding:56px 0;
+  opacity:.94;
 }
-.sk-ambient-rail.left{left:8px;align-items:flex-start}
-.sk-ambient-rail.right{right:8px;align-items:flex-end}
+.sk-ambient-rail.left{left:0}
+.sk-ambient-rail.right{right:0}
+.sk-amb-spine{
+  position:absolute;
+  top:6%;
+  bottom:6%;
+  width:0;
+  border-left:1.5px dashed rgba(180,130,45,.26);
+}
+.sk-ambient-rail.left .sk-amb-spine{left:50%}
+.sk-ambient-rail.right .sk-amb-spine{right:50%}
 .sk-amb-chip{
+  position:relative;
+  z-index:1;
   display:inline-flex;
   align-items:center;
-  gap:6px;
-  padding:6px 11px;
-  border-radius:999px;
-  font-size:10.5px;
+  justify-content:center;
+  gap:4px;
+  max-width:calc(100% - 12px);
+  padding:8px 7px;
+  border-radius:14px;
+  font-size:9px;
   font-weight:800;
-  letter-spacing:.08em;
+  line-height:1.25;
+  letter-spacing:.07em;
+  text-align:center;
   text-transform:uppercase;
   color:#6b4e16;
-  background:linear-gradient(135deg, rgba(255,251,238,0.88), rgba(254,243,199,0.72));
-  border:1px solid rgba(217,119,6,0.24);
-  box-shadow:0 8px 22px -12px rgba(120,53,15,0.22);
+  background:linear-gradient(135deg, rgba(255,252,242,0.94), rgba(254,243,199,0.82));
+  border:1px solid rgba(217,119,6,0.26);
+  box-shadow:0 12px 26px -14px rgba(120,53,15,0.30), inset 0 1px 0 rgba(255,255,255,.9);
+  backdrop-filter:blur(4px);
   animation:skAmbFloat 7s ease-in-out infinite;
+}
+.sk-amb-chip i{font-size:13px;line-height:1}
+.sk-amb-chip.alt{
+  color:#14513f;
+  background:linear-gradient(135deg, rgba(248,253,250,0.94), rgba(221,240,231,0.84));
+  border-color:rgba(20,97,79,0.26);
+  box-shadow:0 12px 26px -14px rgba(20,97,79,0.30), inset 0 1px 0 rgba(255,255,255,.9);
 }
 .sk-amb-chip i{font-style:normal}
 .sk-amb-chip.c2,.sk-amb-chip.c5{animation-delay:-2.3s}
 .sk-amb-chip.c3,.sk-amb-chip.c6{animation-delay:-4.6s}
+.sk-amb-dial{
+  position:absolute;
+  width:260px;
+  height:260px;
+  border-radius:50%;
+  pointer-events:none;
+  background-image:
+    repeating-conic-gradient(from 0deg, rgba(180,130,45,.22) 0deg 0.7deg, transparent 0.7deg 12deg);
+  -webkit-mask-image:radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+  mask-image:radial-gradient(circle, transparent 62%, #000 63%, #000 68%, transparent 69%);
+  animation:skAmbSpin 90s linear infinite;
+}
+.sk-amb-dial.d1{left:-150px;top:20%}
+.sk-amb-dial.d2{right:-150px;top:56%;animation-direction:reverse}
 .sk-amb-ring{
   position:absolute;
-  width:220px;
-  height:220px;
+  width:320px;
+  height:320px;
   border-radius:50%;
-  border:1px dashed rgba(217,119,6,0.22);
+  border:1.5px dashed rgba(180,130,45,.20);
   pointer-events:none;
 }
-.sk-amb-ring.r1{left:-90px;top:38%}
-.sk-amb-ring.r2{right:-90px;top:52%}
+.sk-amb-ring.r1{left:-160px;bottom:-90px}
+.sk-amb-ring.r2{right:-160px;top:-90px}
+@keyframes skAmbSpin{to{transform:rotate(360deg)}}
 @keyframes skAmbFloat{
   0%,100%{transform:translateY(0px)}
   50%{transform:translateY(-8px)}
 }
-@media(max-width:1620px){
-  .sk-ambient-canvas{opacity:0.28}
+/* the rails need a real gutter: below ~1740px the sections are 96vw wide, so the
+   chips would land on the content — the aurora, dots, orbs and dials still fill it */
+@media(max-width:1739px){
+  .sk-ambient-rail{display:none}
 }
-@media(max-width:1360px){
-  .sk-ambient-canvas{display:none}
+@media(max-width:1500px){
+  .sk-ambient-canvas{opacity:.62}
+  .sk-amb-dial{display:none}
+}
+@media(max-width:1100px){
+  .sk-amb-orb.o2,.sk-amb-orb.o4{display:none}
+}
+@media(max-width:900px){
+  .sk-ambient-canvas::after{display:none}
+  .sk-amb-orb{display:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .sk-ambient-canvas::before,
+  .sk-amb-orb,
+  .sk-amb-chip,
+  .sk-amb-dial{animation:none}
 }
 body.landing main > section{
   position:relative;
   z-index:1;
+}
+/* anchor jumps (Verbatim X-Ray, Kart demo, …) land below the sticky app bar, which
+   grows to two rows on laptop widths — so the offset is generous on purpose */
+body.landing [id]{
+  scroll-margin-top:150px;
+}
+@media(max-width:640px){
+  body.landing [id]{scroll-margin-top:96px}
 }
 
 /* =====================================================================
@@ -1973,7 +2130,9 @@ body.landing main > section{
 .ln-join-card h3{
   font-size:16px!important;
 }
-.ln-demo p,
+/* the demo-card copy gets one uniform size; the X-Ray card's own instrument panels
+   (.sk-ai-qstem / -verdict-desc / -nudge) set their own type and are left alone */
+.ln-demo p:not(.sk-ai-qstem):not(.sk-ai-verdict-desc):not(.sk-ai-nudge),
 .ln-feat p,
 .ln-join-card p:not(.an-eyebrow){
   font-size:13px!important;
@@ -2288,24 +2447,23 @@ body.landing main > section{
     grid-template-columns:1fr;
     gap:12px;
   }
-  .sk-ai-banner-sec{
-    padding:12px 12px 32px;
-  }
-  .sk-ai-banner-shell{
-    padding:16px 13px;
+  .ln-demo.ln-demo-ai{
+    padding:16px 13px 18px;
     border-radius:18px;
   }
-  .sk-ai-mode-bar{
+  .ai-presets{
     display:grid;
     grid-template-columns:repeat(2, minmax(0, 1fr));
     width:100%;
     gap:6px;
   }
-  .sk-ai-preset{
-    text-align:center;
+  .ai-preset{
+    justify-content:center;
     padding:8px 6px;
     font-size:11px;
   }
+  .ai-preset:last-child{grid-column:1 / -1}
+  .ai-preset b{display:none}
   .sk-ai-lens-card,
   .sk-ai-hud-card{
     padding:14px 12px;
@@ -2459,7 +2617,6 @@ body.landing main > section{
   .sk-flow-nodes{
     grid-template-columns:1fr;
   }
-  .sk-ai-mode-bar,
   .sl-presets,
   .vc-presets,
   .wt-chapters{

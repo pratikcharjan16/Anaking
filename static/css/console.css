@@ -230,7 +230,7 @@ body.adk-body main.adk {
 .adk-row {
   width: 100%;
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr) auto;
+  grid-template-columns: 34px minmax(0, 1fr) auto auto;
   align-items: center;
   gap: 9px;
   padding: 8px 9px;
@@ -306,6 +306,19 @@ body.adk-body main.adk {
   background: var(--an-line-soft);
   color: var(--an-muted);
 }
+.adk-row-pts {
+  font-size: 9.5px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  padding: 2px 6px;
+  border-radius: var(--an-radius-pill);
+  border: 1px solid var(--an-line);
+  background: var(--an-panel);
+  color: var(--an-accent);
+  white-space: nowrap;
+}
+.adk-row-pts.zero { background: var(--an-bad-soft); border-color: transparent; color: var(--an-bad); }
+.adk-row-pts.admin { background: var(--an-warn-soft); border-color: transparent; color: var(--an-warn); }
 .adk-row-tag.admin { background: var(--an-warn-soft); color: var(--an-warn); }
 .adk-row-tag.pending { background: var(--an-warn-soft); color: var(--an-warn); }
 .adk-row-tag.blocked { background: var(--an-bad-soft); color: var(--an-bad); }
@@ -557,6 +570,10 @@ body.adk-body main.adk {
   color: var(--an-muted);
 }
 .adk-form { display: grid; gap: 10px; }
+/* Overview-tab Kart control: the admin can move points without opening the ledger. */
+.adk-kart-quick { border-left: 3px solid var(--an-accent); }
+.adk-kart-quick .adk-actions { flex-wrap: wrap; }
+.adk-kart-quick .adk-box-sub b { color: var(--an-ink); font-variant-numeric: tabular-nums; }
 .adk-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .adk-field { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
 .adk-field > span {
