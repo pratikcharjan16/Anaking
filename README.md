@@ -104,6 +104,32 @@ The team apps (Projects / Studio / Monitor) are multi-user:
 `/auth/dev` is a development-only e-mail sign-in shortcut (`DEV_LOGIN=1`, never available
 when `ANAKING_ENV=production`) for demos and QA without Google credentials.
 
+### Local `.env` credentials
+
+Keep local secrets in the project-root `.env` file. It is ignored by Git; `.env.example` is a
+safe placeholder template that can be committed. The app loads `.env` automatically through
+`python-dotenv`, while real process environment variables take precedence.
+
+```powershell
+# Windows PowerShell (run once, then edit .env locally)
+Copy-Item .env.example .env
+pip install -r requirements.txt
+python app.py
+```
+
+```bash
+# macOS / Linux equivalent
+cp .env.example .env
+pip install -r requirements.txt
+python3 app.py
+```
+
+The template includes `SECRET_KEY`, `ADMIN_USERNAME`, `ADMIN_PASSWORD`, `ADMIN_EMAILS`,
+`GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, the optional local-AI settings, and the
+`BEACON_SMTP_*` mail settings. Leaving `ADMIN_PASSWORD` empty disables password sign-in for
+the protected master-admin account. Never commit real credentials or upload `.env` to an issue,
+pull request, screenshot, or chat.
+
 ### Deploying to production
 
 ```bash
@@ -113,6 +139,8 @@ export SECRET_KEY="..."                     # required; a long random string
 export STAFF_AUTH=1                         # forced on in production anyway
 export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
+export ADMIN_USERNAME="your-admin-username"
+export ADMIN_PASSWORD="your-strong-admin-password"
 export ADMIN_EMAILS="you@your.org"
 export DB_PATH=/var/lib/anaking/survey.db   # optional; default data/survey.db
 gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"

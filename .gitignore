@@ -1,3 +1,9 @@
+# local environment secrets (.env.example contains placeholders and is safe to commit)
+.env
+.env.*
+!.env.example
+data/mail.json
+
 # python
 __pycache__/
 *.pyc

@@ -7,9 +7,15 @@ laptop, in a container or behind a production WSGI server.
 
 import os
 
+from dotenv import load_dotenv
+
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(BASE_DIR, "data")
 UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
+
+# Load local development secrets without overriding real process environment variables.
+# The .env file is ignored by Git; production should use the host's secret manager.
+load_dotenv(os.path.join(BASE_DIR, ".env"), override=False)
 
 
 class Config:
@@ -29,6 +35,10 @@ class Config:
     # explicitly enabled DEV_LOGIN shortcut works (never in production).
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    # Protected username/password admin. Leave ADMIN_PASSWORD empty to disable
+    # password sign-in for this account; Google admins can use ADMIN_EMAILS below.
+    ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Anaking.admin").strip() or "Anaking.admin"
+    ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
     # Comma-separated emails that become platform admins (auto-approved) on first
     # sign-in - the bootstrap so the admin console can never be locked out.
     ADMIN_EMAILS = [e.strip().lower() for e in os.environ.get("ADMIN_EMAILS", "").split(",") if e.strip()]
