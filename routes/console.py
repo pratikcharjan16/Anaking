@@ -6,7 +6,7 @@ Admin console & Admin portal — protected SurveyKart control center.
     GET  /api/admin/console/overview             stats + every profile + Kart points + requests
     GET  /api/admin/console/projects?user_id=    what one account has built + Kart usage
     POST /api/admin/console/project/owner        transfer or take ownership of a project
-    POST /api/admin/console/decision             {user_id, decision: approve|reject|disable|enable}
+    POST /api/admin/console/decision             {user_id, decision: approve|reject|disable|enable, points?: welcome pts on approve (default 100)}
     POST /api/admin/console/role                 {user_id, role: user|admin}
     POST /api/admin/console/points               {user_id, delta?, points_limit?, reason?}
     POST /api/admin/console/point-requests/decide {request_id, decision: approve|reject, points?}
@@ -29,7 +29,9 @@ bp = Blueprint("console", __name__)
 
 ACTION_LABELS = {
     "auth/signin": ("Signed in", "signin"),
-    "auth/register": ("Registered on SurveyKart (+100 pts)", "account"),
+    "auth/admin-signin": ("Admin signed in (Admin Login)", "signin"),
+    "auth/register": ("Registered on SurveyKart", "account"),
+    "auth/approval-request": ("Requested account approval (100 pts on approval)", "account"),
     "console/decision": ("Account decision", "account"),
     "console/role": ("Changed a role", "account"),
     "console/points": ("Adjusted Kart points", "account"),
@@ -208,6 +210,11 @@ def project_owner():
 
 @bp.post("/api/admin/console/decision")
 def decision():
+    """Approve / reject / disable / enable an account.
+
+    Approving accepts the optional ``points`` welcome allocation (default
+    100 Kart pts): the one-time grant lands in the user's Kart in the same
+    action, exactly once (accounts.set_status owns the rule)."""
     adm = _require_admin()
     body = json_body()
     user = accounts.by_id(body.get("user_id") or 0)
@@ -221,13 +228,32 @@ def decision():
     if user["role"] == "admin" and mapped[decision_val] != "approved":
         if accounts.count_admins() <= 1:
             abort(400, "The last admin cannot be locked out.")
+    points_raw = body.get("points")
+    try:
+        welcome_points = int(points_raw) if points_raw not in (None, "") else None
+    except (TypeError, ValueError):
+        abort(400, "points must be a number")
     try:
         updated = accounts.set_status(user["id"], mapped[decision_val],
-                                      approved_by=adm.get("email", "admin"))
+                                      approved_by=adm.get("email", "admin"),
+                                      welcome_points=welcome_points)
     except ValueError as exc:
         abort(400, str(exc))
-    audit("console/decision", detail=f"{user['email']} -> {mapped[decision_val]}")
-    return jsonify({"ok": True, "user": updated})
+    granted = int(updated.pop("welcome_points_granted", 0) or 0)
+    updated.pop("password_hash", None)
+    from core.kart import user_points_usage
+    used = user_points_usage(updated["id"])
+    updated["points_used"] = used
+    updated["points_balance"] = (accounts.ADMIN_UNLIMITED_POINTS if updated["role"] == "admin"
+                                 else max(0, int(updated["points_limit"]) - used))
+    updated["welcome_points_pending"] = accounts.welcome_points_pending(updated)
+    detail = f"{user['email']} -> {mapped[decision_val]}"
+    if mapped[decision_val] == "approved" and granted:
+        detail += f" (+{granted} Kart pts welcome allocation)"
+    audit("console/decision", detail=detail)
+    if mapped[decision_val] == "approved":
+        accounts.notify_user_approved(updated, granted)
+    return jsonify({"ok": True, "user": updated, "welcome_points_granted": granted})
 
 
 @bp.post("/api/admin/console/role")

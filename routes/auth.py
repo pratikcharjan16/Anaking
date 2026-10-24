@@ -2,6 +2,8 @@
 SurveyKart platform accounts: registration, sign-in, Kart points, and share redemption.
 
     GET  /signin                    sign in (Username/E-mail + Password, or Google)
+    GET  /admin-login               SEPARATE Admin Login (platform owner only)
+    POST /api/auth/admin-login      {identifier, password, next?} -> Admin Console
     GET  /register                  register a new SurveyKart account (+100 Kart points!)
     GET  /recover                   account lookup & recovery
     POST /api/auth/login            {identifier, password, next?, share_token?}
@@ -11,8 +13,11 @@ SurveyKart platform accounts: registration, sign-in, Kart points, and share rede
     GET  /api/kart/catalog          dedicated question point catalog (public)
     GET  /api/kart/me               signed-in user's Kart balance, breakdown & shared links
     POST /api/kart/request-points   request Admin to allocate additional Kart points
-    GET  /auth/google?mode=...      Google OAuth start
+    GET  /auth/google?mode=...      Google OAuth start (new & returning users alike)
     GET  /auth/google/callback      Google OAuth callback
+    GET  /welcome                   friendly account-status page: a new Google
+                                    account's "request sent to admin" screen,
+                                    live-updating until approval adds 100 Kart pts
     POST /auth/dev                  DEV_LOGIN shortcut (never in production)
     POST /auth/logout               end the session
     GET  /api/me                    who is signed in (page chrome + Kart summary)
@@ -60,7 +65,7 @@ def is_admin_actor_global() -> bool:
     return False
 
 
-SAFE_NEXT = ("/workspace/", "/studio/", "/admin/", "/admin/console", "/admin-portal", "/survey/", "/")
+SAFE_NEXT = ("/welcome", "/workspace/", "/studio/", "/admin/", "/admin/console", "/admin-portal", "/survey/", "/")
 
 
 def _safe_next(raw: str | None, fallback: str = "/workspace/") -> str:
@@ -96,10 +101,15 @@ def session_user_payload(user: dict) -> dict:
         "picture": user["picture"],
         "role": user["role"],
         "status": user["status"],
+        "auth_source": accounts.auth_source(user),
         "is_protected": bool(user.get("is_protected")),
         "points_limit": limit,
         "points_used": used,
         "points_balance": 999999 if is_admin else max(0, limit - used),
+        # 100 while a Google account waits for admin approval (the welcome
+        # allocation lands in the Kart at the moment of approval), else 0.
+        "welcome_points_pending": accounts.welcome_points_pending(user),
+        "created_at": user.get("created_at") or "",
     }
 
 
@@ -124,7 +134,7 @@ def signin_page():
     return render_template(
         "auth_gate.html",
         mode="login",
-        hint=request.args.get("unknown") or request.args.get("email") or "",
+        hint=request.args.get("email") or "",
         next_url=request.args.get("next") or "",
         share_token=share_tok if share_info else "",
         share_info=share_info,
@@ -169,11 +179,39 @@ def open_share_link(token: str):
         q_email = ("&email=" + share["shared_with_email"]) if share.get("shared_with_email") else ""
         return redirect(f"/register?share={token}{q_email}")
     if user.get("status") != "approved":
-        return redirect("/?welcome=1")
+        # Keep the link safe; it opens automatically once the admin approves.
+        session["pending_share_token"] = token
+        return redirect("/welcome")
     redeemed = redeem_share(token, user)
     g.user = user
     audit("share/redeem", study=share["study_slug"], detail=f"permission={share['permission']} (0 pts debited)")
     return redirect(_share_redirect(redeemed, "/studio/"))
+
+
+# --------------------------------------------------------------------- sign-in throttling
+def _login_attempt_row():
+    address = request.remote_addr or "unknown"
+    return address, get_db().execute(
+        "SELECT * FROM login_attempts WHERE address=?", (address,)).fetchone()
+
+
+def _login_throttled() -> bool:
+    _address, attempt = _login_attempt_row()
+    return bool(attempt and attempt["attempts"] >= 12 and time.time() - attempt["since"] < 900)
+
+
+def _record_login_failure() -> None:
+    address, attempt = _login_attempt_row()
+    count = attempt["attempts"] + 1 if attempt and time.time() - attempt["since"] < 900 else 1
+    since = attempt["since"] if count > 1 else time.time()
+    with get_db() as db:
+        db.execute("INSERT OR REPLACE INTO login_attempts VALUES(?,?,?)", (address, count, since))
+
+
+def _clear_login_failures() -> None:
+    with get_db() as db:
+        db.execute("DELETE FROM login_attempts WHERE address=?",
+                   (request.remote_addr or "unknown",))
 
 
 # --------------------------------------------------------------------- Direct Credentials Auth
@@ -224,18 +262,12 @@ def api_login():
     if not ident or not password:
         return jsonify({"error": "Enter your username (or e-mail) and password."}), 400
 
-    address = request.remote_addr or "unknown"
-    db = get_db()
-    attempt = db.execute("SELECT * FROM login_attempts WHERE address=?", (address,)).fetchone()
-    if attempt and attempt["attempts"] >= 12 and time.time() - attempt["since"] < 900:
+    if _login_throttled():
         return jsonify({"error": "Too many sign-in attempts. Please wait 15 minutes and try again."}), 429
 
     user = accounts.authenticate_credentials(ident, password)
     if not user:
-        count = attempt["attempts"] + 1 if attempt and time.time() - attempt["since"] < 900 else 1
-        since = attempt["since"] if count > 1 else time.time()
-        with db:
-            db.execute("INSERT OR REPLACE INTO login_attempts VALUES(?,?,?)", (address, count, since))
+        _record_login_failure()
         return jsonify({"error": "Invalid username/e-mail or password."}), 401
 
     if user.get("status") != "approved":
@@ -246,8 +278,7 @@ def api_login():
         }
         return jsonify({"error": msgs.get(user.get("status"), "Account is not active.")}), 403
 
-    with db:
-        db.execute("DELETE FROM login_attempts WHERE address=?", (address,))
+    _clear_login_failures()
 
     session.clear()
     session["uid"] = user["id"]
@@ -258,7 +289,8 @@ def api_login():
     redeemed = redeem_share(share_tok, user) if share_tok else None
     if redeemed:
         audit("share/redeem", study=redeemed.get("study_slug", ""), detail="0 pts debited")
-    fallback = "/studio/" if user["role"] == "admin" else "/studio/"
+    # Admins land where their work is (pending approvals, Kart points); users in Studio.
+    fallback = "/admin/console" if user["role"] == "admin" else "/studio/"
     dest = _share_redirect(redeemed, _safe_next(next_raw, fallback=fallback))
     return jsonify({
         "ok": True,
@@ -266,6 +298,86 @@ def api_login():
         "kart": user_kart_summary(user["id"]),
         "shared": redeemed,
         "redirect": dest,
+    })
+
+
+@bp.get("/admin-login")
+def admin_login_page():
+    """Separate front door for the platform owner — kept apart from user sign-in.
+
+    Already signed in as an admin? Straight to the console. Signed in as a
+    regular user? The page says so, and signing in below simply switches
+    account. The page also says plainly when ``ADMIN_PASSWORD`` isn't set up
+    on this server, instead of letting the owner guess at passwords."""
+    user = current_user()
+    if user and user.get("role") == "admin" and user.get("status") == "approved":
+        return redirect(_safe_next(request.args.get("next"), fallback="/admin/console"))
+    return render_template(
+        "admin_login.html",
+        admin_username=accounts.MASTER_ADMIN_USERNAME,
+        admin_password_configured=accounts.master_admin_password_configured(),
+        signed_in_as=(user or {}).get("email") or "",
+        next_url=request.args.get("next") or "",
+    )
+
+
+@bp.post("/api/auth/admin-login")
+def api_admin_login():
+    """Admin-only sign-in (the backend of /admin-login).
+
+    Accepts the protected master admin (``Anaking.admin`` + ``ADMIN_PASSWORD``)
+    or any approved admin account signing in with its own password — and lands
+    in the Admin Console, where pending approval requests wait. Regular user
+    credentials are refused with a clear pointer to the normal sign-in page."""
+    body = request.get_json(silent=True) or {}
+    ident = str(body.get("identifier") or body.get("username") or body.get("email") or "").strip()
+    password = str(body.get("password") or "")
+    next_raw = str(body.get("next") or "")
+
+    if not ident or not password:
+        return jsonify({"error": "Enter the admin username and password."}), 400
+    if _login_throttled():
+        return jsonify({"error": "Too many sign-in attempts. Please wait 15 minutes and try again."}), 429
+
+    if (accounts.is_master_admin_identifier(ident)
+            and not accounts.master_admin_password_configured()):
+        return jsonify({
+            "error": "Admin password sign-in isn't set up on this server yet. "
+                     "Set ADMIN_PASSWORD in the server's .env / environment and restart "
+                     "the app — or use “Sign in with Google” with an ADMIN_EMAILS account.",
+            "code": "admin_password_unconfigured",
+        }), 503
+
+    user = accounts.authenticate_admin(ident, password)
+    if not user:
+        _record_login_failure()
+        existing = accounts.by_email(ident) or accounts.by_username(ident)
+        if accounts.is_master_admin_identifier(ident):
+            msg = ("Incorrect admin password. It must match ADMIN_PASSWORD in the "
+                   "server's .env / environment (restart the app after changing it).")
+        elif existing and not existing.get("password_hash") and existing.get("google_sub"):
+            msg = ("This account signs in with Google (it has no SurveyKart password) "
+                   "— use “Sign in with Google” below.")
+        elif existing and accounts.authenticate_credentials(ident, password):
+            return jsonify({
+                "error": "That account doesn't have admin rights. Use the regular "
+                         "sign-in page — or the master admin username above.",
+                "code": "not_admin",
+            }), 403
+        else:
+            msg = "Invalid admin username or password."
+        return jsonify({"error": msg}), 401
+
+    _clear_login_failures()
+    session.clear()
+    session["uid"] = user["id"]
+    csrf_token()
+    g.user = user
+    audit("auth/admin-signin", detail="separate admin login")
+    return jsonify({
+        "ok": True,
+        "user": session_user_payload(user),
+        "redirect": _safe_next(next_raw, fallback="/admin/console"),
     })
 
 
@@ -283,7 +395,9 @@ def recover_lookup():
                                    "If you are new, register on SurveyKart to receive 100 Kart points."})
     status_text = {
         "approved": "This address has an active SurveyKart account. Sign in with your password or Google.",
-        "pending": "This address is registered and waiting for the platform admin's approval.",
+        "pending": "This address is registered and its approval request is with the platform "
+                   "admin. Once approved, 100 Kart points are added automatically — sign in "
+                   "with Google any time to check your live status.",
         "rejected": "This address was not approved by the platform admin. "
                     "Contact the admin to ask for access.",
         "disabled": "This address is registered but currently disabled. "
@@ -352,14 +466,24 @@ def kart_request_points():
 # --------------------------------------------------------------------- Google flow
 @bp.get("/auth/google")
 def google_login():
+    """One Google entry point for everyone.  ``mode`` (login|register) is kept
+    for link compatibility, but both behave the same friendly way: a returning
+    account signs straight in, while a brand-new Google account is created and
+    sent to the admin as an approval request (100 Kart pts land on approval)."""
     mode = _mode(request.args.get("mode"))
     if request.args.get("share"):
         session["pending_share_token"] = request.args.get("share")
     if not current_app.config.get("GOOGLE_CLIENT_ID"):
-        return render_template("auth_error.html",
-                               message="Google sign-in is not configured on this server yet. "
-                                       "Use SurveyKart username/e-mail & password sign-in, or ask "
-                                       "the admin to set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET."), 503
+        dest = "/register" if mode == "register" else "/signin"
+        share = session.get("pending_share_token") or ""
+        if share:
+            dest += "?share=" + share + "&notice=google-off"
+        else:
+            dest += "?notice=google-off"
+        nxt = (request.args.get("next") or "").strip()
+        if nxt:
+            dest += "&next=" + nxt
+        return redirect(dest)
     state = secrets.token_urlsafe(24)
     session["oauth_state"] = state
     session["oauth_mode"] = mode
@@ -389,11 +513,17 @@ def google_callback():
 
 
 def _complete(claims: dict, mode: str):
-    """Shared landing logic for the Google callback and the dev shortcut."""
+    """Shared landing logic for the Google callback and the dev shortcut.
+
+    Easy-for-everyone rule: whatever button the person clicked, an unknown
+    Google e-mail simply *becomes* a new account.  New regular accounts are
+    ``pending`` — an approval request for the admin (audit trail + optional
+    e-mail to ADMIN_EMAILS) — and the person lands on /welcome, a live status
+    page promising the 100 Kart pts that are added the moment the admin
+    approves.  Approved accounts continue straight to where they were going.
+    """
     email = str(claims.get("email") or "").strip().lower()
     existing = accounts.by_email(email)
-    if existing is None and mode == "login" and not accounts.is_admin_email(email):
-        return redirect("/signin?unknown=1&email=" + email)
     fresh = existing is None
     user = accounts.upsert_from_claims(claims)
     next_path = _safe_next(session.pop("oauth_next", None))
@@ -403,17 +533,68 @@ def _complete(claims: dict, mode: str):
     csrf_token()
     g.user = user
     audit("auth/register" if fresh else "auth/signin")
-    redeemed = redeem_share(share_tok, user) if (share_tok and user["status"] == "approved") else None
-    if user["status"] == "pending":
+    if user["status"] != "approved":
+        # Preserve where the person was heading (and any shared link) so the
+        # /welcome page can continue them there right after approval.
         if share_tok:
             session["pending_share_token"] = share_tok
-        return redirect("/?welcome=1")
+        if next_path and next_path != "/welcome":
+            session["post_approval_next"] = next_path
+        if fresh and user["status"] == "pending":
+            audit("auth/approval-request",
+                  detail=f"{email} via Google — awaiting admin approval "
+                         f"(+{accounts.DEFAULT_POINTS} Kart pts on approval)")
+            accounts.notify_admins_pending_signup(user)
+        return redirect("/welcome")
+    redeemed = redeem_share(share_tok, user) if share_tok else None
+    if redeemed:
+        audit("share/redeem", study=redeemed.get("study_slug", ""), detail="0 pts debited")
     return redirect(_share_redirect(redeemed, next_path))
+
+
+@bp.get("/welcome")
+def welcome_page():
+    """One friendly home for every account state after Google sign-in.
+
+    pending  → "request sent to admin" with the 100-pt promise; the page
+               polls /api/me and flips to the approved celebration by itself.
+    approved → "you're in" + live Kart balance + continue button (a shared
+               link saved while pending is redeemed and opened from here).
+    rejected / disabled → a clear explanation and how to get help.
+    """
+    user = current_user()
+    if not user:
+        return redirect("/signin?next=" + "/welcome")
+    g.user = user
+    next_path = _safe_next(session.get("post_approval_next") or request.args.get("next"))
+    if user["status"] == "approved":
+        session.pop("post_approval_next", None)
+    redeemed = None
+    share_tok = session.get("pending_share_token") or ""
+    if user["status"] == "approved" and share_tok:
+        session.pop("pending_share_token", None)
+        redeemed = redeem_share(share_tok, user)
+        if redeemed:
+            audit("share/redeem", study=redeemed.get("study_slug", ""), detail="0 pts debited")
+            next_path = _share_redirect(redeemed, next_path)
+    return render_template(
+        "account_status.html",
+        user=session_user_payload(user),
+        profile=user,
+        kart=user_kart_summary(user["id"]),
+        next_url=next_path,
+        has_share=bool(share_tok and user["status"] != "approved") or bool(redeemed),
+        redeemed=redeemed,
+    )
 
 
 @bp.post("/auth/dev")
 def dev_login():
-    """Development-only e-mail sign-in (DEV_LOGIN=1, never in production)."""
+    """Development-only e-mail sign-in (DEV_LOGIN=1, never in production).
+
+    Mirrors the Google flow exactly: a new e-mail becomes a pending account
+    (an approval request for the admin, 100 Kart pts on approval) whichever
+    ``mode`` was used; an approved account signs straight in."""
     if not current_app.config.get("DEV_LOGIN"):
         abort(404)
     body = request.get_json(silent=True) or {}
@@ -422,10 +603,7 @@ def dev_login():
     mode = _mode(body.get("mode"))
     if not claims["email"] or "@" not in claims["email"]:
         return jsonify({"error": "Use a real e-mail address."}), 400
-    existing = accounts.by_email(claims["email"])
-    if existing is None and mode == "login" and not accounts.is_admin_email(claims["email"]):
-        return jsonify({"error": "No account for this e-mail yet - register first.",
-                        "need_register": True, "email": claims["email"]}), 404
+    fresh = accounts.by_email(claims["email"]) is None
     role = str(body.get("role") or "")
     if role == "admin" and mode == "register":
         user = accounts.create_dev_user(claims["email"], claims["name"], role="admin")
@@ -436,10 +614,15 @@ def dev_login():
     session["uid"] = user["id"]
     csrf_token()
     g.user = user
-    audit("auth/signin")
-    if share_tok and user["status"] == "approved":
-        redeem_share(share_tok, user)
-    return jsonify({"ok": True, "user": session_user_payload(user)})
+    audit("auth/register" if fresh else "auth/signin")
+    redeemed = None
+    if share_tok:
+        if user["status"] == "approved":
+            redeemed = redeem_share(share_tok, user)
+        else:
+            session["pending_share_token"] = share_tok
+    dest = "/welcome" if user["status"] != "approved" else _share_redirect(redeemed, "/workspace/")
+    return jsonify({"ok": True, "user": session_user_payload(user), "redirect": dest})
 
 
 @bp.post("/auth/logout")

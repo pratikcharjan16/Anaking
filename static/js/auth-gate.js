@@ -139,7 +139,7 @@
         alert(out.error);
         return;
       }
-      location.href = "/studio/";
+      location.href = out.redirect || (out.user && out.user.status !== "approved" ? "/welcome" : "/studio/");
     });
   });
 })();

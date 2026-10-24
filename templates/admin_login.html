@@ -1,0 +1,77 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Admin Login · SurveyKart', 'Separate admin login for the SurveyKart platform owner — approve accounts, allocate Kart points, and manage every project.') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/landing.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
+</head>
+<body class="landing auth-gate" data-next="{{ next_url }}">
+<main class="ln-gate">
+  {% from "_brand.html" import brand %}
+  {{ brand('ADMIN', '/', 42, 'gm', tagline=true, link_class='anaking-brand-lockup', title='SurveyKart — Insights Delivered (Go to landing page)') }}
+
+  <section class="ln-gate-card">
+    <p class="an-eyebrow">Platform Owner · Admin Only</p>
+    <h1>Admin login</h1>
+    <p class="ln-gate-sub">This sign-in is <strong>separate from user sign-in</strong>. From here you go straight to the
+      <strong>Admin Console</strong> — approve new accounts (their 100 Kart points land on approval),
+      allocate Kart points, and manage everything on SurveyKart.</p>
+
+    {% if signed_in_as %}
+    <p class="ln-gate-joined">You're currently signed in as <b>{{ signed_in_as }}</b> (not an admin session).
+      Signing in below switches to the admin account.</p>
+    {% endif %}
+
+    {% if not admin_password_configured %}
+    <div class="ln-gate-out warn" role="status">
+      <b>Admin password sign-in isn't set up on this server yet.</b>
+      <span>Set <code>ADMIN_PASSWORD</code> in the server's <code>.env</code> / environment and restart the app,
+      then sign in here as <code>{{ admin_username }}</code>. Google admin sign-in (below) still works if
+      <code>ADMIN_EMAILS</code> is set.</span>
+    </div>
+    {% endif %}
+
+    <form id="sk-admin-login-form" class="ln-gate-form">
+      <label>Admin username
+        <input id="admin-ident" name="identifier" type="text" required value="{{ admin_username }}"
+               autocomplete="username" spellcheck="false">
+      </label>
+      <label>Admin password
+        <input id="admin-password" name="password" type="password" required
+               placeholder="The server's ADMIN_PASSWORD" autocomplete="current-password" autofocus>
+      </label>
+      <button class="ln-btn ln-btn-primary lg" type="submit" id="admin-submit">Sign in to Admin Console &rarr;</button>
+    </form>
+    <div id="gate-msg" class="ln-gate-out" role="alert" hidden></div>
+
+    {% if config.STAFF_AUTH %}
+    <div class="sk-auth-divider"><span>or admin Google account</span></div>
+    {% set gnext = next_url or '/admin/console' %}
+    <a class="ln-btn ln-btn-ghost lg" href="/auth/google?mode=login&amp;next={{ gnext | urlencode }}" id="gate-google">
+      <svg class="ln-gicon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
+      Sign in with Google (admin accounts)</a>
+    <p class="ln-gate-alt small">For <code>ADMIN_EMAILS</code> accounts and existing admins. (A brand-new Google
+      account still needs admin approval first, like every new user.)</p>
+    {% endif %}
+
+    <div class="ln-gate-help">
+      <h3>First time, or locked out?</h3>
+      <p>The master admin is <code>{{ admin_username }}</code> and its password comes only from the server
+        configuration — it is never stored in the database. To set (or reset) it: put
+        <code>ADMIN_PASSWORD=your-new-password</code> in the project's <code>.env</code> file (or your host's
+        environment variables), <strong>restart the app</strong>, and sign in here. Adding
+        <code>ADMIN_EMAILS=you@gmail.com</code> also makes that Google account an auto-approved admin.</p>
+    </div>
+
+    <p class="ln-gate-alt">Not the admin? <a href="/signin{% if next_url %}?next={{ next_url | urlencode }}{% endif %}">Use the regular user sign-in</a></p>
+  </section>
+
+  <p class="ln-gate-foot"><a href="/">&larr; Back to SurveyKart home</a></p>
+</main>
+<script src="{{ asset('js/admin-login.js') }}"></script>
+</body>
+</html>

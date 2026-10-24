@@ -95,9 +95,12 @@ def init_security(app):
             g.user = accounts.by_id(session.get('uid'))
         path = request.path
         if (path.startswith(('/auth/', '/api/auth/', '/share/'))
-                or path in ('/api/me', '/api/kart/catalog', '/', '/sitemap', '/sitemap.html',
+                or path in ('/api/me', '/api/kart/catalog', '/', '/welcome', '/admin-login',
+                            '/sitemap', '/sitemap.html',
                             '/sitemap.xml', '/robots.txt', '/llms.txt', '/manifest.webmanifest')):
-            # landing, SEO/sitemap discovery, registration/sign-in, share redemption gate, and public Kart catalog
+            # landing, SEO/sitemap discovery, registration/sign-in, the separate Admin
+            # Login, the account-status page (reachable in every account state),
+            # share gate, and public Kart catalog
             return
         body = request.get_json(silent=True) or {}
         if not isinstance(body, dict):
@@ -117,7 +120,9 @@ def init_security(app):
             if path.startswith('/api/') or request.method != 'GET':
                 return jsonify(error='Sign-in required'), 401
             from urllib.parse import quote
-            return redirect('/signin?next=' + quote(request.full_path.rstrip('?'), safe='/'))
+            # Admin surfaces get the separate Admin Login; everything else the user sign-in.
+            door = '/admin-login' if path in ('/admin-portal', '/admin/console') else '/signin'
+            return redirect(door + '?next=' + quote(request.full_path.rstrip('?'), safe='/'))
         if g.user is not None and g.user.get('status') != 'approved':
             msgs = {
                 'pending': 'Your account is waiting for admin approval.',
@@ -126,7 +131,7 @@ def init_security(app):
             }
             if path.startswith('/api/') or request.method != 'GET':
                 return jsonify(error=msgs.get(g.user.get('status'), 'Account not approved.')), 403
-            return redirect('/?welcome=1')
+            return redirect('/welcome')
         # Strict Admin-only boundary for Admin Portal & Admin Console
         if path in ('/admin-portal', '/admin/console') or path.startswith('/api/admin/console'):
             is_admin = (g.user is not None and g.user.get('role') == 'admin') or \

@@ -84,20 +84,38 @@ Old respondent links (`/test`, `/s/<slug>`) redirect permanently to the new `/su
 
 The team apps (Projects / Studio / Monitor) are multi-user:
 
-- **Register vs sign in** — new users **register** with Google (`/register`, creates the
-  profile); existing users **sign in** (`/signin`). Sign-in never silently registers anyone -
-  an unknown Google e-mail is pointed at registration instead. Both carry a
+- **One Google button for everyone** — *Sign in with Google* and *Register with Google*
+  both just work: a returning account signs straight in, while a brand-new Google e-mail
+  becomes a new *pending* account (an approval request for the admin) instead of being
+  bounced to another page. The new user lands on **`/welcome`** — a friendly live status
+  page ("request sent to admin", auto-refreshing) that flips to a welcome screen with
+  their Kart balance the moment they are approved. Both pages carry a
   **forgot user ID or password** link (`/recover`): the user ID is your Google e-mail, the
   password is your Google password (Google recovers it), and the page can look up where any
   address stands.
-- **Admin approval** — new profiles are *pending* until the platform admin approves them in
-  the **Admin console** (`/admin/console`): Approve / Reject / Disable / Re-enable, Make
-  admin / Make user, and a per-account list of every project they have built.
+- **Admin approval + 100 Kart points** — new Google profiles are *pending* with an empty
+  Kart until the platform admin approves them in the **Admin console** (`/admin/console`,
+  "Accounts waiting for approval"): **Approve & add pts** activates the account and lands
+  the one-time **100 Kart point** welcome allocation in their Kart in the same click
+  (the admin can adjust the amount while approving; it is granted exactly once, so
+  disable → re-enable never double-grants). Reject / Disable / Re-enable, Make admin /
+  Make user, point adjustments, and a per-account list of every project they have built
+  are all there too. A new request is written to the audit trail (`auth/approval-request`)
+  and — when SMTP is configured — e-mailed to `ADMIN_EMAILS`; the user gets a best-effort
+  "you're approved" e-mail in return. (Direct e-mail/password registration on `/register`
+  is separate and unchanged: it is active immediately with its 100 pts.)
 - **Private projects** — everything an account creates belongs to that account. Others never
   see it; admins see and can open everything. Legacy studies with no owner are admin-only.
 - **Admin bootstrap** — put your address in `ADMIN_EMAILS` (comma-separated); those accounts
   are auto-approved as admins on first sign-in, so the console can never be locked out.
   The console refuses to lock out or demote the last admin.
+- **Separate Admin Login** — the platform owner signs in at **`/admin-login`** (kept apart
+  from user sign-in): master admin `Anaking.admin` + the server's `ADMIN_PASSWORD`, any
+  approved admin account's own password, or an `ADMIN_EMAILS` Google account. It lands
+  directly in the **Admin Console** (anonymous visits to `/admin/console` and
+  `/admin-portal` are redirected there too), refuses regular-user credentials with a clear
+  message, and says plainly when `ADMIN_PASSWORD` isn't configured on the server yet
+  (set it in `.env` and restart) instead of failing silently.
 - **Respondent links stay public** — fieldwork never signs in; `/survey/…` keeps working
   with the gate up.
 
