@@ -11,15 +11,30 @@ Admin console & Admin portal — protected SurveyKart control center.
     POST /api/admin/console/points               {user_id, delta?, points_limit?, reason?}
     POST /api/admin/console/point-requests/decide {request_id, decision: approve|reject, points?}
 
+Account desk (one account in every context)
+    GET  /api/admin/console/account?user_id=     profile + projects + Kart ledger + audit trail
+    POST /api/admin/console/profile              {user_id, name?, email?, username?}
+    POST /api/admin/console/delete               {user_id} - only when the account owns nothing
+    POST /api/admin/console/impersonate          {user_id} - audited support view ("open as user")
+    POST /auth/impersonate/end                   leave the support view, back to the desk
+
+Sign-in & recovery (the "forgot username / password" queue)
+    GET  /api/admin/console/recovery             pending recovery links + counts
+    POST /api/admin/console/recovery/issue       {user_id} - create a one-time link and return it
+    POST /api/admin/console/recovery/decide      {reset_id, action: handed_over|revoke}
+
 All rights reserved to Admin (Anaking.admin).
 """
 
 from __future__ import annotations
 
-from flask import Blueprint, abort, current_app, g, jsonify, render_template, request
+from flask import (Blueprint, abort, current_app, g, jsonify, redirect,
+                   render_template, request, session)
 
 import core.accounts as accounts
+import core.recovery as recovery
 from core.kart import decide_point_request, list_point_requests
+from core.mailer import smtp_settings
 from core.security import audit
 from models import Study, StudyError, get_db, now
 from routes.helpers import json_body
@@ -36,6 +51,15 @@ ACTION_LABELS = {
     "console/role": ("Changed a role", "account"),
     "console/points": ("Adjusted Kart points", "account"),
     "console/point-request": ("Processed Kart point request", "account"),
+    "console/profile": ("Edited an account identity", "account"),
+    "console/delete-account": ("Deleted an account", "account"),
+    "console/impersonate": ("Opened a support view", "account"),
+    "console/impersonate-end": ("Left a support view", "account"),
+    "console/recovery-issue": ("Issued a recovery link", "account"),
+    "console/recovery-handover": ("Handed over a recovery link", "account"),
+    "console/recovery-revoke": ("Revoked a recovery link", "account"),
+    "auth/recover-request": ("Requested a sign-in recovery link", "account"),
+    "auth/password-reset": ("Set a new password", "account"),
     "kart/request-points": ("Requested extra Kart points", "account"),
     "share/create": ("Shared a project link", "design"),
     "share/redeem": ("Opened shared link (0 pts debited)", "design"),
@@ -92,6 +116,28 @@ def _require_admin() -> dict:
     return {"email": "local-preview", "role": "admin"}
 
 
+@bp.app_template_global("support_mode")
+def support_mode_global() -> dict | None:
+    """The audited support view the admin is currently inside, if any.
+
+    Templates render a strip with the account being viewed and a way out, so nobody
+    can mistake a user's workspace for their own admin session.
+    """
+    imp = session.get("impersonator")
+    if not imp:
+        return None
+    user = accounts.by_id(session.get("uid")) if session.get("uid") else None
+    return {"admin_email": imp.get("email") or "admin", "started": imp.get("started") or "",
+            "user": user}
+
+
+def _account_or_404(user_id):
+    user = accounts.by_id(user_id)
+    if not user:
+        abort(404, "unknown user")
+    return user
+
+
 @bp.get("/admin-portal")
 def admin_portal():
     """Protected usage, Kart points & user-activity dashboard for the SurveyKart admin."""
@@ -122,6 +168,8 @@ def admin_portal():
         "active_week": len({e["actor"] for e in events
                             if str(e["created_at"])[:10] >= week_ago and e["actor"]}),
         "pending_point_requests": sum(1 for r in point_reqs if r["status"] == "pending"),
+        "pending_recovery": len(recovery.pending_requests()),
+        "users_db": (__import__("core.userdata", fromlist=["x"]).describe())["users_db"],
     }
     feed = []
     for e in events[:28]:
@@ -159,6 +207,8 @@ def overview():
         "completes": get_db().execute(
             "SELECT COUNT(*) FROM respondents WHERE status='complete'").fetchone()[0],
         "pending_point_requests": sum(1 for r in point_reqs if r["status"] == "pending"),
+        "pending_recovery": len(recovery.pending_requests()),
+        "users_db": (__import__("core.userdata", fromlist=["x"]).describe())["users_db"],
         "shared_links": get_db().execute("SELECT COUNT(*) FROM study_shares").fetchone()[0],
     }
     return jsonify({"stats": stats, "users": users, "point_requests": point_reqs})
@@ -331,3 +381,169 @@ def point_request_decision():
         abort(400, str(exc))
     audit("console/point-request", detail=f"request #{req_id} -> {dec}")
     return jsonify({"ok": True, "request": out})
+
+
+# ====================================================================================
+# ACCOUNT DESK — one account in every context
+# ====================================================================================
+@bp.get("/api/admin/console/account")
+def account_desk_detail():
+    """Everything the desk shows for one account, in a single request."""
+    _require_admin()
+    try:
+        user_id = int(request.args.get("user_id") or 0)
+    except ValueError:
+        abort(400, "user_id must be a number")
+    detail = accounts.account_detail(user_id)
+    if not detail:
+        abort(404, "unknown user")
+    detail["peers"] = [
+        {"id": u["id"], "name": u["name"] or u["username"] or u["email"], "email": u["email"],
+         "role": u["role"], "status": u["status"]}
+        for u in accounts.list_users() if u["id"] != user_id
+    ]
+    return jsonify(detail)
+
+
+@bp.post("/api/admin/console/profile")
+def account_profile_update():
+    """Admin edit of a display name, e-mail or username (validated + de-duplicated)."""
+    adm = _require_admin()
+    body = json_body()
+    user = _account_or_404(body.get("user_id") or 0)
+    try:
+        updated = accounts.update_profile(
+            user["id"],
+            name=body["name"] if "name" in body else None,
+            email=body["email"] if "email" in body else None,
+            username=body["username"] if "username" in body else None,
+        )
+    except ValueError as exc:
+        abort(400, str(exc))
+    audit("console/profile", detail=f"{user['email']} -> {updated['email']}")
+    return jsonify({"ok": True, "user": updated, "by": adm.get("email", "admin")})
+
+
+@bp.post("/api/admin/console/delete")
+def account_delete():
+    """Delete an account that owns nothing. Projects must be transferred first."""
+    _require_admin()
+    body = json_body()
+    user = _account_or_404(body.get("user_id") or 0)
+    me = getattr(g, "user", None)
+    if me and me.get("id") == user["id"]:
+        abort(400, "You cannot delete the account you are signed in with.")
+    try:
+        deleted = accounts.delete_user(user["id"])
+    except ValueError as exc:
+        abort(400, str(exc))
+    audit("console/delete-account", detail=f"{deleted['email']} (#{deleted['id']}) deleted")
+    return jsonify({"ok": True, "deleted": deleted})
+
+
+@bp.post("/api/admin/console/impersonate")
+def account_impersonate():
+    """Audited support view: open SurveyKart exactly as this person sees it.
+
+    A platform admin only. The admin's own uid is parked in the session and restored
+    on exit, so the admin never loses their way back. Admin accounts are refused -
+    there is nothing to support there, and it would be a privilege-laundering path.
+    """
+    adm = _require_admin()
+    if session.get("staff_id"):
+        abort(400, "Open the support view from a platform admin account, not staff auth.")
+    if session.get("impersonator"):
+        abort(400, "You are already inside a support view. Exit it first.")
+    body = json_body()
+    user = _account_or_404(body.get("user_id") or 0)
+    if user["role"] == "admin" or accounts.is_protected_admin(user):
+        abort(400, "Admin accounts cannot be opened in support view.")
+    if user["status"] != "approved":
+        abort(400, "Only an approved account can be opened in support view.")
+    session["impersonator"] = {"email": adm.get("email") or "admin",
+                               "uid": session.get("uid"), "started": now()}
+    session["uid"] = user["id"]
+    audit("console/impersonate", detail=f"{user['email']} opened in support view")
+    return jsonify({"ok": True, "redirect": "/workspace/",
+                    "user": {"id": user["id"], "name": user["name"], "email": user["email"]}})
+
+
+@bp.post("/auth/impersonate/end")
+def account_impersonate_end():
+    """Leave the support view and land back on the account desk."""
+    imp = session.pop("impersonator", None)
+    if not imp:
+        abort(400, "Not in a support view.")
+    if imp.get("uid"):
+        session["uid"] = imp["uid"]
+    else:
+        session.pop("uid", None)
+    with get_db() as db:
+        db.execute("INSERT INTO audit_events(actor,action,study,created_at,detail) "
+                   "VALUES(?,?,?,?,?)",
+                   (imp.get("email") or "admin", "console/impersonate-end", "", now(),
+                    "left the support view"))
+    return redirect("/admin/console")
+
+
+# ====================================================================================
+# SIGN-IN & RECOVERY
+# ====================================================================================
+@bp.get("/api/admin/console/recovery")
+def recovery_queue():
+    """One-time recovery links waiting for a human (no SMTP configured) + the tally."""
+    _require_admin()
+    pending = recovery.pending_requests()
+    return jsonify({
+        "pending": pending,
+        "count": len(pending),
+        "mail_configured": bool(smtp_settings()),
+        "ttl_minutes": recovery.TOKEN_TTL_MINUTES,
+    })
+
+
+@bp.post("/api/admin/console/recovery/issue")
+def recovery_issue():
+    """Create a fresh one-time link for an account (shown once, to this admin)."""
+    adm = _require_admin()
+    body = json_body()
+    user = _account_or_404(body.get("user_id") or 0)
+    if user["role"] == "admin" and accounts.is_protected_admin(user):
+        abort(400, "The master admin signs in with ADMIN_PASSWORD — change it in .env instead.")
+    issued = recovery.issue(user, requested_by=adm.get("email", "admin"),
+                            requested_ip=request.remote_addr or "",
+                            note="issued by the admin")
+    audit("console/recovery-issue", detail=f"{user['email']} — link {issued['delivered']}")
+    return jsonify({
+        "ok": True,
+        "id": issued["id"],
+        "link": recovery.absolute_link(issued["link"]),
+        "delivery": issued["delivered"],
+        "expires_at": issued["expires_at"],
+        "message": ("E-mailed to " + user["email"]) if issued["delivered"] == "email"
+                   else "No mail server configured — copy this link and send it to the user.",
+    })
+
+
+@bp.post("/api/admin/console/recovery/decide")
+def recovery_decide():
+    """``handed_over`` records that the admin sent the link on; ``revoke`` kills it."""
+    adm = _require_admin()
+    body = json_body()
+    try:
+        reset_id = int(body.get("reset_id") or 0)
+    except (TypeError, ValueError):
+        abort(400, "reset_id must be a number")
+    action = str(body.get("action") or "")
+    try:
+        if action == "handed_over":
+            row = recovery.mark_handed_over(reset_id, by=adm.get("email", "admin"))
+            audit("console/recovery-handover", detail=f"recovery #{reset_id}")
+        elif action == "revoke":
+            row = recovery.revoke(reset_id)
+            audit("console/recovery-revoke", detail=f"recovery #{reset_id}")
+        else:
+            abort(400, "action must be handed_over or revoke")
+    except ValueError as exc:
+        abort(400, str(exc))
+    return jsonify({"ok": True, "reset": row})

@@ -114,10 +114,11 @@ def test_master_admin_email_form_also_works(app, client):
 
 
 # ------------------------------------------------------------------ who is refused
-def test_regular_user_cannot_use_admin_login(app, client):
+def test_regular_user_cannot_use_admin_login(app, client, approve):
     app.config["STAFF_AUTH"] = True
     client.post("/api/auth/register", json={
         "name": "Regular Rita", "email": "rita@clinic.in", "password": "secret123"})
+    approve("rita@clinic.in")
     out(client)
     r = admin_login(client, ident="rita@clinic.in", password="secret123")
     assert r.status_code == 403 and r.get_json()["code"] == "not_admin"

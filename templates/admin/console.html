@@ -2,7 +2,8 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Admin Console · SurveyKart', 'SurveyKart Admin Console: manage accounts, approve Kart point requests, adjust user Kart balances, and govern every project.') }}
+{{ head('Account desk · SurveyKart Admin',
+        'SurveyKart Admin account desk: every registered account, its projects, Kart point ledger, audit trail and access controls in one place.') }}
 <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
 <link rel="stylesheet" href="{{ asset('css/console.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
@@ -10,75 +11,101 @@
 <meta name="csrf-token" content="{{ csrf_token() }}">
 <script src="{{ asset('js/security.js') }}"></script>
 </head>
-<body>
+<body class="adk-body">
 <a class="skip-link" href="#main">Skip to content</a>
+
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
   {{ brand('ADMIN', '/', 38, 'con', title='SurveyKart — Insights Delivered (Go to main page)') }}
-  <div class="meta" style="flex-wrap:wrap;gap:10px">
-    <a class="linkbtn gold" href="/admin/console" aria-current="page">Admin Console</a>
-    <a class="linkbtn" href="/admin-portal">Admin Portal</a>
+  <div class="meta adk-bar-meta">
+    <a class="linkbtn gold" href="/admin/console" aria-current="page">Account desk</a>
+    <a class="linkbtn" href="/admin-portal">Usage portal</a>
     {% with active='' %}{% include '_nav.html' %}{% endwith %}
     {% if account() %}
     <form method="post" action="/auth/logout" style="display:inline;margin:0">
       <input type="hidden" name="csrf" value="{{ csrf_token() }}">
       <button type="submit" class="linkbtn">Sign out</button>
     </form>
+    {% else %}
+    <a class="linkbtn" href="/admin-login?next=/admin/console" id="appbar-signin">Sign in</a>
     {% endif %}
   </div>
 </header>
 
-<main id="main">
-  <section class="cs-head">
-    <div>
-      <h1>Admin console &middot; SurveyKart</h1>
-      <p>All platform rights reserved to Admin (<code>Anaking.admin</code>). Manage registered users,
-        increase or decrease each user's Kart point allocation (default <strong>100 pts</strong> on registration),
-        approve extra point requests, and govern every project across SurveyKart.</p>
+{% include '_support.html' %}
+
+<main id="main" class="adk">
+  <section class="adk-head">
+    <div class="adk-head-copy">
+      <p class="an-eyebrow">Anaking.admin &middot; Admin console &middot; platform control</p>
+      <h1>Account desk</h1>
+      <p>Open any account to see and change everything it touches &mdash; identity, access,
+        Kart points, projects and its audit trail.</p>
     </div>
-    <div class="cs-stats" id="cs-stats"></div>
+    <div class="adk-head-stats" id="adk-stats" aria-live="polite"></div>
   </section>
 
-  <section class="cs-point-reqs" id="cs-point-reqs" hidden>
-    <h2>Kart Point Allocation Requests</h2>
-    <div class="cs-pending-list" id="cs-point-req-list"></div>
+  <section class="adk-queue" id="adk-queue" hidden>
+    <div class="adk-queue-head">
+      <h2>Waiting on you</h2>
+      <p id="adk-queue-count"></p>
+    </div>
+    <div class="adk-queue-list" id="adk-queue-list"></div>
   </section>
 
-  <section class="cs-pending" id="cs-pending" hidden>
-    <h2>Accounts waiting for approval</h2>
-    <p style="margin:0 0 12px;font-size:12.5px;color:var(--muted,#5c574e)">New Google sign-ins land here automatically as approval requests.
-      <strong>Approve &amp; add pts</strong> activates the account and puts the welcome Kart points (100 by default — edit the amount first if you like) into their Kart in the same click.</p>
-    <div class="cs-pending-list" id="cs-pending-list"></div>
+  <section class="adk-recovery" id="adk-recovery" hidden>
+    <div class="adk-queue-head">
+      <h2>Sign-in recovery</h2>
+      <p id="adk-recovery-count"></p>
+    </div>
+    <div class="adk-recovery-list" id="adk-recovery-list"></div>
   </section>
 
-  <section class="cs-users">
-    <h2>SurveyKart Accounts &amp; Kart Balances</h2>
-    <div class="cs-table-wrap">
-      <table class="cs-table" id="cs-table">
-        <thead><tr>
-          <th>Person</th><th>Status</th><th>Role</th><th>Kart Points (Used / Limit)</th>
-          <th>Projects</th><th>Completes</th><th>Last seen</th><th>Admin Controls</th>
-        </tr></thead>
-        <tbody id="cs-rows"></tbody>
-      </table>
-    </div>
-  </section>
+  <div class="adk-desk">
+    <aside class="adk-roster" aria-label="All accounts">
+      <div class="adk-roster-top">
+        <label class="adk-search">
+          <svg class="adk-search-icon" viewBox="0 0 20 20" width="14" height="14" aria-hidden="true">
+            <circle cx="8.5" cy="8.5" r="5.75" fill="none" stroke="currentColor" stroke-width="2"/>
+            <line x1="13" y1="13" x2="17.5" y2="17.5" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          </svg>
+          <span class="sr-only">Search accounts</span>
+          <input id="adk-search" type="search" placeholder="Search name, @handle, e-mail" autocomplete="off">
+        </label>
+        <div class="adk-filters" id="adk-filters" role="group" aria-label="Filter accounts">
+          <button type="button" data-filter="all" class="on" aria-pressed="true">All <span data-count="all">0</span></button>
+          <button type="button" data-filter="pending" aria-pressed="false">Pending <span data-count="pending">0</span></button>
+          <button type="button" data-filter="approved" aria-pressed="false">Active <span data-count="approved">0</span></button>
+          <button type="button" data-filter="blocked" aria-pressed="false">Blocked <span data-count="blocked">0</span></button>
+          <button type="button" data-filter="admin" aria-pressed="false">Admins <span data-count="admin">0</span></button>
+        </div>
+      </div>
+      <ul class="adk-list" id="adk-list" role="listbox" aria-label="Accounts"></ul>
+      <p class="adk-list-foot" id="adk-list-foot">Loading accounts&hellip;</p>
+    </aside>
 
-  <section class="cs-projects" id="cs-projects" hidden>
-    <h2 id="cs-projects-title">Projects</h2>
-    <div class="cs-table-wrap">
-      <table class="cs-table">
-        <thead><tr><th>Study</th><th>Slug</th><th>Status</th><th>Kart Pts</th><th>Completes</th><th>Updated</th><th></th></tr></thead>
-        <tbody id="cs-project-rows"></tbody>
-      </table>
-    </div>
-    <div style="margin-top:12px">
-      <button class="cs-btn ghost" id="cs-projects-close" type="button">Close</button>
-    </div>
-  </section>
+    <section class="adk-pane" id="adk-pane" aria-label="Selected account">
+      <div class="adk-placeholder" id="adk-placeholder">
+        <div class="adk-seal-ghost" aria-hidden="true"><i></i><i></i><span>&#9733;</span></div>
+        <h2>Choose a person</h2>
+        <p>Every account opens the same dossier: who they are, what they built, what they
+          spent, and what they did. Approve, adjust, transfer or open a support view from
+          one screen.</p>
+        <ul class="adk-legend">
+          <li><b>Identity</b><span>Edit name, handle and e-mail with validation.</span></li>
+          <li><b>Access</b><span>Approve, pause, change role or open their view.</span></li>
+          <li><b>Kart</b><span>Move points up or down with a written reason.</span></li>
+          <li><b>Sign-in</b><span>Create a one-time recovery link when someone loses their password.</span></li>
+          <li><b>Projects</b><span>Change status, transfer ownership, open Studio.</span></li>
+        </ul>
+      </div>
+      <div id="adk-detail" hidden></div>
+    </section>
+  </div>
 </main>
 
 {% include '_footer.html' %}
+<div class="adk-toast" id="adk-toast" role="status" aria-live="polite" hidden></div>
 <script src="{{ asset('js/console.js') }}"></script>
 </body>
 </html>

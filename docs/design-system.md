@@ -82,6 +82,65 @@ instrument.
 * `.linkbtn` — secondary action inside a bar.
 * `.skip-link`, `.sr-only`, `.an-eyebrow` — utilities.
 
+## The Admin account desk
+
+`/admin/console` is the platform admin's working surface, not a second dashboard. It is a
+master/detail **desk**: the roster on the left is an index of people; the pane on the right
+is one person's whole context.
+
+```
+roster (search · status filters)   passport → metrics → tabs
+                                   Overview   identity · access · role · delete
+                                   Projects   status · Studio · Monitor · transfer
+                                   Kart       limit, ledger, open requests
+                                   Activity   the audit trail for this account
+```
+
+Rules that keep it honest:
+
+* **Nothing destructive is one click away.** Deleting an account is blocked while it owns
+  projects (transfer or delete them first); the master admin cannot be deleted, demoted or
+  paused anywhere in the UI or the API.
+* **The Kart is a ledger, never a silent number.** Every admin change writes a reason and an
+  actor into `point_transactions`, which the Kart tab renders as a table.
+* **The support view is visible and reversible.** "Open as *person*" swaps the session to
+  that account for one purpose — seeing what they see — and renders `.support-strip` on
+  every team page (design-system chrome) with the way back. The admin desk is out of reach
+  while a support view is open, every action still lands in the audit trail as the admin,
+  and admin accounts can never be opened this way.
+* The tokens are the shared ones: the desk is warm paper + ink + the green accent, with the
+  gold admin note (`--an-warn`) reserved for "this needs your decision".
+
+`static/css/console.css` owns layout only; `.support-strip` lives in `design-system.css`
+because it is shared chrome.
+
+### Sign-in recovery on the desk
+
+Two places, one rule — a recovery link is always **shown to the admin, never to the person who
+asked**:
+
+```
+SIGN-IN RECOVERY            request → Create link · Handed over · Revoke
+  (row per queued request)  fresh link appears in .adk-linkbox with a Copy button
+
+account → Overview → Sign-in & recovery
+  username · e-mail · signs in with · password set
+  Create a one-time link   → .adk-linkbox (copy) + recent requests
+```
+
+* The queue is a `.adk-recovery` band above the desk (same warm card + green accent as the
+  roster, no new colours; the left rule is `--an-accent`, not `--an-warn`, because it is
+  waiting on *you*, not urgent). It only renders when something is queued — the desk stays
+  quiet otherwise.
+* A queued row never reveals a token: tokens are stored hashed, so **Create link** mints a
+  fresh one (superseding the old) and drops the copyable URL into `.adk-linkbox`. **Handed
+  over** closes the request without invalidating the link; **Revoke** kills it.
+* The same block explains *why* the queue exists (no SMTP) so the admin is not left guessing,
+  and the account's last four requests are listed with their state (`pending`,
+  `e-mailed`, `handed over`, `used`, `superseded`, `revoked`).
+* `.adk-kvlist` is the label/value list inside the card: uppercase micro-labels, right-aligned
+  values, wrapping rather than truncating e-mail addresses.
+
 ## Brand
 
 `templates/_brand.html` renders the lockup (mark, wordmark, badge, tagline). Pass the badge

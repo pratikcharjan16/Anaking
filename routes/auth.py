@@ -8,7 +8,10 @@ SurveyKart platform accounts: registration, sign-in, Kart points, and share rede
     GET  /recover                   account lookup & recovery
     POST /api/auth/login            {identifier, password, next?, share_token?}
     POST /api/auth/register         {name, email, username?, password, share_token?}
-    POST /api/auth/recover          {email} -> where that address stands
+    POST /api/auth/recover          {identifier} -> where that account stands
+    POST /api/auth/recover/request  {identifier} -> one-time recovery link (e-mail, or the Admin desk queue)
+    GET  /reset/<token>             set a new password from the link (also shows the username)
+    POST /api/auth/reset            {token, password} -> new password
     GET  /share/<token>             redeem a shared project/respondent link (asks to register first)
     GET  /api/kart/catalog          dedicated question point catalog (public)
     GET  /api/kart/me               signed-in user's Kart balance, breakdown & shared links
@@ -32,6 +35,7 @@ from flask import (Blueprint, abort, current_app, g, jsonify, redirect,
                    render_template, request, session, url_for)
 
 import core.accounts as accounts
+import core.recovery as recovery
 from core.google_auth import GoogleAuthError, authorization_url, exchange_and_verify
 from core.kart import (DEFAULT_INITIAL_POINTS, KART_CATALOG, QUESTION_POINTS,
                        create_point_request, get_share_by_token, redeem_share,
@@ -217,7 +221,15 @@ def _clear_login_failures() -> None:
 # --------------------------------------------------------------------- Direct Credentials Auth
 @bp.post("/api/auth/register")
 def api_register():
-    """Register a new user on SurveyKart and allocate 100 initial Kart points."""
+    """Create an account (username + e-mail + password) → approval request to the admin.
+
+    Same rule as Google sign-in: the account is ``pending`` with an empty Kart, the
+    admin sees it in the approval queue, and approving it lands the one-time
+    **100 Kart point** welcome allocation. The person is signed in just far enough
+    to watch ``/welcome`` flip to approved (every team surface stays closed to a
+    pending account — see ``core.security``). Addresses in ``ADMIN_EMAILS`` are the
+    documented bootstrap and start approved with an unlimited Kart.
+    """
     body = request.get_json(silent=True) or {}
     name = str(body.get("name") or "").strip()
     email = str(body.get("email") or "").strip()
@@ -235,12 +247,32 @@ def api_register():
     session["uid"] = user["id"]
     csrf_token()
     g.user = user
-    audit("auth/register", detail="100 Kart points allocated")
+    audit("auth/register", detail=f"username + password ({user['status']})")
+
+    if user["status"] != "approved":
+        if share_tok:
+            session["pending_share_token"] = share_tok
+        next_path = _safe_next(next_raw, fallback="")
+        if next_path and next_path != "/welcome":
+            session["post_approval_next"] = next_path
+        audit("auth/approval-request",
+              detail=f"{user['email']} — awaiting admin approval "
+                     f"(+{accounts.DEFAULT_POINTS} Kart pts on approval)")
+        accounts.notify_admins_pending_signup(user)
+        return jsonify({
+            "ok": True,
+            "pending": True,
+            "status": user["status"],
+            "user": session_user_payload(user),
+            "welcome_points_pending": accounts.welcome_points_pending(user),
+            "redirect": "/welcome",
+        })
 
     redeemed = redeem_share(share_tok, user) if share_tok else None
     if redeemed:
         audit("share/redeem", study=redeemed.get("study_slug", ""), detail="0 pts debited")
-    dest = _share_redirect(redeemed, _safe_next(next_raw, fallback="/studio/"))
+    fallback = "/admin/console" if user["role"] == "admin" else "/studio/"
+    dest = _share_redirect(redeemed, _safe_next(next_raw, fallback=fallback))
     return jsonify({
         "ok": True,
         "user": session_user_payload(user),
@@ -271,12 +303,25 @@ def api_login():
         return jsonify({"error": "Invalid username/e-mail or password."}), 401
 
     if user.get("status") != "approved":
+        # Signed in far enough to watch /welcome: it explains the state and flips
+        # to approved (with the 100 Kart points) the moment the admin grants access.
         msgs = {
-            "pending": "Your account is waiting for admin approval.",
+            "pending": "Your account is waiting for admin approval — this page updates by itself.",
             "rejected": "This account was not approved by the platform admin.",
             "disabled": "This account has been disabled by the platform admin.",
         }
-        return jsonify({"error": msgs.get(user.get("status"), "Account is not active.")}), 403
+        session.clear()
+        session["uid"] = user["id"]
+        csrf_token()
+        g.user = user
+        return jsonify({
+            "ok": True,
+            "pending": True,
+            "status": user.get("status"),
+            "notice": msgs.get(user.get("status"), "Account is not active."),
+            "user": session_user_payload(user),
+            "redirect": "/welcome",
+        })
 
     _clear_login_failures()
 
@@ -381,29 +426,139 @@ def api_admin_login():
     })
 
 
+def _recover_ident(raw) -> tuple[str, str, dict | None]:
+    """``(identifier, kind, user)`` — kind is ``email``, ``username`` or ``unknown``."""
+    ident = str(raw or "").strip()
+    if not ident:
+        return "", "unknown", None
+    if "@" in ident:
+        return ident.lower(), "email", accounts.by_email(ident)
+    return ident, "username", accounts.by_username(ident)
+
+
+_STATUS_TEXT = {
+    "approved": "This account is active. Sign in with your password"
+                "{google} — or set a new password below.",
+    "pending": "This account is registered and its approval request is with the platform "
+               "admin. Once approved, 100 Kart points are added automatically.",
+    "rejected": "This account was not approved by the platform admin. "
+                "Contact the admin to ask for access.",
+    "disabled": "This account is registered but currently disabled. "
+                "Contact the platform admin to restore access.",
+}
+
+
 @bp.post("/api/auth/recover")
 def recover_lookup():
-    """Where an e-mail or username stands."""
+    """Where an e-mail address *or username* stands (no secrets revealed)."""
     body = request.get_json(silent=True) or {}
-    email = str(body.get("email") or "").strip().lower()
-    if "@" not in email:
-        return jsonify({"error": "Enter the e-mail address you registered with."}), 400
-    user = accounts.by_email(email)
+    ident, kind, user = _recover_ident(body.get("identifier") or body.get("email")
+                                       or body.get("username"))
+    if not ident:
+        return jsonify({"error": "Enter your e-mail address or your SurveyKart username."}), 400
     if not user:
-        return jsonify({"found": False,
-                        "message": "No account uses this address yet. "
-                                   "If you are new, register on SurveyKart to receive 100 Kart points."})
-    status_text = {
-        "approved": "This address has an active SurveyKart account. Sign in with your password or Google.",
-        "pending": "This address is registered and its approval request is with the platform "
-                   "admin. Once approved, 100 Kart points are added automatically — sign in "
-                   "with Google any time to check your live status.",
-        "rejected": "This address was not approved by the platform admin. "
-                    "Contact the admin to ask for access.",
-        "disabled": "This address is registered but currently disabled. "
-                    "Contact the platform admin to restore access.",
-    }
-    return jsonify({"found": True, "status": user["status"], "message": status_text.get(user["status"], "")})
+        return jsonify({
+            "found": False, "kind": kind,
+            "message": f"No account uses that {kind}. If you are new, register — "
+                       f"100 Kart points land the moment the admin approves you.",
+        })
+    state = accounts.signin_identity(user)
+    return jsonify({
+        "found": True,
+        "status": user["status"],
+        "kind": kind,
+        "signs_in_with_google": state["google"],
+        "has_password": state["has_password"],
+        "message": _STATUS_TEXT.get(user["status"], "This account is not active.").format(
+            google=" or Google" if state["google"] else ""),
+    })
+
+
+@bp.post("/api/auth/recover/request")
+def recover_request():
+    """Issue a one-time recovery link: e-mailed automatically, or queued for the admin.
+
+    The response never contains the link — whoever typed the address must already
+    control the mailbox (or the admin hands it over), so knowing an e-mail address
+    is never enough to take an account over.
+    """
+    body = request.get_json(silent=True) or {}
+    ident, kind, user = _recover_ident(body.get("identifier") or body.get("email")
+                                       or body.get("username"))
+    if not ident:
+        return jsonify({"error": "Enter your e-mail address or your SurveyKart username."}), 400
+    if _login_throttled():
+        return jsonify({"error": "Too many attempts. Please wait 15 minutes and try again."}), 429
+
+    generic = ("If that account exists, a one-time recovery link has been created. "
+               "It lets you set a new password and shows your username.")
+    if not user:
+        _record_login_failure()
+        return jsonify({"ok": True, "sent": False, "message": generic})
+
+    if user["role"] == "admin" and accounts.is_protected_admin(user):
+        return jsonify({
+            "ok": True, "sent": False, "status": user["status"],
+            "message": "The master admin signs in with ADMIN_PASSWORD — ask the server owner "
+                       "to change it in .env and restart the app.",
+        })
+
+    issued = recovery.issue(user, requested_by="self-service",
+                            requested_ip=request.remote_addr or "",
+                            note=f"requested from /recover ({kind})")
+    audit("auth/recover-request",
+          detail=f"{user['email']} — link {issued['delivered']}")
+    if issued["delivered"] == "email":
+        message = ("Check your inbox — the recovery link is on its way and works once, "
+                   "for 60 minutes.")
+    else:
+        message = ("This server has no mail configured yet, so your request is now with the "
+                   "SurveyKart admin (Anaking.admin). They will send you the link — sign in "
+                   "again after that.")
+    return jsonify({
+        "ok": True, "sent": True, "delivery": issued["delivered"],
+        "status": user["status"], "has_password": accounts.has_password(user),
+        "signs_in_with_google": accounts.signin_identity(user)["google"],
+        "message": message,
+    })
+
+
+@bp.get("/reset/<token>")
+def reset_page(token: str):
+    """The link itself: shows the username and takes a new password."""
+    reset = recovery.by_token(token)
+    if not reset or not reset.get("usable"):
+        reason = ("This recovery link has already been used." if reset and reset.get("used_at")
+                  else "This recovery link has expired or was replaced by a newer one.")
+        return render_template("reset_password.html", valid=False, reason=reason,
+                               token="", user=None, email=""), 410
+    user = reset["user"]
+    return render_template("reset_password.html", valid=True, reason="", token=token,
+                           user=accounts.signin_identity(user), email=user["email"],
+                           name=user.get("name") or "", expires_at=reset["expires_at"])
+
+
+@bp.post("/api/auth/reset")
+def api_reset():
+    """Set a new password from a valid one-time link, then sign in."""
+    body = request.get_json(silent=True) or {}
+    token = str(body.get("token") or "")
+    password = str(body.get("password") or "")
+    confirm = str(body.get("confirm") if body.get("confirm") is not None else password)
+    if password != confirm:
+        return jsonify({"error": "The two passwords do not match."}), 400
+    try:
+        user = recovery.consume(token, password)
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    session.clear()
+    session["uid"] = user["id"]
+    csrf_token()
+    g.user = user
+    audit("auth/password-reset", detail=f"{user['email']} set a new password from a recovery link")
+    dest = "/welcome" if user["status"] != "approved" else (
+        "/admin/console" if user["role"] == "admin" else "/studio/")
+    return jsonify({"ok": True, "user": session_user_payload(user), "redirect": dest})
 
 
 # --------------------------------------------------------------------- Kart APIs

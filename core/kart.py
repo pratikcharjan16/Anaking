@@ -93,28 +93,8 @@ KART_CATALOG: list[dict] = [
 TYPE_LABELS: dict[str, str] = {item["type"]: item["name"] for item in KART_CATALOG}
 
 SCHEMA = """
-CREATE TABLE IF NOT EXISTS point_transactions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    delta INTEGER NOT NULL,
-    balance_after INTEGER NOT NULL,
-    reason TEXT NOT NULL DEFAULT '',
-    actor TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_pt_tx_user ON point_transactions(user_id, id DESC);
+-- Kart ledger + point requests live in the users database (core.userdata).
 
-CREATE TABLE IF NOT EXISTS point_requests (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    user_id INTEGER NOT NULL,
-    requested_points INTEGER NOT NULL,
-    reason TEXT NOT NULL DEFAULT '',
-    status TEXT NOT NULL DEFAULT 'pending',
-    reviewed_by TEXT NOT NULL DEFAULT '',
-    reviewed_at TEXT NOT NULL DEFAULT '',
-    created_at TEXT NOT NULL
-);
-CREATE INDEX IF NOT EXISTS ix_pt_req_status ON point_requests(status, id DESC);
 
 CREATE TABLE IF NOT EXISTS study_shares (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

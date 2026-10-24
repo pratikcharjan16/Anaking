@@ -1,6 +1,6 @@
 <!doctype html>
 <html lang="en"><head>{% from "_head.html" import head %}{{ head('SurveyKart · Research Workspace') }}<meta name="csrf-token" content="{{csrf_token()}}"><link rel="stylesheet" href="{{ asset('css/workspace.css') }}"><link rel="stylesheet" href="{{ asset('css/design-system.css') }}"><script src="{{ asset('js/security.js') }}"></script></head>
-<body><a href="#main" class="skip-link">Skip to workspace</a><div class="workspace-shell">
+<body><a href="#main" class="skip-link">Skip to workspace</a>{% include '_support.html' %}<div class="workspace-shell">
 <aside class="sidebar">{% from "_brand.html" import brand %}
 {{ brand('WORKSPACE', '/', 40, 'ws', title='SurveyKart — Insights Delivered (Go to landing page)') }}
 <div class="workspace-label"><span class="workspace-avatar">R</span><div><strong>Research team</strong><small id="role-label">Your shared workspace</small></div><span class="status-dot"></span></div>
@@ -12,7 +12,7 @@
   {% if account() and account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin Console</a> · <a class="console-link" href="/admin-portal">Admin Portal</a>{% else %}<div style="font-size:11px;color:var(--an-muted);margin-top:2px">&#128722; Kart: <strong>{{ account().points_balance }}</strong> / {{ account().points_limit }} pts</div>{% endif %}
   <form method="post" action="/auth/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>
 </div>
-{% else %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}{% endif %}
+{% else %}<a class="logout signin-link" href="/signin?next=/workspace/" id="appbar-signin">Sign in</a>{% endif %}{% endif %}
 </aside>
 <div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Signed in account">{% if account() %}{{ (account().name or account().email)[:2] | upper }}{% else %}RT{% endif %}</span>
   {% if is_admin_actor() %}<a class="linkbtn gold" href="/admin/console">Admin Console</a><a class="linkbtn accent" href="/admin-portal">Admin Portal</a>{% endif %}</div></header>

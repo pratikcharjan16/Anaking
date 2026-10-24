@@ -35,6 +35,12 @@
       })
     }).then(function (r) { return r.json(); }).then(function (out) {
       if (btn) btn.disabled = false;
+      if (out.redirect && (out.pending || !out.error)) {
+        // Pending / rejected / disabled accounts land on the live status page.
+        if (out.notice) { try { sessionStorage.setItem("sk-notice", out.notice); } catch (e) {} }
+        location.href = out.redirect;
+        return;
+      }
       if (out.error) {
         showGateMsg(out.error, true);
         return;
@@ -69,31 +75,108 @@
         showGateMsg(out.error, true);
         return;
       }
-      location.href = out.redirect || "/studio/";
+      // A new account is an approval request: /welcome shows the live status and
+      // the 100 Kart points land the moment the admin approves.
+      location.href = out.redirect || "/welcome";
     }).catch(function () {
       if (btn) btn.disabled = false;
       showGateMsg("Registration could not be completed. Please try again.", true);
     });
   });
 
-  // ---- Account lookup / recovery -------------------------------------------
+  // ---- Account recovery: look the account up, then send a one-time link ------
+  function recoverCard() { return document.getElementById("recover-out"); }
+
+  function recoverIdent() {
+    var el = document.getElementById("recover-email");
+    return el ? String(el.value || "").trim() : "";
+  }
+
+  function recoverMessage(html, warn) {
+    var out = recoverCard();
+    if (!out) return;
+    out.hidden = false;
+    out.className = "ln-gate-out" + (warn ? " warn" : "");
+    out.innerHTML = html;
+  }
+
   var form = document.getElementById("recover-form");
   if (form) form.addEventListener("submit", function (e) {
     e.preventDefault();
-    var out = document.getElementById("recover-out");
-    out.hidden = false;
-    out.className = "ln-gate-out";
-    out.innerHTML = "<span>Looking\u2026</span>";
+    if (!recoverIdent()) { recoverMessage("Enter your e-mail address or username.", true); return; }
+    recoverMessage("<span>Looking\u2026</span>");
     fetch("/api/auth/recover", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ email: (document.getElementById("recover-email") || {}).value || "" })
+      body: JSON.stringify({ identifier: recoverIdent() })
     }).then(function (r) { return r.json(); }).then(function (res) {
+      if (res.error) { recoverMessage(esc(res.error), true); return; }
+      recoverMessage("<span>" + esc(res.message) + "</span>" +
+        (res.found
+          ? '<button class="ln-btn ln-btn-primary" type="button" id="recover-send">Send me a recovery link</button>'
+          : '<a class="ln-btn ln-btn-primary" href="/register">Create my account</a>'));
+      var send = document.getElementById("recover-send");
+      if (send) send.addEventListener("click", requestLink);
+    }).catch(function () { recoverMessage("The lookup could not be completed. Please try again.", true); });
+  });
+
+  function requestLink() {
+    if (!recoverIdent()) { recoverMessage("Enter your e-mail address or username.", true); return; }
+    var btn = document.getElementById("recover-request") || document.getElementById("recover-send");
+    if (btn) btn.disabled = true;
+    recoverMessage("<span>Creating your one-time link\u2026</span>");
+    fetch("/api/auth/recover/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: recoverIdent() })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (btn) btn.disabled = false;
+      if (res.error) { recoverMessage(esc(res.error), true); return; }
+      var cls = res.sent && res.delivery === "email" ? "" : " warn";
+      recoverMessage("<span>" + esc(res.message) + "</span>", cls === " warn");
+      if (res.sent && res.delivery !== "email") {
+        var out = recoverCard();
+        if (out) out.className = "ln-gate-out warn";
+      }
+    }).catch(function () {
+      if (btn) btn.disabled = false;
+      recoverMessage("The request could not be completed. Please try again.", true);
+    });
+  }
+
+  var linkBtn = document.getElementById("recover-request");
+  if (linkBtn) linkBtn.addEventListener("click", requestLink);
+
+  // ---- Set a new password from a recovery link ----------------------------
+  var resetForm = document.getElementById("reset-form");
+  if (resetForm) resetForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var out = document.getElementById("reset-out");
+    var btn = document.getElementById("reset-submit");
+    var pw = (document.getElementById("reset-password") || {}).value || "";
+    var confirm = (document.getElementById("reset-confirm") || {}).value || "";
+    if (pw !== confirm) {
+      out.hidden = false; out.className = "ln-gate-out warn";
+      out.innerHTML = "<span>The two passwords do not match.</span>";
+      return;
+    }
+    if (btn) btn.disabled = true;
+    out.hidden = false; out.className = "ln-gate-out";
+    out.innerHTML = "<span>Saving\u2026</span>";
+    fetch("/api/auth/reset", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token: resetForm.getAttribute("data-token"), password: pw, confirm: confirm })
+    }).then(function (r) { return r.json(); }).then(function (res) {
+      if (btn) btn.disabled = false;
       if (res.error) { out.className = "ln-gate-out warn"; out.innerHTML = "<span>" + esc(res.error) + "</span>"; return; }
-      out.className = "ln-gate-out" + (res.found ? "" : " warn");
-      out.innerHTML = "<span>" + esc(res.message) + "</span>" +
-        (res.found && res.status === "approved"
-          ? '<a class="ln-btn ln-btn-primary" href="/signin">Go to sign in</a>' : "");
+      out.className = "ln-gate-out";
+      out.innerHTML = "<span>Password saved — signing you in\u2026</span>";
+      location.href = res.redirect || "/studio/";
+    }).catch(function () {
+      if (btn) btn.disabled = false;
+      out.className = "ln-gate-out warn";
+      out.innerHTML = "<span>That could not be saved. Please try again.</span>";
     });
   });
 
@@ -104,7 +187,9 @@
     .then(function (r) { return r.json(); })
     .then(function (me) {
       if (me.dev_login && devbox) devbox.hidden = false;
-      if (me.user && me.user.status === "approved" && mode !== "recover") {
+      // Never advertise whoever is signed in on a recovery page: the link may be
+      // opened on a shared computer by someone else.
+      if (me.user && me.user.status === "approved" && mode !== "recover" && mode !== "reset") {
         var card = document.querySelector(".ln-gate-card");
         if (card) card.insertAdjacentHTML("afterbegin",
           '<p class="ln-gate-joined">Signed in as <b>' + esc(me.user.username || me.user.email) +

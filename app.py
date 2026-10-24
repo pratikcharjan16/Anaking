@@ -126,6 +126,13 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     with app.app_context():
         models.init_db()
         seed_beacon()
+        # Say which file holds accounts, so a backup or a restore is never a guess.
+        from core import userdata
+        split = userdata.describe()
+        if split.get("users_db"):
+            app.logger.info("accounts database: %s (attached to %s as %s; %s)",
+                            split["users_db"], app.config["DB_PATH"],
+                            userdata.ALIAS, ", ".join(split.get("tables") or []))
 
     register_routes(app)
 
@@ -168,6 +175,10 @@ def main() -> None:
     print(f"  survey          : {base}/survey/      (test mode: {base}/survey/test)")
     print(f"  studio builder  : {base}/studio/")
     print(f"  admin dashboard : {base}/admin/", flush=True)
+    from core import userdata as _userdata
+    with app.app_context():          # resolve_path reads the running config
+        accounts_db = _userdata.resolve_path(app.config["DB_PATH"])
+    print(f"  accounts db     : {accounts_db}", flush=True)
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 

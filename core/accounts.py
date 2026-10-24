@@ -18,6 +18,7 @@ Supports:
 
 from __future__ import annotations
 
+import re
 import secrets
 from werkzeug.security import check_password_hash, generate_password_hash
 
@@ -36,24 +37,8 @@ _MASTER_ADMIN_HASH = generate_password_hash(
 )
 _DUMMY_HASH = generate_password_hash("surveykart-dummy-verification-secret", method="pbkdf2:sha256:260000")
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    username TEXT NOT NULL DEFAULT '',
-    password_hash TEXT NOT NULL DEFAULT '',
-    name TEXT NOT NULL DEFAULT '',
-    picture TEXT NOT NULL DEFAULT '',
-    google_sub TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'pending',
-    points_limit INTEGER NOT NULL DEFAULT 100,
-    created_at TEXT NOT NULL,
-    approved_at TEXT NOT NULL DEFAULT '',
-    approved_by TEXT NOT NULL DEFAULT '',
-    last_login TEXT NOT NULL DEFAULT ''
-);
-"""
+# The users table is created by :mod:`core.userdata` in the users database.
+SCHEMA = ""
 
 STATUSES = ("pending", "approved", "rejected", "disabled")
 ROLES = ("user", "admin")
@@ -197,7 +182,17 @@ def is_admin_email(email: str, admin_emails=None) -> bool:
 
 
 def register_credentials(name: str, email: str, password: str, username: str = "") -> dict:
-    """Register a new SurveyKart user with 100 initial Kart points."""
+    """Register a SurveyKart account — an *approval request* until the admin grants access.
+
+    Same rule as Google sign-in, so the two front doors behave identically:
+
+    * a regular account is created ``pending`` with an empty Kart; the admin sees
+      it in the approval queue and approving it lands the one-time 100 Kart point
+      welcome allocation in the same click (:func:`set_status`);
+    * an address listed in ``ADMIN_EMAILS`` is the documented bootstrap, so it is
+      created approved with the unlimited admin Kart — otherwise the very first
+      admin could never get in.
+    """
     clean_email = str(email or "").strip().lower()
     clean_user = str(username or "").strip()
     clean_name = str(name or "").strip()[:120] or (clean_user or clean_email.split("@")[0])
@@ -214,7 +209,8 @@ def register_credentials(name: str, email: str, password: str, username: str = "
 
     pw_hash = generate_password_hash(password, method="pbkdf2:sha256:260000")
     admin = is_admin_email(clean_email)
-    pts = ADMIN_UNLIMITED_POINTS if admin else DEFAULT_POINTS
+    status = "approved" if admin else "pending"
+    pts = ADMIN_UNLIMITED_POINTS if admin else 0
     ts, db = now(), get_db()
     with db:
         cur = db.execute(
@@ -229,21 +225,58 @@ def register_credentials(name: str, email: str, password: str, username: str = "
                 "",
                 "",
                 "admin" if admin else "user",
-                "approved",
+                status,
                 pts,
                 ts,
-                ts,
-                "surveykart-signup",
+                ts if admin else "",
+                "surveykart-signup" if admin else "",
                 ts,
             ),
         )
         uid = cur.lastrowid
-        db.execute(
-            "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (uid, DEFAULT_POINTS, pts, "Welcome allocation on SurveyKart registration (100 pts)", "system", ts),
-        )
+        if admin:
+            # Bootstrap admin: the Kart is unlimited and the allocation is recorded
+            # so approval-style top-ups can never double-grant.
+            db.execute(
+                "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (uid, ADMIN_UNLIMITED_POINTS, pts,
+                 "Admin account — unlimited Kart (ADMIN_EMAILS bootstrap)", "system", ts),
+            )
     return by_id(uid)
+
+
+def has_password(user: dict | None) -> bool:
+    """True when the account can sign in with a SurveyKart password."""
+    return bool(user and str(user.get("password_hash") or ""))
+
+
+def set_password(user_id: int, password: str) -> dict | None:
+    """Set a new password (used by the recovery flow). Signs out other sessions by design."""
+    clean = str(password or "")
+    if len(clean) < 8:
+        raise ValueError("Choose a password of at least 8 characters.")
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    pw_hash = generate_password_hash(clean, method="pbkdf2:sha256:260000")
+    with get_db() as db:
+        db.execute("UPDATE users SET password_hash=? WHERE id=?", (pw_hash, int(user_id)))
+    return by_id(user_id)
+
+
+def signin_identity(user: dict | None) -> dict:
+    """What an account signs in with — drives the recovery page's wording."""
+    if not user:
+        return {}
+    source = auth_source(user)
+    return {
+        "email": user.get("email") or "",
+        "username": user.get("username") or "",
+        "auth_source": source,
+        "has_password": has_password(user),
+        "google": source in ("google", "dev"),
+    }
 
 
 def authenticate_credentials(identifier: str, password: str) -> dict | None:
@@ -584,3 +617,164 @@ def projects_of(user_id: int) -> list[dict]:
         d["points_used"] = study_points(cfg)
         out.append(d)
     return out
+
+
+# ====================================================================================
+# ADMIN ACCOUNT DESK
+# ====================================================================================
+# One account, in every context: identity, access, Kart ledger, projects and the
+# audit trail. The Admin Console renders this as a master/detail "desk"; the helpers
+# below keep the SQL (and the safety rules) out of the route module.
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
+USERNAME_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{1,39}$")
+
+
+def _clean_identity(name=None, email=None, username=None) -> dict:
+    """Validate the editable identity fields; only the supplied ones are returned."""
+    out = {}
+    if name is not None:
+        clean_name = str(name).strip()[:120]
+        if not clean_name:
+            raise ValueError("A display name is required.")
+        out["name"] = clean_name
+    if email is not None:
+        clean_email = str(email).strip().lower()
+        if not EMAIL_RE.match(clean_email):
+            raise ValueError("Enter a valid e-mail address.")
+        out["email"] = clean_email
+    if username is not None:
+        clean_username = str(username).strip()
+        if clean_username and not USERNAME_RE.match(clean_username):
+            raise ValueError("Usernames use 2-40 letters, numbers, dots, dashes or underscores.")
+        out["username"] = clean_username
+    return out
+
+
+def update_profile(user_id: int, name=None, email=None, username=None) -> dict | None:
+    """Admin edit of a profile's display name, e-mail or username.
+
+    The protected master admin's sign-in identity (e-mail + username) is immutable by
+    design - only its display name may change. Uniqueness is checked the same way
+    registration checks it, so the admin can never create a duplicate identity.
+    """
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    clean = _clean_identity(name=name, email=email, username=username)
+    if not clean:
+        raise ValueError("Nothing to update.")
+    protected = is_protected_admin(target)
+    if protected and ("email" in clean or "username" in clean):
+        changed_email = clean.get("email", target["email"]) != target["email"]
+        changed_user = clean.get("username", target.get("username") or "") != (target.get("username") or "")
+        if changed_email or changed_user:
+            raise ValueError("The master admin's sign-in identity is protected and cannot be changed.")
+
+    if "email" in clean:
+        if clean["email"] == MASTER_ADMIN_EMAIL and not protected:
+            raise ValueError("That e-mail is reserved for the platform administrator.")
+        other = by_email(clean["email"])
+        if other and other["id"] != target["id"]:
+            raise ValueError("Another account already uses this e-mail address.")
+    if "username" in clean and clean["username"]:
+        if clean["username"].lower() == MASTER_ADMIN_USERNAME.lower() and not protected:
+            raise ValueError("That username is reserved for the platform administrator.")
+        other = by_username(clean["username"])
+        if other and other["id"] != target["id"]:
+            raise ValueError("That username is already taken.")
+
+    fields = list(clean.keys())
+    values = [clean[f] for f in fields]
+    with get_db() as db:
+        db.execute(f"UPDATE users SET {', '.join(f'{f}=?' for f in fields)} WHERE id=?",
+                   (*values, target["id"]))
+    return by_id(target["id"])
+
+
+def delete_user(user_id: int) -> dict:
+    """Delete an account that no longer owns anything.
+
+    Projects are never destroyed implicitly: the admin must transfer or delete them
+    first, which keeps a delete from taking a whole study (and its responses) with it.
+    """
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    if is_protected_admin(target):
+        raise ValueError("The master admin account Anaking.admin cannot be deleted.")
+    db = get_db()
+    if target["role"] == "admin" and count_admins() <= 1:
+        raise ValueError("The last admin cannot be deleted.")
+    owned = db.execute("SELECT COUNT(*) FROM studies WHERE owner_id=?", (target["id"],)).fetchone()[0]
+    if owned:
+        raise ValueError(
+            f"This account still owns {owned} project{'s' if owned != 1 else ''}. "
+            "Transfer or delete them first."
+        )
+    teams = [r[0] for r in db.execute(
+        "SELECT id FROM workspace_teams WHERE creator_id=?", (target["id"],)).fetchall()]
+    with db:
+        # Team spaces this account created go with it; the studies inside them are
+        # already transferred or deleted, so no research data is lost.
+        for team_id in teams:
+            db.execute("DELETE FROM team_projects WHERE team_id=?", (team_id,))
+            db.execute("DELETE FROM team_members WHERE team_id=?", (team_id,))
+            db.execute("DELETE FROM workspace_teams WHERE id=?", (team_id,))
+        # The change log is history, not state: it keeps the account's denormalised
+        # name/e-mail so the record of what happened stays readable after a delete.
+        for table, column in (("point_transactions", "user_id"), ("point_requests", "user_id"),
+                              ("team_members", "user_id"), ("study_shares", "shared_with_user_id")):
+            db.execute(f"DELETE FROM {table} WHERE {column}=?", (target["id"],))
+        db.execute("DELETE FROM users WHERE id=?", (target["id"],))
+    return {"id": target["id"], "email": target["email"], "teams_removed": len(teams)}
+
+
+def account_detail(user_id: int) -> dict | None:
+    """A single account in full context: profile, projects, Kart ledger and audit trail."""
+    from core.kart import user_points_usage
+    user = by_id(user_id)
+    if not user:
+        return None
+    signin = signin_identity(user)      # before the hash is stripped from the payload
+    user.pop("password_hash", None)
+    user["auth_source"] = auth_source(user)
+    db = get_db()
+    limit = int(user.get("points_limit") if user.get("points_limit") is not None else DEFAULT_POINTS)
+    used = user_points_usage(user["id"])
+    user["points_limit"] = limit
+    user["points_used"] = used
+    user["points_balance"] = (ADMIN_UNLIMITED_POINTS if user["role"] == "admin"
+                              else max(0, limit - used))
+    user["welcome_points_pending"] = welcome_points_pending(user)
+    user["welcome_points_granted"] = has_welcome_allocation(user["id"])
+
+    ledger = [dict(r) for r in db.execute(
+        "SELECT id, delta, balance_after, reason, actor, created_at FROM point_transactions "
+        "WHERE user_id=? ORDER BY id DESC LIMIT 40", (user["id"],)).fetchall()]
+    requests = [dict(r) for r in db.execute(
+        "SELECT id, requested_points, reason, status, reviewed_by, reviewed_at, created_at "
+        "FROM point_requests WHERE user_id=? ORDER BY id DESC LIMIT 20", (user["id"],)).fetchall()]
+    # The account's own actions *and* the admin actions taken on it (every admin
+    # audit row names the target in its detail), so the trail is one story.
+    activity = [dict(r) for r in db.execute(
+        "SELECT actor, action, study, created_at, detail FROM audit_events "
+        "WHERE actor=? OR detail LIKE ? ORDER BY id DESC LIMIT 60",
+        (user.get("email") or "", "%" + (user.get("email") or "") + "%")).fetchall()]
+    projects = projects_of(user["id"])
+    shared_with = [dict(r) for r in db.execute(
+        "SELECT study_slug, permission, created_at, accepted_at FROM study_shares "
+        "WHERE shared_with_user_id=? OR (shared_with_email=? AND shared_with_email!='') "
+        "ORDER BY id DESC LIMIT 20", (user["id"], user.get("email") or "")).fetchall()]
+    from core import recovery as recovery_mod
+    stats = {
+        "projects": len(projects),
+        "completes": sum(int(p.get("completes") or 0) for p in projects),
+        "points_used": used,
+        "actions": len(activity),
+        "ledger_rows": len(ledger),
+        "shared_with": len(shared_with),
+    }
+    return {"user": user, "projects": projects, "ledger": ledger, "requests": requests,
+            "activity": activity, "shared_with": shared_with, "stats": stats,
+            "signin": signin, "recovery": recovery_mod.history(user["id"])}
