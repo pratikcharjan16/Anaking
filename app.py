@@ -175,8 +175,8 @@ def main() -> None:
     print(f"  survey          : {base}/survey/      (test mode: {base}/survey/test)")
     print(f"  studio builder  : {base}/studio/")
     print(f"  admin dashboard : {base}/admin/", flush=True)
-    print(f"  accounts db     : {app.config.get('USERS_DB_PATH') or '(beside DB_PATH)'}",
-          flush=True)
+    from core import userdata as _userdata
+    print(f"  accounts db     : {_userdata.resolve_path(app.config['DB_PATH'])}", flush=True)
     app.run(host=args.host, port=args.port, debug=args.debug, threaded=True)
 
 
