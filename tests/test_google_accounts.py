@@ -341,9 +341,9 @@ def test_admin_portal_is_protected_for_admin_and_tracks_activity(app, client):
     make_study(client, "Portal watched", H())    # and so does a write
     assert client.get("/admin-portal").status_code == 403   # regular user cannot access
 
-    out(client)                                  # anonymous visitor -> redirected to sign-in
+    out(client)                                  # anonymous visitor -> the separate Admin Login
     r_anon = client.get("/admin-portal")
-    assert r_anon.status_code == 302 and "/signin" in r_anon.headers["Location"]
+    assert r_anon.status_code == 302 and "/admin-login" in r_anon.headers["Location"]
 
     signin(client, "chief@platform.co")
     r = client.get("/admin-portal")

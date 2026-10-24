@@ -114,7 +114,7 @@
         sends a quick approval request to the admin, and your <strong>100 Kart points</strong> arrive on approval.</p>
       {% endif %}
       <p class="ln-gate-alt">New to SurveyKart? <a href="/register{% if share_token %}?share={{ share_token | urlencode }}{% endif %}{% if next_url %}{{ '&' if share_token else '?' }}next={{ next_url | urlencode }}{% endif %}">Create your account (+100 Kart pts)</a></p>
-      <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a></p>
+      <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a> · <a href="/admin-login">Platform admin? Use the separate Admin login &rarr;</a></p>
     {% endif %}
 
     <div id="ln-devbox" class="ln-devbox" hidden>

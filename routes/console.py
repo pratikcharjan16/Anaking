@@ -29,6 +29,7 @@ bp = Blueprint("console", __name__)
 
 ACTION_LABELS = {
     "auth/signin": ("Signed in", "signin"),
+    "auth/admin-signin": ("Admin signed in (Admin Login)", "signin"),
     "auth/register": ("Registered on SurveyKart", "account"),
     "auth/approval-request": ("Requested account approval (100 pts on approval)", "account"),
     "console/decision": ("Account decision", "account"),

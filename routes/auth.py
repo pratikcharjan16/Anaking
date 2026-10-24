@@ -2,6 +2,8 @@
 SurveyKart platform accounts: registration, sign-in, Kart points, and share redemption.
 
     GET  /signin                    sign in (Username/E-mail + Password, or Google)
+    GET  /admin-login               SEPARATE Admin Login (platform owner only)
+    POST /api/auth/admin-login      {identifier, password, next?} -> Admin Console
     GET  /register                  register a new SurveyKart account (+100 Kart points!)
     GET  /recover                   account lookup & recovery
     POST /api/auth/login            {identifier, password, next?, share_token?}
@@ -186,6 +188,32 @@ def open_share_link(token: str):
     return redirect(_share_redirect(redeemed, "/studio/"))
 
 
+# --------------------------------------------------------------------- sign-in throttling
+def _login_attempt_row():
+    address = request.remote_addr or "unknown"
+    return address, get_db().execute(
+        "SELECT * FROM login_attempts WHERE address=?", (address,)).fetchone()
+
+
+def _login_throttled() -> bool:
+    _address, attempt = _login_attempt_row()
+    return bool(attempt and attempt["attempts"] >= 12 and time.time() - attempt["since"] < 900)
+
+
+def _record_login_failure() -> None:
+    address, attempt = _login_attempt_row()
+    count = attempt["attempts"] + 1 if attempt and time.time() - attempt["since"] < 900 else 1
+    since = attempt["since"] if count > 1 else time.time()
+    with get_db() as db:
+        db.execute("INSERT OR REPLACE INTO login_attempts VALUES(?,?,?)", (address, count, since))
+
+
+def _clear_login_failures() -> None:
+    with get_db() as db:
+        db.execute("DELETE FROM login_attempts WHERE address=?",
+                   (request.remote_addr or "unknown",))
+
+
 # --------------------------------------------------------------------- Direct Credentials Auth
 @bp.post("/api/auth/register")
 def api_register():
@@ -234,18 +262,12 @@ def api_login():
     if not ident or not password:
         return jsonify({"error": "Enter your username (or e-mail) and password."}), 400
 
-    address = request.remote_addr or "unknown"
-    db = get_db()
-    attempt = db.execute("SELECT * FROM login_attempts WHERE address=?", (address,)).fetchone()
-    if attempt and attempt["attempts"] >= 12 and time.time() - attempt["since"] < 900:
+    if _login_throttled():
         return jsonify({"error": "Too many sign-in attempts. Please wait 15 minutes and try again."}), 429
 
     user = accounts.authenticate_credentials(ident, password)
     if not user:
-        count = attempt["attempts"] + 1 if attempt and time.time() - attempt["since"] < 900 else 1
-        since = attempt["since"] if count > 1 else time.time()
-        with db:
-            db.execute("INSERT OR REPLACE INTO login_attempts VALUES(?,?,?)", (address, count, since))
+        _record_login_failure()
         return jsonify({"error": "Invalid username/e-mail or password."}), 401
 
     if user.get("status") != "approved":
@@ -256,8 +278,7 @@ def api_login():
         }
         return jsonify({"error": msgs.get(user.get("status"), "Account is not active.")}), 403
 
-    with db:
-        db.execute("DELETE FROM login_attempts WHERE address=?", (address,))
+    _clear_login_failures()
 
     session.clear()
     session["uid"] = user["id"]
@@ -268,7 +289,8 @@ def api_login():
     redeemed = redeem_share(share_tok, user) if share_tok else None
     if redeemed:
         audit("share/redeem", study=redeemed.get("study_slug", ""), detail="0 pts debited")
-    fallback = "/studio/" if user["role"] == "admin" else "/studio/"
+    # Admins land where their work is (pending approvals, Kart points); users in Studio.
+    fallback = "/admin/console" if user["role"] == "admin" else "/studio/"
     dest = _share_redirect(redeemed, _safe_next(next_raw, fallback=fallback))
     return jsonify({
         "ok": True,
@@ -276,6 +298,86 @@ def api_login():
         "kart": user_kart_summary(user["id"]),
         "shared": redeemed,
         "redirect": dest,
+    })
+
+
+@bp.get("/admin-login")
+def admin_login_page():
+    """Separate front door for the platform owner — kept apart from user sign-in.
+
+    Already signed in as an admin? Straight to the console. Signed in as a
+    regular user? The page says so, and signing in below simply switches
+    account. The page also says plainly when ``ADMIN_PASSWORD`` isn't set up
+    on this server, instead of letting the owner guess at passwords."""
+    user = current_user()
+    if user and user.get("role") == "admin" and user.get("status") == "approved":
+        return redirect(_safe_next(request.args.get("next"), fallback="/admin/console"))
+    return render_template(
+        "admin_login.html",
+        admin_username=accounts.MASTER_ADMIN_USERNAME,
+        admin_password_configured=accounts.master_admin_password_configured(),
+        signed_in_as=(user or {}).get("email") or "",
+        next_url=request.args.get("next") or "",
+    )
+
+
+@bp.post("/api/auth/admin-login")
+def api_admin_login():
+    """Admin-only sign-in (the backend of /admin-login).
+
+    Accepts the protected master admin (``Anaking.admin`` + ``ADMIN_PASSWORD``)
+    or any approved admin account signing in with its own password — and lands
+    in the Admin Console, where pending approval requests wait. Regular user
+    credentials are refused with a clear pointer to the normal sign-in page."""
+    body = request.get_json(silent=True) or {}
+    ident = str(body.get("identifier") or body.get("username") or body.get("email") or "").strip()
+    password = str(body.get("password") or "")
+    next_raw = str(body.get("next") or "")
+
+    if not ident or not password:
+        return jsonify({"error": "Enter the admin username and password."}), 400
+    if _login_throttled():
+        return jsonify({"error": "Too many sign-in attempts. Please wait 15 minutes and try again."}), 429
+
+    if (accounts.is_master_admin_identifier(ident)
+            and not accounts.master_admin_password_configured()):
+        return jsonify({
+            "error": "Admin password sign-in isn't set up on this server yet. "
+                     "Set ADMIN_PASSWORD in the server's .env / environment and restart "
+                     "the app — or use “Sign in with Google” with an ADMIN_EMAILS account.",
+            "code": "admin_password_unconfigured",
+        }), 503
+
+    user = accounts.authenticate_admin(ident, password)
+    if not user:
+        _record_login_failure()
+        existing = accounts.by_email(ident) or accounts.by_username(ident)
+        if accounts.is_master_admin_identifier(ident):
+            msg = ("Incorrect admin password. It must match ADMIN_PASSWORD in the "
+                   "server's .env / environment (restart the app after changing it).")
+        elif existing and not existing.get("password_hash") and existing.get("google_sub"):
+            msg = ("This account signs in with Google (it has no SurveyKart password) "
+                   "— use “Sign in with Google” below.")
+        elif existing and accounts.authenticate_credentials(ident, password):
+            return jsonify({
+                "error": "That account doesn't have admin rights. Use the regular "
+                         "sign-in page — or the master admin username above.",
+                "code": "not_admin",
+            }), 403
+        else:
+            msg = "Invalid admin username or password."
+        return jsonify({"error": msg}), 401
+
+    _clear_login_failures()
+    session.clear()
+    session["uid"] = user["id"]
+    csrf_token()
+    g.user = user
+    audit("auth/admin-signin", detail="separate admin login")
+    return jsonify({
+        "ok": True,
+        "user": session_user_payload(user),
+        "redirect": _safe_next(next_raw, fallback="/admin/console"),
     })
 
 

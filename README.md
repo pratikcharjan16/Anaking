@@ -109,6 +109,13 @@ The team apps (Projects / Studio / Monitor) are multi-user:
 - **Admin bootstrap** — put your address in `ADMIN_EMAILS` (comma-separated); those accounts
   are auto-approved as admins on first sign-in, so the console can never be locked out.
   The console refuses to lock out or demote the last admin.
+- **Separate Admin Login** — the platform owner signs in at **`/admin-login`** (kept apart
+  from user sign-in): master admin `Anaking.admin` + the server's `ADMIN_PASSWORD`, any
+  approved admin account's own password, or an `ADMIN_EMAILS` Google account. It lands
+  directly in the **Admin Console** (anonymous visits to `/admin/console` and
+  `/admin-portal` are redirected there too), refuses regular-user credentials with a clear
+  message, and says plainly when `ADMIN_PASSWORD` isn't configured on the server yet
+  (set it in `.env` and restart) instead of failing silently.
 - **Respondent links stay public** — fieldwork never signs in; `/survey/…` keeps working
   with the gate up.
 

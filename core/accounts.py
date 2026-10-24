@@ -276,6 +276,31 @@ def authenticate_credentials(identifier: str, password: str) -> dict | None:
     return by_id(row["id"])
 
 
+def is_master_admin_identifier(identifier: str) -> bool:
+    """True when ``identifier`` names the protected master admin account."""
+    return str(identifier or "").strip().lower() in (
+        MASTER_ADMIN_USERNAME.lower(), MASTER_ADMIN_EMAIL)
+
+
+def master_admin_password_configured() -> bool:
+    """True when an ``ADMIN_PASSWORD`` was set for the master admin account.
+
+    While it is empty, master-admin *password* sign-in is disabled by design
+    (the stored hash is of an unknown random value) — the separate Admin
+    Login surfaces this state so the owner isn't stuck guessing passwords."""
+    return bool(Config.ADMIN_PASSWORD)
+
+
+def authenticate_admin(identifier: str, password: str) -> dict | None:
+    """Like :func:`authenticate_credentials`, but only platform admins pass:
+    the protected master admin, or any approved account with the admin role
+    signing in with its own password. Regular users never authenticate here."""
+    user = authenticate_credentials(identifier, password)
+    if user and user.get("role") == "admin" and user.get("status") == "approved":
+        return user
+    return None
+
+
 def upsert_from_claims(claims: dict) -> dict:
     """Create or refresh the profile for a verified Google identity.
 
