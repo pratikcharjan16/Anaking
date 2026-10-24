@@ -335,3 +335,70 @@ def test_usage_portal_links_each_row_to_the_desk(app, client):
     ana_id = uid_of(app, "ana@research.co")
     assert f'/admin/console#user-{ana_id}' in html
     assert "Account desk" in html
+
+
+# ------------------------------------------------------------------ Kart points
+def test_admin_manages_kart_points_from_the_desk(app, client):
+    """The desk can add, remove and set Kart points for any regular account."""
+    setup_admin(client, app)
+    ana_id = uid_of(app, "ana@research.co")
+
+    with app.app_context():
+        import core.accounts as accounts
+        start = int(accounts.by_id(ana_id)["points_limit"])
+
+    # add 60 points
+    r = client.post("/api/admin/console/points", headers=H(),
+                    json={"user_id": ana_id, "delta": 60, "reason": "Extra field budget"})
+    assert r.status_code == 200, r.get_json()
+    body = r.get_json()["user"]
+    assert body["points_limit"] == start + 60
+    assert body["points_balance"] == start + 60
+    # the response is a profile payload, never the stored password hash
+    assert "password_hash" not in body
+
+    # remove 25 points
+    r = client.post("/api/admin/console/points", headers=H(),
+                    json={"user_id": ana_id, "delta": -25})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["user"]["points_limit"] == start + 35
+
+    # set the exact limit
+    r = client.post("/api/admin/console/points", headers=H(),
+                    json={"user_id": ana_id, "points_limit": 275})
+    assert r.status_code == 200, r.get_json()
+    assert r.get_json()["user"]["points_limit"] == 275
+    assert "password_hash" not in r.get_json()["user"]
+
+    # each change is in the ledger, with the admin's note
+    detail = client.get("/api/admin/console/account",
+                        query_string={"user_id": ana_id}).get_json()
+    assert detail["user"]["points_limit"] == 275
+    reasons = [row["reason"] for row in detail["ledger"]]
+    assert "Extra field budget" in reasons
+
+    # no amount at all is a clear 400, and unknown accounts 404
+    assert client.post("/api/admin/console/points", headers=H(),
+                       json={"user_id": ana_id}).status_code == 400
+    assert client.post("/api/admin/console/points", headers=H(),
+                       json={"user_id": 99999, "delta": 10}).status_code == 404
+
+
+def test_points_management_is_admin_only(app, client):
+    auth_on(app)
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    r = client.post("/api/admin/console/points", headers=H(),
+                    json={"user_id": uid_of(app, "ana@research.co"), "delta": 500})
+    assert r.status_code == 403
+
+
+def test_desk_ships_the_overview_kart_control(app, client):
+    """The points control is on the default tab, not buried in the ledger."""
+    setup_admin(client, app)
+    js = client.get("/static/js/console.js").data.decode()
+    for needle in ("kartQuickBox", 'data-act="points-apply"', "points-tab",
+                   "adk-quick-amt", "adk-quick-reason"):
+        assert needle in js, needle
+    css = client.get("/static/css/console.css").data.decode()
+    assert ".adk-kart-quick" in css and ".adk-row-pts" in css

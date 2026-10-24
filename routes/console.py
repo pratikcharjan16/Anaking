@@ -138,6 +138,18 @@ def _account_or_404(user_id):
     return user
 
 
+def _public_user(user: dict | None) -> dict:
+    """A profile payload that is safe to send back to the browser.
+
+    ``accounts.by_id`` returns the whole row, password hash included; admin actions
+    answer with the updated profile, so the hash is stripped here — the desk never
+    needs it and it must never travel over the wire.
+    """
+    out = dict(user or {})
+    out.pop("password_hash", None)
+    return out
+
+
 @bp.get("/admin-portal")
 def admin_portal():
     """Protected usage, Kart points & user-activity dashboard for the SurveyKart admin."""
@@ -323,7 +335,7 @@ def role():
     except ValueError as exc:
         abort(400, str(exc))
     audit("console/role", detail=f"{user['email']} -> {role_val}")
-    return jsonify({"ok": True, "user": updated})
+    return jsonify({"ok": True, "user": _public_user(updated)})
 
 
 @bp.post("/api/admin/console/points")
@@ -361,7 +373,7 @@ def manage_points():
     updated["points_used"] = used
     updated["points_balance"] = max(0, int(updated["points_limit"]) - used)
     audit("console/points", detail=f"{user['email']} -> limit {updated['points_limit']} pts")
-    return jsonify({"ok": True, "user": updated})
+    return jsonify({"ok": True, "user": _public_user(updated)})
 
 
 @bp.post("/api/admin/console/point-requests/decide")
@@ -421,7 +433,7 @@ def account_profile_update():
     except ValueError as exc:
         abort(400, str(exc))
     audit("console/profile", detail=f"{user['email']} -> {updated['email']}")
-    return jsonify({"ok": True, "user": updated, "by": adm.get("email", "admin")})
+    return jsonify({"ok": True, "user": _public_user(updated), "by": adm.get("email", "admin")})
 
 
 @bp.post("/api/admin/console/delete")

@@ -193,6 +193,14 @@
       var avatar = u.picture
         ? '<i class="adk-ava' + (cls ? " is-" + cls : "") + '"><img src="' + esc(u.picture) + '" alt=""></i>'
         : '<i class="adk-ava' + (cls ? " is-" + cls : "") + '" aria-hidden="true">' + esc(initials(u)) + "</i>";
+      var kartLeft = Math.max(0, (u.points_limit || 0) - (u.points_used || 0));
+      var kartLabel = u.role === "admin" ? "\u221e"
+                    : u.status === "pending" ? "+" + n(u.welcome_points_pending || 100)
+                    : n(kartLeft);
+      var kartClass = "adk-row-pts" + (u.role === "admin" ? " admin" : (kartLeft <= 0 && u.status !== "pending" ? " zero" : ""));
+      var kartTitle = u.role === "admin" ? "Unlimited admin Kart"
+                    : u.status === "pending" ? "Welcome Kart points granted on approval"
+                    : n(kartLeft) + " of " + n(u.points_limit || 0) + " Kart points left";
       return '<li role="presentation">' +
         '<button type="button" class="adk-row' + (u.id === state.selectedId ? " on" : "") + '"' +
           ' data-select="' + u.id + '" role="option" aria-selected="' + (u.id === state.selectedId) + '"' +
@@ -200,6 +208,8 @@
           avatar +
           '<span class="adk-row-text"><b>' + esc(u.name || u.username || u.email) + "</b>" +
             "<small>" + esc(u.username ? "@" + u.username + " · " + u.email : u.email) + "</small></span>" +
+          '<span class="' + kartClass + '" title="' + kartTitle + '">' + kartLabel +
+            (u.role === "admin" ? "" : " pts") + "</span>" +
           '<span class="adk-row-tag ' + cls + '">' + esc(tag) + "</span>" +
         "</button></li>";
     }).join("");
@@ -497,10 +507,44 @@
     });
   }
 
+  // Kart points are an admin right, so the control lives on the Overview tab too —
+  // not only inside the ledger — with an amount the admin types, +/- either way.
+  function kartQuickBox(u) {
+    var isAdmin = u.role === "admin";
+    if (isAdmin) {
+      return '<div class="adk-box"><h3>Kart points <span class="adk-tag admin">Unlimited</span></h3>' +
+        '<p class="adk-note info"><b>Unlimited admin Kart.</b> Admins do not spend Kart points on projects, ' +
+        "so there is nothing to adjust here.</p></div>";
+    }
+    var limit = u.points_limit || 0;
+    var used = u.points_used || 0;
+    var left = Math.max(0, limit - used);
+    return '<div class="adk-box adk-kart-quick" id="adk-kart-quick"><h3>Kart points ' +
+        '<span class="adk-tag warn">' + n(left) + " left</span></h3>" +
+      '<p class="adk-box-sub">Limit <b>' + n(limit) + "</b> pts &middot; used <b>" + n(used) +
+        "</b> pts &middot; <b>" + n(left) + "</b> left" +
+        (u.status === "pending" ? " &middot; this account is still pending approval" : "") + "</p>" +
+      '<div class="adk-form">' +
+        '<label class="adk-field"><span>Points to add or remove</span>' +
+          '<input class="adk-input" id="adk-quick-amt" type="number" min="1" max="10000000" step="10" ' +
+            'value="100" inputmode="numeric" aria-label="Points to add or remove"></label>' +
+        '<label class="adk-field"><span>Reason written to the ledger</span>' +
+          '<input class="adk-input" id="adk-quick-reason" maxlength="200" ' +
+            'placeholder="e.g. Approved extra field budget"></label>' +
+        '<div class="adk-actions">' +
+          '<button type="button" class="adk-btn primary sm gold" data-act="points-apply" data-mode="add">' +
+            "+ Add points</button>" +
+          '<button type="button" class="adk-btn sm danger-ghost" data-act="points-apply" data-mode="remove">' +
+            "&minus; Remove points</button>" +
+          '<button type="button" class="adk-btn sm ghost" data-act="points-tab">Set an exact limit &rarr;</button>' +
+        "</div>" +
+      "</div></div>";
+  }
+
   function renderOverview(d) {
     var u = d.user;
     return '<div class="adk-pane-grid">' +
-      '<div class="adk-stack">' + identityBox(u) + signinBox(d) + supportBox(u) + "</div>" +
+      '<div class="adk-stack">' + kartQuickBox(u) + identityBox(u) + signinBox(d) + supportBox(u) + "</div>" +
       '<div class="adk-stack">' + accessBox(u) + roleBox(u) + dangerBox(d) + "</div>" +
       "</div>";
   }
@@ -849,6 +893,39 @@
         return api("/api/admin/console/role", { user_id: u.id, role: role }).then(function (out) {
           if (out.error) { fail(out); return; }
           return refreshAll(role === "admin" ? "Admin rights granted." : "Admin rights revoked.");
+        });
+      });
+    },
+    "points-tab": function () {
+      state.tab = "kart";
+      renderDetail();
+      if (state.selectedId && location.hash !== "#user-" + state.selectedId) {
+        history.replaceState(null, "", "#user-" + state.selectedId);
+      }
+      return Promise.resolve();
+    },
+    "points-apply": function (btn) {
+      var u = state.detail && state.detail.user;
+      if (!u) return Promise.resolve();
+      if (u.role === "admin") { toast("Admins have an unlimited Kart — nothing to adjust.", true); return Promise.resolve(); }
+      var amount = parseInt(value("adk-quick-amt"), 10);
+      if (isNaN(amount) || amount <= 0) {
+        toast("Enter how many points to add or remove (1 or more).", true);
+        return Promise.resolve();
+      }
+      var removing = btn.getAttribute("data-mode") === "remove";
+      var delta = removing ? -amount : amount;
+      var reason = String(value("adk-quick-reason") || "").trim();
+      return run(btn, function () {
+        return api("/api/admin/console/points", {
+          user_id: u.id, delta: delta,
+          reason: reason || (removing ? "Admin removed " + amount + " Kart points"
+                                     : "Admin added " + amount + " Kart points")
+        }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          var left = out.user && out.user.points_balance;
+          refreshAll((removing ? "\u2212" : "+") + amount + " Kart points applied" +
+                     (left != null ? " · " + n(left) + " left" : "") + ".");
         });
       });
     },

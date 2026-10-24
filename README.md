@@ -127,10 +127,12 @@ The team apps (Projects / Studio / Monitor) are multi-user:
   written to the boot log so a backup is never a guess.
 - **Account desk** (`/admin/console`) — one account in every context. A roster with search and
   status filters sits beside a dossier for the selected person: **Overview** (identity edit
-  with validation, approve / pause / re-enable, role, delete), **Projects** (status, open in
-  Studio or Monitor, transfer ownership, delete), **Kart & ledger** (set the limit, ±20/±50,
-  a reason written to the ledger, open point requests) and **Activity** (that account's audit
-  trail). "Waiting on you" puts pending approvals and Kart requests at the top, handled in
+  with validation, approve / pause / re-enable, role, delete, and a **Kart points** card that
+  adds or removes any amount with a written reason), **Projects** (status, open in
+  Studio or Monitor, transfer ownership, delete), **Kart & ledger** (set the exact limit,
+  ±20/±50, the full ledger, open point requests) and **Activity** (that account's audit
+  trail). Each roster card also carries the account's current Kart balance, so the admin can
+  see who is running out of points without opening them. "Waiting on you" puts pending approvals and Kart requests at the top, handled in
   place. Two rules keep it safe: an account that still owns projects cannot be deleted until
   they are transferred or deleted, and the master admin (`Anaking.admin`) can never be
   disabled, demoted or deleted.
