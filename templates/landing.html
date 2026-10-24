@@ -35,18 +35,31 @@
 </header>
 
 <main id="main">
-  {#- Warm SurveyKart Ambient Side-Rails for Ultrawide & Desktop Screens -#}
+  {#- Warm SurveyKart ambient canvas: aurora wash, survey dials and side-rails that
+      fill the wide gutters instead of leaving them blank on desktop screens. -#}
   <div class="sk-ambient-canvas" aria-hidden="true">
+    <div class="sk-amb-dial d1"></div>
+    <div class="sk-amb-dial d2"></div>
+    <div class="sk-amb-orbs">
+      <span class="sk-amb-orb o1"></span>
+      <span class="sk-amb-orb o2"></span>
+      <span class="sk-amb-orb o3"></span>
+      <span class="sk-amb-orb o4"></span>
+    </div>
     <div class="sk-ambient-rail left">
+      <span class="sk-amb-spine"></span>
       <span class="sk-amb-chip c1"><i>&#128722;</i> 100 KART PTS</span>
-      <span class="sk-amb-chip c2"><i>&#127897;&#65039;</i> VOICE &amp; DICTATE</span>
+      <span class="sk-amb-chip c2 alt"><i>&#127897;&#65039;</i> VOICE &amp; DICTATE</span>
       <span class="sk-amb-chip c3"><i>&#9547;</i> &sigma; = 0.00 GUARD</span>
+      <span class="sk-amb-chip c7 alt"><i>&#9201;</i> LIVE QUOTAS</span>
       <span class="sk-amb-ring r1"></span>
     </div>
     <div class="sk-ambient-rail right">
+      <span class="sk-amb-spine"></span>
       <span class="sk-amb-chip c4"><i>&#9889;</i> 7-SIGNAL AI QC</span>
-      <span class="sk-amb-chip c5"><i>&#10022;</i> 23 QUESTION TYPES</span>
+      <span class="sk-amb-chip c5 alt"><i>&#10022;</i> 23 QUESTION TYPES</span>
       <span class="sk-amb-chip c6"><i>&#128202;</i> NATIVE .PPTX</span>
+      <span class="sk-amb-chip c8 alt"><i>&#128200;</i> LIVE INSIGHTS</span>
       <span class="sk-amb-ring r2"></span>
     </div>
   </div>
@@ -1353,144 +1366,145 @@
           </aside>
         </div>
       </article>
+
+  {#- SIGNATURE DEMO CARD: FORENSIC VERBATIM X-RAY (7-SIGNAL OPEN-ENDED AI QC) -#}
+  {#- Rendered inside the demo grid, styled exactly like the other signature cards. -#}
+  <article class="ln-demo ln-demo-ai ln-reveal" data-demo="xray" id="ai-detect-demo" aria-labelledby="ai-demo-heading">
+      <div class="ai-card-top">
+        <div class="ai-card-titlewrap">
+          <div class="ai-eyebrow-row">
+            <span class="ln-demo-tag ai-tag-emerald">Verbatim X-Ray</span>
+            <span class="ai-engine-chip"><span class="sk-ai-pulse"></span> 7-Signal AI QC &middot; Live Engine</span>
+          </div>
+          <h3 id="ai-demo-heading">Catch AI-Generated Open-Ended Responses <em>While Respondents Type</em></h3>
+          <p>Open-ended verbatims carry your richest qualitative insight &mdash; and are the first target for copy-pasted LLM replies. SurveyKart runs a <strong>dual-lens forensic scan</strong> (linguistic AI hallmarks + live browser paste/keystroke cadence) on every free-text box, text grid cell, and &ldquo;Other, specify&rdquo; answer.</p>
+        </div>
+        <div class="ai-presets" role="tablist" aria-label="Verbatim AI Detection Scenarios">
+          <button type="button" class="ai-preset is-active" data-ai-preset="chatgpt"><span class="ai-p-dot bad"></span>Pasted ChatGPT <b>89</b></button>
+          <button type="button" class="ai-preset" data-ai-preset="human"><span class="ai-p-dot ok"></span>Authentic Clinician <b>12</b></button>
+          <button type="button" class="ai-preset" data-ai-preset="nudge"><span class="ai-p-dot warn"></span>Borderline Nudge <b>48</b></button>
+          <button type="button" class="ai-preset" data-ai-preset="list"><span class="ai-p-dot bad"></span>LLM Bullet List <b>94</b></button>
+          <button type="button" class="ai-preset" data-ai-preset="custom"><span class="ai-p-dot live"></span>Type / Paste Live</button>
+        </div>
+      </div>
+    <div class="sk-ai-workbench">
+      {#- Left Lens: Simulated Survey Open-Ended Question with X-Ray Scan Beam -#}
+      <div class="sk-ai-lens-card">
+        <div class="sk-ai-qhead">
+          <span class="sk-ai-qbadge">Q7 &middot; Open-Ended Verbatim</span>
+          <span class="sk-ai-scan-status" id="sk-ai-scan-status">&#9679; Live X-Ray Active</span>
+        </div>
+        <p class="sk-ai-qstem">In your own words, what clinical factors make you switch a patient&rsquo;s first-line oncology regimen?</p>
+
+        <div class="sk-ai-xray-viewport" id="sk-ai-viewport">
+          <div class="sk-ai-scanbeam" id="sk-ai-scanbeam" aria-hidden="true"></div>
+          <div class="sk-ai-xray-text" id="sk-ai-xray-text" aria-live="polite"></div>
+          <textarea class="sk-ai-custom-input" id="sk-ai-custom-input" rows="5" hidden
+            placeholder="Type naturally in your own words — or paste an AI-style paragraph with words like 'moreover', 'delve', 'pivotal role', '**bold**' to watch the live detector react..."></textarea>
+        </div>
+
+        <div class="sk-ai-legend-row">
+          <span class="sk-xtag ai"><i></i> LLM / Paste Signal</span>
+          <span class="sk-xtag human"><i></i> Human Authenticity Marker</span>
+          <button type="button" class="sk-ai-autocycle" id="sk-ai-autocycle" title="Replay animated scenario tour">&#8635; Auto-Tour</button>
+        </div>
+
+        <div class="sk-ai-nudge" id="sk-ai-nudge">
+          <strong id="sk-ai-nudge-title">Respondent Live Prompt:</strong>
+          <span id="sk-ai-nudge-msg">Evaluating open-ended response&hellip;</span>
+        </div>
+      </div>
+
+      {#- Right HUD: 180-deg Arc Forensic Gauge + Telemetry Matrix + 3-Gate Pipeline -#}
+      <div class="sk-ai-hud-card">
+        <div class="sk-ai-gauge-row">
+          <div class="sk-ai-arc-wrap">
+            <svg viewBox="0 0 180 112" class="sk-ai-arc-svg" aria-hidden="true">
+              {#- Outer Segmented Zone Scale Ring (Always Visible: 0-34 Green, 35-59 Amber, 60-100 Coral) -#}
+              <path d="M 14 92 A 76 76 0 0 1 68 19.3" class="sk-arc-zone ok"/>
+              <path d="M 71 18.4 A 76 76 0 0 1 113 19.6" class="sk-arc-zone warn"/>
+              <path d="M 116 20.6 A 76 76 0 0 1 166 92" class="sk-arc-zone bad"/>
+
+              {#- Scale Tick Labels Around the Gauge -#}
+              <text x="8" y="103" font-size="7.5" font-weight="800" fill="#8fb3a3" text-anchor="middle">0</text>
+              <text x="64" y="13" font-size="7.5" font-weight="800" fill="#6ee7b7" text-anchor="middle">35</text>
+              <text x="117" y="13" font-size="7.5" font-weight="800" fill="#fcd34d" text-anchor="middle">60</text>
+              <text x="171" y="103" font-size="7.5" font-weight="800" fill="#fca5a5" text-anchor="middle">100</text>
+
+              {#- Main Inner Gauge Track & Active Progress Fill (R = 64, Center = 90,92, Length = 201.06) -#}
+              <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-track"/>
+              <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-fill" id="sk-ai-arc-fill"/>
+
+              {#- Direct-Coordinate Precision Tapered Needle & Glowing Arc Beacon -#}
+              <g id="sk-ai-needle">
+                <circle id="sk-ai-needle-beacon" cx="142.4" cy="55.3" r="5" fill="#e06c5a" stroke="#ffffff" stroke-width="1.8"/>
+                <polygon id="sk-ai-needle-poly" points="82.2,96.9 88.1,89.0 137.5,58.7 91.9,95.0" fill="#faf6ee" opacity="0.95"/>
+                <line id="sk-ai-needle-line" x1="90" y1="92" x2="137.5" y2="58.7" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                <circle cx="90" cy="92" r="7.5" fill="#132a21" stroke="#d4af37" stroke-width="2.4"/>
+                <circle cx="90" cy="92" r="3" fill="#fde047"/>
+              </g>
+            </svg>
+            <div class="sk-ai-score-readout">
+              <b id="sk-ai-score-num">89</b>
+              <span>/ 100 AI Suspicion</span>
+            </div>
+          </div>
+
+          <div class="sk-ai-verdict-panel">
+            <span class="sk-ai-verdict-pill bad" id="sk-ai-verdict-pill">LIKELY AI &middot; QC FLAGGED</span>
+            <p class="sk-ai-verdict-desc" id="sk-ai-verdict-desc">High-confidence synthetic &amp; pasted prose detected across both linguistic and browser telemetry layers.</p>
+            <div class="sk-ai-thresholds">
+              <span><i></i>0&ndash;34 Human</span>
+              <span><i class="w"></i>35&ndash;59 Nudge</span>
+              <span><i class="b"></i>60+ Flagged</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="sk-ai-telemetry-grid">
+          <div class="sk-tel-cell">
+            <span>Keystrokes</span>
+            <strong id="sk-tel-keys">2 keys</strong>
+          </div>
+          <div class="sk-tel-cell">
+            <span>Paste Ratio</span>
+            <strong id="sk-tel-paste">98% burst</strong>
+          </div>
+          <div class="sk-tel-cell">
+            <span>Cadence</span>
+            <strong id="sk-tel-speed">142 ch/s</strong>
+          </div>
+          <div class="sk-tel-cell">
+            <span>Word Count</span>
+            <strong id="sk-tel-words">47 words</strong>
+          </div>
+        </div>
+
+        <div class="sk-ai-signals-box">
+          <div class="sk-ai-signals-head">
+            <span>Forensic Evidence Extracted</span>
+            <em id="sk-ai-engine-tag">Live /api/check_text Engine</em>
+          </div>
+          <div class="sk-ai-signal-chips" id="sk-ai-signals"></div>
+        </div>
+
+        <div class="sk-ai-gates" id="sk-ai-gates">
+          <div class="sk-gate" data-gate="typing">
+            <b>1 &middot; Live Typing</b>
+            <span id="sk-gate-1">Own-words prompt shown</span>
+          </div>
+          <div class="sk-gate" data-gate="submit">
+            <b>2 &middot; On Submit</b>
+            <span id="sk-gate-2">Flagged in QC record</span>
+          </div>
+          <div class="sk-gate" data-gate="admin">
+            <b>3 &middot; Admin Monitor</b>
+            <span id="sk-gate-3">Queued in AI review &amp; XLSX</span>
+          </div>
+        </div>
+      </div>
     </div>
-  </section>
-
-  {#- ---------------- UNIQUE FEATURE BANNER + INTERACTIVE DEMO: AI RESPONSE DETECTION FOR OPEN-ENDED QUESTIONS ---------------- -#}
-  <section class="sk-ai-banner-sec" id="ai-detect-demo" aria-labelledby="sk-ai-banner-heading">
-    <div class="sk-ai-banner-shell ln-reveal">
-      <div class="sk-ai-banner-top">
-        <div>
-          <p class="sk-ai-eyebrow"><span class="sk-ai-pulse"></span> FORENSIC VERBATIM X-RAY &middot; OPEN-ENDED QUALITY ENGINE</p>
-          <h2 id="sk-ai-banner-heading">Catch AI-Generated Open-Ended Responses <em>While Respondents Type</em></h2>
-          <p class="sk-ai-sub">Open-ended verbatims carry your richest qualitative insight &mdash; and are the first target for copy-pasted LLM replies. SurveyKart runs a <strong>dual-lens forensic scan</strong> (linguistic AI hallmarks + live browser paste/keystroke cadence) on every free-text box, text grid cell, and &ldquo;Other, specify&rdquo; answer.</p>
-        </div>
-        <div class="sk-ai-mode-bar" role="tablist" aria-label="Verbatim AI Detection Scenarios">
-          <button type="button" class="sk-ai-preset is-active" data-ai-preset="chatgpt">&#129302; Pasted ChatGPT (89)</button>
-          <button type="button" class="sk-ai-preset" data-ai-preset="human">&#9997;&#65039; Authentic Clinician (12)</button>
-          <button type="button" class="sk-ai-preset" data-ai-preset="nudge">&#9888;&#65039; Borderline Nudge (48)</button>
-          <button type="button" class="sk-ai-preset" data-ai-preset="list">&#128203; LLM Bullet List (94)</button>
-          <button type="button" class="sk-ai-preset" data-ai-preset="custom">&#9000;&#65039; Type / Paste Live</button>
-        </div>
-      </div>
-
-      <div class="sk-ai-workbench">
-        {#- Left Lens: Simulated Survey Open-Ended Question with X-Ray Scan Beam -#}
-        <div class="sk-ai-lens-card">
-          <div class="sk-ai-qhead">
-            <span class="sk-ai-qbadge">Q7 &middot; Open-Ended Verbatim</span>
-            <span class="sk-ai-scan-status" id="sk-ai-scan-status">&#9679; Live X-Ray Active</span>
-          </div>
-          <p class="sk-ai-qstem">In your own words, what clinical factors make you switch a patient&rsquo;s first-line oncology regimen?</p>
-
-          <div class="sk-ai-xray-viewport" id="sk-ai-viewport">
-            <div class="sk-ai-scanbeam" id="sk-ai-scanbeam" aria-hidden="true"></div>
-            <div class="sk-ai-xray-text" id="sk-ai-xray-text" aria-live="polite"></div>
-            <textarea class="sk-ai-custom-input" id="sk-ai-custom-input" rows="5" hidden
-              placeholder="Type naturally in your own words — or paste an AI-style paragraph with words like 'moreover', 'delve', 'pivotal role', '**bold**' to watch the live detector react..."></textarea>
-          </div>
-
-          <div class="sk-ai-legend-row">
-            <span class="sk-xtag ai"><i></i> LLM / Paste Signal</span>
-            <span class="sk-xtag human"><i></i> Human Authenticity Marker</span>
-            <button type="button" class="sk-ai-autocycle" id="sk-ai-autocycle" title="Replay animated scenario tour">&#8635; Auto-Tour</button>
-          </div>
-
-          <div class="sk-ai-nudge" id="sk-ai-nudge">
-            <strong id="sk-ai-nudge-title">Respondent Live Prompt:</strong>
-            <span id="sk-ai-nudge-msg">Evaluating open-ended response&hellip;</span>
-          </div>
-        </div>
-
-        {#- Right HUD: 180-deg Arc Forensic Gauge + Telemetry Matrix + 3-Gate Pipeline -#}
-        <div class="sk-ai-hud-card">
-          <div class="sk-ai-gauge-row">
-            <div class="sk-ai-arc-wrap">
-              <svg viewBox="0 0 180 112" class="sk-ai-arc-svg" aria-hidden="true">
-                {#- Outer Segmented Zone Scale Ring (Always Visible: 0-34 Green, 35-59 Amber, 60-100 Coral) -#}
-                <path d="M 14 92 A 76 76 0 0 1 68 19.3" class="sk-arc-zone ok"/>
-                <path d="M 71 18.4 A 76 76 0 0 1 113 19.6" class="sk-arc-zone warn"/>
-                <path d="M 116 20.6 A 76 76 0 0 1 166 92" class="sk-arc-zone bad"/>
-
-                {#- Scale Tick Labels Around the Gauge -#}
-                <text x="8" y="103" font-size="7.5" font-weight="800" fill="#8fb3a3" text-anchor="middle">0</text>
-                <text x="64" y="13" font-size="7.5" font-weight="800" fill="#6ee7b7" text-anchor="middle">35</text>
-                <text x="117" y="13" font-size="7.5" font-weight="800" fill="#fcd34d" text-anchor="middle">60</text>
-                <text x="171" y="103" font-size="7.5" font-weight="800" fill="#fca5a5" text-anchor="middle">100</text>
-
-                {#- Main Inner Gauge Track & Active Progress Fill (R = 64, Center = 90,92, Length = 201.06) -#}
-                <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-track"/>
-                <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-fill" id="sk-ai-arc-fill"/>
-
-                {#- Direct-Coordinate Precision Tapered Needle & Glowing Arc Beacon -#}
-                <g id="sk-ai-needle">
-                  <circle id="sk-ai-needle-beacon" cx="142.4" cy="55.3" r="5" fill="#e06c5a" stroke="#ffffff" stroke-width="1.8"/>
-                  <polygon id="sk-ai-needle-poly" points="82.2,96.9 88.1,89.0 137.5,58.7 91.9,95.0" fill="#faf6ee" opacity="0.95"/>
-                  <line id="sk-ai-needle-line" x1="90" y1="92" x2="137.5" y2="58.7" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
-                  <circle cx="90" cy="92" r="7.5" fill="#132a21" stroke="#d4af37" stroke-width="2.4"/>
-                  <circle cx="90" cy="92" r="3" fill="#fde047"/>
-                </g>
-              </svg>
-              <div class="sk-ai-score-readout">
-                <b id="sk-ai-score-num">89</b>
-                <span>/ 100 AI Suspicion</span>
-              </div>
-            </div>
-
-            <div class="sk-ai-verdict-panel">
-              <span class="sk-ai-verdict-pill bad" id="sk-ai-verdict-pill">LIKELY AI &middot; QC FLAGGED</span>
-              <p class="sk-ai-verdict-desc" id="sk-ai-verdict-desc">High-confidence synthetic &amp; pasted prose detected across both linguistic and browser telemetry layers.</p>
-              <div class="sk-ai-thresholds">
-                <span><i></i>0&ndash;34 Human</span>
-                <span><i class="w"></i>35&ndash;59 Nudge</span>
-                <span><i class="b"></i>60+ Flagged</span>
-              </div>
-            </div>
-          </div>
-
-          <div class="sk-ai-telemetry-grid">
-            <div class="sk-tel-cell">
-              <span>Keystrokes</span>
-              <strong id="sk-tel-keys">2 keys</strong>
-            </div>
-            <div class="sk-tel-cell">
-              <span>Paste Ratio</span>
-              <strong id="sk-tel-paste">98% burst</strong>
-            </div>
-            <div class="sk-tel-cell">
-              <span>Cadence</span>
-              <strong id="sk-tel-speed">142 ch/s</strong>
-            </div>
-            <div class="sk-tel-cell">
-              <span>Word Count</span>
-              <strong id="sk-tel-words">47 words</strong>
-            </div>
-          </div>
-
-          <div class="sk-ai-signals-box">
-            <div class="sk-ai-signals-head">
-              <span>Forensic Evidence Extracted</span>
-              <em id="sk-ai-engine-tag">Live /api/check_text Engine</em>
-            </div>
-            <div class="sk-ai-signal-chips" id="sk-ai-signals"></div>
-          </div>
-
-          <div class="sk-ai-gates" id="sk-ai-gates">
-            <div class="sk-gate" data-gate="typing">
-              <b>1 &middot; Live Typing</b>
-              <span id="sk-gate-1">Own-words prompt shown</span>
-            </div>
-            <div class="sk-gate" data-gate="submit">
-              <b>2 &middot; On Submit</b>
-              <span id="sk-gate-2">Flagged in QC record</span>
-            </div>
-            <div class="sk-gate" data-gate="admin">
-              <b>3 &middot; Admin Monitor</b>
-              <span id="sk-gate-3">Queued in AI review &amp; XLSX</span>
-            </div>
-          </div>
-        </div>
-      </div>
+  </article>
     </div>
   </section>
 
