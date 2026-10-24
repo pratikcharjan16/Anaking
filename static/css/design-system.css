@@ -277,70 +277,214 @@ textarea:focus-visible {
 .an-appbar .live-pulse-dot,
 .topbar .live-pulse-dot { background: #9fe6c8; box-shadow: none; }
 
-/* Secondary link-style button used in bars and toolbars. */
-.linkbtn {
+/* Secondary link-style 3D button used in bars and toolbars. */
+.linkbtn,
+.btn-3d {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  padding: 7px 13px;
+  padding: 7px 14px;
   border-radius: var(--an-radius-sm);
-  background: rgba(255, 255, 255, .12);
+  border: 1px solid rgba(255, 255, 255, .28);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .10) 100%);
   color: #fff;
   font-size: 12.5px;
-  font-weight: 600;
+  font-weight: 700;
   text-decoration: none;
   white-space: nowrap;
-  transition: background var(--an-fast) var(--an-ease);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .32),
+              0 3px 0 rgba(7, 15, 12, .55),
+              0 6px 12px rgba(7, 15, 12, .22);
+  transform: translateY(0);
+  transition: transform var(--an-fast) var(--an-ease),
+              box-shadow var(--an-fast) var(--an-ease),
+              background var(--an-fast) var(--an-ease);
 }
-.linkbtn:hover { background: rgba(255, 255, 255, .22); }
+.linkbtn:hover,
+.btn-3d:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .30) 0%, rgba(255, 255, 255, .16) 100%);
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .42),
+              0 4px 0 rgba(7, 15, 12, .58),
+              0 8px 16px rgba(7, 15, 12, .26);
+}
+.linkbtn:active,
+.btn-3d:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .20),
+              0 1px 0 rgba(7, 15, 12, .55),
+              0 2px 5px rgba(7, 15, 12, .18);
+}
+.linkbtn.accent,
+.btn-3d.accent {
+  border-color: #2aa384;
+  background: linear-gradient(180deg, #1d8a6f 0%, #14614f 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .36),
+              0 3px 0 #0a352a,
+              0 6px 14px rgba(13, 70, 56, .28);
+}
+.linkbtn.gold,
+.btn-3d.gold {
+  border-color: #d8b23b;
+  background: linear-gradient(180deg, #f6e29c 0%, #dec05c 100%);
+  color: #2a2109;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .75),
+              0 3px 0 #967717,
+              0 6px 14px rgba(150, 119, 23, .22);
+}
 
-/* The marketing landing wears the bar in warm linen instead of ink: same lockup
-   and chrome, flipped to ink-on-paper with the gold spark accent. */
+/* The marketing landing & admin portal wear the bar in warm linen instead of ink:
+   flip all bar buttons and lockup to crisp high-contrast ink-on-paper 3D buttons. */
 body.landing .an-appbar {
   color: var(--an-ink);
   background: linear-gradient(180deg, #faf6ee 0%, #f3ecdd 100%);
-  border-bottom: 1px solid #e0d5c0;
-  box-shadow: 0 1px 0 rgba(255, 255, 255, .8), 0 12px 30px rgba(122, 96, 40, .10);
+  border-bottom: 1px solid #dfd3bc;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, .85), 0 12px 30px rgba(122, 96, 40, .10);
 }
 body.landing .an-appbar .brand-anaking { color: var(--an-ink); }
 body.landing .an-appbar .anaking-tagline { color: var(--an-muted); }
 body.landing .an-appbar .tagline-spark { color: #c9a227; }
 body.landing .an-appbar .brand-sub-badge,
 body.landing .an-appbar .brand-studio-badge {
-  border-color: #e0d5c0;
+  border-color: #dfd3bc;
   background: #efe7d6;
   color: #7a6a43;
 }
 body.landing .an-appbar .live-pulse-dot { background: #c9a227; box-shadow: none; }
+body.landing .an-appbar .linkbtn {
+  border-color: #d4c6aa;
+  background: linear-gradient(180deg, #ffffff 0%, #f2ead9 100%);
+  color: var(--an-ink);
+  box-shadow: inset 0 1px 0 #ffffff,
+              0 3px 0 #c6b697,
+              0 6px 12px rgba(92, 74, 34, .12);
+}
+body.landing .an-appbar .linkbtn:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #f8f2e4 100%);
+  color: var(--an-accent);
+  box-shadow: inset 0 1px 0 #ffffff,
+              0 4px 0 #b8a684,
+              0 8px 16px rgba(92, 74, 34, .16);
+}
+body.landing .an-appbar .linkbtn.accent {
+  border-color: #14614f;
+  background: linear-gradient(180deg, #1d8a6f 0%, #14614f 100%);
+  color: #fff;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .35),
+              0 3px 0 #0b392e,
+              0 6px 14px rgba(20, 97, 79, .24);
+}
 
 
-/* ---- brand lockup --------------------------------------------------
-   Markup lives in templates/_brand.html: an ivory cameo tile with a cut-green
-   gem, a solid wordmark and no glow.  High contrast on every surface - dark
-   bars, the navy instrument, paper and white - and identical everywhere. */
+/* ---- SurveyKart 3D brand button lockup ------------------------------
+   Markup lives in templates/_brand.html: acts as a tactile 3D button with
+   an animated 3D GIF logo + vector crest, redirecting to the main/landing page. */
 .anaking-brand-lockup,
 .st-brand-link {
   display: inline-flex;
   align-items: center;
   gap: 11px;
+  padding: 5px 12px 5px 7px;
+  border-radius: 14px;
+  border: 1px solid rgba(209, 219, 212, .75);
+  background: linear-gradient(180deg, #ffffff 0%, #f2f5f1 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .92),
+              0 3px 0 #c5d1c9,
+              0 7px 16px rgba(18, 42, 32, .10);
   text-decoration: none;
   cursor: pointer;
   user-select: none;
   line-height: 1.2;
-  transition: transform 320ms cubic-bezier(.34, 1.4, .64, 1);
+  transform: translateY(0);
+  transition: transform 220ms cubic-bezier(.34, 1.4, .64, 1),
+              box-shadow 220ms var(--an-ease),
+              background 220ms var(--an-ease);
+}
+.an-appbar .anaking-brand-lockup,
+.topbar .anaking-brand-lockup {
+  border-color: rgba(255, 255, 255, .22);
+  background: linear-gradient(180deg, rgba(255, 255, 255, .16) 0%, rgba(255, 255, 255, .07) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .28),
+              0 3px 0 rgba(6, 14, 11, .62),
+              0 7px 16px rgba(6, 14, 11, .26);
+}
+body.landing .an-appbar .anaking-brand-lockup {
+  border-color: #d8cbb0;
+  background: linear-gradient(180deg, #fffdf8 0%, #f2ead8 100%);
+  box-shadow: inset 0 1px 0 #ffffff,
+              0 3px 0 #c7b798,
+              0 7px 16px rgba(102, 80, 32, .12);
 }
 .anaking-brand-lockup:hover,
-.st-brand-link:hover { transform: translateY(-2px); }
+.st-brand-link:hover {
+  transform: translateY(-2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .95),
+              0 5px 0 #b7c6bd,
+              0 11px 22px rgba(18, 42, 32, .15);
+}
+.an-appbar .anaking-brand-lockup:hover,
+.topbar .anaking-brand-lockup:hover {
+  background: linear-gradient(180deg, rgba(255, 255, 255, .22) 0%, rgba(255, 255, 255, .11) 100%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .36),
+              0 5px 0 rgba(6, 14, 11, .68),
+              0 11px 22px rgba(6, 14, 11, .32);
+}
+body.landing .an-appbar .anaking-brand-lockup:hover {
+  background: linear-gradient(180deg, #ffffff 0%, #f6efe0 100%);
+  box-shadow: inset 0 1px 0 #ffffff,
+              0 5px 0 #baa885,
+              0 11px 22px rgba(102, 80, 32, .18);
+}
+.anaking-brand-lockup:active,
+.st-brand-link:active {
+  transform: translateY(2px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .5),
+              0 1px 0 rgba(18, 42, 32, .35),
+              0 3px 6px rgba(18, 42, 32, .12);
+}
 
-.anaking-svg-logo {
+.sk-logo-3d-stage {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
   border-radius: 12px;
-  box-shadow: 0 1px 2px rgba(25, 32, 26, .10), 0 6px 16px rgba(25, 32, 26, .10);
+}
+.sk-logo-3d-gif {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 11px;
+  filter: drop-shadow(0 2px 5px rgba(13, 42, 32, .20));
+  animation: skLogoBob 3.8s ease-in-out infinite alternate;
+}
+@keyframes skLogoBob {
+  from { transform: translateY(0) rotate(-0.8deg) scale(1); }
+  to   { transform: translateY(-1.5px) rotate(1.2deg) scale(1.03); }
+}
+
+.anaking-svg-logo {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  pointer-events: none;
+  flex-shrink: 0;
+  border-radius: 11px;
   transition: box-shadow var(--an-mid) var(--an-ease), filter var(--an-mid) var(--an-ease);
 }
 .anaking-brand-lockup:hover .anaking-svg-logo,
 .st-brand-link:hover .anaking-svg-logo {
-  box-shadow: 0 2px 4px rgba(25, 32, 26, .12), 0 12px 26px rgba(25, 32, 26, .16);
+  box-shadow: 0 2px 6px rgba(25, 32, 26, .28);
 }
 
 /* ---- the living gem --------------------------------------------------
@@ -460,21 +604,133 @@ body.landing .an-appbar .live-pulse-dot { background: #c9a227; box-shadow: none;
 /* Footer shared by the public surfaces. */
 .an-foot {
   display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  flex-wrap: wrap;
-  max-width: 1180px;
-  margin: 0 auto;
-  padding: 26px 22px 34px;
+  flex-direction: column;
+  gap: 22px;
+  max-width: min(1680px, 96vw);
+  margin: 28px auto 0;
+  padding: 34px clamp(20px, 3.6vw, 56px) 38px;
   color: var(--an-muted);
-  font-size: 12px;
-  border-top: 1px solid var(--an-line);
+  font-size: 12.5px;
+  border-top: 1.5px solid var(--an-line);
+  background: linear-gradient(180deg, rgba(255, 252, 245, 0.72) 0%, rgba(244, 236, 218, 0.88) 100%);
+  border-radius: 22px 22px 0 0;
 }
-.an-foot b { color: var(--an-ink); font-weight: 650; letter-spacing: -.01em; }
-.an-foot-links { display: flex; gap: 16px; }
-.an-foot a { color: var(--an-muted); text-decoration: none; border-bottom: 1px solid transparent; }
-.an-foot a:hover { color: var(--an-accent); border-bottom-color: currentColor; }
+.an-foot b { color: var(--an-ink); font-weight: 700; letter-spacing: -.01em; }
+.an-foot-grid {
+  display: grid;
+  grid-template-columns: 1.35fr repeat(3, 1fr);
+  gap: 26px;
+  width: 100%;
+}
+.an-foot-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.an-foot-brand-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  color: var(--an-ink) !important;
+  border-bottom: none !important;
+}
+.an-foot-gem {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  background: #fef3c7;
+  border: 1px solid #d97706;
+  font-size: 14px;
+}
+.an-foot-desc {
+  margin: 2px 0 4px;
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--an-muted);
+  max-width: 42ch;
+}
+.an-foot-badges {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 2px;
+}
+.an-foot-pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 9px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 750;
+  color: #78350f;
+  background: #fef3c7;
+  border: 1px solid rgba(217, 119, 6, 0.32);
+}
+.an-foot-heading {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--an-ink);
+}
+.an-foot-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.an-foot-list li {
+  line-height: 1.35;
+}
+.an-foot-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 16px;
+  border-top: 1px solid var(--an-line);
+  width: 100%;
+}
+.an-foot-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+  align-items: center;
+}
+.an-foot-seo-aliases {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--an-muted);
+}
+.an-foot a {
+  color: var(--an-muted);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color .15s ease, border-color .15s ease;
+}
+.an-foot a:hover {
+  color: var(--an-accent);
+  border-bottom-color: currentColor;
+}
+@media (max-width: 960px) {
+  .an-foot-grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 20px;
+  }
+}
+@media (max-width: 640px) {
+  .an-foot-grid {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+}
 
 /* ------------------------------------------------------------------ 5. status pills */
 /* One pill, every app: same size, weight, radius and semantic colours. */
@@ -515,7 +771,70 @@ body.landing .an-appbar .live-pulse-dot { background: #c9a227; box-shadow: none;
 }
 .pill.likely_ai { background: var(--an-bad-soft); color: var(--an-bad); }
 
-/* ------------------------------------------------------------------ 6. motion & print */
+/* ------------------------------------------------------------------ 6. responsive chrome, motion & print */
+html { overflow-x: clip; }
+body { overflow-x: clip; min-width: 0; }
+img, video, canvas { max-width: 100%; }
+
+@media (max-width: 1024px) {
+  .an-foot { max-width: 98vw; padding: 28px 20px 32px; }
+  .an-foot-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; }
+}
+@media (max-width: 960px) {
+  .an-appbar { padding: 10px 16px; gap: 10px 14px; }
+}
+@media (max-width: 768px) {
+  .an-appbar {
+    position: relative;
+    padding: 10px 14px;
+    gap: 8px 10px;
+  }
+  .anaking-brand-lockup,
+  .st-brand-link {
+    padding: 4px 10px 4px 6px;
+    gap: 8px;
+    border-radius: 12px;
+  }
+  .an-foot-brand {
+    grid-column: 1 / -1;
+  }
+  .an-foot-desc {
+    max-width: none;
+  }
+}
+@media (max-width: 640px) {
+  .an-appbar { padding: 9px 12px; gap: 8px; }
+  .sk-brand-3d-btn { padding: 4px 9px 4px 6px; gap: 7px; }
+  .brand-anaking { font-size: 16px; }
+  .anaking-tagline { font-size: 9.5px; }
+  .topbar .anaking-tagline { display: none; }
+  .linkbtn, .btn-3d { padding: 6px 10px; font-size: 11.5px; }
+  .an-foot {
+    max-width: 100%;
+    border-radius: 18px 18px 0 0;
+    padding: 22px 14px 28px;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 16px;
+  }
+  .an-foot-grid {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+  .an-foot-list a {
+    display: inline-block;
+    padding: 2px 0;
+  }
+  .an-foot-links { flex-wrap: wrap; gap: 8px 12px; }
+}
+@media (max-width: 440px) {
+  .an-appbar .anaking-tagline,
+  .topbar .brand-sub-badge { display: none; }
+  .brand-anaking { font-size: 15px; }
+  .brand-sub-badge,
+  .brand-studio-badge { padding: 2px 6px; font-size: 8.5px; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
     animation-duration: .001ms !important;

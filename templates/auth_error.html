@@ -1,12 +1,15 @@
-{% from "_head.html" import head %}{{ head('Anaking · Sign-in') }}
+{% from "_head.html" import head %}{{ head('SurveyKart · Sign-in') }}
 {% from "_brand.html" import brand %}
-<body class="auth-err">
-  <main class="auth-err-card">
-    {{ brand(badge='RESEARCH', href='/', size=38, prefix='ak', tagline=false,
-             link_class='anaking-brand-lockup', title='Anaking') }}
-    <h1>Sign-in</h1>
-    <p class="auth-err-msg">{{ message }}</p>
-    <a class="auth-err-back" href="/">Back to the landing page</a>
-  </main>
-</body>
-</html>
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/landing.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+<main class="ln-autherr">
+  <div class="ln-autherr-card">
+    {{ brand(badge='KART', href='/', size=40, prefix='ak', tagline=true,
+             link_class='anaking-brand-lockup', title='SurveyKart — Insights Delivered') }}
+    <h1>Sign-in notice</h1>
+    <p>{{ message }}</p>
+    <p><a class="ln-btn ln-btn-primary" href="/signin">Sign in with SurveyKart credentials</a>
+       <a class="ln-btn ln-btn-ghost" href="/">Back to SurveyKart home</a></p>
+  </div>
+</main>

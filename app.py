@@ -87,6 +87,29 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     # behind a reverse proxy / hosted preview: trust X-Forwarded-* so redirects and
     # generated URLs know the real scheme and host
     app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+
+    orig_save_session = app.session_interface.save_session
+
+    def _iframe_aware_save_session(app_obj, sess, response):
+        orig_save_session(app_obj, sess, response)
+        if not app_obj.config.get("PRODUCTION") and (
+            request.is_secure or ".e2b.app" in (request.host or "")
+        ):
+            cookies = response.headers.getlist("Set-Cookie")
+            if cookies:
+                response.headers.remove("Set-Cookie")
+                for c in cookies:
+                    if c.startswith("session="):
+                        c = c.replace("SameSite=Lax", "SameSite=None")
+                        if "SameSite=None" not in c:
+                            c += "; SameSite=None"
+                        if "; Secure" not in c:
+                            c += "; Secure"
+                        if "; Partitioned" not in c:
+                            c += "; Partitioned"
+                    response.headers.add("Set-Cookie", c)
+
+    app.session_interface.save_session = _iframe_aware_save_session
     app.config["VERSION"] = __version__
     # One build stamp for every static asset; ASSET_VERSION pins it in a fixed deployment.
     app.config["ASSET_VERSION"] = os.environ.get("ASSET_VERSION") or _static_stamp(app.static_folder)
@@ -109,8 +132,6 @@ def create_app(config: str | type | dict | None = None) -> Flask:
     @app.after_request
     def _headers(resp):
         resp.headers.setdefault("X-Content-Type-Options", "nosniff")
-        # everything is always fresh - stale cached UI caused repeated "not working"
-        # reports; the platform is small enough that no-store costs nothing
         if request.path.startswith(("/api/", "/admin", "/static/")) or "text/html" in (resp.mimetype or ""):
             resp.headers["Cache-Control"] = "no-store"
         return resp

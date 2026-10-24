@@ -127,8 +127,10 @@ def qc_flags(answers: dict, elapsed: float, cfg: dict, status: str = "complete")
             flags.append("attention_check_failed")
     sq = qc.get("straightline_q")
     if sq:
-        vals = [v for k, v in answers.get(sq, {}).items() if not k.startswith("_")]
-        if len(vals) >= 10 and len(set(vals)) == 1:
+        vals = [v for k, v in answers.get(sq, {}).items() if not k.startswith("_") and v not in (None, "", "NA")]
+        q_obj = next((q for q in cfg.get("questions", []) if q.get("id") == sq), None)
+        min_rows = min(10, len(q_obj.get("rows", []))) if q_obj and len(q_obj.get("rows", [])) >= 2 else 10
+        if len(vals) >= max(2, min_rows) and len(set(vals)) == 1:
             flags.append(f"straightliner_{sq}")
     uq = qc.get("uniform_q")
     if uq and cfg.get("conjoint"):

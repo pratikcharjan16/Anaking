@@ -260,11 +260,12 @@ td.pick.sel .pick-mark{border-color:var(--accent-2);background:var(--accent-2);
 .summary code{background:#f4f7f9;padding:2px 6px;border-radius:4px;font-size:12px}
 
 @media (max-width:640px){
-  .card{padding:20px 17px}
+  .card{padding:20px 15px}
   .grid-row{grid-template-columns:1fr;gap:9px}
   .s100-row{grid-template-columns:1fr 88px}
-  .task-table thead{display:none}
-  .task-table tbody th{width:auto}
+  .task-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+  .task-table tbody th{width:auto;min-width:110px}
+  .task-table td.pick,.task-table thead th{min-width:120px}
   .meta{display:none}
 }
 
@@ -474,7 +475,63 @@ input[type=range]::-moz-range-thumb{width:22px;height:22px;border-radius:50%;bac
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
 .coach-msg{font-size:12.5px;color:var(--ink);line-height:1.45}
 .coach-msg a{color:var(--accent);font-weight:800;text-decoration:underline}
-@media (max-width:640px){body.voice-on .coach{bottom:76px}}
+body.voice-on .coach{bottom:76px;z-index:80}
+
+.straightline-flag-banner{
+  margin-top:12px;
+  padding:11px 14px;
+  border-radius:10px;
+  background:linear-gradient(135deg,#fff8eb 0%,#fff1d6 100%);
+  border:1.5px solid #e5a93b;
+  box-shadow:0 6px 18px rgba(178,106,0,.14);
+  color:#5c3700;
+  animation:capIn .28s ease;
+}
+.straightline-flag-banner .sl-flag-top{
+  display:flex;
+  align-items:center;
+  flex-wrap:wrap;
+  gap:8px;
+  margin-bottom:5px;
+}
+.straightline-flag-banner .sl-flag-badge{
+  display:inline-flex;
+  align-items:center;
+  gap:5px;
+  background:#b25000;
+  color:#fff;
+  font-size:11px;
+  font-weight:800;
+  letter-spacing:.05em;
+  text-transform:uppercase;
+  padding:3px 9px;
+  border-radius:999px;
+}
+.straightline-flag-banner .sl-flag-code{
+  background:rgba(178,80,0,.12);
+  color:#7a3300;
+  border:1px solid rgba(178,80,0,.28);
+  border-radius:6px;
+  padding:2px 7px;
+  font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11.5px;
+  font-weight:700;
+}
+.straightline-flag-banner .sl-flag-sigma{
+  font-size:11.5px;
+  font-weight:700;
+  color:#8a4200;
+}
+.straightline-flag-banner .sl-flag-msg{
+  font-size:12.5px;
+  line-height:1.45;
+  color:#5c3700;
+}
+.grid.is-straightlined .grid-row:not(.grid-head),
+.grid.is-straightlined .cg-row:not(.cg-head){
+  border-left:3px solid #e5a93b;
+  padding-left:8px;
+}
 
 .oq-chip{display:none;margin-top:8px;font-size:12px;font-weight:600;border-radius:8px;padding:7px 11px}
 .oq-chip.warn{display:block;background:#fff4e2;color:#b26a00;border:1px solid #ecd6a8;animation:capIn .3s ease}
@@ -1047,3 +1104,156 @@ body.voice-on .voice-rating-hint{display:block}
   .dg-th{ font-size:11.5px }
   .dg-td-src{ padding:5px 6px }
 }
+
+/* =====================================================================
+   COMPREHENSIVE TABLET & SMARTPHONE RESPONSIVE RULES (SURVEY RUNTIME)
+   ===================================================================== */
+@media (max-width:860px){
+  main{
+    padding:18px 12px 68px;
+  }
+  .choice-grid,
+  .nm-table,
+  .dg-table,
+  .hm-table{
+    overflow-x:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+  .cg-row,
+  .nm-tr,
+  .dg-tr,
+  .hm-tr{
+    min-width:480px;
+  }
+}
+
+@media (max-width:640px){
+  .topbar{
+    padding:9px 12px;
+    gap:8px;
+    flex-wrap:wrap;
+  }
+  .hud{
+    gap:8px;
+    margin-left:auto;
+  }
+  .teambar{
+    padding:7px 12px;
+    gap:8px;
+    font-size:11.5px;
+  }
+  body.testmode::before{
+    top:0;
+    position:relative;
+    font-size:11px;
+    padding:6px 10px;
+  }
+  main{
+    padding:14px 10px 64px;
+  }
+  .card{
+    padding:18px 14px;
+    border-radius:10px;
+  }
+  h2.stem{
+    font-size:17px;
+  }
+  .scale{
+    flex-wrap:wrap;
+    gap:6px;
+  }
+  .scale-btn{
+    flex:1 1 42px;
+    min-width:40px;
+    padding:10px 4px;
+  }
+  .scale-ends.rs-ends{
+    display:grid;
+    grid-template-columns:1fr 1fr 1fr;
+    gap:6px;
+    align-items:start;
+  }
+  .scale-ends.rs-ends .rs-end{
+    max-width:none;
+    font-size:11px;
+  }
+  .scale-ends.rs-ends .rs-end-mid{
+    position:static;
+    transform:none;
+    text-align:center;
+  }
+  /* Text Grid: stack rows vertically on phones so every textarea + Dictate button has 100% width */
+  .tg-tr.tg-head{
+    display:none;
+  }
+  .tg-tr{
+    grid-template-columns:1fr!important;
+    gap:8px;
+    padding:10px;
+    border:1px solid var(--line);
+    border-radius:10px;
+    background:#fff;
+  }
+  .tg-th.tg-rowlabel{
+    padding:2px 0 4px;
+    border-bottom:1px dashed var(--line);
+  }
+  .single-gauge-wrap{
+    max-width:100%;
+    padding:10px 4px;
+  }
+  .gauge-svg{
+    width:min(240px, 82vw);
+    height:auto;
+  }
+  .gauge-ends{
+    width:min(230px, 80vw);
+  }
+  .hmap-head,
+  .hmap-row{
+    grid-template-columns:minmax(95px, 1.2fr) repeat(3, minmax(52px, 1fr));
+    gap:5px;
+  }
+  .nm-row{
+    flex-wrap:wrap;
+    gap:8px;
+  }
+  .nm-label{
+    flex:1 1 160px;
+  }
+  .nm-row input{
+    width:110px;
+  }
+  .delta{
+    gap:10px;
+  }
+  .delta-cell{
+    flex:1 1 115px;
+  }
+  .delta-cell input{
+    width:100%;
+  }
+  .concept-topbar{
+    flex-wrap:wrap;
+  }
+  .nav{
+    gap:8px;
+    margin-top:18px;
+  }
+  .btn{
+    padding:10px 16px;
+    font-size:13.5px;
+  }
+  .voice-bar{
+    bottom:10px;
+    padding:8px 12px;
+    font-size:12.5px;
+  }
+  .coach{
+    left:10px;
+    right:10px;
+    bottom:10px;
+    max-width:none;
+  }
+}
+

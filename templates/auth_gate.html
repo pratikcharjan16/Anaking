@@ -2,79 +2,112 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{% if mode == 'register' %}{{ head('Register · Anaking', 'Create your Anaking account with Google - one profile per e-mail, approved by the platform admin.') }}
-{% elif mode == 'recover' %}{{ head('Account recovery · Anaking', 'Forgot your user ID or password? Look up your account and get back in.') }}
-{% else %}{{ head('Sign in · Anaking', 'Sign in to Anaking with Google and continue building your research projects.') }}{% endif %}
+{% if mode == 'register' %}{{ head('Register · SurveyKart', 'Register on SurveyKart — Insights Delivered. Receive 100 Kart points automatically on registration.') }}
+{% elif mode == 'recover' %}{{ head('Account recovery · SurveyKart', 'Look up your SurveyKart account and recover access.') }}
+{% else %}{{ head('Sign in · SurveyKart', 'Sign in to SurveyKart — Insights Delivered.') }}{% endif %}
 <link rel="stylesheet" href="{{ asset('css/home.css') }}">
 <link rel="stylesheet" href="{{ asset('css/landing.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
 </head>
-<body class="landing auth-gate" data-mode="{{ mode }}">
+<body class="landing auth-gate" data-mode="{{ mode }}" data-next="{{ next_url }}" data-share="{{ share_token }}">
 <main class="ln-gate">
   {% from "_brand.html" import brand %}
-  {{ brand('RESEARCH', '/', 38, 'gm', tagline=true, link_class='anaking-brand-lockup', title='Anaking') }}
+  {{ brand('KART', '/', 42, 'gm', tagline=true, link_class='anaking-brand-lockup', title='SurveyKart — Insights Delivered (Go to landing page)') }}
 
   <section class="ln-gate-card">
+    {% if share_info %}
+    <div class="sk-share-banner" role="status">
+      <div class="sk-share-badge">&#128279; Shared {{ 'Team & Collaboration' if share_info.permission == 'collaborate' else 'Survey' }} Link &middot; <strong>0 Kart Points Debited</strong></div>
+      <p><strong>{{ share_info.study_title }}</strong>{% if share_info.team_name and share_info.team_name != share_info.study_title %} (Team: <strong>{{ share_info.team_name }}</strong>){% endif %} was shared with you by <strong>{{ share_info.shared_by_label or share_info.shared_by_email or 'a SurveyKart creator' }}</strong>{% if share_info.shared_by_email %} (<code>{{ share_info.shared_by_email }}</code>){% endif %}.
+      {% if mode == 'register' %}
+        Register below (or <a href="/signin?share={{ share_token | urlencode }}{% if hint %}&amp;email={{ hint | urlencode }}{% endif %}" style="font-weight:800;text-decoration:underline">Sign in if you already have an account</a>) to form the team &amp; attach this shared workspace directly to your account &mdash; you'll keep your full <strong>100 Kart points</strong>!
+      {% else %}
+        Sign in below (or <a href="/register?share={{ share_token | urlencode }}{% if hint %}&amp;email={{ hint | urlencode }}{% endif %}" style="font-weight:800;text-decoration:underline">Register if you are new</a>) to form the team &amp; open this shared workspace with <strong>0 points deducted</strong> from your Kart.
+      {% endif %}</p>
+    </div>
+    {% endif %}
+
     {% if mode == 'register' %}
-      <p class="an-eyebrow">New here?</p>
-      <h1>Create your account</h1>
-      <p class="ln-gate-sub">Register with your Google account - one profile per e-mail.
-        The platform admin reviews every new profile; you'll get a note the moment you're approved.</p>
+      <p class="an-eyebrow">Welcome to SurveyKart &middot; +100 Free Kart Points</p>
+      <h1>Create your SurveyKart account</h1>
+      <p class="ln-gate-sub">Every new SurveyKart registration receives <strong>100 Kart points</strong> automatically
+        so you can shop question types and launch your study right away.</p>
+
+      <form id="sk-register-form" class="ln-gate-form">
+        <label>Full Name
+          <input id="reg-name" name="name" type="text" required placeholder="Alex Morgan" autocomplete="name">
+        </label>
+        <label>E-mail Address
+          <input id="reg-email" name="email" type="email" required placeholder="you@company.com" value="{{ hint }}" autocomplete="email">
+        </label>
+        <label>Username <span style="font-weight:500;color:var(--an-muted)">(optional)</span>
+          <input id="reg-username" name="username" type="text" placeholder="alex.morgan" autocomplete="username">
+        </label>
+        <label>Password <span style="font-weight:500;color:var(--an-muted)">(min 6 characters)</span>
+          <input id="reg-password" name="password" type="password" required minlength="6" placeholder="Create a password" autocomplete="new-password">
+        </label>
+        <button class="ln-btn ln-btn-primary lg" type="submit" id="reg-submit">&#128722; Register &amp; Claim 100 Kart Points &rarr;</button>
+      </form>
+      <div id="gate-msg" class="ln-gate-out" role="alert" hidden></div>
+
       {% if config.STAFF_AUTH %}
-      <a class="ln-btn ln-btn-primary lg" href="/auth/google?mode=register" id="gate-google">
+      <div class="sk-auth-divider"><span>or continue with Google</span></div>
+      <a class="ln-btn ln-btn-ghost lg" href="/auth/google?mode=register{% if share_token %}&amp;share={{ share_token | urlencode }}{% endif %}" id="gate-google">
         <svg class="ln-gicon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
         Register with Google</a>
-      {% else %}
-      <a class="ln-btn ln-btn-primary lg" href="/workspace/">Open workspace</a>
       {% endif %}
-      <p class="ln-gate-alt">Already registered? <a href="/signin">Sign in</a></p>
+
+      <p class="ln-gate-alt">Already registered? <a href="/signin{% if share_token %}?share={{ share_token | urlencode }}{% endif %}{% if next_url %}{{ '&' if share_token else '?' }}next={{ next_url | urlencode }}{% endif %}">Sign in</a></p>
       <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a></p>
 
     {% elif mode == 'recover' %}
-      <p class="an-eyebrow">Locked out?</p>
-      <h1>Find your account</h1>
-      <p class="ln-gate-sub">Your user ID is the Google e-mail you registered with, and there is no
-        separate platform password - it's your Google password. Look up your address below and we'll
-        point you the right way.</p>
+      <p class="an-eyebrow">Account Lookup</p>
+      <h1>Find your SurveyKart account</h1>
+      <p class="ln-gate-sub">Enter the e-mail address you registered with to check your account status.</p>
       <form id="recover-form" class="ln-gate-form">
-        <label>The e-mail you used with Google
-          <input id="recover-email" type="email" required placeholder="you@example.com"
-                 value="{{ hint }}">
+        <label>Registered e-mail address
+          <input id="recover-email" type="email" required placeholder="you@example.com" value="{{ hint }}">
         </label>
         <button class="ln-btn ln-btn-primary" type="submit">Find my account</button>
       </form>
       <div id="recover-out" class="ln-gate-out" role="status" hidden></div>
       <div class="ln-gate-help">
-        <h3>Forgot your password?</h3>
-        <p>Anaking signs you in with Google - your password is your Google password.
-          Reset it at <a href="https://accounts.google.com/signin/recovery" target="_blank"
-          rel="noopener">Google Account Recovery</a>, then sign in here again.</p>
-        <h3>Still stuck?</h3>
-        <p>Ask the platform admin to check your profile status or re-send an invitation.</p>
+        <h3>Need password or point-allocation help?</h3>
+        <p>Contact the SurveyKart platform Admin (<code>Anaking.admin</code>) to reset access or allocate additional Kart points. If you registered with Google, you can also use <a href="https://accounts.google.com/signin/recovery" target="_blank" rel="noopener">Google Account Recovery</a>.</p>
       </div>
       <p class="ln-gate-alt"><a href="/signin">Back to sign in</a> · <a href="/register">Create an account</a></p>
 
     {% else %}
-      <p class="an-eyebrow">Welcome back</p>
-      <h1>Sign in</h1>
-      <p class="ln-gate-sub">Use the Google account you registered with. Your projects will be
-        exactly where you left them.</p>
+      <p class="an-eyebrow">Protected Studio &amp; Platform Access</p>
+      <h1>Sign in to SurveyKart</h1>
+      <p class="ln-gate-sub">Sign in with your SurveyKart username (or e-mail) and password to access Studio, Projects, and Admin controls.</p>
+
+      <form id="sk-login-form" class="ln-gate-form">
+        <label>Username or E-mail
+          <input id="login-ident" name="identifier" type="text" required placeholder="Username or e-mail" value="{{ hint }}" autocomplete="username" autofocus>
+        </label>
+        <label>Password
+          <input id="login-password" name="password" type="password" required placeholder="Password" autocomplete="current-password">
+        </label>
+        <button class="ln-btn ln-btn-primary lg" type="submit" id="login-submit">Sign in to SurveyKart &rarr;</button>
+      </form>
+      <div id="gate-msg" class="ln-gate-out" role="alert" hidden></div>
+
       {% if config.STAFF_AUTH %}
-      <a class="ln-btn ln-btn-primary lg" href="/auth/google?mode=login" id="gate-google">
+      <div class="sk-auth-divider"><span>or sign in with Google</span></div>
+      <a class="ln-btn ln-btn-ghost lg" href="/auth/google?mode=login{% if share_token %}&amp;share={{ share_token | urlencode }}{% endif %}" id="gate-google">
         <svg class="ln-gicon" viewBox="0 0 24 24" aria-hidden="true"><path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/><path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84A11 11 0 0 0 12 23z"/><path fill="#FBBC05" d="M5.84 14.1a6.6 6.6 0 0 1 0-4.2V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84z"/><path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1A11 11 0 0 0 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/></svg>
         Sign in with Google</a>
-      {% else %}
-      <a class="ln-btn ln-btn-primary lg" href="/workspace/">Open workspace</a>
       {% endif %}
+
       <div id="gate-unknown" class="ln-gate-out warn" {% if not request.args.get('unknown') %}hidden{% endif %}>
         <b>No account for that e-mail yet.</b>
-        <span>Google confirmed it's you, but nothing is registered under
-          <code id="gate-unknown-email">{{ hint }}</code> - register first, it's one click.</span>
+        <span>Nothing is registered under <code id="gate-unknown-email">{{ hint }}</code> &mdash; register first to claim 100 Kart points!</span>
         <a class="ln-btn ln-btn-primary" href="/register{% if hint %}?email={{ hint | urlencode }}{% endif %}">Register now</a>
       </div>
-      <p class="ln-gate-alt">New to Anaking? <a href="/register">Create your account</a></p>
+      <p class="ln-gate-alt">New to SurveyKart? <a href="/register{% if share_token %}?share={{ share_token | urlencode }}{% endif %}{% if next_url %}{{ '&' if share_token else '?' }}next={{ next_url | urlencode }}{% endif %}">Create your account (+100 Kart pts)</a></p>
       <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a></p>
     {% endif %}
 
@@ -90,7 +123,7 @@
     </div>
   </section>
 
-  <p class="ln-gate-foot"><a href="/">← Back to the product page</a></p>
+  <p class="ln-gate-foot"><a href="/">&larr; Back to SurveyKart home</a></p>
 </main>
 <script src="{{ asset('js/auth-gate.js') }}"></script>
 </body>

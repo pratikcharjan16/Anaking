@@ -1,0 +1,506 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('SurveyKart · Advanced Platform Sitemap & SEO Directory',
+        'Official SurveyKart (Survey Kart / SurveyCart) platform sitemap and SEO directory. Explore all main pages, interactive feature demos, live research studies, XML sitemap, and robots.txt crawler rules.',
+        'SurveyKart sitemap, Survey Kart directory, SurveyCart pages, survey cart search, XML sitemap, robots.txt',
+        '/sitemap') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/landing.css') }}">
+<link rel="stylesheet" href="{{ asset('css/nav.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+<style>
+  .sm-wrap {
+    max-width: min(1680px, 96vw);
+    margin: 0 auto;
+    padding: 24px clamp(20px, 3.6vw, 56px) 44px;
+  }
+  .sm-hero {
+    padding: 24px 28px;
+    border-radius: 22px;
+    background: linear-gradient(165deg, #fffdf8 0%, #fbf3e0 55%, #f4e8ce 100%);
+    border: 1.5px solid rgba(180, 132, 48, 0.34);
+    box-shadow: 0 18px 40px -24px rgba(42, 30, 12, 0.16);
+    margin-bottom: 24px;
+  }
+  .sm-hero-top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 18px;
+    flex-wrap: wrap;
+  }
+  .sm-kicker {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 850;
+    letter-spacing: .08em;
+    text-transform: uppercase;
+    color: #14532d;
+    background: #dcfce7;
+    border: 1px solid #86efac;
+    margin-bottom: 8px;
+  }
+  .sm-hero h1 {
+    margin: 0 0 6px;
+    font-size: clamp(22px, 2.3vw, 30px);
+    font-weight: 850;
+    letter-spacing: -.025em;
+    color: #18181b;
+  }
+  .sm-hero p {
+    margin: 0;
+    font-size: 13.5px;
+    line-height: 1.55;
+    color: #44403c;
+    max-width: 74ch;
+  }
+  .sm-crawler-chips {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+  .sm-search-bar {
+    margin-top: 16px;
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+  .sm-search-input {
+    flex: 1 1 320px;
+    padding: 10px 14px;
+    border-radius: 12px;
+    border: 1.5px solid rgba(180, 132, 48, 0.36);
+    background: #ffffff;
+    font-family: inherit;
+    font-size: 13.5px;
+    color: #18181b;
+  }
+  .sm-alias-notice {
+    padding: 6px 12px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 750;
+    color: #78350f;
+    background: #fef3c7;
+    border: 1px solid rgba(217, 119, 6, 0.35);
+  }
+  .sm-sec {
+    margin-top: 26px;
+  }
+  .sm-sec-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid rgba(180, 132, 48, 0.24);
+  }
+  .sm-sec-head h2 {
+    margin: 0;
+    font-size: 18px;
+    font-weight: 800;
+    letter-spacing: -.02em;
+    color: #18181b;
+  }
+  .sm-sec-head span {
+    font-size: 12px;
+    font-weight: 700;
+    color: #785b11;
+  }
+  .sm-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(340px, 100%), 1fr));
+    gap: 14px;
+  }
+  .sm-card {
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 15px 17px;
+    border-radius: 16px;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1.5px solid rgba(180, 132, 48, 0.24);
+    box-shadow: 0 8px 20px -14px rgba(28, 25, 23, 0.14);
+    transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+  }
+  .sm-card:hover {
+    transform: translateY(-2px);
+    border-color: #d97706;
+    box-shadow: 0 14px 28px -14px rgba(180, 83, 9, 0.24);
+  }
+  .sm-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .sm-badge {
+    display: inline-flex;
+    align-items: center;
+    padding: 2px 8px;
+    border-radius: 999px;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: .04em;
+    text-transform: uppercase;
+    color: #78350f;
+    background: #fef3c7;
+    border: 1px solid rgba(217, 119, 6, 0.3);
+  }
+  .sm-meta {
+    font-size: 10.5px;
+    font-weight: 700;
+    color: #57534e;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  }
+  .sm-card h3 {
+    margin: 2px 0;
+    font-size: 15px;
+    line-height: 1.3;
+    font-weight: 800;
+  }
+  .sm-card h3 a {
+    color: #18181b;
+    text-decoration: none;
+  }
+  .sm-card h3 a:hover {
+    color: #b45309;
+    text-decoration: underline;
+  }
+  .sm-card p {
+    margin: 0;
+    font-size: 12.5px;
+    line-height: 1.5;
+    color: #57534e;
+  }
+  .sm-url-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding-top: 6px;
+    border-top: 1px dashed rgba(180, 132, 48, 0.22);
+    font-size: 11.5px;
+  }
+  .sm-url-code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    color: #14532d;
+    font-weight: 750;
+    text-decoration: none;
+  }
+  .sm-alias-box {
+    margin-top: 26px;
+    padding: 18px 22px;
+    border-radius: 18px;
+    background: rgba(255, 253, 247, 0.92);
+    border: 1.5px solid rgba(180, 132, 48, 0.28);
+  }
+  .sm-alias-box h2 {
+    margin: 0 0 6px;
+    font-size: 16px;
+    font-weight: 850;
+    color: #18181b;
+  }
+  .sm-alias-box p {
+    margin: 0 0 10px;
+    font-size: 12.5px;
+    color: #44403c;
+  }
+  .sm-alias-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+  }
+  .sm-alias-tag {
+    padding: 4px 10px;
+    border-radius: 999px;
+    font-size: 11.5px;
+    font-weight: 750;
+    color: #1c1917;
+    background: #f5efe2;
+    border: 1px solid rgba(180, 132, 48, 0.3);
+    text-decoration: none;
+  }
+  .sm-alias-tag:hover {
+    background: #fef3c7;
+    border-color: #d97706;
+  }
+  @media (max-width: 960px) {
+    .sm-wrap {
+      max-width: 98vw;
+      padding: 20px 16px 40px;
+    }
+    .sm-hero {
+      padding: 22px 20px;
+    }
+    .sm-grid {
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    }
+  }
+  @media (max-width: 640px) {
+    .sm-wrap {
+      max-width: 100%;
+      padding: 16px 12px 32px;
+    }
+    .sm-hero {
+      padding: 16px 14px;
+      border-radius: 16px;
+      margin-bottom: 18px;
+    }
+    .sm-hero-top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 12px;
+    }
+    .sm-crawler-chips {
+      width: 100%;
+    }
+    .sm-chip {
+      flex: 1 1 auto;
+      justify-content: center;
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+    .sm-search-bar {
+      flex-direction: column;
+      align-items: stretch;
+      padding: 10px;
+      gap: 8px;
+    }
+    .sm-search-bar input {
+      width: 100%;
+      min-width: 0;
+    }
+    .sm-grid {
+      grid-template-columns: 1fr;
+      gap: 10px;
+    }
+    .sm-card {
+      padding: 13px 12px;
+      border-radius: 14px;
+    }
+    .sm-url-row {
+      flex-wrap: wrap;
+      gap: 6px;
+    }
+    .sm-url-code {
+      word-break: break-all;
+    }
+    .sm-alias-box {
+      padding: 15px 13px;
+      border-radius: 14px;
+    }
+  }
+</style>
+</head>
+<body class="landing">
+<a class="skip-link" href="#main">Skip to content</a>
+
+<header class="an-appbar">
+  {% from "_brand.html" import brand %}
+  {{ brand('KART', '/', 40, 'sm', title='SurveyKart — Insights Delivered (Main page)') }}
+  {% with active='home' %}{% include '_nav.html' %}{% endwith %}
+  <div class="ln-auth">
+    <a class="ln-btn ln-btn-ghost sm" href="/">&#8592; Back to Home</a>
+    <a class="ln-btn ln-btn-gold sm" href="/sitemap.xml">XML Sitemap</a>
+    <a class="ln-btn ln-btn-ghost sm" href="/robots.txt">robots.txt</a>
+    <a class="ln-btn ln-btn-primary sm" href="/register">Register (+100 pts)</a>
+  </div>
+</header>
+
+<main id="main" class="sm-wrap">
+  <section class="sm-hero" aria-labelledby="sm-title">
+    <div class="sm-hero-top">
+      <div>
+        <span class="sm-kicker">&#10003; SEO &amp; Crawler Indexed &middot; Sitemaps.org 0.9</span>
+        <h1 id="sm-title">SurveyKart Advanced Platform Sitemap &amp; Directory</h1>
+        <p>Complete structural index of all <strong>SurveyKart</strong> (<em>Survey Kart / SurveyCart</em>) pages, interactive landing showcases, live fieldwork instruments, governance consoles, and machine-readable search crawler endpoints.</p>
+      </div>
+      <div class="sm-crawler-chips">
+        <a class="ln-btn ln-btn-gold sm" href="/sitemap.xml" title="Open Machine-Readable XML Sitemap">&#128196; /sitemap.xml</a>
+        <a class="ln-btn ln-btn-ghost sm" href="/robots.txt" title="Open Search Crawler Directives">&#129302; /robots.txt</a>
+        <a class="ln-btn ln-btn-ghost sm" href="/llms.txt" title="Open AI Search &amp; LLM Discovery Index">&#10022; /llms.txt</a>
+        <a class="ln-btn ln-btn-ghost sm" href="/manifest.webmanifest" title="Open Web App Manifest">&#128241; Web Manifest</a>
+      </div>
+    </div>
+
+    <form class="sm-search-bar" action="/sitemap" method="get" role="search" aria-label="Search SurveyKart Sitemap">
+      <input type="search" name="q" id="sm-filter-input" class="sm-search-input"
+             value="{{ initial_query }}"
+             placeholder="Search pages, features, or brand keywords (e.g. surveykart, survey cart, voice, straight-line, kart, pptx)...">
+      <span class="sm-alias-notice" id="sm-alias-status">
+        Canonical Domain: <strong>SurveyKart</strong> (matches <em>surveykart</em>, <em>survey cart</em>, <em>surveycart</em>, <em>survaykart</em>)
+      </span>
+    </form>
+  </section>
+
+  {#- 1. Main Platform Pages -#}
+  <section class="sm-sec" aria-labelledby="sm-sec-main">
+    <div class="sm-sec-head">
+      <h2 id="sm-sec-main">1. Main Platform Pages &amp; Applications</h2>
+      <span>Direct Hyperlinks Matched to Page Details</span>
+    </div>
+    <div class="sm-grid">
+      {% for p in pages if p.category == 'Main Platform Pages' %}
+      <article class="sm-card" data-sm-item="{{ (p.title ~ ' ' ~ p.description ~ ' ' ~ p.keywords ~ ' ' ~ p.path)|lower }}">
+        <div>
+          <div class="sm-card-top">
+            <span class="sm-badge">{{ p.badge }}</span>
+            <span class="sm-meta">Priority {{ p.priority }} &middot; {{ p.changefreq }}</span>
+          </div>
+          <h3><a href="{{ p.path }}" title="{{ p.title }}">{{ p.title }}</a></h3>
+          <p>{{ p.description }}</p>
+        </div>
+        <div class="sm-url-row">
+          <a class="sm-url-code" href="{{ p.path }}" title="Open {{ p.title }}">{{ p.path }}</a>
+          <a class="ln-btn ln-btn-ghost sm" href="{{ p.path }}" title="Navigate to {{ p.title }}">Open Page &rarr;</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {#- 2. Interactive Landing Page Feature Showcases -#}
+  <section class="sm-sec" aria-labelledby="sm-sec-demos">
+    <div class="sm-sec-head">
+      <h2 id="sm-sec-demos">2. Interactive Landing Page Feature Showcases</h2>
+      <span>Deep-Linked Section Anchors on /</span>
+    </div>
+    <div class="sm-grid">
+      {% for s in sections %}
+      <article class="sm-card" data-sm-item="{{ (s.title ~ ' ' ~ s.description ~ ' ' ~ s.path)|lower }}">
+        <div>
+          <div class="sm-card-top">
+            <span class="sm-badge">{{ s.badge }}</span>
+            <span class="sm-meta">Interactive Section</span>
+          </div>
+          <h3><a href="{{ s.path }}" title="{{ s.title }}">{{ s.title }}</a></h3>
+          <p>{{ s.description }}</p>
+        </div>
+        <div class="sm-url-row">
+          <a class="sm-url-code" href="{{ s.path }}" title="Jump to {{ s.title }}">{{ s.path }}</a>
+          <a class="ln-btn ln-btn-ghost sm" href="{{ s.path }}" title="View {{ s.title }}">View Showcase &rarr;</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {#- 3. Governance, Admin & Technical SEO Endpoints -#}
+  <section class="sm-sec" aria-labelledby="sm-sec-gov">
+    <div class="sm-sec-head">
+      <h2 id="sm-sec-gov">3. Governance, Admin &amp; Search Crawler Endpoints</h2>
+      <span>Admin Control Surfaces, XML Sitemap &amp; Robots.txt</span>
+    </div>
+    <div class="sm-grid">
+      {% for p in pages if p.category != 'Main Platform Pages' %}
+      <article class="sm-card" data-sm-item="{{ (p.title ~ ' ' ~ p.description ~ ' ' ~ p.keywords ~ ' ' ~ p.path)|lower }}">
+        <div>
+          <div class="sm-card-top">
+            <span class="sm-badge">{{ p.badge }}</span>
+            <span class="sm-meta">Priority {{ p.priority }} &middot; {{ p.changefreq }}</span>
+          </div>
+          <h3><a href="{{ p.path }}" title="{{ p.title }}">{{ p.title }}</a></h3>
+          <p>{{ p.description }}</p>
+        </div>
+        <div class="sm-url-row">
+          <a class="sm-url-code" href="{{ p.path }}" title="Open {{ p.title }}">{{ p.path }}</a>
+          <a class="ln-btn ln-btn-ghost sm" href="{{ p.path }}" title="Open {{ p.title }}">Open &rarr;</a>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+
+  {#- 4. Live Indexed Studies -#}
+  {% if studies %}
+  <section class="sm-sec" aria-labelledby="sm-sec-studies">
+    <div class="sm-sec-head">
+      <h2 id="sm-sec-studies">4. Indexed Research Studies &amp; Instruments ({{ studies|length }})</h2>
+      <span>Automatically Included in /sitemap.xml</span>
+    </div>
+    <div class="sm-grid">
+      {% for st in studies %}
+      <article class="sm-card" data-sm-item="{{ (st.title ~ ' ' ~ st.slug ~ ' ' ~ (st.subtitle or ''))|lower }}">
+        <div>
+          <div class="sm-card-top">
+            <span class="sm-badge">{{ st.status or 'live' }}</span>
+            <span class="sm-meta">{{ st.completes or 0 }} completes</span>
+          </div>
+          <h3><a href="/survey/{{ st.slug }}" title="{{ st.title }} — SurveyKart Research Study">{{ st.title }}</a></h3>
+          <p>{{ st.subtitle or 'Interactive SurveyKart research instrument with voice, dictation, and live QC.' }}</p>
+        </div>
+        <div class="sm-url-row">
+          <a class="sm-url-code" href="/survey/{{ st.slug }}" title="Launch {{ st.title }}">/survey/{{ st.slug }}</a>
+          <span style="display:flex;gap:6px">
+            <a class="ln-btn ln-btn-ghost sm" href="/survey/{{ st.slug }}/test" title="Test {{ st.title }}">Test</a>
+            <a class="ln-btn ln-btn-ghost sm" href="/studio/#{{ st.slug }}" title="Edit {{ st.title }} in Studio">Studio</a>
+          </span>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {#- 5. Search Keyword & Misspelling Resolution Matrix -#}
+  <section class="sm-alias-box" aria-labelledby="sm-alias-heading">
+    <h2 id="sm-alias-heading">Search Engine Brand &amp; Misspelling Resolution Index</h2>
+    <p>Whether a visitor searches for <strong>SurveyKart</strong>, <strong>Survey Kart</strong>, <strong>SurveyCart</strong>, <strong>Survey Cart</strong>, or phonetic variations like <em>survaykart</em>, <em>survekart</em>, or <em>surverykart</em>, our Schema.org <code>Organization</code>, <code>WebSite</code>, meta keywords, and 301 alias routes resolve directly to this domain:</p>
+    <div class="sm-alias-tags">
+      {% for alias in aliases %}
+      <a class="sm-alias-tag" href="/?q={{ alias|urlencode }}" title="{{ alias }} — Official SurveyKart Platform">{{ alias }}</a>
+      {% endfor %}
+    </div>
+  </section>
+</main>
+
+{% include '_footer.html' %}
+<script>
+(function () {
+  var input = document.getElementById("sm-filter-input");
+  var statusEl = document.getElementById("sm-alias-status");
+  var cards = Array.prototype.slice.call(document.querySelectorAll("[data-sm-item]"));
+  if (!input) return;
+
+  var ALIAS_REGEX = /\b(survey\s*k?c?art|survay\s*k?c?art|surve\s*k?c?art|survery\s*k?c?art)\b/i;
+
+  function applyFilter() {
+    var raw = (input.value || "").trim().toLowerCase();
+    var normalized = raw.replace(ALIAS_REGEX, "surveykart").trim();
+    var matched = 0;
+    cards.forEach(function (card) {
+      var hay = card.getAttribute("data-sm-item") || "";
+      var show = !normalized || normalized === "surveykart" || hay.indexOf(normalized) !== -1 || hay.indexOf(raw) !== -1;
+      card.style.display = show ? "" : "none";
+      if (show) matched += 1;
+    });
+    if (statusEl) {
+      if (raw && ALIAS_REGEX.test(raw)) {
+        statusEl.innerHTML = 'Matched brand query <strong>"' + raw.replace(/[<>&"]/g, "") + '"</strong> &rarr; Showing all <strong>' + matched + '</strong> official <strong>SurveyKart</strong> results';
+      } else if (raw) {
+        statusEl.innerHTML = 'Showing <strong>' + matched + '</strong> matching SurveyKart pages for <strong>"' + raw.replace(/[<>&"]/g, "") + '"</strong>';
+      } else {
+        statusEl.innerHTML = 'Canonical Domain: <strong>SurveyKart</strong> (matches <em>surveykart</em>, <em>survey cart</em>, <em>surveycart</em>, <em>survaykart</em>)';
+      }
+    }
+  }
+
+  input.addEventListener("input", applyFilter);
+  if (input.value) applyFilter();
+})();
+</script>
+</body>
+</html>

@@ -564,7 +564,7 @@
   font-size: 12.5px;
 }
 
-/* ---------- Anaking Global Brand Lockup for Workspace & Login ---------- */
+/* ---------- SurveyKart Brand Lockup & Mobile Chrome for Workspace & Login ---------- */
 .sidebar .anaking-brand-lockup {
   margin-bottom: 22px;
   padding: 0 4px;
@@ -572,10 +572,137 @@
 .login-card .anaking-brand-lockup {
   margin-bottom: 28px;
 }
-}
 
 /* signed-in account chip */
 .account-chip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;
   font-weight:700;padding:8px 4px}
 .account-chip .console-link{font-size:11px;font-weight:750;color:var(--accent,#1c6652)}
 .account-chip .logout{margin-left:auto}
+
+/* ── Team & Collaboration Space + Short Change Log ── */
+.ws-invite-cards{display:grid;gap:10px;margin-top:8px}
+.ws-invite-card{
+  display:flex;align-items:center;justify-content:space-between;gap:14px;flex-wrap:wrap;
+  background:#ffffff;border:1px solid #fcd34d;border-radius:10px;padding:12px 14px;
+  box-shadow:0 4px 12px rgba(217,119,6,.08);
+}
+.ws-invite-info{flex:1;min-width:240px}
+.ws-invite-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+
+.ws-teams-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:14px;margin-top:12px}
+.ws-team-card{
+  background:var(--an-card,#fff);border:1.5px solid var(--an-line,#e2e8f0);border-radius:12px;
+  padding:14px 16px;display:flex;flex-direction:column;gap:12px;
+  box-shadow:0 6px 18px rgba(15,23,42,.04);
+}
+.ws-team-head{display:flex;align-items:flex-start;justify-content:space-between;gap:10px;flex-wrap:wrap;padding-bottom:10px;border-bottom:1px solid var(--an-line,#e2e8f0)}
+.ws-team-head h3{margin:0;font-size:16px;font-weight:800;color:var(--an-ink,#0f172a)}
+.ws-team-head small{display:block;margin-top:2px;font-size:11.5px;color:var(--an-muted,#64748b)}
+.ws-block-label{display:block;font-size:10.5px;font-weight:800;letter-spacing:.08em;color:var(--an-muted,#64748b);margin-bottom:6px;text-transform:uppercase}
+.ws-members-list{display:grid;gap:8px}
+.ws-member-chip{
+  display:flex;flex-direction:column;gap:6px;padding:9px 11px;border-radius:9px;
+  border:1px solid var(--an-line,#e2e8f0);background:var(--an-bg,#f8fafc);font-size:12.5px;
+}
+.ws-member-chip.accepted{border-color:#bbf7d0;background:#f0fdf4}
+.ws-member-chip.pending{border-color:#fde68a;background:#fffbeb}
+.ws-member-main{display:flex;align-items:center;gap:10px}
+.ws-member-avatar{
+  width:28px;height:28px;border-radius:999px;background:var(--an-teal,#0f766e);color:#fff;
+  display:inline-flex;align-items:center;justify-content:center;font-weight:800;font-size:12px;flex:0 0 28px;
+}
+.ws-member-sub{font-size:11.5px;margin-top:1px}
+.ws-member-link{display:flex;gap:6px;align-items:center}
+.ws-member-link input{
+  flex:1;min-width:0;padding:5px 8px;font-size:11.5px;border:1px solid #cbd5e1;
+  border-radius:6px;background:#fff;color:var(--an-ink,#0f172a);
+}
+.ws-team-projs{display:grid;gap:8px}
+.ws-team-proj-row{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:8px 10px;border:1px solid var(--an-line,#e2e8f0);border-radius:8px;background:var(--an-bg,#f8fafc);font-size:12.5px;
+}
+.ws-tp-actions{display:flex;gap:6px;flex-wrap:wrap}
+.ws-team-foot{display:flex;gap:8px;flex-wrap:wrap;padding-top:8px;border-top:1px solid var(--an-line,#e2e8f0);margin-top:auto}
+.ws-card-team-line{
+  font-size:11.5px;color:#0f766e;background:#f0fdf4;border:1px solid #bbf7d0;
+  border-radius:7px;padding:5px 8px;margin:6px 0;line-height:1.35;
+}
+.ws-card-actions{display:flex;flex-wrap:wrap;gap:6px 10px;justify-content:space-between}
+.ws-card-actions a{font-size:12px;font-weight:700}
+
+.ws-changelog-strip{
+  margin-top:14px;padding-top:12px;border-top:1px dashed var(--an-line,#cbd5e1);
+}
+.ws-cl-strip-head{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;margin-bottom:8px;font-size:12.5px}
+.ws-changelog-list{display:grid;gap:6px}
+.ws-changelog-item{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;
+  padding:7px 10px;border-radius:7px;background:var(--an-bg,#f8fafc);border:1px solid var(--an-line,#e2e8f0);font-size:12px;
+}
+.ws-cl-main{color:var(--an-ink,#0f172a);line-height:1.35}
+.ws-cl-summary{color:#0f766e;font-weight:700}
+.ws-cl-meta{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--an-muted,#64748b)}
+.ws-cl-scope{
+  padding:2px 6px;border-radius:5px;background:#e2e8f0;color:#334155;font-weight:700;text-decoration:none;
+}
+
+@media(max-width:850px){
+  .sidebar{flex-wrap:wrap;gap:10px 14px;padding:12px 14px}
+  .sidebar .anaking-brand-lockup{margin-bottom:0;padding:0}
+  .side-nav{
+    width:100%;
+    overflow-x:auto;
+    flex-wrap:nowrap;
+    -webkit-overflow-scrolling:touch;
+    scrollbar-width:none;
+    gap:6px;
+  }
+  .side-nav::-webkit-scrollbar{display:none}
+  .side-nav a{
+    font-size:12px!important;
+    gap:6px!important;
+    padding:7px 11px!important;
+    white-space:nowrap;
+    flex:0 0 auto;
+  }
+  .sidebar .account-chip{width:100%;padding:6px 0 0;border-top:1px solid var(--line)}
+  .sidebar .account-chip .logout{display:inline-flex;margin:0 0 0 auto}
+  .sidebar .account-chip .logout button{width:auto;padding:5px 10px}
+  .workspace-top{min-height:52px;height:auto;padding:10px 16px;flex-wrap:wrap;gap:8px}
+  .header-actions{flex-wrap:wrap;gap:8px 10px;width:100%}
+  .workspace-main{padding:16px 14px}
+  .dash-zones-strip{flex-wrap:wrap;justify-content:center;gap:8px}
+  .likert-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
+}
+@media(max-width:640px){
+  .workspace-top{padding:10px 12px}
+  .workspace-main{padding:14px 10px}
+  .scope-switch-banner{flex-wrap:wrap;gap:8px}
+  .panel-card{padding:14px 12px}
+  .panel-head{flex-wrap:wrap;gap:8px}
+  .journey li{grid-template-columns:28px 1fr;gap:8px}
+  .journey li .btn-sm{grid-column:1 / -1;justify-self:start}
+  .chart-bar-row{
+    grid-template-columns:1fr auto;
+    gap:4px 8px;
+  }
+  .chart-bar-track-wrap{
+    grid-column:1 / -1;
+    order:3;
+  }
+  .chart-bar-label{
+    white-space:normal;
+  }
+  .card-footer-actions{
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .card-footer-actions .btn-3d{
+    width:100%;
+    text-align:center;
+    justify-content:center;
+  }
+  .login-card{width:min(430px,94vw);padding:24px 18px}
+  .login-card h1{font-size:22px}
+}
