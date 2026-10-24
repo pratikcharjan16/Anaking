@@ -90,11 +90,13 @@ def test_master_admin_credentials_protect_studio_and_admin_surfaces(app, client)
     app.config["STAFF_AUTH"] = True
     app.config["WORKSPACE_ENABLED"] = True
 
-    # Signed-out visitors cannot enter Studio, Monitor, Admin Console, or Admin Portal
+    # Signed-out visitors cannot enter Studio, Monitor, Admin Console, or Admin Portal.
+    # Team apps use the regular sign-in; admin surfaces get the separate Admin Login.
     for protected in ("/studio/", "/admin/", "/admin/console", "/admin-portal", "/workspace/"):
         resp = client.get(protected)
         assert resp.status_code == 302, protected
-        assert "/signin" in resp.headers["Location"], protected
+        door = "/admin-login" if protected in ("/admin/console", "/admin-portal") else "/signin"
+        assert door in resp.headers["Location"], protected
 
     # Wrong password for Anaking.admin is rejected
     bad = client.post("/api/auth/login", headers=_h(client),
