@@ -412,3 +412,36 @@ def test_account_detail_carries_the_signin_summary(app, client):
     assert detail["signin"]["has_password"] is True
     assert detail["signin"]["google"] is False
     assert detail["recovery"] == []
+
+
+# ------------------------------------------------------------------ top bar
+def test_every_team_top_bar_offers_a_way_in_when_signed_out(app, client):
+    """No session, gate off (local mode): the app bar still shows how to sign in."""
+    app.config["STAFF_AUTH"] = False
+    for path, door in (("/admin/console", "/admin-login?next=/admin/console"),
+                       ("/admin-portal", "/admin-login?next=/admin-portal")):
+        r = client.get(path)
+        assert r.status_code == 200
+        html = r.data.decode()
+        assert 'id="appbar-signin"' in html, path
+        assert f'href="{door}"' in html, path
+        assert "Sign out" not in html
+
+
+def test_the_top_bar_swaps_the_link_for_sign_out_once_signed_in(app, client):
+    gated(app)
+    admin_login(app, client)
+    html = client.get("/admin/console").data.decode()
+    assert "Sign out" in html
+    assert 'id="appbar-signin"' not in html
+
+
+def test_a_workspace_visitor_without_an_account_never_sees_a_dead_sign_out(app, client):
+    """The signed-out chip used to post to /logout — a route that does not exist."""
+    app.config["STAFF_AUTH"] = True
+    html = client.get("/workspace/")  # redirects to /signin when the gate is on
+    if html.status_code == 302:
+        assert "/signin" in html.headers["Location"]
+        return
+    body = html.data.decode()
+    assert 'action="/logout"' not in body

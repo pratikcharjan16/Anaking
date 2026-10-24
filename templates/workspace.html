@@ -12,7 +12,7 @@
   {% if account() and account().role == 'admin' %}<a class="console-link" href="/admin/console">Admin Console</a> · <a class="console-link" href="/admin-portal">Admin Portal</a>{% else %}<div style="font-size:11px;color:var(--an-muted);margin-top:2px">&#128722; Kart: <strong>{{ account().points_balance }}</strong> / {{ account().points_limit }} pts</div>{% endif %}
   <form method="post" action="/auth/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>
 </div>
-{% else %}<form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{csrf_token()}}"><button>Sign out</button></form>{% endif %}{% endif %}
+{% else %}<a class="logout signin-link" href="/signin?next=/workspace/" id="appbar-signin">Sign in</a>{% endif %}{% endif %}
 </aside>
 <div class="workspace-body"><header class="workspace-top"><div class="breadcrumbs"><span>Workspace</span><b>/</b><strong id="breadcrumb">Projects</strong></div><div class="header-actions"><span class="local-badge">● Runs locally · no third-party services</span><button id="help-button" class="icon-button" aria-label="Help">?</button><span class="user-avatar" aria-label="Signed in account">{% if account() %}{{ (account().name or account().email)[:2] | upper }}{% else %}RT{% endif %}</span>
   {% if is_admin_actor() %}<a class="linkbtn gold" href="/admin/console">Admin Console</a><a class="linkbtn accent" href="/admin-portal">Admin Portal</a>{% endif %}</div></header>

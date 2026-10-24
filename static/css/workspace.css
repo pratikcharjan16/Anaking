@@ -706,3 +706,20 @@
   .login-card{width:min(430px,94vw);padding:24px 18px}
   .login-card h1{font-size:22px}
 }
+
+/* Signed-out workspace: the account chip slot offers the way in, not a dead "Sign out". */
+.logout.signin-link{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  width:100%;
+  padding:6px 12px;
+  border:1px solid var(--line);
+  border-radius:9px;
+  background:#fff;
+  color:var(--teal);
+  font-size:11px;
+  font-weight:650;
+  text-decoration:none;
+}
+.logout.signin-link:hover{background:#f0f4f0}
