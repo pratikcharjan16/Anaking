@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Monitor · Anaking', 'Fieldwork monitoring: live counts, quota fill, data-quality flags, verbatim review and exports.') }}
+{{ head('Monitor · SurveyKart', 'SurveyKart fieldwork monitoring: live counts, quota fill, data-quality flags, verbatim review and exports.') }}
 <link rel="stylesheet" href="{{ asset('css/admin.css') }}">
 <link rel="stylesheet" href="{{ asset('css/nav.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
@@ -13,15 +13,24 @@
 <a class="skip-link" href="#main">Skip to content</a>
 <header class="an-appbar">
   {% from "_brand.html" import brand %}
-  {{ brand('MONITOR', '/admin/', 38, 'adm') }}
+  {{ brand('MONITOR', '/', 38, 'adm', title='SurveyKart — Insights Delivered (Go to main page)') }}
   <div class="meta">
     <span id="generated"></span>
     <label class="study-pick">Study
       <select id="study-select" title="Which study to show"></select>
     </label>
     <a class="linkbtn" id="take-survey" href="/survey/test" target="_blank" rel="noopener">Open test survey &rarr;</a>
-    {% if account() and account().role == 'admin' %}<a class="linkbtn" href="/admin/console">Admin console &rarr;</a>{% endif %}
+    {% if is_admin_actor() %}
+    <a class="linkbtn gold" href="/admin/console">Admin Console</a>
+    <a class="linkbtn" href="/admin-portal">Admin Portal</a>
+    {% endif %}
     {% with active='admin' %}{% include '_nav.html' %}{% endwith %}
+    {% if account() %}
+    <form method="post" action="/auth/logout" style="display:inline;margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="linkbtn">Sign out</button>
+    </form>
+    {% endif %}
   </div>
 </header>
 

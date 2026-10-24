@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 {% from "_head.html" import head %}
-{{ head('Studio · Anaking', 'Build, test and publish research surveys: questions, walkthrough, conjoint design and analysis.') }}
+{{ head('Studio · SurveyKart', 'SurveyKart Studio — Insights Delivered. Shop question types with your Kart points, collaborate on single shared links, test and publish research surveys.') }}
 <link rel="stylesheet" href="{{ asset('css/explainer.css') }}">
 <link rel="stylesheet" href="{{ asset('css/studio.css') }}">
 <link rel="stylesheet" href="{{ asset('css/studio-ai.css') }}">
@@ -11,22 +11,35 @@
 <link rel="stylesheet" href="{{ asset('css/studio-workspace.css') }}">
 <link rel="stylesheet" href="{{ asset('css/workspace.css') }}">
 <link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
-{% if config.STAFF_AUTH %}<meta name="csrf-token" content="{{ csrf_token() }}">
-<script src="{{ asset('js/security.js') }}"></script>{% endif %}
+<meta name="csrf-token" content="{{ csrf_token() }}">
+<script src="{{ asset('js/security.js') }}"></script>
 <script>window.ME = {% if account() %}{{ account() | tojson }}{% else %}null{% endif %};</script>
 </head>
 <body>
 <a class="skip-link" href="#st-root">Skip to the builder</a>
-<h1 class="sr-only">Studio — survey builder</h1>
+<h1 class="sr-only">SurveyKart Studio — survey builder</h1>
 <header class="st-top">
   {% from "_brand.html" import brand %}
-  {{ brand('STUDIO', '/studio/', 44, 'st', link_class='st-brand-link', badge_class='brand-studio-badge',
-           title='Anaking Studio — return to the Studio home') }}
+  {{ brand('STUDIO', '/', 42, 'st', link_class='st-brand-link', badge_class='brand-studio-badge',
+           title='SurveyKart — Insights Delivered (Go to main page)') }}
   <div class="st-top-actions">
+    <button type="button" class="st-kart-wallet" id="sk-top-kart" title="Open your SurveyKart point balance &amp; request extra points">
+      &#128722; <span id="sk-top-kart-txt">{% if account() %}{% if account().role == 'admin' %}Unlimited Admin Kart{% else %}{{ account().points_balance }} / {{ account().points_limit }} pts{% endif %}{% else %}100 Kart pts{% endif %}</span>
+    </button>
+    {% if is_admin_actor() %}
+    <a class="st-btn sm" href="/admin/console" title="Manage users &amp; Kart point allocations">&#9733; Admin Console</a>
+    <a class="st-btn sm" href="/admin-portal" title="Usage &amp; Kart telemetry">Admin Portal</a>
+    {% endif %}
     {% with active='studio' %}{% include '_nav.html' %}{% endwith %}
+    {% if account() %}
+    <form method="post" action="/auth/logout" style="display:inline;margin:0">
+      <input type="hidden" name="csrf" value="{{ csrf_token() }}">
+      <button type="submit" class="st-btn sm ghost">Sign out</button>
+    </form>
+    {% endif %}
   </div>
 </header>
-<div class="builder-view-controls" id="builder-view-controls"><a href="/workspace/">← Project overview &amp; versions</a><label><input name="outline" type="checkbox" checked> Outline</label><label><input name="preview" type="checkbox" checked> Live preview</label><label>Outline width <input name="outline-width" type="range" min="210" max="400" value="270"></label><span class="draft-note">Autosave updates your draft. Use project Review to publish a version.</span></div>
+<div class="builder-view-controls" id="builder-view-controls"><a href="/workspace/">← Project overview &amp; versions</a><label><input name="outline" type="checkbox" checked> Outline</label><label><input name="preview" type="checkbox" checked> Live preview</label><label>Outline width <input name="outline-width" type="range" min="210" max="400" value="270"></label><span class="draft-note">SurveyKart Studio &middot; Autosave updates your draft &amp; Kart point total live.</span></div>
 <main id="st-root"></main>
 <!-- single-question test view (from the ▶ button in the question list) -->
 <div class="overlay" id="qtest" hidden>
@@ -43,8 +56,7 @@
 <div class="st-modal" id="st-modal" hidden></div>
 <div class="st-toast" id="st-toast" role="status" aria-live="polite" hidden></div>
 
-<!-- TPP walkthrough preview: the same explainer respondents see, driven by the unsaved
-     scenes in the editor so the team can check it before publishing -->
+<!-- Walkthrough preview -->
 <div class="overlay" id="explainer" hidden>
   <div class="overlay-box">
     <div class="overlay-head">
@@ -57,6 +69,7 @@
 </div>
 <script>window.BEACON_PREVIEW_MODE = true; window.STUDIO_AGENT_MODEL = {{ research_agent_model|tojson }}; window.STUDIO_AGENT_MODEL_NAME = {{ research_agent_model_name|tojson }};</script>
 <script src="{{ asset('js/qlogic.js') }}"></script>
+<script src="{{ asset('js/voice.js') }}"></script>
 <script src="{{ asset('js/survey.js') }}"></script>
 <script src="{{ asset('js/explainer.js') }}"></script>
 <script src="{{ asset('js/chart-visuals.js') }}"></script>

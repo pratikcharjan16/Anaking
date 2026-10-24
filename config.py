@@ -15,7 +15,8 @@ UPLOAD_DIR = os.path.join(BASE_DIR, "uploads")
 class Config:
     PRODUCTION = os.environ.get("ANAKING_ENV") == "production"
     WORKSPACE_ENABLED = os.environ.get("WORKSPACE_ENABLED", "1") == "1"
-    STAFF_AUTH = os.environ.get("STAFF_AUTH", "1" if PRODUCTION else "0") == "1"
+    # Credentials are required across Studio, Workspace and Admin by default.
+    STAFF_AUTH = os.environ.get("STAFF_AUTH", "1") == "1"
     SESSION_COOKIE_HTTPONLY = True
     SESSION_COOKIE_SAMESITE = "Lax"
     SESSION_COOKIE_SECURE = PRODUCTION
@@ -71,6 +72,7 @@ class ProductionConfig(Config):
 
 class TestingConfig(Config):
     TESTING = True
+    STAFF_AUTH = os.environ.get("STAFF_AUTH", "0") == "1"
 
 
 CONFIGS = {

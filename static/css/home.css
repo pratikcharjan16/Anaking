@@ -29,9 +29,10 @@ main {
 /* ---- workspace cards ------------------------------------------------ */
 .apps {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(280px, 100%), 1fr));
   gap: 18px;
 }
+.studies { overflow-x: auto; -webkit-overflow-scrolling: touch; }
 .app {
   display: flex;
   flex-direction: column;
@@ -158,8 +159,15 @@ td a:hover { text-decoration: underline; }
 .panel-card p { margin: 0; font-size: 14px; line-height: 1.6; color: var(--an-muted); }
 .panel-card a { color: var(--an-accent); font-weight: 600; }
 
-@media (max-width: 560px) {
-  main { padding: 28px 18px 36px; }
-  .studies { padding: 18px 16px 10px; overflow-x: auto; }
-  .app { padding: 20px; }
+@media (max-width: 860px) {
+  main { padding: 28px 16px 36px; }
+  .studies { padding: 18px 16px 10px; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .studies table { min-width: 580px; }
+}
+@media (max-width: 640px) {
+  main { padding: 20px 12px 32px; }
+  .studies { padding: 14px 12px 8px; overflow-x: auto; }
+  .apps { grid-template-columns: 1fr; gap: 12px; }
+  .app { padding: 16px; }
+  .study-grid { grid-template-columns: 1fr; gap: 12px; }
 }

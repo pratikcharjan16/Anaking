@@ -79,22 +79,61 @@ def page():
                            research_agent_model_name=current_app.config.get("LOCAL_AI_MODEL") or "")
 
 
+def _actor_is_admin() -> bool:
+    from flask import g
+    u = getattr(g, "user", None)
+    if u and u.get("role") == "admin":
+        return True
+    st = getattr(g, "staff", None)
+    if st and st.get("role") == "owner":
+        return True
+    return False
+
+
 @bp.get("/api/studio/list")
 def list_studies():
+    from flask import g
     from core.security import allowed
-    return jsonify([s for s in Study.list_with_counts() if allowed(s["slug"])])
+    from core.kart import can_collaborate, study_collaborators
+    u = getattr(g, "user", None)
+    uid = u["id"] if u else 0
+    uemail = u.get("email", "") if u else ""
+    out = []
+    for s in Study.list_with_counts():
+        if not allowed(s["slug"]):
+            continue
+        is_shared = bool(uid and s["owner_id"] != uid and can_collaborate(uid, s["slug"], uemail))
+        s["is_shared"] = is_shared
+        s["points_debited"] = 0 if is_shared else s.get("points_used", 0)
+        s["collaborators"] = study_collaborators(s["slug"])
+        out.append(s)
+    return jsonify(out)
 
 
 @bp.get("/api/studio/study")
 def get_study():
+    from flask import g
+    from core.kart import can_collaborate, study_points, study_points_breakdown, study_collaborators, list_workspace_changelogs
     study = Study.get(request.args.get("slug") or "")
     if not study:
         return jsonify({"error": "unknown study"}), 404
+    u = getattr(g, "user", None)
+    uid = u["id"] if u else 0
+    is_shared = bool(uid and study.owner_id != uid and can_collaborate(uid, study.slug, u.get("email", "")))
+    owner_row = get_db().execute("SELECT email, name FROM users WHERE id=?", (study.owner_id,)).fetchone()
+    owner_email = owner_row["email"] if owner_row else ""
+    owner_name = (owner_row["name"] or owner_email) if owner_row else "Creator"
     return jsonify({"slug": study.slug, "title": study.title, "status": study.status,
                     "cfg": study.cfg, "updated_at": study.updated_at,
                     "owner_id": study.owner_id,
-                    "owner_email": (get_db().execute("SELECT email FROM users WHERE id=?",
-                                                     (study.owner_id,)).fetchone() or {"email": ""})["email"]})
+                    "is_shared": is_shared,
+                    "points_used": study_points(study.cfg),
+                    "points_debited": 0 if is_shared else study_points(study.cfg),
+                    "points_breakdown": study_points_breakdown(study.cfg),
+                    "owner_email": owner_email,
+                    "owner_name": owner_name,
+                    "collaborators": study_collaborators(study.slug),
+                    "changelogs": list_workspace_changelogs(study_slug=study.slug, limit=20)})
 
 
 @bp.get("/api/studio/delta-source")
@@ -190,8 +229,14 @@ def quotas_state():
 def save():
     try:
         from flask import g
-        owner = (getattr(g, "user", None) or {}).get("id")
-        return jsonify({"ok": True, "slug": Study.save(json_body(), owner_id=owner)})
+        u = getattr(g, "user", None)
+        owner = (u or {}).get("id")
+        slug = Study.save(json_body(), owner_id=owner, actor_is_admin=_actor_is_admin())
+        resp = {"ok": True, "slug": slug}
+        if owner:
+            from core.kart import user_kart_summary
+            resp["kart"] = user_kart_summary(owner)
+        return jsonify(resp)
     except StudyError as e:
         return error(e)
 
@@ -397,7 +442,7 @@ def agent_start():
     try:
         from flask import g
         owner = (getattr(g, "user", None) or {}).get("id")
-        Study.save({"slug": slug, "title": title, "cfg": cfg}, owner_id=owner)
+        Study.save({"slug": slug, "title": title, "cfg": cfg}, owner_id=owner, actor_is_admin=_actor_is_admin())
     except StudyError as exc:
         return error(exc)
 
@@ -521,7 +566,7 @@ def agent_turn():
     messages.append(_message("assistant", assistant_text, kind="questionnaire_revision" if revised != cfg else "guidance"))
     if revised != cfg:
         try:
-            Study.save({"slug": slug, "title": study.title, "cfg": revised})
+            Study.save({"slug": slug, "title": study.title, "cfg": revised}, actor_is_admin=_actor_is_admin())
         except StudyError as exc:
             return error(exc)
     Study.save_agent_session(slug, messages, memory)
@@ -671,10 +716,72 @@ def duplicate():
     try:
         from flask import g
         owner = (getattr(g, "user", None) or {}).get("id")
-        new_slug = Study.duplicate(slug, owner_id=owner)
+        new_slug = Study.duplicate(slug, owner_id=owner, actor_is_admin=_actor_is_admin())
     except StudyError as e:
         return error(e)
     return jsonify({"ok": True, "slug": new_slug, "title": Study.get(new_slug).title})
+
+
+# ------------------------------------------------------------------ Collaborative & Respondent Sharing
+@bp.get("/api/studio/shares")
+def list_study_shares():
+    slug = request.args.get("study") or request.args.get("slug") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    from core.kart import shares_for_study, list_workspace_changelogs, study_points
+    rows = shares_for_study(slug)
+    base = request.host_url.rstrip("/")
+    for r in rows:
+        r["share_url"] = f"{base}/share/{r['token']}"
+        r["respondent_url"] = f"{base}/survey/{slug}"
+    owner_row = get_db().execute("SELECT email, name FROM users WHERE id=?", (study.owner_id,)).fetchone()
+    owner_email = owner_row["email"] if owner_row else ""
+    owner_name = (owner_row["name"] or owner_email) if owner_row else "Creator"
+    return jsonify({"ok": True, "study": slug, "title": study.title, "shares": rows,
+                    "owner_name": owner_name,
+                    "owner_email": owner_email,
+                    "points_used": study_points(study.cfg),
+                    "respondent_url": f"{base}/survey/{slug}",
+                    "test_url": f"{base}/survey/{slug}/test",
+                    "changelogs": list_workspace_changelogs(study_slug=slug, limit=25),
+                    "changelog_file_url": f"/api/workspace/changelog.log?study={slug}"})
+
+
+@bp.post("/api/studio/share")
+def create_study_share():
+    from flask import g
+    from core.kart import create_share
+    from core.security import audit
+    body = json_body()
+    slug = str(body.get("slug") or body.get("study") or "").strip()
+    email = str(body.get("email") or "").strip().lower()
+    permission = str(body.get("permission") or "collaborate").strip()
+    u = getattr(g, "user", None)
+    try:
+        share = create_share(slug, shared_by=(u["id"] if u else 0), email=email, permission=permission)
+    except StudyError as e:
+        return error(e)
+    base = request.host_url.rstrip("/")
+    share["share_url"] = f"{base}/share/{share['token']}"
+    share["respondent_url"] = f"{base}/survey/{slug}"
+    share["points_debited"] = 0
+    audit("share/create", study=slug, detail=f"{permission} -> {email or 'link'} (0 pts debited)")
+    return jsonify({"ok": True, "share": share})
+
+
+@bp.post("/api/studio/share/revoke")
+def revoke_study_share():
+    from core.kart import revoke_share
+    from core.security import audit
+    body = json_body()
+    try:
+        sid = int(body.get("id") or 0)
+    except (TypeError, ValueError):
+        return jsonify({"error": "invalid share id"}), 400
+    ok = revoke_share(sid)
+    audit("share/revoke", study=str(body.get("slug") or ""), detail=f"share_id={sid}")
+    return jsonify({"ok": ok})
 
 
 @bp.get("/api/studio/invites")

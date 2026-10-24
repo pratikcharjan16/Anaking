@@ -3,6 +3,7 @@ import csv
 import io
 import json
 import re
+import secrets
 import statistics
 import urllib.request
 from datetime import datetime, timedelta, timezone
@@ -37,8 +38,24 @@ def page():
     return render_template('workspace.html')
 
 
+def _actor_is_admin() -> bool:
+    u = getattr(g, 'user', None)
+    if u and u.get('role') == 'admin':
+        return True
+    st = getattr(g, 'staff', None)
+    if st and st.get('role') == 'owner':
+        return True
+    return False
+
+
 @bp.get('/api/workspace/projects')
 def projects():
+    from core.kart import (can_collaborate, list_teams_and_collaboration,
+                           list_workspace_changelogs, shared_studies_for_user,
+                           user_kart_summary)
+    u = getattr(g, 'user', None)
+    uid = u['id'] if u else 0
+    uemail = u.get('email', '') if u else ''
     out = []
     for row in Study.list_with_counts():
         if not allowed(row['slug']):
@@ -46,28 +63,219 @@ def projects():
         s = Study.get(row['slug'])
         checks = readiness(base(s))
         publication = get_db().execute('SELECT revision_id FROM publications WHERE study_id=?', (s.id,)).fetchone()
+        is_shared = bool(uid and row.get('owner_id') != uid and can_collaborate(uid, row['slug'], uemail))
         row.update(questions=checks['questions'], errors=checks['errors'], warnings=checks['warnings'],
-                   minutes=checks['estimated_minutes'], publication=publication['revision_id'] if publication else None)
+                   minutes=checks['estimated_minutes'],
+                   publication=publication['revision_id'] if publication else None,
+                   is_shared=is_shared,
+                   points_debited=0 if is_shared else row.get('points_used', 0),
+                   survey_url=f"/survey/{row['slug']}",
+                   test_url=f"/survey/{row['slug']}/test",
+                   studio_url=f"/studio/#{row['slug']}")
         out.append(row)
-    return jsonify(projects=out, capabilities={
-        'auth': current_app.config['STAFF_AUTH'], 'ai': bool(current_app.config['LOCAL_AI_URL'] and current_app.config['LOCAL_AI_MODEL']),
-        'ai_model': current_app.config['LOCAL_AI_MODEL'], 'mode': 'production' if current_app.config['PRODUCTION'] else 'preview',
-        'role': (getattr(g, 'staff', None) or {}).get('role', 'owner')})
+    shared_surveys = [
+        sh for sh in (shared_studies_for_user(uid, uemail) if uid else [])
+        if sh.get('permission') == 'respond'
+    ]
+    collab_state = list_teams_and_collaboration(uid, uemail) if uid else {
+        'teams': [],
+        'incoming_invites': [],
+        'changelogs': list_workspace_changelogs(limit=25),
+        'changelog_file_url': '/api/workspace/changelog.log',
+    }
+    return jsonify(projects=out, shared_surveys=shared_surveys,
+                   teams=collab_state['teams'],
+                   incoming_invites=collab_state['incoming_invites'],
+                   changelogs=collab_state['changelogs'],
+                   changelog_file_url=collab_state.get('changelog_file_url', '/api/workspace/changelog.log'),
+                   kart=user_kart_summary(uid) if uid else None,
+                   capabilities={
+                       'auth': current_app.config['STAFF_AUTH'],
+                       'ai': bool(current_app.config['LOCAL_AI_URL'] and current_app.config['LOCAL_AI_MODEL']),
+                       'ai_model': current_app.config['LOCAL_AI_MODEL'],
+                       'mode': 'production' if current_app.config['PRODUCTION'] else 'preview',
+                       'role': (getattr(g, 'staff', None) or {}).get('role', 'owner')})
 
 
 @bp.get('/api/workspace/study')
 def detail():
+    from core.kart import can_collaborate, list_workspace_changelogs, study_collaborators, study_points
     s = study()
     db = get_db()
     cfg = base(s)
+    u = getattr(g, 'user', None)
+    uid = u['id'] if u else 0
+    uemail = u.get('email', '') if u else ''
+    is_shared = bool(uid and s.owner_id != uid and can_collaborate(uid, s.slug, uemail))
+    owner_row = db.execute("SELECT name, email FROM users WHERE id=?", (s.owner_id,)).fetchone()
+    team_row = db.execute(
+        "SELECT wt.id, wt.name, wt.creator_id FROM team_projects tp "
+        "JOIN workspace_teams wt ON wt.id=tp.team_id WHERE tp.study_slug=? ORDER BY tp.id DESC LIMIT 1",
+        (s.slug,),
+    ).fetchone()
     revs = [dict(r) for r in db.execute('SELECT id,title,digest,actor,created_at FROM study_revisions WHERE study_id=? ORDER BY id DESC LIMIT 60', (s.id,))]
     comments = [dict(r) for r in db.execute('SELECT * FROM study_comments WHERE study_id=? ORDER BY id DESC LIMIT 100', (s.id,))]
     review = db.execute('SELECT * FROM study_reviews WHERE study_id=?', (s.id,)).fetchone()
     pub = db.execute('SELECT * FROM publications WHERE study_id=?', (s.id,)).fetchone()
     events = [dict(r) for r in db.execute('SELECT actor,action,created_at,detail FROM audit_events WHERE study=? ORDER BY id DESC LIMIT 40', (s.slug,))]
+    changelogs = list_workspace_changelogs(study_slug=s.slug, limit=40)
+    pts = study_points(cfg)
     return jsonify(slug=s.slug, title=s.title, status=s.status, parent=s.cfg.get('parent'),
+                   owner_id=s.owner_id,
+                   owner_name=(owner_row['name'] or owner_row['email']) if owner_row else '',
+                   owner_email=owner_row['email'] if owner_row else '',
+                   is_shared=is_shared,
+                   points_used=pts,
+                   points_debited=0 if is_shared else pts,
+                   team=dict(team_row) if team_row else None,
+                   collaborators=study_collaborators(s.slug),
+                   changelogs=changelogs,
+                   changelog_file_url=f"/api/workspace/changelog.log?study={s.slug}",
+                   survey_url=f"/survey/{s.slug}",
+                   test_url=f"/survey/{s.slug}/test",
+                   studio_url=f"/studio/#{s.slug}",
                    cfg={k:v for k,v in cfg.items() if k not in ('invites',)}, digest=fingerprint(effective_cfg(s, True)), checks=readiness(cfg), revisions=revs, comments=comments,
                    review=dict(review) if review else None, publication=dict(pub) if pub else None, activity=events)
+
+
+@bp.get('/api/workspace/teams')
+def workspace_teams():
+    from core.kart import list_teams_and_collaboration
+    u = getattr(g, 'user', None)
+    uid = u['id'] if u else 0
+    uemail = u.get('email', '') if u else ''
+    return jsonify(ok=True, **list_teams_and_collaboration(uid, uemail))
+
+
+@bp.post('/api/workspace/teams/create')
+def create_or_invite_workspace_team():
+    from models import StudyError
+    from core.kart import create_team_and_invite, list_teams_and_collaboration
+    u = getattr(g, 'user', None)
+    body = request.get_json(silent=True) or {}
+    team_id = int(body.get('team_id') or 0)
+    team_name = str(body.get('team_name') or '').strip()
+    invite_email = str(body.get('email') or body.get('invite_email') or '').strip().lower()
+    study_slug = str(body.get('study_slug') or body.get('slug') or '').strip()
+    description = str(body.get('description') or '').strip()
+    create_project_title = str(body.get('create_project_title') or '').strip()
+
+    try:
+        res = create_team_and_invite(
+            creator_user=u,
+            team_name=team_name,
+            invite_email=invite_email,
+            study_slug=study_slug,
+            description=description,
+            team_id=team_id,
+        )
+        created_slug = ''
+        if create_project_title:
+            tid = int(res['team']['id'])
+            raw_slug = re.sub(r'[^a-z0-9\-]+', '-', create_project_title.lower()).strip('-')[:28] or 'team-study'
+            new_slug = f"{raw_slug}-{secrets.token_hex(2)}"
+            created_slug = Study.save({
+                'slug': new_slug,
+                'title': create_project_title[:120],
+                'team_id': tid,
+                'cfg': {
+                    'title': create_project_title[:120],
+                    'language': 'en-US',
+                    'research_brief': description or f"Shared project for team {res['team']['name']}",
+                    'gamify': False,
+                    'sections': [{'id': 'S1', 'title': 'Main survey'}],
+                    'questions': [],
+                },
+            }, owner_id=(u['id'] if u else 0), actor_is_admin=_actor_is_admin())
+            if invite_email:
+                res2 = create_team_and_invite(
+                    creator_user=u,
+                    invite_email=invite_email,
+                    study_slug=created_slug,
+                    team_id=tid,
+                )
+                if res2.get('token'):
+                    res['token'] = res2['token']
+                if res2.get('invite'):
+                    res['invite'] = res2['invite']
+                if res2.get('share'):
+                    res['share'] = res2['share']
+    except StudyError as exc:
+        return jsonify(error=exc.message), exc.status
+
+    tok = res.get('token') or ''
+    final_slug = created_slug or study_slug
+    base_url = request.host_url.rstrip('/')
+    uid = u['id'] if u else 0
+    uemail = u.get('email', '') if u else ''
+    share_obj = res.get('share') or res.get('invite') or {'token': tok, 'points_debited': 0}
+    if isinstance(share_obj, dict):
+        share_obj = dict(share_obj)
+        share_obj.setdefault('token', tok)
+        share_obj.setdefault('points_debited', 0)
+    return jsonify(
+        ok=True,
+        team=res['team'],
+        invite=res['invite'],
+        share=share_obj,
+        token=tok,
+        share_url=f"{base_url}/share/{tok}" if tok else '',
+        study_slug=final_slug,
+        created_project_slug=created_slug,
+        collaboration=list_teams_and_collaboration(uid, uemail),
+    )
+
+
+@bp.post('/api/workspace/teams/accept')
+def accept_workspace_team_invite():
+    from core.kart import list_teams_and_collaboration, redeem_share
+    u = getattr(g, 'user', None)
+    if not u:
+        return jsonify(error='Sign in or register first to accept this team collaboration invite.'), 401
+    body = request.get_json(silent=True) or {}
+    token = str(body.get('token') or '').strip()
+    if not token:
+        return jsonify(error='Missing collaboration invite token.'), 400
+    redeemed = redeem_share(token, u)
+    if not redeemed:
+        return jsonify(error='Collaboration invite token not found or expired.'), 404
+    audit('team/accept', study=redeemed.get('study_slug', ''), detail='Team formed · 0 pts debited')
+    return jsonify(
+        ok=True,
+        team_formed=True,
+        redeemed=redeemed,
+        collaboration=list_teams_and_collaboration(u['id'], u.get('email', '')),
+    )
+
+
+@bp.get('/api/workspace/changelog')
+def workspace_changelog_json():
+    from core.kart import get_changelog_file_path, list_workspace_changelogs
+    slug = str(request.args.get('study') or request.args.get('slug') or '').strip()
+    team_id = int(request.args.get('team_id') or 0)
+    if slug and not allowed(slug):
+        abort(403)
+    entries = list_workspace_changelogs(study_slug=slug, team_id=team_id, limit=60)
+    return jsonify(
+        ok=True,
+        study=slug,
+        team_id=team_id,
+        file_name='workspace_changes.log',
+        file_path='data/workspace_changes.log',
+        file_url='/api/workspace/changelog.log' + (f'?study={slug}' if slug else (f'?team_id={team_id}' if team_id else '')),
+        changelogs=entries,
+    )
+
+
+@bp.get('/api/workspace/changelog.log')
+def workspace_changelog_file():
+    from core.kart import read_changelog_file_text
+    slug = str(request.args.get('study') or request.args.get('slug') or '').strip()
+    team_id = int(request.args.get('team_id') or 0)
+    if slug and not allowed(slug):
+        abort(403)
+    text = read_changelog_file_text(study_slug=slug, team_id=team_id, limit=120)
+    return Response(text, mimetype='text/plain; charset=utf-8')
 
 
 @bp.post('/api/workspace/settings')
@@ -88,7 +296,7 @@ def settings():
             cfg['quota_target'] = max(0, min(10000000, int(body['quota_target'])))
         except (TypeError, ValueError):
             abort(400, 'Target must be a whole number.')
-    Study.save({'slug': s.slug, 'title': s.title, 'cfg': cfg})
+    Study.save({'slug': s.slug, 'title': s.title, 'cfg': cfg}, actor_is_admin=_actor_is_admin())
     return jsonify(ok=True)
 
 
@@ -140,6 +348,9 @@ def publish():
         db.execute('INSERT OR REPLACE INTO publication_snapshots VALUES(?,?,?)', (s.id, json.dumps(frozen), fingerprint(frozen)))
         db.execute("UPDATE studies SET status='live',updated_at=? WHERE id=?", (now(), s.id))
     audit('Published immutable version ' + str(rid), s.slug)
+    from core.kart import record_workspace_change
+    record_workspace_change(study_slug=s.slug, action_type='publish',
+                            short_summary=f"Published live version v{rid} on /survey/{s.slug}")
     return jsonify(ok=True, revision=rid)
 
 
@@ -161,7 +372,7 @@ def restore():
     row = get_db().execute('SELECT * FROM study_revisions WHERE id=? AND study_id=?', (request.get_json().get('revision'), s.id)).fetchone()
     if not row:
         abort(404)
-    Study.save({'slug': s.slug, 'title': row['title'], 'cfg': json.loads(row['cfg'])})
+    Study.save({'slug': s.slug, 'title': row['title'], 'cfg': json.loads(row['cfg'])}, actor_is_admin=_actor_is_admin())
     audit('Restored draft from revision ' + str(row['id']), s.slug)
     return jsonify(ok=True, note='Draft restored. Published survey is unchanged until republished.')
 

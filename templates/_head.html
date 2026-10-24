@@ -1,11 +1,140 @@
-{#- Shared document head: title, description, icon and theme colour for every page.
-    Stylesheet links stay per-page (each app has its own), but these never drift again. -#}
-{% macro head(title, description='') -%}
+{#- Shared document head: title, description, icon, theme colour, and advanced SEO
+    (Canonical, Robots, Misspelling/Keyword Alias Coverage, Open Graph, Twitter Cards,
+    Sitemap discovery, and Schema.org JSON-LD @graph) for every page. -#}
+{% macro head(title, description='', keywords='', canonical_path='') -%}
+{%- set effective_desc = description or 'SurveyKart (Survey Kart / SurveyCart) — Insights Delivered. Register for 100 free Kart points, shop 23 research question types into your survey Kart, capture voice & live dictation, guard data with 7-signal AI & straight-line QC, and export native PowerPoint (.PPTX) & Excel (.XLSX) decks.' -%}
+{%- set base_keywords = 'SurveyKart, Survey Kart, surveykart, survey cart, SurveyCart, survey-kart, survey-cart, survaykart, survay kart, survay cart, survekart, surve kart, surverykart, survery kart, survery cart, surveykar, survey krat, Anaking SurveyKart, Project Beacon SurveyKart, SurveyKart Insights Delivered, 100 Kart points survey builder, online survey platform, market research software, AI survey builder, voice survey answer by voice, live dictation text grid, rating scale straight-line detection, open-ended AI verbatim detection, conjoint analysis simulator, MaxDiff survey tool, native PPTX survey export' -%}
+{%- set effective_keywords = (keywords ~ ', ' ~ base_keywords) if keywords else base_keywords -%}
+{%- set canonical_url = (request.url_root.rstrip('/') ~ (canonical_path or request.path)) if request else '/' -%}
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{{ title }}</title>
-<meta name="description" content="{{ description or 'Anaking — an intelligent insight platform to design, test, field and analyse research surveys.' }}">
+<meta name="description" content="{{ effective_desc }}">
+<meta name="keywords" content="{{ effective_keywords }}">
+<meta name="application-name" content="SurveyKart">
+<meta name="apple-mobile-web-app-title" content="SurveyKart">
+<meta name="author" content="SurveyKart · Insights Delivered">
+<meta name="robots" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="googlebot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
+<meta name="bingbot" content="index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1">
 <meta name="color-scheme" content="light">
 <meta name="theme-color" content="#16241f">
+<link rel="canonical" href="{{ canonical_url }}">
+<link rel="sitemap" type="application/xml" title="SurveyKart XML Sitemap" href="/sitemap.xml">
+<link rel="alternate" type="text/html" title="SurveyKart Visual Sitemap &amp; Directory" href="/sitemap">
+<link rel="manifest" href="/manifest.webmanifest">
 <link rel="icon" href="{{ asset('images/favicon.svg') }}" type="image/svg+xml">
+
+{#- Open Graph / Social Discovery -#}
+<meta property="og:site_name" content="SurveyKart · Insights Delivered">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{{ title }}">
+<meta property="og:description" content="{{ effective_desc }}">
+<meta property="og:url" content="{{ canonical_url }}">
+<meta property="og:image" content="{{ asset('images/surveykart-3d-logo.gif') }}">
+<meta property="og:locale" content="en_US">
+
+{#- Twitter / X Card -#}
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="{{ title }}">
+<meta name="twitter:description" content="{{ effective_desc }}">
+<meta name="twitter:image" content="{{ asset('images/surveykart-3d-logo.gif') }}">
+
+{#- Schema.org Structured Data (@graph: Organization, WebSite + Misspelling Aliases, SoftwareApplication, SiteNavigationElement) -#}
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "Organization",
+      "@id": "{{ (request.url_root.rstrip('/') if request else '') }}/#organization",
+      "name": "SurveyKart",
+      "legalName": "SurveyKart · Anaking Research Platform",
+      "alternateName": [
+        "Survey Kart",
+        "SurveyCart",
+        "Survey Cart",
+        "surveykart",
+        "survey cart",
+        "survey-kart",
+        "survey-cart",
+        "SurvayKart",
+        "Survay Cart",
+        "SurveKart",
+        "Surve Kart",
+        "SurveryKart",
+        "Survery Cart",
+        "SurveyKart Insights Delivered",
+        "Anaking SurveyKart"
+      ],
+      "url": "{{ (request.url_root.rstrip('/') if request else '/') }}",
+      "slogan": "Shop your questions. Insights Delivered."
+    },
+    {
+      "@type": "WebSite",
+      "@id": "{{ (request.url_root.rstrip('/') if request else '') }}/#website",
+      "name": "SurveyKart · Insights Delivered",
+      "alternateName": [
+        "SurveyKart",
+        "Survey Kart",
+        "SurveyCart",
+        "Survey Cart",
+        "SurvayKart",
+        "SurveKart",
+        "SurveryKart"
+      ],
+      "url": "{{ (request.url_root.rstrip('/') if request else '/') }}",
+      "publisher": {
+        "@id": "{{ (request.url_root.rstrip('/') if request else '') }}/#organization"
+      },
+      "potentialAction": {
+        "@type": "SearchAction",
+        "target": "{{ (request.url_root.rstrip('/') if request else '') }}/sitemap?q={search_term_string}",
+        "query-input": "required name=search_term_string"
+      }
+    },
+    {
+      "@type": "SoftwareApplication",
+      "@id": "{{ (request.url_root.rstrip('/') if request else '') }}/#application",
+      "name": "SurveyKart",
+      "alternateName": ["Survey Kart", "SurveyCart", "Survey Cart", "SurvayKart", "SurveKart"],
+      "applicationCategory": "BusinessApplication, MarketResearchApplication",
+      "operatingSystem": "Web, Cloud, All Browsers",
+      "description": {{ effective_desc | tojson }},
+      "offers": {
+        "@type": "Offer",
+        "price": "0",
+        "priceCurrency": "USD",
+        "description": "100 Free Kart Points on Registration; 0-Point Shared Team & Respondent Links"
+      },
+      "featureList": [
+        "100 Free Kart Points on Signup",
+        "23 Research Question & Methodology Types (Single Select, Constant Sum, Delta, Conjoint, MaxDiff)",
+        "Intelligent Multi-Perspective Answer by Voice & Continuous Text-Grid Dictation",
+        "Rating-Scale Straight-Line Plumb-Line QC Guard (sigma = 0.00)",
+        "7-Signal Open-Ended AI Verbatim Authenticity X-Ray",
+        "Interactive Responder-First Walkthroughs",
+        "Zero-Debit Shared Team & Respondent Links (0 Pts)",
+        "Live Crosstabs, Excel (.XLSX) & Native Editable PowerPoint (.PPTX) Exports"
+      ]
+    },
+    {
+      "@type": "ItemList",
+      "name": "SurveyKart Main Platform Navigation",
+      "itemListElement": [
+        { "@type": "SiteNavigationElement", "position": 1, "name": "SurveyKart Home — Insights Delivered", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/" },
+        { "@type": "SiteNavigationElement", "position": 2, "name": "Register Account (+100 Free Kart Points)", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/register" },
+        { "@type": "SiteNavigationElement", "position": 3, "name": "Sign In to SurveyKart Studio & Admin", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/signin" },
+        { "@type": "SiteNavigationElement", "position": 4, "name": "SurveyKart Studio — 23-Type Survey Builder", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/studio/" },
+        { "@type": "SiteNavigationElement", "position": 5, "name": "Live Fieldwork Monitor, Crosstabs & PPTX Exports", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/admin/" },
+        { "@type": "SiteNavigationElement", "position": 6, "name": "Research Workspace & Project Hub", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/workspace/" },
+        { "@type": "SiteNavigationElement", "position": 7, "name": "Live Respondent Survey Instrument", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/survey/" },
+        { "@type": "SiteNavigationElement", "position": 8, "name": "Admin Console — User & Kart Point Governance", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/admin/console" },
+        { "@type": "SiteNavigationElement", "position": 9, "name": "Admin Portal — Platform Activity & Audit Telemetry", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/admin-portal" },
+        { "@type": "SiteNavigationElement", "position": 10, "name": "Advanced Platform Sitemap & SEO Directory", "url": "{{ (request.url_root.rstrip('/') if request else '') }}/sitemap" }
+      ]
+    }
+  ]
+}
+</script>
 {%- endmacro %}

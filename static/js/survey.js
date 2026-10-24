@@ -488,6 +488,7 @@
       meta.input_events++;
       var delta = box.value.length - lastLen;
       lastLen = box.value.length;
+      if (box._voiceDictating) { keysSinceInput = 0; return; }
       if (pasting) { pasting = false; keysSinceInput = 0; return; }   // already counted above
       // text that grew by a big chunk with no keystrokes behind it - drag and drop, a
       // scripted insert, autofill of a whole answer - counts as pasted. The threshold
@@ -735,7 +736,42 @@
     return row;
   }
 
-  // ---- Text Grid voice: per-textbox real-time transcript (applies to every text entry)
+  var activeDictateStop = null;
+
+  function joinSpeechText(base, addition) {
+    var a = String(base === undefined || base === null ? "" : base);
+    var b = String(addition === undefined || addition === null ? "" : addition).trim();
+    if (!b) return a;
+    if (!a || !a.trim()) return b;
+    var aTrim = a.replace(/[ \t]+$/, "");
+    if (/[\n\r]$/.test(aTrim)) return aTrim + b;
+    if (/^[,.;:!?)\]}]/.test(b)) return aTrim + b;
+    return aTrim + " " + b;
+  }
+
+  function joinSpeechSegments(parts) {
+    var acc = "";
+    for (var i = 0; i < parts.length; i++) {
+      var seg = String(parts[i] || "").trim();
+      if (!seg) continue;
+      if (!acc) {
+        acc = seg;
+        continue;
+      }
+      var accLow = acc.toLowerCase();
+      var segLow = seg.toLowerCase();
+      if (segLow.indexOf(accLow) === 0) {
+        acc = seg;
+      } else if (accLow === segLow) {
+        continue;
+      } else {
+        acc = joinSpeechText(acc, seg);
+      }
+    }
+    return acc;
+  }
+
+  // ---- Text Grid voice: per-textbox real-time continuous transcript (applies to every text entry)
   function attachVoiceTranscript(textarea, qId, ansKey) {
     if (!textarea || textarea._voiceAttached) return;
     if (!(window.BeaconVoice && window.BeaconVoice.supported && window.BeaconVoice.supported())) {
@@ -749,76 +785,303 @@
     var btn = el("button", "tg-voice-btn", '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate');
     btn.type = "button";
     btn.setAttribute("data-for", ansKey);
-    btn.title = "Click to dictate – transcript appears live in this box";
-    var rec = null, isRec = false, baseText = "", finalTxt = "";
-    btn.addEventListener("click", function () {
-      if (isRec) { try { if (rec) rec.stop(); } catch(e){} return; }
-      baseText = textarea.value || "";
-      finalTxt = "";
-      btn.classList.add("recording");
-      btn.innerHTML = '<span class="g-ico">\u23F9</span> Stop';
-      textarea.setAttribute("data-ph", textarea.placeholder || "");
-      textarea.placeholder = "Listening… speak clearly";
-      textarea.focus();
-      var handlers = {
-        onFinal: function (txt) {
-          if (!txt) return;
-          finalTxt = finalTxt ? finalTxt + " " + txt : txt;
-          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt : finalTxt;
-          textarea.value = full;
-          // trigger save
-          var ev = new Event("input", {bubbles:true});
-          textarea.dispatchEvent(ev);
-        },
-        onInterim: function (txt) {
-          if (!txt) return;
-          var interim = txt;
-          var full = baseText ? baseText + (baseText.trim() ? " " : "") + finalTxt + " " + interim : finalTxt + " " + interim;
-          textarea.value = full.trim();
-        },
-        onState: function (state, code) {
-          if (state === "off" || state === "error") {
-            isRec = false;
-            btn.classList.remove("recording");
-            btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate';
-            textarea.placeholder = textarea.getAttribute("data-ph") || "Type here…";
-            // ensure final is saved
-            if (finalTxt || baseText !== textarea.value) {
-              var ev2 = new Event("input", {bubbles:true});
-              textarea.dispatchEvent(ev2);
-            }
-          } else if (state === "listening") {
-            isRec = true;
+    btn.title = "Click to dictate \u2013 live continuous transcript builds sentences & paragraphs in this box";
+
+    var sr = null;
+    var isRec = false;
+    var committedText = "";
+    var sessionSegments = [];
+    var consumedAtSlot = [];
+    var updatingFromVoice = false;
+    var restartTimer = null;
+    var pausedGlobalVoice = false;
+
+    function getCurrentSessionTranscript() {
+      var parts = [];
+      for (var i = 0; i < sessionSegments.length; i++) {
+        if (sessionSegments[i] && sessionSegments[i].text) {
+          parts.push(sessionSegments[i].text);
+        }
+      }
+      return joinSpeechSegments(parts);
+    }
+
+    function syncTextareaToVoice(triggerSave) {
+      var sessionTxt = getCurrentSessionTranscript();
+      var full = joinSpeechText(committedText, sessionTxt);
+      updatingFromVoice = true;
+      textarea._voiceDictating = true;
+      textarea.value = full;
+      try {
+        if (textarea.scrollHeight > textarea.clientHeight) {
+          textarea.style.height = Math.min(220, Math.max(44, textarea.scrollHeight + 4)) + "px";
+        }
+        textarea.scrollTop = textarea.scrollHeight;
+      } catch (e) {}
+      if (triggerSave !== false) {
+        var ev = new Event("input", { bubbles: true });
+        textarea.dispatchEvent(ev);
+      }
+      textarea._voiceDictating = false;
+      updatingFromVoice = false;
+    }
+
+    function flushSessionToCommitted() {
+      var sessionTxt = getCurrentSessionTranscript();
+      if (sessionTxt) {
+        committedText = joinSpeechText(committedText, sessionTxt);
+      }
+      sessionSegments = [];
+    }
+
+    function setBtnRecording(on) {
+      if (on) {
+        btn.classList.add("recording");
+        btn.setAttribute("aria-pressed", "true");
+        btn.innerHTML = '<span class="g-ico">\u23F9</span> Stop';
+        if (!textarea.hasAttribute("data-ph")) {
+          textarea.setAttribute("data-ph", textarea.placeholder || "");
+        }
+        textarea.placeholder = "Listening\u2026 speak continuously";
+      } else {
+        btn.classList.remove("recording");
+        btn.setAttribute("aria-pressed", "false");
+        btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate';
+        textarea.placeholder = textarea.getAttribute("data-ph") || "Type here\u2026";
+      }
+    }
+
+    // Preserve manual typing/edits made while dictation is active or between sessions
+    textarea.addEventListener("input", function () {
+      if (updatingFromVoice) return;
+      if (isRec) {
+        for (var i = 0; i < sessionSegments.length; i++) {
+          if (sessionSegments[i] && sessionSegments[i].text) {
+            var prevConsumed = consumedAtSlot[i] || "";
+            consumedAtSlot[i] = joinSpeechText(prevConsumed, sessionSegments[i].text);
           }
         }
-      };
-      try {
-        rec = window.BeaconVoice.create(handlers);
-      } catch(e) { rec = null; }
-      if (rec) rec.start();
-      else {
-        // fallback direct SpeechRecognition if BeaconVoice unavailable
-        var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-        if (!SR) { btn.classList.remove("recording"); btn.innerHTML = '<span class="g-ico">\uD83C\uDF99\uFE0F</span> Dictate'; return; }
-        var sr = new SR();
-        sr.lang = (document.documentElement && document.documentElement.lang) || navigator.language || "en-US";
-        sr.interimResults = true;
-        sr.continuous = true;
-        sr.maxAlternatives = 1;
-        isRec = true;
-        sr.onresult = function (e) {
-          var fin="", inter="";
-          for (var i=e.resultIndex;i<e.results.length;i++) {
-            if (e.results[i].isFinal) fin += e.results[i][0].transcript + " ";
-            else inter += e.results[i][0].transcript + " ";
+        sessionSegments = [];
+      }
+      committedText = textarea.value || "";
+    });
+
+    function stopDictation() {
+      if (restartTimer) {
+        clearTimeout(restartTimer);
+        restartTimer = null;
+      }
+      var wasRec = isRec;
+      isRec = false;
+      flushSessionToCommitted();
+      consumedAtSlot = [];
+      if (wasRec) {
+        syncTextareaToVoice(true);
+        try {
+          var chg = new Event("change", { bubbles: true });
+          textarea.dispatchEvent(chg);
+        } catch (e) {}
+      }
+      setBtnRecording(false);
+      if (activeDictateStop === stopDictation) {
+        activeDictateStop = null;
+      }
+      if (sr) {
+        try { sr.onend = null; sr.onerror = null; sr.onresult = null; sr.stop(); } catch (e) {}
+        sr = null;
+      }
+      if (pausedGlobalVoice && voiceOn && voice) {
+        pausedGlobalVoice = false;
+        try { voice.start(); } catch (e) {}
+      }
+    }
+
+    function stripConsumedPrefix(rawTxt, slotIdx) {
+      var prefix = String(consumedAtSlot[slotIdx] || "").trim();
+      var txt = String(rawTxt || "").trim();
+      if (!prefix || !txt) return txt;
+      if (txt.toLowerCase().indexOf(prefix.toLowerCase()) === 0) {
+        return txt.slice(prefix.length).replace(/^[ \t,.;:!?-]+/, "").trim();
+      }
+      return txt;
+    }
+
+    function handleRecognitionResult(e) {
+      if (!e || !e.results) return;
+      var now = Date.now();
+      var resLen = e.results.length || 0;
+
+      // 1. If the browser shrank e.results without firing onend, commit existing segments first
+      var existingCount = 0;
+      for (var k = 0; k < sessionSegments.length; k++) {
+        if (sessionSegments[k] && sessionSegments[k].text) existingCount = k + 1;
+      }
+      if (resLen > 0 && resLen < existingCount) {
+        flushSessionToCommitted();
+        consumedAtSlot = [];
+      }
+
+      // 2. Detect if the speech engine reused an existing slot for a new word/phrase
+      // instead of appending to e.results or extending the phrase in place.
+      for (var idx = 0; idx < resLen; idx++) {
+        var rItem = e.results[idx];
+        if (!rItem || !rItem[0]) continue;
+        var candTxt = stripConsumedPrefix(rItem[0].transcript, idx);
+        if (!candTxt) continue;
+        var prevSeg = sessionSegments[idx];
+        if (prevSeg && prevSeg.text) {
+          var prevLow = prevSeg.text.toLowerCase();
+          var candLow = candTxt.toLowerCase();
+          if (prevSeg.final) {
+            if (candLow !== prevLow && candLow.indexOf(prevLow) !== 0) {
+              flushSessionToCommitted();
+              consumedAtSlot = [];
+              break;
+            }
+          } else {
+            var prevWords = prevLow.split(/\s+/).filter(Boolean);
+            var candWords = candLow.split(/\s+/).filter(Boolean);
+            var firstPrev = prevWords[0] || "";
+            var firstCand = candWords[0] || "";
+            var sharesFirstWord = firstPrev && firstCand && (
+              firstPrev === firstCand ||
+              firstCand.indexOf(firstPrev) === 0 ||
+              firstPrev.indexOf(firstCand) === 0 ||
+              (firstPrev.length >= 3 && firstCand.length >= 3 && firstPrev.slice(0, 3) === firstCand.slice(0, 3))
+            );
+            var sharesContentWord = prevWords.some(function (pw) {
+              return pw.length >= 4 && candWords.indexOf(pw) >= 0;
+            });
+            if (!sharesFirstWord && !sharesContentWord && candLow.indexOf(prevLow) !== 0 && prevLow.indexOf(candLow) !== 0) {
+              flushSessionToCommitted();
+              consumedAtSlot = [];
+              break;
+            }
           }
-          if (fin) handlers.onFinal(fin.trim());
-          if (inter) handlers.onInterim(inter.trim());
+        }
+      }
+
+      // 3. Accumulate all segments 0 .. resLen - 1 in order
+      for (var i = 0; i < resLen; i++) {
+        var res = e.results[i];
+        if (!res || !res[0]) continue;
+        var segTxt = stripConsumedPrefix(res[0].transcript, i);
+        if (!segTxt) continue;
+        sessionSegments[i] = {
+          text: segTxt,
+          final: !!res.isFinal,
+          updatedAt: now
         };
-        sr.onerror = function(e){ handlers.onState("error", e.error); };
-        sr.onend = function(){ if(isRec) try{ sr.start(); }catch(e){} else handlers.onState("off"); };
-        rec = { start:function(){ try{ sr.start(); handlers.onState("listening"); }catch(e){} }, stop:function(){ isRec=false; try{ sr.stop(); }catch(e){} handlers.onState("off"); } };
-        rec.start();
+      }
+
+      syncTextareaToVoice(true);
+    }
+
+    function createAndStartSR() {
+      var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+      if (SR) {
+        var inst = new SR();
+        var lang = (document.documentElement && document.documentElement.lang) || navigator.language || "en-US";
+        inst.lang = lang === "en" ? "en-US" : lang;
+        inst.interimResults = true;
+        inst.continuous = true;
+        inst.maxAlternatives = 1;
+        inst.onresult = handleRecognitionResult;
+        inst.onerror = function (e) {
+          var code = (e && e.error) || "error";
+          if (code === "no-speech" || code === "aborted") {
+            return;
+          }
+          stopDictation();
+        };
+        inst.onend = function () {
+          flushSessionToCommitted();
+          consumedAtSlot = [];
+          syncTextareaToVoice(true);
+          if (!isRec) {
+            setBtnRecording(false);
+            return;
+          }
+          restartTimer = setTimeout(function () {
+            if (!isRec) return;
+            try {
+              inst.start();
+            } catch (err) {
+              restartTimer = setTimeout(function () {
+                if (!isRec) return;
+                try {
+                  inst.start();
+                } catch (err2) {
+                  stopDictation();
+                }
+              }, 120);
+            }
+          }, 40);
+        };
+        sr = inst;
+        try {
+          inst.start();
+          return true;
+        } catch (err) {
+          if (err && err.name === "InvalidStateError") return true;
+          sr = null;
+          return false;
+        }
+      }
+      // Fallback if only BeaconVoice is shimmed without native SpeechRecognition constructor
+      if (window.BeaconVoice && window.BeaconVoice.create) {
+        var bv = window.BeaconVoice.create({
+          onFinal: function (txt) {
+            if (!txt) return;
+            sessionSegments = [];
+            committedText = joinSpeechText(committedText, txt);
+            syncTextareaToVoice(true);
+          },
+          onInterim: function (txt) {
+            if (!txt) return;
+            sessionSegments = [{ text: txt, final: false, updatedAt: Date.now() }];
+            syncTextareaToVoice(true);
+          },
+          onState: function (state) {
+            if (state === "off" || state === "error") {
+              stopDictation();
+            }
+          }
+        });
+        if (bv) {
+          sr = bv;
+          bv.start();
+          return true;
+        }
+      }
+      return false;
+    }
+
+    btn.addEventListener("click", function () {
+      if (isRec) {
+        stopDictation();
+        return;
+      }
+      if (activeDictateStop && activeDictateStop !== stopDictation) {
+        activeDictateStop();
+      }
+      activeDictateStop = stopDictation;
+
+      // Pause global voice command listener while cell dictation is active
+      if (voiceOn && voice) {
+        pausedGlobalVoice = true;
+        try { voice.stop(); } catch (e) {}
+      }
+
+      committedText = textarea.value || "";
+      sessionSegments = [];
+      consumedAtSlot = [];
+      isRec = true;
+      setBtnRecording(true);
+      textarea.focus();
+
+      if (!createAndStartSR()) {
+        stopDictation();
       }
     });
     // insert after textarea
@@ -924,23 +1187,27 @@
   var voiceField = 0, voiceExplicitField = false;
   function voiceControls() {
     return Array.prototype.filter.call(document.querySelectorAll('#app input, #app textarea, #app select, #app button, #app [role="button"], #app .alt-card, #app .optout-card, #app [role="slider"]'), function (n) {
-      return !n.matches(".sp-thumb") && !n.disabled && n.type !== "hidden" && !n.closest('.nav, [hidden], .recorder') &&
+      return !n.matches(".sp-thumb, .tg-voice-btn") && !n.disabled && n.type !== "hidden" && !n.closest('.nav, [hidden], .recorder') &&
         getComputedStyle(n).display !== "none" && getComputedStyle(n).visibility !== "hidden";
     });
   }
   function voiceFields() {
-    return voiceControls().filter(function (n) { return n.getAttribute("role") === "slider" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" ||
+    var base = voiceControls().filter(function (n) { return n.getAttribute("role") === "slider" || n.tagName === "TEXTAREA" || n.tagName === "SELECT" ||
       (n.tagName === "INPUT" && !/^(radio|checkbox|button|submit|file)$/.test(n.type)); });
+    if (base.length) return base;
+    var extraRows = document.querySelectorAll("#app .choice-grid .cg-row:not(.cg-head), #app .emoji-grid .grid-row:not(.grid-head)");
+    if (extraRows.length) return Array.prototype.slice.call(extraRows);
+    return base;
   }
   function highlightActiveVoiceRow(idx) {
-    var rows = document.querySelectorAll('#app .grid-row, #app .gauge-row');
+    var rows = document.querySelectorAll('#app .grid-row:not(.grid-head), #app .gauge-row:not(.grid-head), #app .cg-row:not(.cg-head), #app .nm-tr:not(.nm-head):not(.nm-cmtrow)');
     rows.forEach(function (r, i) {
       var isActive = (i === idx) && voiceOn;
       r.classList.toggle("voice-active-row", isActive);
       var mic = r.querySelector(".voice-row-mic");
       if (isActive) {
         if (!mic) {
-          var rl = r.querySelector(".rlabel, .gauge-label");
+          var rl = r.querySelector(".rlabel, .gauge-label, .cg-rowlabel, .nm-rowlabel");
           if (rl) {
             mic = el("span", "voice-row-mic", "\uD83C\uDF99\uFE0F");
             mic.title = "Listening for this row";
@@ -955,14 +1222,14 @@
 
   function animateRowHit(field, val) {
     if (!field) return;
-    var row = field.closest(".grid-row, .gauge-row, .num-row, .rank-item");
+    var row = field.closest(".grid-row, .gauge-row, .cg-row, .nm-tr, .num-row, .rank-item");
     if (row) {
       row.classList.remove("row-rated-pop");
       void row.offsetWidth;
       row.classList.add("row-rated-pop");
       var badge = row.querySelector(".voice-row-status");
       if (!badge) {
-        var labelEl = row.querySelector(".rlabel, .gauge-label");
+        var labelEl = row.querySelector(".rlabel, .gauge-label, .cg-rowlabel, .nm-rowlabel");
         if (labelEl) {
           badge = el("span", "voice-row-status");
           labelEl.appendChild(badge);
@@ -975,6 +1242,20 @@
         badge.classList.add("pop");
       }
     }
+  }
+
+  function isQuestionStraightlined(q) {
+    if (!q || !q.rows || q.rows.length < 2) return null;
+    var a = answers[q.id] || {};
+    var vals = q.rows.map(function (r) { return a[r.code]; })
+                     .filter(function (v) { return v !== undefined && v !== "" && v !== "NA"; });
+    if (vals.length < q.rows.length || vals.length < 2) return null;
+    var uniq = {};
+    vals.forEach(function (v) { uniq[String(v)] = 1; });
+    if (Object.keys(uniq).length === 1) {
+      return { value: vals[0], count: vals.length, flag: "straightliner_" + q.id };
+    }
+    return null;
   }
 
   function advanceVoiceField(fromIdx) {
@@ -1002,8 +1283,14 @@
       showVoiceBar("Saved \u2713 Now on Row " + (voiceField + 1) + " — \u201C" + rLabel + "\u201D — say 1\u20135, or \u2018row " + (voiceField + 1) + " is 4\u2019.");
       coachSay("Ready for Row " + (voiceField + 1) + ": " + rLabel, "info");
     } else {
-      showVoiceBar("All rows rated! Say \u201Cnext\u201D to proceed, or say a row number to change.");
-      coachSay("All rows completed! Say \u201Cnext\u201D to continue.", "info");
+      var sl = isQuestionStraightlined(q);
+      if (sl) {
+        showVoiceBar("\u2691 Straight-Line Flag (" + sl.flag + ") — all " + sl.count + " rows rated " + sl.value + ". Say e.g. \u2018row 2 is \u2026\u2019 to adjust, or \u2018next\u2019 to continue.");
+        coachSay("\u2691 Straight-Line Flag (" + sl.flag + "): Every row currently carries the same rating (" + sl.value + "). If that is your true view, perfect - otherwise a quick second look keeps your input accurate.", "warn", 9000);
+      } else {
+        showVoiceBar("All rows rated! Say \u201Cnext\u201D to proceed, or say a row number to change.");
+        coachSay("All rows completed! Say \u201Cnext\u201D to continue.", "info");
+      }
     }
   }
 
@@ -1022,24 +1309,60 @@
     highlightActiveVoiceRow(voiceField);
   }
   function voiceCtx() {
-    var q = steps[cur] && steps[cur].q, fields = voiceFields();
-    var field = fields[Math.min(voiceField, fields.length - 1)];
+    var step = steps[cur], q = step && step.q, fields = voiceFields();
+    var field = fields[Math.min(voiceField, Math.max(0, fields.length - 1))];
     // Picks follow the displayed order, including randomized/piped choices.
     var options = Array.prototype.map.call(document.querySelectorAll('#app .opt[data-code]'), function (n) {
-      return {code: n.dataset.code, label: (n.querySelector("label") || n).textContent.trim(), exclusive: (q.options || []).some(function (o) { return String(o.code) === n.dataset.code && o.exclusive; })};
+      return {code: n.dataset.code, label: (n.querySelector("label") || n).textContent.trim(), exclusive: (q && q.options || []).some(function (o) { return String(o.code) === n.dataset.code && o.exclusive; })};
     });
+    // Support Conjoint choice tasks (.alt-card / .optout-card) as voice options
+    if (!options.length && document.querySelectorAll('#app .alt-card').length) {
+      options = Array.prototype.map.call(document.querySelectorAll('#app .alt-card'), function (card, i) {
+        var headTxt = (card.querySelector(".alt-head") || card).textContent.replace(/\u2713/g, "").trim();
+        return { code: "alt_" + i, label: headTxt || ("Treatment " + (i + 1)), exclusive: false };
+      });
+      var optout = document.querySelector('#app .optout-card');
+      if (optout) {
+        options.push({ code: "optout", label: optout.textContent.replace(/\u2713/g, "").trim() || "None of these", exclusive: true });
+      }
+    }
     var rows = (q && q.rows) ? q.rows.map(function (r, i) {
       return { index: i, code: r.code, label: (r.label || "").trim() };
     }) : [];
+    var scaleObj = q && (q.scale || (q.min != null && q.max != null ? { min: q.min, max: q.max, min_label: q.min_label, mid_label: q.mid_label, max_label: q.max_label } : null));
+    var scaleLabels = [];
+    if (scaleObj) {
+      var sMin = scaleObj.min != null ? Number(scaleObj.min) : 1;
+      var sMax = scaleObj.max != null ? Number(scaleObj.max) : 5;
+      var sMid = Math.round((sMin + sMax) / 2);
+      if (scaleObj.min_label) scaleLabels.push({ value: sMin, label: String(scaleObj.min_label) });
+      if (scaleObj.mid_label) scaleLabels.push({ value: sMid, label: String(scaleObj.mid_label) });
+      if (scaleObj.max_label) scaleLabels.push({ value: sMax, label: String(scaleObj.max_label) });
+      if (Array.isArray(scaleObj.points)) {
+        scaleObj.points.forEach(function (pt) {
+          if (pt && pt.label && pt.v !== undefined) scaleLabels.push({ value: Number(pt.v), label: String(pt.label) });
+        });
+      }
+    }
+    if (q && Array.isArray(q.cols) && q.cols.length) {
+      q.cols.forEach(function (col, ci) {
+        if (col && col.label) scaleLabels.push({ value: ci + 1, code: col.code, label: String(col.label) });
+      });
+      if (!scaleObj) scaleObj = { min: 1, max: q.cols.length };
+    }
+    var isGridRowField = field && field.classList && (field.classList.contains("cg-row") || field.classList.contains("grid-row"));
     return {
       options: options,
       multi: q && q.type === "multi_select",
-      type: q && q.type,
+      type: (step && step.kind === "task") ? "choice_task" : (q && q.type),
       activeFieldIndex: voiceField,
       fieldsCount: fields.length,
       rows: rows,
-      scale: q && (q.scale || (q.min != null && q.max != null ? { min: q.min, max: q.max } : null)),
-      inputType: (!options.length || voiceExplicitField) && field ? (field.getAttribute("role") === "slider" ? "number" : field.type || "text") : null
+      scale: scaleObj,
+      scaleLabels: scaleLabels,
+      inputType: (!options.length || voiceExplicitField) && field
+        ? ((field.getAttribute("role") === "slider" || isGridRowField) ? "number" : field.type || "text")
+        : null
     };
   }
   function voiceSetValue(field, value) {
@@ -1048,13 +1371,47 @@
       field.click(); labelVoiceControls(); return;
     }
     if (value === undefined) { field.focus(); voiceField = voiceFields().indexOf(field); voiceExplicitField = true; showVoiceBar("Field selected. Say its value."); return; }
+    var q = steps[cur] && steps[cur].q;
+    // Choice-grid row (.cg-row) or Emoji-grid row (.emoji-grid .grid-row)
+    if (field.classList && (field.classList.contains("cg-row") || (field.classList.contains("grid-row") && field.closest(".emoji-grid")))) {
+      var ctxForRow = voiceCtx();
+      var rVal = window.BeaconVoice && window.BeaconVoice.resolveRatingValue
+        ? window.BeaconVoice.resolveRatingValue(value, ctxForRow)
+        : window.BeaconVoice.parseNumber(value);
+      var controls = field.classList.contains("cg-row")
+        ? field.querySelectorAll(".cg-cell:not(.cg-na) input")
+        : field.querySelectorAll(".emoji-btn");
+      if (rVal === null || !Number.isInteger(rVal) || rVal < 1 || rVal > controls.length) {
+        showVoiceBar("Say a column number (1\u2013" + controls.length + ") or column label."); return;
+      }
+      var targetCtrl = controls[rVal - 1];
+      if (targetCtrl) {
+        targetCtrl.click();
+        if (targetCtrl.tagName === "INPUT") {
+          targetCtrl.checked = true;
+          targetCtrl.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+      }
+      var sl0 = isQuestionStraightlined(q);
+      if (!sl0) showVoiceBar("Rated \u2713 Say the next row\u2019s value, or \u2018next\u2019 to continue.");
+      return;
+    }
     if (field.getAttribute("role") === "slider") {
-      var rating = window.BeaconVoice.parseNumber(value);
-      if (rating === null || !Number.isInteger(rating) || rating < Number(field.getAttribute("aria-valuemin")) || rating > Number(field.getAttribute("aria-valuemax"))) {
-        showVoiceBar("Say a number shown under the scale (e.g. 1\u20135). Tap the row to change it highlight."); return;
+      var rating = window.BeaconVoice && window.BeaconVoice.resolveRatingValue
+        ? window.BeaconVoice.resolveRatingValue(value, voiceCtx())
+        : window.BeaconVoice.parseNumber(value);
+      if (rating === null) rating = window.BeaconVoice.parseNumber(value);
+      var minAttr = Number(field.getAttribute("aria-valuemin"));
+      var maxAttr = Number(field.getAttribute("aria-valuemax"));
+      if (rating === null || !isFinite(rating) || rating < minAttr || rating > maxAttr) {
+        showVoiceBar("Say a number shown under the scale (e.g. " + minAttr + "\u2013" + maxAttr + "). Tap the row to change it highlight."); return;
       }
       field.dispatchEvent(new CustomEvent("voice-value", {detail:rating}));
-      showVoiceBar("Rated \u2713 Say the next row\u2019s number (1\u20135), or \u2018next\u2019 to continue."); return;
+      var sl1 = isQuestionStraightlined(q);
+      if (!sl1) {
+        showVoiceBar("Rated \u2713 Say the next row\u2019s number (" + minAttr + "\u2013" + maxAttr + "), or \u2018next\u2019 to continue.");
+      }
+      return;
     }
     if (/^(number|range)$/.test(field.type)) {
       value = window.BeaconVoice.parseNumber(value);
@@ -1063,25 +1420,56 @@
       }
     }
     if (field.tagName === "SELECT") {
-      var option = Array.prototype.find.call(field.options, function (o) { return o.text.toLowerCase() === String(value).toLowerCase() || o.value === String(value); });
+      var rawV = String(value).trim();
+      var option = Array.prototype.find.call(field.options, function (o) {
+        return o.text.toLowerCase() === rawV.toLowerCase() || o.value.toLowerCase() === rawV.toLowerCase();
+      });
+      if (!option && window.BeaconVoice && window.BeaconVoice.matchOption) {
+        var selOpts = Array.prototype.filter.call(field.options, function (o) { return o.value !== ""; })
+          .map(function (o) { return { code: o.value, label: o.text, optEl: o }; });
+        var numIdx = window.BeaconVoice.parseNumber(rawV);
+        if (numIdx !== null && numIdx >= 1 && numIdx <= selOpts.length) {
+          option = selOpts[numIdx - 1].optEl;
+        } else {
+          var matchedOpt = window.BeaconVoice.matchOption(rawV, selOpts);
+          if (matchedOpt) option = matchedOpt.optEl;
+        }
+      }
       if (!option) { showVoiceBar("Say a listed choice for this field."); return; }
       value = option.value;
     }
     if (field.type === "date" && !/^\d{4}-\d{2}-\d{2}$/.test(String(value))) {
-      // Accept unambiguous spoken English dates as well as ISO; never guess numeric day/month order.
-      var spokenDate = String(value).replace(/(\d+)(st|nd|rd|th)\b/gi, "$1");
-      if (/january|february|march|april|may|june|july|august|september|october|november|december/i.test(spokenDate) && /\b\d{4}\b/.test(spokenDate)) {
-        var parsed = new Date(spokenDate);
-        if (!isNaN(parsed.getTime())) value = parsed.getFullYear() + "-" + String(parsed.getMonth() + 1).padStart(2, "0") + "-" + String(parsed.getDate()).padStart(2, "0");
+      var lowerDate = String(value).toLowerCase().trim();
+      if (lowerDate === "today" || lowerDate === "yesterday" || lowerDate === "tomorrow") {
+        var dNow = new Date();
+        if (lowerDate === "yesterday") dNow.setDate(dNow.getDate() - 1);
+        if (lowerDate === "tomorrow") dNow.setDate(dNow.getDate() + 1);
+        value = dNow.getFullYear() + "-" + String(dNow.getMonth() + 1).padStart(2, "0") + "-" + String(dNow.getDate()).padStart(2, "0");
+      } else {
+        // Accept unambiguous spoken English dates as well as ISO; never guess numeric day/month order.
+        var spokenDate = String(value).replace(/(\d+)(st|nd|rd|th)\b/gi, "$1").replace(/\bof\b/gi, " ");
+        if (/january|february|march|april|may|june|july|august|september|october|november|december/i.test(spokenDate) && /\b\d{4}\b/.test(spokenDate)) {
+          var parsed = new Date(spokenDate);
+          if (!isNaN(parsed.getTime())) value = parsed.getFullYear() + "-" + String(parsed.getMonth() + 1).padStart(2, "0") + "-" + String(parsed.getDate()).padStart(2, "0");
+        }
       }
     }
     var previous = field.value;
-    field.value = String(value);
+    if (field.tagName === "TEXTAREA" && field.classList && field.classList.contains("tg-input")) {
+      var baseVal = field._voiceInterimActive ? (field._voiceCommittedBase || "") : (field.value || "");
+      field._voiceInterimActive = false;
+      field.value = joinSpeechText(baseVal, String(value));
+      field._voiceCommittedBase = field.value;
+    } else {
+      field.value = String(value);
+    }
     if (!field.value || !field.checkValidity()) {
       field.value = previous; showVoiceBar("Value not accepted. For dates, use YYYY-MM-DD; check the field limits."); return;
     }
+    field._voiceDictating = true;
     field.dispatchEvent(new Event("input", {bubbles:true}));
     field.dispatchEvent(new Event("change", {bubbles:true}));
+    field._voiceDictating = false;
     showVoiceBar("Answer entered. Say next field, next, or another value to correct it.");
   }
 
@@ -1123,7 +1511,7 @@
     var ctx = voiceCtx();
     showVoiceBar(); voiceTranscript(text);
     var acts = window.BeaconVoice.parseCommand(text, ctx);
-    var picked = 0, spoken = false;
+    var picked = 0, spoken = false, lastFieldIdx = -1, hadFieldValue = false;
     acts.forEach(function (a) {
       if (a.act === "stop") { setVoice(false); }
       else if (a.act === "fieldValue") {
@@ -1132,8 +1520,11 @@
         if (fields[fIdx]) {
           voiceSetValue(fields[fIdx], a.value);
           animateRowHit(fields[fIdx], a.value);
+          lastFieldIdx = fIdx;
+          hadFieldValue = true;
           if (a.autoAdvance) {
             advanceVoiceField(fIdx);
+            hadFieldValue = false;
           }
         }
       }
@@ -1157,9 +1548,25 @@
           voiceSetValue(targetField, a.value);
           animateRowHit(targetField, a.value);
           var curQ = steps[cur] && steps[cur].q;
-          if (curQ && (curQ.type === "rating_scale" || curQ.type === "gauge_meter" || curQ.type === "numeric_matrix")) {
+          if (curQ && (curQ.type === "rating_scale" || curQ.type === "rating_grid" || curQ.type === "semantic_diff" || curQ.type === "emoji_grid" || curQ.type === "gauge_meter" || curQ.type === "numeric_matrix" || curQ.type === "sum_to_100" || curQ.type === "delta")) {
             advanceVoiceField(voiceField);
           }
+        }
+      }
+      else if (a.act === "rankMove") {
+        var rItem = document.querySelector('#app .rank-item[data-rank-code="' + String(a.code).replace(/"/g, '\\"') + '"]');
+        if (rItem) {
+          var btns = rItem.querySelectorAll(".arrows button");
+          var btnIdx = a.direction < 0 ? 0 : 1;
+          var maxClicks = a.extreme ? 20 : 1;
+          for (var c = 0; c < maxClicks; c++) {
+            var curItem = document.querySelector('#app .rank-item[data-rank-code="' + String(a.code).replace(/"/g, '\\"') + '"]');
+            var curBtns = curItem && curItem.querySelectorAll(".arrows button");
+            if (!curBtns || !curBtns[btnIdx] || curBtns[btnIdx].disabled) break;
+            curBtns[btnIdx].click();
+          }
+          animateRowHit(rItem, a.direction < 0 ? "\u2191" : "\u2193");
+          showVoiceBar("Ranking updated \u2713 Say another move, or \u2018next\u2019 to continue.");
         }
       }
       else if (a.act === "control") {
@@ -1187,6 +1594,17 @@
         voiceClear();
         coachSay("Selections cleared.", "info");
       } else if (a.act === "pick") {
+        if (ctx.type === "choice_task") {
+          if (a.code === "optout") {
+            var optCard = document.querySelector("#app .optout-card");
+            if (optCard) { optCard.click(); picked++; }
+          } else if (/^alt_\d+$/.test(String(a.code))) {
+            var altIdx = Number(String(a.code).slice(4));
+            var altCards = document.querySelectorAll("#app .alt-card");
+            if (altCards[altIdx]) { altCards[altIdx].click(); picked++; }
+          }
+          return;
+        }
         if (ctx.type !== "single_select" && ctx.type !== "multi_select") {
           if (!spoken) {
             coachSay("This one needs a quick tap \u2014 then say \u201Cnext\u201D when you\u2019re ready.", "info");
@@ -1195,12 +1613,25 @@
           return;
         }
         var row = document.querySelector('#app .opt[data-code="' + String(a.code).replace(/"/g, '\\"') + '"]');
-        if (row) { row.click(); picked++; }
+        if (row) {
+          var inp = row.querySelector("input");
+          // For single_select, if already checked, keep it checked rather than toggling off
+          if (!ctx.multi && inp && inp.checked) {
+            bullseye(row);
+            picked++;
+          } else {
+            row.click();
+            picked++;
+          }
+        }
       } else if (!spoken) {
         coachSay("I heard \u201C" + escHtml(a.text) + "\u201D \u2014 say an option name or number, or \u201Cnext\u201D.", "warn");
         spoken = true;
       }
     });
+    if (hadFieldValue && lastFieldIdx >= 0) {
+      advanceVoiceField(lastFieldIdx);
+    }
     if (picked) coachSay(picked === 1 ? "Locked in." : "Locked in " + picked + " answers.", "info");
     labelVoiceControls();
   }
@@ -1233,7 +1664,25 @@
     if (on && !voiceSupported()) return;
     if (on && !voice) {
       voice = window.BeaconVoice.create({
-        onInterim: function (t) { voiceTranscript(t); },
+        onInterim: function (t) {
+          voiceTranscript(t);
+          if (!t || !voiceOn || activeDictateStop) return;
+          var q = steps[cur] && steps[cur].q;
+          if (q && q.type === "text_grid") {
+            var fields = voiceFields();
+            var target = fields[Math.min(voiceField, fields.length - 1)];
+            if (target && target.tagName === "TEXTAREA" && target.classList.contains("tg-input")) {
+              if (!target._voiceInterimActive) {
+                target._voiceCommittedBase = target.value || "";
+                target._voiceInterimActive = true;
+              }
+              target._voiceDictating = true;
+              target.value = joinSpeechText(target._voiceCommittedBase, t);
+              target.dispatchEvent(new Event("input", { bubbles: true }));
+              target._voiceDictating = false;
+            }
+          }
+        },
         onFinal: function (t) { voiceHear(t); },
         onState: function (state, code) { if (state === "error") voiceFailed(code); }
       });
@@ -2116,7 +2565,12 @@
         ta.placeholder = q.placeholder || "Type here…";
         ta.rows = 1;
         ta.value = getAns(q.id, key) || "";
+        ta.addEventListener("focus", function () {
+          var fIdx = voiceFields().indexOf(ta);
+          if (fIdx >= 0) { voiceField = fIdx; voiceExplicitField = true; }
+        });
         ta.addEventListener("input", function () {
+          if (!ta._voiceInterimActive) ta._voiceCommittedBase = ta.value;
           setAns(q.id, key, ta.value);
           hideErr(); ansChanged();
         });
@@ -2616,6 +3070,7 @@
       if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r, cols.length + 1));
     });
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    checkPattern(q, wrap);
     return wrap;
   }
 
@@ -2632,8 +3087,9 @@
         strip.appendChild(el("div", "grid-plabel grid-plabel-na", naLabel));
       } : null));
     }
-    orderedList(q.rows || [], q, "rows").forEach(function (r) {
+    orderedList(q.rows || [], q, "rows").forEach(function (r, rIndex) {
       var row = el("div", "grid-row");
+      row.dataset.rowIndex = String(rIndex);
       row.appendChild(itemLabelNode(r, "rlabel"));
       var cells = el("div", "grid-cells");
       if (semantic) {
@@ -2653,6 +3109,11 @@
         holder.appendChild(cell); cells.appendChild(holder);
       }
       row.appendChild(cells);
+      row.addEventListener("pointerdown", function () {
+        voiceField = rIndex;
+        voiceExplicitField = true;
+        highlightActiveVoiceRow(voiceField);
+      });
       wrap.appendChild(row);
       if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r));
     });
@@ -2664,6 +3125,11 @@
       wrap.appendChild(ends);
     }
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    try {
+      var vhGrid = el("div", "voice-rating-hint", "🎙 Voice: say <b>" + min + "–" + max + "</b> for the highlighted row. Try “<b>four</b>”, “<b>row 2 is 4</b>”, or “<b>all 4</b>”.");
+      wrap.insertBefore(vhGrid, wrap.firstChild);
+    } catch(e) {}
+    checkPattern(q, wrap);
     return wrap;
   }
 
@@ -2700,6 +3166,7 @@
       var vh = el("div", "voice-rating-hint", "🎙 Voice: say <b>" + min + "–" + max + "</b> for the highlighted row. Try “<b>four</b>”, “<b>row 2 is 4</b>” or tap a row to move it.");
       wrap.insertBefore(vh, wrap.firstChild);
     } catch(e) {}
+    checkPattern(q, wrap);
     return wrap;
   }
 
@@ -2903,7 +3370,7 @@
         var cells = el("div", "grid-cells");
         cells.appendChild(renderGaugeComponent(min, max, step, unit, target, getAns(q.id, r.code), minLabel, midLabel, maxLabel, function (v) {
           setAns(q.id, r.code, v);
-          hideErr(); ansChanged();
+          hideErr(); ansChanged(); checkPattern(q, wrap);
         }));
         row.appendChild(cells);
         row.addEventListener("pointerdown", function () {
@@ -2917,6 +3384,7 @@
         var vh2 = el("div", "voice-rating-hint", "🎙 Voice: say a number for the highlighted gauge, e.g. “<b>" + min + "–" + max + "</b>”, or “<b>row 2 is 75</b>”.");
         wrap.insertBefore(vh2, wrap.firstChild);
       } catch(e2) {}
+      checkPattern(q, wrap);
       return wrap;
     }
 
@@ -2957,7 +3425,7 @@
           faces.forEach(function (x) { x.classList.remove("on"); });
           b.classList.add("on");
           var tick = row.querySelector(".na-cell input"); if (tick) tick.checked = false;
-          hideErr(); ansChanged();
+          hideErr(); ansChanged(); checkPattern(q, wrap);
         });
         faces.push(b);
         cells.appendChild(b);
@@ -2972,6 +3440,7 @@
       if (r.comment && r.comment !== "none") wrap.appendChild(gridCommentRow(q, r));
     });
     if ((q.comments || {}).mode && q.comments.mode !== "none") wrap.appendChild(questionComment(q));
+    checkPattern(q, wrap);
     return wrap;
   }
 
@@ -3142,22 +3611,47 @@
 
   // A numeric matrix: one number box per row, or a whole table of them once it has columns.
 
-  // Gentle, in-the-moment nudge when every row carries the same rating.
-  // Never blocks, never penalises - it just asks for a second look.
+  // Gentle, in-the-moment nudge + visible on-screen Straight-Line Flag when every row carries the same rating.
+  // Never blocks, never penalises - it just asks for a second look and surfaces the live QC flag.
   function checkPattern(q, wrap) {
-    var a = answers[q.id] || {};
-    var vals = q.rows.map(function (r) { return a[r.code]; })
-                     .filter(function (v) { return v !== undefined; });
-    if (vals.length < q.rows.length || vals.length < 5) return;
-    var uniq = {};
-    vals.forEach(function (v) { uniq[v] = 1; });
-    if (Object.keys(uniq).length === 1 && !wrap.dataset.nudged) {
+    if (!q || !wrap || !q.rows || q.rows.length < 2) return;
+    var sl = isQuestionStraightlined(q);
+    var existingBanner = wrap.querySelector(".straightline-flag-banner");
+    if (!sl) {
+      delete wrap.dataset.nudged;
+      delete wrap.dataset.straightlined;
+      wrap.classList.remove("ripple", "is-straightlined");
+      if (existingBanner) existingBanner.remove();
+      return;
+    }
+    var flagCode = sl.flag;
+    var sameVal = sl.value;
+    wrap.dataset.straightlined = "1";
+    wrap.classList.add("is-straightlined");
+    if (!existingBanner) {
+      existingBanner = el("div", "straightline-flag-banner");
+      existingBanner.setAttribute("role", "status");
+      existingBanner.setAttribute("aria-live", "polite");
+      wrap.appendChild(existingBanner);
+    }
+    existingBanner.innerHTML =
+      '<div class="sl-flag-top">' +
+        '<span class="sl-flag-badge">\u2691 STRAIGHT-LINE FLAG</span>' +
+        '<code class="sl-flag-code">' + escHtml(flagCode) + '</code>' +
+        '<span class="sl-flag-sigma">Zero Variance (\u03C3 = 0.00) \u00B7 All ' + sl.count + ' rows rated \u201C' + escHtml(String(sameVal)) + '\u201D</span>' +
+      '</div>' +
+      '<div class="sl-flag-msg">Every row currently carries the same rating (<b>' + escHtml(String(sameVal)) + '</b>). ' +
+        'If that is your true view, perfect \u2014 otherwise a quick second look keeps your input accurate.' +
+      '</div>';
+    if (!wrap.dataset.nudged) {
       wrap.dataset.nudged = "1";
       wrap.classList.remove("ripple");
       void wrap.offsetWidth;
       wrap.classList.add("ripple");
-      coachSay("Every row currently carries the same rating. If that is your true view, " +
-        "perfect - otherwise a quick second look keeps your input accurate.", "warn");
+      coachSay("\u2691 Straight-Line Flag (" + flagCode + "): Every row currently carries the same rating (" + sameVal + "). If that is your true view, perfect - otherwise a quick second look keeps your input accurate.", "warn", 9000);
+    }
+    if (voiceOn) {
+      showVoiceBar("\u2691 Straight-Line Flag (" + flagCode + ") — all " + sl.count + " rows rated " + sameVal + ". Say e.g. \u2018row 2 is \u2026\u2019 to adjust, or \u2018next\u2019 to continue.");
     }
   }
 
@@ -4277,6 +4771,7 @@
   }
 
   function go(i) {
+    if (activeDictateStop) activeDictateStop();
     if (i < 0 || i >= steps.length) return;
     if (!stepVisible(i)) { var alt = nextVisible(i, i < cur ? -1 : 1); if (alt < 0) return; i = alt; }
     cur = i;
@@ -4284,6 +4779,7 @@
   }
 
   function next() {
+    if (activeDictateStop) activeDictateStop();
     if (!validateStep()) return;
     if (screeningHit()) return;                // screen-out rules, both live and on-Next
 

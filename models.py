@@ -169,8 +169,23 @@ def init_db(path: str | None = None) -> None:
             conn.executescript(GOVERNANCE_SCHEMA)
             from core.data_validation import SCHEMA as VALIDATION_SCHEMA
             conn.executescript(VALIDATION_SCHEMA)
-            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA
+            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA, ensure_master_admin
             conn.executescript(ACCOUNTS_SCHEMA)
+            from core.kart import SCHEMA as KART_SCHEMA
+            conn.executescript(KART_SCHEMA)
+            user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
+            if "username" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
+            if "password_hash" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
+            if "points_limit" not in user_cols:
+                conn.execute("ALTER TABLE users ADD COLUMN points_limit INTEGER NOT NULL DEFAULT 100")
+            try:
+                is_testing = bool(current_app.config.get("TESTING"))
+            except RuntimeError:
+                is_testing = False
+            if not is_testing:
+                ensure_master_admin(conn)
             study_cols = {r["name"] for r in conn.execute("PRAGMA table_info(studies)")}
             if "owner_id" not in study_cols:
                 conn.execute("ALTER TABLE studies ADD COLUMN owner_id INTEGER DEFAULT 0")
@@ -267,6 +282,9 @@ class Study:
         rows = get_db().execute(
             "SELECT s.id, s.slug, s.title, s.status, s.updated_at, s.cfg, s.owner_id, "
             "(SELECT email FROM users u WHERE u.id=s.owner_id) AS owner_email, "
+            "(SELECT COALESCE(NULLIF(name,''), email) FROM users u WHERE u.id=s.owner_id) AS owner_name, "
+            "(SELECT wt.name FROM team_projects tp JOIN workspace_teams wt ON wt.id=tp.team_id "
+            " WHERE tp.study_slug=s.slug ORDER BY tp.id DESC LIMIT 1) AS team_name, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id) AS n, "
             "(SELECT COUNT(*) FROM respondents r WHERE r.study_id=s.id AND "
             "r.status='complete') AS c, "
@@ -274,14 +292,20 @@ class Study:
             "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='failed') AS if_, "
             "(SELECT COUNT(*) FROM invites i WHERE i.study_slug=s.slug AND i.status='queued') AS iq_ "
             "FROM studies s ORDER BY s.id").fetchall()
+        from core.kart import study_points, study_collaborators
         out = []
         for r in rows:
             cfg = json.loads(r["cfg"]) if r["cfg"] else {}
             inv = cfg.get("invites") or {}
+            collabs = study_collaborators(r["slug"])
             out.append({"slug": r["slug"], "title": r["title"], "status": r["status"],
                         "updated_at": r["updated_at"], "started": r["n"], "complete": r["c"],
                         "owner_id": r["owner_id"] or 0,
                         "owner_email": r["owner_email"] or "",
+                        "owner_name": r["owner_name"] or r["owner_email"] or "",
+                        "team_name": r["team_name"] or "",
+                        "collaborators": collabs,
+                        "points_used": study_points(cfg),
                         "study_id": f"STU-{r['id']:06d}",
                         "parent": cfg.get("parent") or "", "language": cfg.get("language") or "",
                         "group_name": cfg.get("group_name") or "",
@@ -334,7 +358,7 @@ class Study:
 
     # ---- mutations
     @staticmethod
-    def save(body: dict, owner_id: int | None = None) -> str:
+    def save(body: dict, owner_id: int | None = None, actor_is_admin: bool = False) -> str:
         """Create or update from a Studio payload ``{slug?, title?, cfg}``. Returns slug.
 
         A study created here is owned by ``owner_id`` (the signed-in platform user);
@@ -356,8 +380,17 @@ class Study:
         if any(q.get("section") not in sec_ids for q in cfg.get("questions", [])):
             raise StudyError("question references unknown section")
         conn, ts = get_db(), now()
+        team_id = int(body.get("team_id") or 0)
         with write_lock, conn:
             old = Study.get(slug)
+            from core.kart import enforce_kart_budget, record_workspace_change, summarize_cfg_changes
+            effective_owner = old.owner_id if old else int(owner_id or 0)
+            if not old and team_id > 0:
+                t_row = conn.execute("SELECT creator_id FROM workspace_teams WHERE id=?", (team_id,)).fetchone()
+                if t_row and int(t_row["creator_id"] or 0) > 0:
+                    effective_owner = int(t_row["creator_id"])
+            enforce_kart_budget(effective_owner, slug if old else "", cfg, actor_is_admin=actor_is_admin)
+            short_diff = summarize_cfg_changes(old, title, cfg)
             from core.governance import revision
             if old:
                 from core.research import fingerprint
@@ -369,9 +402,29 @@ class Study:
             else:
                 conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, "
                              "updated_at, owner_id) VALUES (?,?,?,?,?,?,?)",
-                             (slug, title, "draft", json.dumps(cfg), ts, ts, int(owner_id or 0)))
+                             (slug, title, "draft", json.dumps(cfg), ts, ts, effective_owner))
+                if team_id > 0:
+                    conn.execute(
+                        "INSERT OR IGNORE INTO team_projects (team_id, study_slug, added_by, created_at) VALUES (?,?,?,?)",
+                        (team_id, slug, int(owner_id or effective_owner), ts),
+                    )
+                    accepted_mems = conn.execute(
+                        "SELECT * FROM team_members WHERE team_id=? AND status='accepted'", (team_id,)
+                    ).fetchall()
+                    for m in accepted_mems:
+                        conn.execute(
+                            "INSERT INTO study_shares (study_slug, shared_by, shared_with_user_id, shared_with_email, "
+                            "permission, token, created_at, accepted_at) VALUES (?,?,?,?,'collaborate',?,?,?)",
+                            (slug, effective_owner, m["user_id"], m["email"], secrets.token_urlsafe(18), ts, ts),
+                        )
             saved = Study.get(slug)
             revision(conn, saved.id, title, cfg)
+        record_workspace_change(
+            study_slug=slug,
+            action_type="create" if not old else "edit",
+            short_summary=short_diff,
+            team_id=team_id,
+        )
         return slug
 
     @staticmethod
@@ -390,6 +443,14 @@ class Study:
         with write_lock, conn:
             conn.execute("UPDATE studies SET slug=?, updated_at=? WHERE slug=?",
                          (new_slug, now(), old_slug))
+            conn.execute("UPDATE study_shares SET study_slug=? WHERE study_slug=?", (new_slug, old_slug))
+            conn.execute("UPDATE team_projects SET study_slug=? WHERE study_slug=?", (new_slug, old_slug))
+        from core.kart import record_workspace_change
+        record_workspace_change(
+            study_slug=new_slug,
+            action_type="link_rename",
+            short_summary=f"Moved survey link /survey/{old_slug} → /survey/{new_slug}",
+        )
         return new_slug
 
     @staticmethod
@@ -400,9 +461,15 @@ class Study:
         with write_lock, conn:
             conn.execute("UPDATE studies SET status=?, updated_at=? WHERE slug=?",
                          (status, now(), slug))
+        from core.kart import record_workspace_change
+        record_workspace_change(
+            study_slug=slug,
+            action_type="status",
+            short_summary=f"Updated survey link (/survey/{slug}) status to '{status}'",
+        )
 
     @staticmethod
-    def duplicate(slug: str, owner_id: int | None = None) -> str:
+    def duplicate(slug: str, owner_id: int | None = None, actor_is_admin: bool = False) -> str:
         """Copy a study (config and all) under a new slug. Returns the new slug.
 
         The copy is a draft with its own recipient list and no respondents; uploaded media
@@ -427,6 +494,8 @@ class Study:
                                .replace(f"/narration/{slug}/", f"/narration/{new_slug}/")
         cfg = json.loads(text)
         cfg["title"] = title
+        from core.kart import enforce_kart_budget
+        enforce_kart_budget(int(owner_id or 0), "", cfg, actor_is_admin=actor_is_admin)
         conn, ts = get_db(), now()
         with write_lock, conn:
             conn.execute("INSERT INTO studies (slug, title, status, cfg, created_at, updated_at, owner_id) "
@@ -491,6 +560,9 @@ class Study:
             return
         conn = get_db()
         with write_lock, conn:
+            conn.execute("DELETE FROM study_shares WHERE study_slug=?", (slug,))
+            conn.execute("DELETE FROM team_projects WHERE study_slug=?", (slug,))
+            conn.execute("DELETE FROM workspace_changelogs WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM research_agent_sessions WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM answers WHERE respondent_id IN "
                          "(SELECT id FROM respondents WHERE study_id=?)", (s.id,))
