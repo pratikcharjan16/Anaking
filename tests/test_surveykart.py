@@ -164,10 +164,10 @@ def test_rebrand_3d_animated_logo_button_and_visible_3d_admin_nav(app, client):
     assert "body.portal .appnav-link" in nav_css
 
 
-def test_100pt_registration_70pt_shopping_deduction_and_admin_point_allocation(app, client):
+def test_100pt_registration_70pt_shopping_deduction_and_admin_point_allocation(app, client, approve):
     app.config["STAFF_AUTH"] = True
 
-    # 1. Register new user -> receives 100 Kart points automatically
+    # 1. Register with a username + password -> an approval request, 0 Kart points yet
     reg = client.post("/api/auth/register", headers=_h(client), json={
         "name": "Priya Nair",
         "email": "priya@clinic.in",
@@ -177,9 +177,19 @@ def test_100pt_registration_70pt_shopping_deduction_and_admin_point_allocation(a
     assert reg.status_code == 200, reg.get_json()
     data = reg.get_json()
     priya_id = data["user"]["id"]
-    assert data["kart"]["points_limit"] == 100
-    assert data["kart"]["points_used"] == 0
-    assert data["kart"]["points_balance"] == 100
+    assert data["pending"] is True and data["status"] == "pending"
+    assert data["redirect"] == "/welcome"
+    assert data["user"]["points_limit"] == 0
+    assert client.get("/studio/").headers["Location"].endswith("/welcome")
+
+    # The admin grants access -> the 100 Kart points land in the same click
+    approve("priya@clinic.in")
+    with app.app_context():
+        from core.kart import user_kart_summary
+        kart = user_kart_summary(priya_id)
+    assert kart["points_limit"] == 100
+    assert kart["points_used"] == 0
+    assert kart["points_balance"] == 100
 
     # Regular user cannot access Admin Console or Admin Portal
     assert client.get("/admin/console").status_code == 403
@@ -252,13 +262,16 @@ def test_100pt_registration_70pt_shopping_deduction_and_admin_point_allocation(a
     assert s3_ok.get_json()["kart"]["points_balance"] == 10
 
 
-def test_shared_collaboration_and_respondent_links_debit_zero_points(app, client):
+def test_shared_collaboration_and_respondent_links_debit_zero_points(app, client, approve):
     app.config["STAFF_AUTH"] = True
 
-    # Owner registers (100 pts) and creates a 70-pt study + launches it live
+    # Owner registers (approval request), the admin approves -> 100 pts, 70-pt study goes live
     client.post("/api/auth/register", headers=_h(client), json={
         "name": "Owner One", "email": "owner@surveykart.co", "password": "password123"
     })
+    approve("owner@surveykart.co")
+    client.post("/api/auth/login", headers=_h(client),
+                json={"identifier": "owner@surveykart.co", "password": "password123"})
     s = client.post("/api/studio/save", headers=_h(client), json={
         "slug": "shared-kart-study",
         "title": "Shared Kart Study",
@@ -294,10 +307,14 @@ def test_shared_collaboration_and_respondent_links_debit_zero_points(app, client
     })
     assert reg2.status_code == 200, reg2.get_json()
     reg2_json = reg2.get_json()
-    assert reg2_json["redirect"] == f"/studio/#{slug}"
-    assert reg2_json["kart"]["points_limit"] == 100
-    assert reg2_json["kart"]["points_used"] == 0
-    assert reg2_json["kart"]["points_balance"] == 100
+    # A new account is an approval request: it waits on /welcome, the shared link
+    # is remembered, and approving it lands the 100 pts and opens the study.
+    assert reg2_json["pending"] is True
+    assert reg2_json["redirect"] == "/welcome"
+    approve("collab@surveykart.co")
+    client.post("/api/auth/login", headers=_h(client),
+                json={"identifier": "collab@surveykart.co", "password": "password456"})
+    assert client.get("/api/kart/me").get_json()["kart"]["points_limit"] == 100
 
     # Collaborator sees the shared study in Studio and can open & co-edit the single link at 0 pt cost!
     st_list = client.get("/api/studio/list").get_json()
@@ -492,15 +509,18 @@ def test_landing_walkthrough_responder_empathy_demo_card(app, client):
         assert needle in html, needle
 
 
-def test_workspace_team_creation_collaboration_account_names_points_and_changelog(app, client):
+def test_workspace_team_creation_collaboration_account_names_points_and_changelog(app, client, approve):
     app.config["STAFF_AUTH"] = True
 
-    # 1. Existing approved user Alice registers (100 Kart pts) and creates a team + shared project,
-    #    inviting Bob by his email ID (Google ID): bob.team@gmail.com
+    # 1. Alice registers (approval request -> approved with 100 Kart pts) and creates a team +
+    #    shared project, inviting Bob by his email ID (Google ID): bob.team@gmail.com
     reg_a = client.post("/api/auth/register", headers=_h(client), json={
         "name": "Alice Researcher", "email": "alice.lead@gmail.com", "password": "password123"
     })
     assert reg_a.status_code == 200
+    approve("alice.lead@gmail.com")
+    client.post("/api/auth/login", headers=_h(client),
+                json={"identifier": "alice.lead@gmail.com", "password": "password123"})
 
     create_t = client.post("/api/workspace/teams/create", headers=_h(client), json={
         "team_name": "Oncology Insights Team",
@@ -522,6 +542,9 @@ def test_workspace_team_creation_collaboration_account_names_points_and_changelo
         "name": "Bob Teammate", "email": "bob.team@gmail.com", "password": "password123"
     })
     assert reg_b.status_code == 200
+    approve("bob.team@gmail.com")
+    client.post("/api/auth/login", headers=_h(client),
+                json={"identifier": "bob.team@gmail.com", "password": "password123"})
 
     # Bob checks his Workspace (/api/workspace/projects) -> sees the incoming collaboration request!
     bob_ws_before = client.get("/api/workspace/projects").get_json()

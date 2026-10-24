@@ -38,10 +38,11 @@
     {% endif %}
 
     {% if mode == 'register' %}
-      <p class="an-eyebrow">Welcome to SurveyKart &middot; +100 Free Kart Points</p>
+      <p class="an-eyebrow">Welcome to SurveyKart &middot; +100 Kart Points on approval</p>
       <h1>Create your SurveyKart account</h1>
-      <p class="ln-gate-sub">Every new SurveyKart registration receives <strong>100 Kart points</strong> automatically
-        so you can shop question types and launch your study right away.</p>
+      <p class="ln-gate-sub">Sign up with a username and password — Google is optional. Your request goes
+        straight to the platform admin, and the moment it is approved your account opens with
+        <strong>100 Kart points</strong> in the Kart. You can watch the status live.</p>
 
       <form id="sk-register-form" class="ln-gate-form">
         <label>Full Name
@@ -50,13 +51,13 @@
         <label>E-mail Address
           <input id="reg-email" name="email" type="email" required placeholder="you@company.com" value="{{ hint }}" autocomplete="email">
         </label>
-        <label>Username <span style="font-weight:500;color:var(--an-muted)">(optional)</span>
+        <label><span class="ln-gate-label">Username <em>optional — you can sign in with your e-mail instead</em></span>
           <input id="reg-username" name="username" type="text" placeholder="alex.morgan" autocomplete="username">
         </label>
-        <label>Password <span style="font-weight:500;color:var(--an-muted)">(min 6 characters)</span>
+        <label><span class="ln-gate-label">Password <em>at least 6 characters</em></span>
           <input id="reg-password" name="password" type="password" required minlength="6" placeholder="Create a password" autocomplete="new-password">
         </label>
-        <button class="ln-btn ln-btn-primary lg" type="submit" id="reg-submit">&#128722; Register &amp; Claim 100 Kart Points &rarr;</button>
+        <button class="ln-btn ln-btn-primary lg" type="submit" id="reg-submit">Create account &amp; request approval &rarr;</button>
       </form>
       <div id="gate-msg" class="ln-gate-out" role="alert" hidden></div>
 
@@ -70,22 +71,30 @@
       {% endif %}
 
       <p class="ln-gate-alt">Already registered? <a href="/signin{% if share_token %}?share={{ share_token | urlencode }}{% endif %}{% if next_url %}{{ '&' if share_token else '?' }}next={{ next_url | urlencode }}{% endif %}">Sign in</a></p>
-      <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a></p>
+      <p class="ln-gate-alt small"><a href="/recover">Forgot your username or password?</a></p>
 
     {% elif mode == 'recover' %}
-      <p class="an-eyebrow">Account Lookup</p>
-      <h1>Find your SurveyKart account</h1>
-      <p class="ln-gate-sub">Enter the e-mail address you registered with to check your account status.</p>
+      <p class="an-eyebrow">Account Recovery</p>
+      <h1>Forgot your username or password?</h1>
+      <p class="ln-gate-sub">Enter <strong>either one</strong> — the e-mail address or the username you signed up
+        with. We create a one-time link that shows your username and lets you set a new password.</p>
       <form id="recover-form" class="ln-gate-form">
-        <label>Registered e-mail address
-          <input id="recover-email" type="email" required placeholder="you@example.com" value="{{ hint }}">
+        <label>E-mail address or username
+          <input id="recover-email" type="text" required placeholder="you@example.com or alex.morgan"
+                 value="{{ hint }}" autocomplete="username">
         </label>
-        <button class="ln-btn ln-btn-primary" type="submit">Find my account</button>
+        <div class="ln-gate-recover-actions">
+          <button class="ln-btn ln-btn-primary" type="submit" id="recover-lookup">Find my account</button>
+          <button class="ln-btn ln-btn-ghost" type="button" id="recover-request">Send me a recovery link</button>
+        </div>
       </form>
       <div id="recover-out" class="ln-gate-out" role="status" hidden></div>
       <div class="ln-gate-help">
-        <h3>Need password or point-allocation help?</h3>
-        <p>Contact the SurveyKart platform Admin (<code>Anaking.admin</code>) to reset access or allocate additional Kart points. If you registered with Google, you can also use <a href="https://accounts.google.com/signin/recovery" target="_blank" rel="noopener">Google Account Recovery</a>.</p>
+        <h3>What happens next?</h3>
+        <p>The link works once and expires in 60 minutes. When this server can send mail it arrives
+          automatically; when it cannot, the request lands in the admin's desk
+          (<code>Anaking.admin</code>) and they hand it to you.</p>
+        <p>Signed up with Google? Use <a href="https://accounts.google.com/signin/recovery" target="_blank" rel="noopener">Google Account Recovery</a> for that password instead — your SurveyKart username is still recoverable here.</p>
       </div>
       <p class="ln-gate-alt"><a href="/signin">Back to sign in</a> · <a href="/register">Create an account</a></p>
 
@@ -114,7 +123,7 @@
         sends a quick approval request to the admin, and your <strong>100 Kart points</strong> arrive on approval.</p>
       {% endif %}
       <p class="ln-gate-alt">New to SurveyKart? <a href="/register{% if share_token %}?share={{ share_token | urlencode }}{% endif %}{% if next_url %}{{ '&' if share_token else '?' }}next={{ next_url | urlencode }}{% endif %}">Create your account (+100 Kart pts)</a></p>
-      <p class="ln-gate-alt small"><a href="/recover">Forgot user ID or password?</a> · <a href="/admin-login">Platform admin? Use the separate Admin login &rarr;</a></p>
+      <p class="ln-gate-alt small"><a href="/recover">Forgot your username or password?</a> · <a href="/admin-login">Platform admin? Use the separate Admin login &rarr;</a></p>
     {% endif %}
 
     <div id="ln-devbox" class="ln-devbox" hidden>

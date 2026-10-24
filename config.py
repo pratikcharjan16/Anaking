@@ -49,6 +49,11 @@ class Config:
 
     # SQLite database holding studies, respondents and answers.
     DB_PATH = os.environ.get("DB_PATH", os.path.join(DATA_DIR, "survey.db"))
+    # Account-owned data (users, credentials, Kart ledger, password resets) lives in
+    # its own file, attached to the survey database on every connection. Defaults to
+    # users.db beside DB_PATH; set USERS_DB_PATH to place it elsewhere (a mount, a
+    # separate backup target, …).
+    USERS_DB_PATH = os.environ.get("USERS_DB_PATH", "")
 
     # Respondent voice recordings (never committed to git).
     VOICE_DIR = os.environ.get("VOICE_DIR", os.path.join(UPLOAD_DIR, "voice"))

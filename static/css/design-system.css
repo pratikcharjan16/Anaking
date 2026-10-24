@@ -771,6 +771,77 @@ body.landing .an-appbar .anaking-brand-lockup:hover {
 }
 .pill.likely_ai { background: var(--an-bad-soft); color: var(--an-bad); }
 
+/* ---- audited support view ------------------------------------------- */
+/* An admin inside someone else's account. It must be impossible to miss and
+   impossible to get stuck in: one strip, one way out, on every team page. */
+.support-strip {
+  position: relative;
+  z-index: var(--an-z-nav);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  padding: 10px 20px;
+  background: var(--an-warn-soft);
+  border-bottom: 1px solid var(--an-line-strong);
+  color: var(--an-ink);
+}
+.support-strip p {
+  flex: 1 1 320px;
+  margin: 0;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--an-ink-soft);
+}
+.support-strip b {
+  color: var(--an-warn);
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  font-size: 10.5px;
+  margin-right: 4px;
+}
+.support-strip code {
+  font-family: var(--an-mono);
+  font-size: 11px;
+  padding: 1px 6px;
+  border-radius: var(--an-radius-xs);
+  background: var(--an-panel);
+  border: 1px solid var(--an-line);
+}
+.support-strip-dot {
+  width: 10px;
+  height: 10px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--an-warn);
+  box-shadow: 0 0 0 4px var(--an-warn-soft), 0 0 0 5px var(--an-line-strong);
+  animation: supportPulse 2.4s var(--an-ease) infinite;
+}
+.support-strip-exit { margin: 0; }
+.support-strip-exit button {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  padding: 7px 14px;
+  border-radius: var(--an-radius-pill);
+  border: 1px solid var(--an-warn);
+  background: var(--an-panel);
+  color: var(--an-warn);
+  cursor: pointer;
+  box-shadow: inset 0 1px 0 var(--an-panel), 0 2.5px 0 var(--an-line-strong);
+  transition: transform var(--an-fast) var(--an-ease),
+              box-shadow var(--an-fast) var(--an-ease);
+}
+.support-strip-exit button:hover {
+  transform: translateY(-1px);
+  box-shadow: inset 0 1px 0 var(--an-panel), 0 3.5px 0 var(--an-line-strong);
+}
+.support-strip-exit button:active { transform: translateY(1px); box-shadow: none; }
+@keyframes supportPulse {
+  0%, 100% { box-shadow: 0 0 0 4px var(--an-warn-soft), 0 0 0 5px var(--an-line-strong); }
+  50% { box-shadow: 0 0 0 6px var(--an-warn-soft), 0 0 0 7px var(--an-line-strong); }
+}
+
 /* ------------------------------------------------------------------ 6. responsive chrome, motion & print */
 html { overflow-x: clip; }
 body { overflow-x: clip; min-width: 0; }
