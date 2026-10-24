@@ -10,6 +10,7 @@
     requests: [],
     selectedId: 0,
     detail: null,
+    recovery: { pending: [], count: 0, mail_configured: false, ttl_minutes: 60 },
     tab: "overview",
     filter: "all",
     query: ""
@@ -412,10 +413,94 @@
         (disabled ? " disabled" : "") + ">Delete this account</button></div>";
   }
 
+  // ------------------------------------------------------------------ recovery
+  function linkBox(link, message) {
+    return '<div class="adk-linkbox" id="adk-linkbox">' +
+      '<p class="adk-box-sub">' + esc(message || "Copy this link and send it to them. It works once, " +
+        "for " + (state.recovery.ttl_minutes || 60) + " minutes.") + "</p>" +
+      '<div class="adk-linkrow">' +
+        '<code id="adk-link-value">' + esc(link) + "</code>" +
+        '<button type="button" class="adk-btn sm" data-act="recovery-copy" data-link="' + esc(link) + '">Copy</button>' +
+      "</div></div>";
+  }
+
+  function signinBox(d) {
+    var u = d.user;
+    var who = d.signin || {};
+    var rows = [
+      ["Username", who.username ? "@" + who.username : "not set — signs in with e-mail"],
+      ["E-mail", who.email],
+      ["Signs in with", who.google ? "Google" : (who.has_password ? "SurveyKart password" : "nothing yet")],
+      ["Password set", who.has_password ? "yes — recoverable by link" : "no"]
+    ];
+    var history = (d.recovery || []).slice(0, 4).map(function (r) {
+      var tag = r.status === "used" ? "used" : r.delivered === "email" ? "e-mailed"
+              : r.delivered === "handed_over" ? "handed over" : r.status;
+      return '<li><span>' + esc(when(r.created_at)) + " · " + esc(tag) + "</span>" +
+        '<small>' + esc(r.requested_by || "self-service") + "</small></li>";
+    }).join("");
+
+    return '<div class="adk-box subtle"><h3>Sign-in &amp; recovery</h3>' +
+      '<div class="adk-kvlist">' + rows.map(function (r) {
+        return "<div><span>" + esc(r[0]) + "</span><b>" + esc(r[1]) + "</b></div>";
+      }).join("") + "</div>" +
+      '<p class="adk-box-sub">Forgot username or password is automatic: when SMTP is configured the ' +
+        "link is e-mailed to them; otherwise it waits in the queue above for you to hand over. " +
+        "A link always shows the username and sets a new password, once.</p>" +
+      (u.is_protected ? '<p class="adk-box-sub" style="margin:0">This protected account signs in with ' +
+        "<code>ADMIN_PASSWORD</code> from the environment — change it in <code>.env</code> and restart.</p>"
+        : '<button type="button" class="adk-btn" data-act="recovery-issue" data-id="' + u.id +
+          '">Create a one-time link</button>' +
+          '<div id="adk-recovery-out" class="adk-linkhost" hidden></div>') +
+      (history ? '<h4 class="adk-minihead">Recent requests</h4><ul class="adk-minilist">' + history + "</ul>" : "") +
+      "</div>";
+  }
+
+  function renderRecovery() {
+    var box = document.getElementById("adk-recovery");
+    var list = document.getElementById("adk-recovery-list");
+    if (!box || !list) return;
+    var rows = (state.recovery && state.recovery.pending) || [];
+    box.hidden = rows.length === 0;
+    if (!rows.length) { list.innerHTML = ""; return; }
+    var mail = state.recovery.mail_configured;
+    document.getElementById("adk-recovery-count").textContent =
+      rows.length + " request" + (rows.length === 1 ? "" : "s") +
+      (mail ? " — mail is configured, these fell back after a send failure."
+            : " — no mail server, so the link is handed over by you.");
+    list.innerHTML = rows.map(function (r) {
+      return '<div class="adk-recovery-row" id="adk-rec-' + r.id + '">' +
+        '<div class="adk-recovery-who"><b>' + esc(r.user_name || r.user_email) + "</b>" +
+          "<small>" + esc(r.user_email) +
+          (r.user_username ? " · @" + esc(r.user_username) : "") + "</small>" +
+          "<small>asked " + esc(when(r.created_at)) + " · expires " + esc(when(r.expires_at)) +
+          (r.requested_ip ? " · from " + esc(r.requested_ip) : "") + "</small></div>" +
+        '<div class="adk-recovery-acts">' +
+          '<button type="button" class="adk-btn primary sm" data-act="recovery-row-link" data-id="' + r.id +
+            '" data-user="' + r.user_id + '">Create link</button>' +
+          '<button type="button" class="adk-btn sm ghost" data-act="recovery-handover" data-id="' + r.id +
+            '">Handed over</button>' +
+          '<button type="button" class="adk-btn sm danger-ghost" data-act="recovery-revoke" data-id="' + r.id +
+            '">Revoke</button>' +
+        "</div>" +
+        '<div class="adk-linkhost" id="adk-rec-out-' + r.id + '" hidden></div>' +
+        "</div>";
+    }).join("");
+  }
+
+  function loadRecovery() {
+    return api("/api/admin/console/recovery").then(function (out) {
+      if (out.error) return out;
+      state.recovery = out;
+      renderRecovery();
+      return out;
+    });
+  }
+
   function renderOverview(d) {
     var u = d.user;
     return '<div class="adk-pane-grid">' +
-      '<div class="adk-stack">' + identityBox(u) + supportBox(u) + "</div>" +
+      '<div class="adk-stack">' + identityBox(u) + signinBox(d) + supportBox(u) + "</div>" +
       '<div class="adk-stack">' + accessBox(u) + roleBox(u) + dangerBox(d) + "</div>" +
       "</div>";
   }
@@ -641,6 +726,7 @@
       renderStats();
       renderQueue();
       renderRoster();
+      loadRecovery();
       return out;
     });
   }
@@ -805,6 +891,73 @@
         }).then(function (out) {
           if (out.error) { fail(out); return; }
           return refreshAll("Approved — welcome Kart points added.");
+        });
+      });
+    },
+    "recovery-issue": function (btn) {
+      var u = state.detail && state.detail.user;
+      if (!u) return Promise.resolve();
+      return run(btn, function () {
+        return api("/api/admin/console/recovery/issue", { user_id: u.id }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          var host = document.getElementById("adk-recovery-out");
+          if (host) {
+            host.hidden = false;
+            host.innerHTML = linkBox(out.link, out.message);
+          }
+          toast(out.delivery === "email" ? "Recovery link e-mailed." : "Recovery link created — copy it.");
+          return loadRecovery();
+        });
+      });
+    },
+    "recovery-copy": function (btn) {
+      var link = btn.getAttribute("data-link") || "";
+      var done = function () { toast("Link copied."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(link).then(done, function () { toast("Copy failed — select it manually.", true); });
+      } else {
+        var ta = document.createElement("textarea");
+        ta.value = link;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand("copy"); done(); } catch (e) { toast("Copy failed.", true); }
+        document.body.removeChild(ta);
+      }
+      return Promise.resolve();
+    },
+    "recovery-row-link": function (btn) {
+      var userId = +btn.getAttribute("data-user");
+      var rowId = btn.getAttribute("data-id");
+      return run(btn, function () {
+        return api("/api/admin/console/recovery/issue", { user_id: userId }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          var host = document.getElementById("adk-rec-out-" + rowId);
+          if (host) { host.hidden = false; host.innerHTML = linkBox(out.link, out.message); }
+          toast("Fresh link ready to copy.");
+          return loadRecovery();
+        });
+      });
+    },
+    "recovery-handover": function (btn) {
+      return run(btn, function () {
+        return api("/api/admin/console/recovery/decide", {
+          reset_id: +btn.getAttribute("data-id"), action: "handed_over"
+        }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          toast("Marked as handed over.");
+          return loadRecovery();
+        });
+      });
+    },
+    "recovery-revoke": function (btn) {
+      if (!window.confirm("Revoke this recovery link? They will have to ask again.")) return Promise.resolve();
+      return run(btn, function () {
+        return api("/api/admin/console/recovery/decide", {
+          reset_id: +btn.getAttribute("data-id"), action: "revoke"
+        }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          toast("Recovery link revoked.");
+          return loadRecovery();
         });
       });
     },

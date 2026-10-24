@@ -37,24 +37,8 @@ _MASTER_ADMIN_HASH = generate_password_hash(
 )
 _DUMMY_HASH = generate_password_hash("surveykart-dummy-verification-secret", method="pbkdf2:sha256:260000")
 
-SCHEMA = """
-CREATE TABLE IF NOT EXISTS users (
-    id INTEGER PRIMARY KEY,
-    email TEXT UNIQUE NOT NULL,
-    username TEXT NOT NULL DEFAULT '',
-    password_hash TEXT NOT NULL DEFAULT '',
-    name TEXT NOT NULL DEFAULT '',
-    picture TEXT NOT NULL DEFAULT '',
-    google_sub TEXT NOT NULL DEFAULT '',
-    role TEXT NOT NULL DEFAULT 'user',
-    status TEXT NOT NULL DEFAULT 'pending',
-    points_limit INTEGER NOT NULL DEFAULT 100,
-    created_at TEXT NOT NULL,
-    approved_at TEXT NOT NULL DEFAULT '',
-    approved_by TEXT NOT NULL DEFAULT '',
-    last_login TEXT NOT NULL DEFAULT ''
-);
-"""
+# The users table is created by :mod:`core.userdata` in the users database.
+SCHEMA = ""
 
 STATUSES = ("pending", "approved", "rejected", "disabled")
 ROLES = ("user", "admin")
@@ -198,7 +182,17 @@ def is_admin_email(email: str, admin_emails=None) -> bool:
 
 
 def register_credentials(name: str, email: str, password: str, username: str = "") -> dict:
-    """Register a new SurveyKart user with 100 initial Kart points."""
+    """Register a SurveyKart account — an *approval request* until the admin grants access.
+
+    Same rule as Google sign-in, so the two front doors behave identically:
+
+    * a regular account is created ``pending`` with an empty Kart; the admin sees
+      it in the approval queue and approving it lands the one-time 100 Kart point
+      welcome allocation in the same click (:func:`set_status`);
+    * an address listed in ``ADMIN_EMAILS`` is the documented bootstrap, so it is
+      created approved with the unlimited admin Kart — otherwise the very first
+      admin could never get in.
+    """
     clean_email = str(email or "").strip().lower()
     clean_user = str(username or "").strip()
     clean_name = str(name or "").strip()[:120] or (clean_user or clean_email.split("@")[0])
@@ -215,7 +209,8 @@ def register_credentials(name: str, email: str, password: str, username: str = "
 
     pw_hash = generate_password_hash(password, method="pbkdf2:sha256:260000")
     admin = is_admin_email(clean_email)
-    pts = ADMIN_UNLIMITED_POINTS if admin else DEFAULT_POINTS
+    status = "approved" if admin else "pending"
+    pts = ADMIN_UNLIMITED_POINTS if admin else 0
     ts, db = now(), get_db()
     with db:
         cur = db.execute(
@@ -230,21 +225,58 @@ def register_credentials(name: str, email: str, password: str, username: str = "
                 "",
                 "",
                 "admin" if admin else "user",
-                "approved",
+                status,
                 pts,
                 ts,
-                ts,
-                "surveykart-signup",
+                ts if admin else "",
+                "surveykart-signup" if admin else "",
                 ts,
             ),
         )
         uid = cur.lastrowid
-        db.execute(
-            "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
-            "VALUES (?,?,?,?,?,?)",
-            (uid, DEFAULT_POINTS, pts, "Welcome allocation on SurveyKart registration (100 pts)", "system", ts),
-        )
+        if admin:
+            # Bootstrap admin: the Kart is unlimited and the allocation is recorded
+            # so approval-style top-ups can never double-grant.
+            db.execute(
+                "INSERT INTO point_transactions (user_id, delta, balance_after, reason, actor, created_at) "
+                "VALUES (?,?,?,?,?,?)",
+                (uid, ADMIN_UNLIMITED_POINTS, pts,
+                 "Admin account — unlimited Kart (ADMIN_EMAILS bootstrap)", "system", ts),
+            )
     return by_id(uid)
+
+
+def has_password(user: dict | None) -> bool:
+    """True when the account can sign in with a SurveyKart password."""
+    return bool(user and str(user.get("password_hash") or ""))
+
+
+def set_password(user_id: int, password: str) -> dict | None:
+    """Set a new password (used by the recovery flow). Signs out other sessions by design."""
+    clean = str(password or "")
+    if len(clean) < 8:
+        raise ValueError("Choose a password of at least 8 characters.")
+    target = by_id(user_id)
+    if not target:
+        raise ValueError("Unknown account.")
+    pw_hash = generate_password_hash(clean, method="pbkdf2:sha256:260000")
+    with get_db() as db:
+        db.execute("UPDATE users SET password_hash=? WHERE id=?", (pw_hash, int(user_id)))
+    return by_id(user_id)
+
+
+def signin_identity(user: dict | None) -> dict:
+    """What an account signs in with — drives the recovery page's wording."""
+    if not user:
+        return {}
+    source = auth_source(user)
+    return {
+        "email": user.get("email") or "",
+        "username": user.get("username") or "",
+        "auth_source": source,
+        "has_password": has_password(user),
+        "google": source in ("google", "dev"),
+    }
 
 
 def authenticate_credentials(identifier: str, password: str) -> dict | None:
@@ -704,6 +736,7 @@ def account_detail(user_id: int) -> dict | None:
     user = by_id(user_id)
     if not user:
         return None
+    signin = signin_identity(user)      # before the hash is stripped from the payload
     user.pop("password_hash", None)
     user["auth_source"] = auth_source(user)
     db = get_db()
@@ -733,6 +766,7 @@ def account_detail(user_id: int) -> dict | None:
         "SELECT study_slug, permission, created_at, accepted_at FROM study_shares "
         "WHERE shared_with_user_id=? OR (shared_with_email=? AND shared_with_email!='') "
         "ORDER BY id DESC LIMIT 20", (user["id"], user.get("email") or "")).fetchall()]
+    from core import recovery as recovery_mod
     stats = {
         "projects": len(projects),
         "completes": sum(int(p.get("completes") or 0) for p in projects),
@@ -742,4 +776,5 @@ def account_detail(user_id: int) -> dict | None:
         "shared_with": len(shared_with),
     }
     return {"user": user, "projects": projects, "ledger": ledger, "requests": requests,
-            "activity": activity, "shared_with": shared_with, "stats": stats}
+            "activity": activity, "shared_with": shared_with, "stats": stats,
+            "signin": signin, "recovery": recovery_mod.history(user["id"])}

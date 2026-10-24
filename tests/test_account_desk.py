@@ -315,6 +315,8 @@ def test_last_admin_floor_covers_deletion(app, client):
     import core.accounts as accounts
     with app.app_context():
         seconds = accounts.by_email("second.admin@clinic.in")
+        # registration is an approval request; access first, then the extra admin role
+        accounts.approve_user(seconds["id"], approved_by="chief@platform.co")
         accounts.set_role(seconds["id"], "admin")
     out(client)
     signin(client, "chief@platform.co")
@@ -323,7 +325,7 @@ def test_last_admin_floor_covers_deletion(app, client):
                        json={"user_id": chief_id}).status_code == 400
     # ...but the extra admin can be removed
     r = client.post("/api/admin/console/delete", headers=H(), json={"user_id": seconds["id"]})
-    assert r.status_code == 200
+    assert r.status_code == 200, r.get_json()
 
 
 # ------------------------------------------------------------------ portal link

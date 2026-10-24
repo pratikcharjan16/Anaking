@@ -18,6 +18,11 @@ Account desk (one account in every context)
     POST /api/admin/console/impersonate          {user_id} - audited support view ("open as user")
     POST /auth/impersonate/end                   leave the support view, back to the desk
 
+Sign-in & recovery (the "forgot username / password" queue)
+    GET  /api/admin/console/recovery             pending recovery links + counts
+    POST /api/admin/console/recovery/issue       {user_id} - create a one-time link and return it
+    POST /api/admin/console/recovery/decide      {reset_id, action: handed_over|revoke}
+
 All rights reserved to Admin (Anaking.admin).
 """
 
@@ -27,7 +32,9 @@ from flask import (Blueprint, abort, current_app, g, jsonify, redirect,
                    render_template, request, session)
 
 import core.accounts as accounts
+import core.recovery as recovery
 from core.kart import decide_point_request, list_point_requests
+from core.mailer import smtp_settings
 from core.security import audit
 from models import Study, StudyError, get_db, now
 from routes.helpers import json_body
@@ -48,6 +55,11 @@ ACTION_LABELS = {
     "console/delete-account": ("Deleted an account", "account"),
     "console/impersonate": ("Opened a support view", "account"),
     "console/impersonate-end": ("Left a support view", "account"),
+    "console/recovery-issue": ("Issued a recovery link", "account"),
+    "console/recovery-handover": ("Handed over a recovery link", "account"),
+    "console/recovery-revoke": ("Revoked a recovery link", "account"),
+    "auth/recover-request": ("Requested a sign-in recovery link", "account"),
+    "auth/password-reset": ("Set a new password", "account"),
     "kart/request-points": ("Requested extra Kart points", "account"),
     "share/create": ("Shared a project link", "design"),
     "share/redeem": ("Opened shared link (0 pts debited)", "design"),
@@ -156,6 +168,8 @@ def admin_portal():
         "active_week": len({e["actor"] for e in events
                             if str(e["created_at"])[:10] >= week_ago and e["actor"]}),
         "pending_point_requests": sum(1 for r in point_reqs if r["status"] == "pending"),
+        "pending_recovery": len(recovery.pending_requests()),
+        "users_db": (__import__("core.userdata", fromlist=["x"]).describe())["users_db"],
     }
     feed = []
     for e in events[:28]:
@@ -193,6 +207,8 @@ def overview():
         "completes": get_db().execute(
             "SELECT COUNT(*) FROM respondents WHERE status='complete'").fetchone()[0],
         "pending_point_requests": sum(1 for r in point_reqs if r["status"] == "pending"),
+        "pending_recovery": len(recovery.pending_requests()),
+        "users_db": (__import__("core.userdata", fromlist=["x"]).describe())["users_db"],
         "shared_links": get_db().execute("SELECT COUNT(*) FROM study_shares").fetchone()[0],
     }
     return jsonify({"stats": stats, "users": users, "point_requests": point_reqs})
@@ -468,3 +484,66 @@ def account_impersonate_end():
                    (imp.get("email") or "admin", "console/impersonate-end", "", now(),
                     "left the support view"))
     return redirect("/admin/console")
+
+
+# ====================================================================================
+# SIGN-IN & RECOVERY
+# ====================================================================================
+@bp.get("/api/admin/console/recovery")
+def recovery_queue():
+    """One-time recovery links waiting for a human (no SMTP configured) + the tally."""
+    _require_admin()
+    pending = recovery.pending_requests()
+    return jsonify({
+        "pending": pending,
+        "count": len(pending),
+        "mail_configured": bool(smtp_settings()),
+        "ttl_minutes": recovery.TOKEN_TTL_MINUTES,
+    })
+
+
+@bp.post("/api/admin/console/recovery/issue")
+def recovery_issue():
+    """Create a fresh one-time link for an account (shown once, to this admin)."""
+    adm = _require_admin()
+    body = json_body()
+    user = _account_or_404(body.get("user_id") or 0)
+    if user["role"] == "admin" and accounts.is_protected_admin(user):
+        abort(400, "The master admin signs in with ADMIN_PASSWORD — change it in .env instead.")
+    issued = recovery.issue(user, requested_by=adm.get("email", "admin"),
+                            requested_ip=request.remote_addr or "",
+                            note="issued by the admin")
+    audit("console/recovery-issue", detail=f"{user['email']} — link {issued['delivered']}")
+    return jsonify({
+        "ok": True,
+        "id": issued["id"],
+        "link": recovery.absolute_link(issued["link"]),
+        "delivery": issued["delivered"],
+        "expires_at": issued["expires_at"],
+        "message": ("E-mailed to " + user["email"]) if issued["delivered"] == "email"
+                   else "No mail server configured — copy this link and send it to the user.",
+    })
+
+
+@bp.post("/api/admin/console/recovery/decide")
+def recovery_decide():
+    """``handed_over`` records that the admin sent the link on; ``revoke`` kills it."""
+    adm = _require_admin()
+    body = json_body()
+    try:
+        reset_id = int(body.get("reset_id") or 0)
+    except (TypeError, ValueError):
+        abort(400, "reset_id must be a number")
+    action = str(body.get("action") or "")
+    try:
+        if action == "handed_over":
+            row = recovery.mark_handed_over(reset_id, by=adm.get("email", "admin"))
+            audit("console/recovery-handover", detail=f"recovery #{reset_id}")
+        elif action == "revoke":
+            row = recovery.revoke(reset_id)
+            audit("console/recovery-revoke", detail=f"recovery #{reset_id}")
+        else:
+            abort(400, "action must be handed_over or revoke")
+    except ValueError as exc:
+        abort(400, str(exc))
+    return jsonify({"ok": True, "reset": row})

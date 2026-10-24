@@ -76,8 +76,8 @@
 
     {% elif user.status == 'pending' %}
       <p class="ln-gate-sub"><strong>Your approval request has been sent to the SurveyKart admin.</strong>
-        New Google accounts get a quick one-time review, and you're already in the queue —
-        there's nothing else you need to do.</p>
+        New accounts get a quick one-time review — {% if user.auth_source == 'google' %}Google sign-ins included{% else %}by username or Google, it is the same queue{% endif %} —
+        and you are already in it. There is nothing else you need to do.</p>
       <div class="sk-status-kart warn">
         🛒 <span class="sk-pts">{{ user.welcome_points_pending or 100 }} Kart points</span> are reserved for you.<br>
         They're added to your Kart <strong>automatically the moment the admin approves</strong> your account.
@@ -88,7 +88,9 @@
       {% endif %}
       <ul class="sk-status-next">
         <li><strong>Keep this tab open</strong> — this page checks for you and changes by itself the second you're approved.</li>
-        <li><strong>Or come back later</strong> — close the tab anytime; just sign in with the same Google account and you'll land right back here (or straight into SurveyKart once approved).</li>
+        <li><strong>Or come back later</strong> — close the tab anytime; sign in again with the same
+          {% if user.auth_source == 'google' %}Google account{% else %}username and password{% endif %}
+          and you will land right back here (or straight into SurveyKart once approved).</li>
       </ul>
       <div class="sk-status-actions">
         <button class="ln-btn ln-btn-primary" type="button" id="sk-check-now">Check status now</button>
@@ -105,8 +107,9 @@
           for <code>{{ user.email }}</code>.
         {% endif %}
       </p>
-      <p class="ln-gate-sub">Think this is a mistake, or signed in with the wrong Google account?
-        Contact the SurveyKart platform admin (<code>Anaking.admin</code>) — or sign out and try a different account.</p>
+      <p class="ln-gate-sub">Think this is a mistake, or signed in with the wrong account?
+        Contact the SurveyKart platform admin (<code>Anaking.admin</code>) — or sign out and try a
+        different account. Lost the username or password? <a href="/recover">Recover it here</a>.</p>
     {% endif %}
 
     <div class="ln-gate-alt">

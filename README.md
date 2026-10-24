@@ -90,9 +90,9 @@ The team apps (Projects / Studio / Monitor) are multi-user:
   bounced to another page. The new user lands on **`/welcome`** — a friendly live status
   page ("request sent to admin", auto-refreshing) that flips to a welcome screen with
   their Kart balance the moment they are approved. Both pages carry a
-  **forgot user ID or password** link (`/recover`): the user ID is your Google e-mail, the
-  password is your Google password (Google recovers it), and the page can look up where any
-  address stands.
+  **forgot username or password** link (`/recover`), which now recovers both (see *Sign-in
+  recovery* below). Google passwords are still recovered by Google; a SurveyKart password is
+  reset from a one-time link.
 - **Admin approval + 100 Kart points** — new Google profiles are *pending* with an empty
   Kart until the platform admin approves them in the **Admin console** (`/admin/console`,
   "Accounts waiting for approval"): **Approve & add pts** activates the account and lands
@@ -102,8 +102,29 @@ The team apps (Projects / Studio / Monitor) are multi-user:
   Make user, point adjustments, and a per-account list of every project they have built
   are all there too. A new request is written to the audit trail (`auth/approval-request`)
   and — when SMTP is configured — e-mailed to `ADMIN_EMAILS`; the user gets a best-effort
-  "you're approved" e-mail in return. (Direct e-mail/password registration on `/register`
-  is separate and unchanged: it is active immediately with its 100 pts.)
+  "you're approved" e-mail in return.
+- **Username + password sign-in, same door** — `/register` asks only for a name, an e-mail, a
+  password and an optional username. The account is created **pending with an empty Kart**, the
+  person is signed in far enough to watch `/welcome`, and the admin's approval is what opens
+  the account *and* lands the 100 Kart points — the identical rule Google sign-in follows, so
+  there is no fast lane and no second process to remember. A pending account can sign in to
+  `/welcome` any time to see its live status (rejected/disabled accounts get a plain
+  explanation and the recovery link). Addresses in `ADMIN_EMAILS` are the bootstrap and start
+  approved with the unlimited admin Kart, so the console can never be locked out.
+- **Sign-in recovery** (`/recover`) — one form takes **either** the e-mail address or the
+  username. It answers where the account stands and, on request, issues a **one-time link**
+  (stored hashed, single use, 60 minutes) that shows the username and sets a new password.
+  Delivery is automatic: when SMTP is configured it is e-mailed immediately; when it is not,
+  the request waits in the **Sign-in recovery** queue on the account desk and the admin copies
+  the link and hands it over. The link is never displayed to whoever typed the address, and a
+  newer request always invalidates the older link. The master admin cannot be recovered this
+  way — it signs in with `ADMIN_PASSWORD`.
+- **The users database** — everything account-owned lives in its own SQLite file,
+  `data/users.db` (`USERS_DB_PATH`): `users`, `point_transactions`, `point_requests` and
+  `password_resets`. Studies, responses and workspace rows stay in the survey database
+  (`DB_PATH`). One connection sees both (the users file is `ATTACH`ed as `udb`, so model SQL is
+  unchanged), a pre-split install is migrated automatically on first boot, and the split is
+  written to the boot log so a backup is never a guess.
 - **Account desk** (`/admin/console`) — one account in every context. A roster with search and
   status filters sits beside a dossier for the selected person: **Overview** (identity edit
   with validation, approve / pause / re-enable, role, delete), **Projects** (status, open in
@@ -175,6 +196,7 @@ export ADMIN_USERNAME="your-admin-username"
 export ADMIN_PASSWORD="your-strong-admin-password"
 export ADMIN_EMAILS="you@your.org"
 export DB_PATH=/var/lib/anaking/survey.db   # optional; default data/survey.db
+export USERS_DB_PATH=/var/lib/anaking/users.db  # optional; accounts live here (default: beside DB_PATH)
 gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
 ```
 
@@ -220,7 +242,7 @@ respondent survey keeps its clinical navy instrument. The brand lockup, document
 switcher and footer are shared macros, and every asset URL is stamped with one build version by
 `asset()` (no hand-typed `?v=` strings). See `docs/design-system.md`.
 
-Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
+Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `USERS_DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
 `MEDIA_DIR`, `SECRET_KEY`, `ASSET_VERSION`. Defaults put the database in `data/survey.db`, respondent recordings in
 `uploads/voice/` and uploaded narration in `uploads/narration/<study>/`.
 

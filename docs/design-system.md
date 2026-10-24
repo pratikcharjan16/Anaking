@@ -114,6 +114,33 @@ Rules that keep it honest:
 `static/css/console.css` owns layout only; `.support-strip` lives in `design-system.css`
 because it is shared chrome.
 
+### Sign-in recovery on the desk
+
+Two places, one rule — a recovery link is always **shown to the admin, never to the person who
+asked**:
+
+```
+SIGN-IN RECOVERY            request → Create link · Handed over · Revoke
+  (row per queued request)  fresh link appears in .adk-linkbox with a Copy button
+
+account → Overview → Sign-in & recovery
+  username · e-mail · signs in with · password set
+  Create a one-time link   → .adk-linkbox (copy) + recent requests
+```
+
+* The queue is a `.adk-recovery` band above the desk (same warm card + green accent as the
+  roster, no new colours; the left rule is `--an-accent`, not `--an-warn`, because it is
+  waiting on *you*, not urgent). It only renders when something is queued — the desk stays
+  quiet otherwise.
+* A queued row never reveals a token: tokens are stored hashed, so **Create link** mints a
+  fresh one (superseding the old) and drops the copyable URL into `.adk-linkbox`. **Handed
+  over** closes the request without invalidating the link; **Revoke** kills it.
+* The same block explains *why* the queue exists (no SMTP) so the admin is not left guessing,
+  and the account's last four requests are listed with their state (`pending`,
+  `e-mailed`, `handed over`, `used`, `superseded`, `revoked`).
+* `.adk-kvlist` is the label/value list inside the card: uppercase micro-labels, right-aligned
+  values, wrapping rather than truncating e-mail addresses.
+
 ## Brand
 
 `templates/_brand.html` renders the lockup (mark, wordmark, badge, tagline). Pass the badge

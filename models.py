@@ -137,10 +137,19 @@ class StudyError(Exception):
 # CONNECTION MANAGEMENT
 # ====================================================================================
 def connect(path: str | None = None) -> sqlite3.Connection:
-    conn = sqlite3.connect(path or current_app.config["DB_PATH"], timeout=30,
-                           check_same_thread=False)
+    """Open the survey database and ATTACH the users database to it.
+
+    Account rows (users, credentials, Kart ledger, resets) live in their own file
+    (``data/users.db``, see :mod:`core.userdata`). One connection sees both, and
+    SQLite resolves an unqualified ``users`` / ``point_transactions`` to the
+    attached file, so every model query stays as it is.
+    """
+    from core import userdata
+    target = path or current_app.config["DB_PATH"]
+    conn = sqlite3.connect(target, timeout=30, check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
+    userdata.attach(conn, target)
     return conn
 
 
@@ -169,22 +178,19 @@ def init_db(path: str | None = None) -> None:
             conn.executescript(GOVERNANCE_SCHEMA)
             from core.data_validation import SCHEMA as VALIDATION_SCHEMA
             conn.executescript(VALIDATION_SCHEMA)
-            from core.accounts import SCHEMA as ACCOUNTS_SCHEMA, ensure_master_admin
-            conn.executescript(ACCOUNTS_SCHEMA)
             from core.kart import SCHEMA as KART_SCHEMA
             conn.executescript(KART_SCHEMA)
-            user_cols = {r["name"] for r in conn.execute("PRAGMA table_info(users)")}
-            if "username" not in user_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN username TEXT NOT NULL DEFAULT ''")
-            if "password_hash" not in user_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN password_hash TEXT NOT NULL DEFAULT ''")
-            if "points_limit" not in user_cols:
-                conn.execute("ALTER TABLE users ADD COLUMN points_limit INTEGER NOT NULL DEFAULT 100")
+            # Account-owned tables live in the attached users database
+            # (data/users.db). Creating/upgrading them here also migrates an
+            # install from before the split, once.
+            from core import userdata
+            userdata.ensure(conn, userdata.attach(conn, path or current_app.config["DB_PATH"]))
             try:
                 is_testing = bool(current_app.config.get("TESTING"))
             except RuntimeError:
                 is_testing = False
             if not is_testing:
+                from core.accounts import ensure_master_admin
                 ensure_master_admin(conn)
             study_cols = {r["name"] for r in conn.execute("PRAGMA table_info(studies)")}
             if "owner_id" not in study_cols:

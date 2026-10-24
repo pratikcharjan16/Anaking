@@ -175,7 +175,9 @@ def test_recover_lookup_tells_you_where_your_account_stands(app, client):
     assert r.get_json()["found"] is True and r.get_json()["status"] == "pending"
     r = client.post("/api/auth/recover", json={"email": "ghost@research.co"})
     assert r.get_json()["found"] is False and "register" in r.get_json()["message"].lower()
-    assert client.post("/api/auth/recover", json={"email": "nonsense"}).status_code == 400
+    # a bare word is a username lookup, not a typo'd address; only an empty one is refused
+    assert client.post("/api/auth/recover", json={"email": "nonsense"}).status_code == 200
+    assert client.post("/api/auth/recover", json={"email": ""}).status_code == 400
 
 
 def test_forged_oauth_state_is_refused(client):
