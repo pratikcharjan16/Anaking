@@ -921,3 +921,87 @@ img, video, canvas { max-width: 100%; }
   body { background: #fff; }
   a[href]::after { content: ""; }
 }
+
+/* Shared mobile containment. Keep overflow on the component that needs it,
+   rather than letting intrinsic grid/form widths stretch the entire page.
+   This stylesheet is loaded last by every full-page template. */
+@media (max-width: 860px) {
+  :where(main, section, article, aside, header, footer, form, fieldset) {
+    min-width: 0;
+  }
+  :where(.ln-gate-card, .st-panel, .st-editor, .st-preview, .panel,
+         .ptl-card, .adk-pane, .adk-pane-grid, .project-card, .card) > * {
+    min-width: 0;
+  }
+  :where(input, select, textarea) { max-width: 100%; }
+  :where(p, h1, h2, h3, label, .notice, .ln-gate-out) {
+    overflow-wrap: anywhere;
+  }
+  .an-appbar, .st-top, .workspace-top { flex-wrap: wrap; height: auto; }
+  .an-appbar > *, .st-top > *, .workspace-top > * { min-width: 0; }
+  .an-appbar .meta { flex-wrap: wrap; max-width: 100%; }
+  .appnav { min-width: 0; max-width: 100%; }
+  .st-outline, .st-editor, .st-preview { min-width: 0; max-width: 100%; }
+  .st-tabs, .detail-tabs { max-width: 100%; overflow-x: auto; }
+  .ptl-charts { grid-template-columns: minmax(0, 1fr); }
+  .ptl-card h2 { flex-wrap: wrap; }
+  .scope, .seg, .toolbar { flex-wrap: wrap; }
+}
+
+@media (max-width: 640px) {
+  /* Stable side gutters, even on 320px screens and in landscape. */
+  .auth-gate .ln-gate {
+    width: calc(100% - 32px);
+    max-width: 560px;
+    padding: 24px 0 32px;
+    margin-inline: auto;
+    min-height: 0;
+  }
+  .auth-gate .ln-gate-card {
+    box-sizing: border-box;
+    width: 100%;
+    padding: 24px 18px;
+    border-radius: 16px;
+  }
+  .ln-gate-form, .ln-gate-form label { min-width: 0; width: 100%; }
+  .ln-gate-form input { box-sizing: border-box; width: 100%; min-width: 0; }
+  .ln-gate-form button, .ln-gate-card > .ln-btn {
+    box-sizing: border-box;
+    width: 100%;
+    min-width: 0;
+    white-space: normal;
+    text-align: center;
+    justify-content: center;
+    overflow-wrap: anywhere;
+  }
+  .ln-gicon { flex-shrink: 0; }
+  .sk-auth-divider { width: 100%; min-width: 0; }
+  .sk-auth-divider span { text-align: center; }
+  /* Avoid iOS focus zoom moving forms outside the viewport. */
+  input:not([type=checkbox]):not([type=radio]):not([type=range]), select, textarea {
+    font-size: 16px;
+  }
+  .workspace-top { padding-block: 12px; gap: 12px; }
+  .sidebar { flex-wrap: wrap; }
+  .side-nav { flex-wrap: wrap; }
+  .workspace-top .header-actions { flex-wrap: wrap; }
+  .welcome-banner { grid-template-columns: minmax(0, 1fr); }
+  .heading-actions > *, .st-top-actions > * { max-width: 100%; }
+  .st-bar, .st-top-actions { flex-wrap: wrap; }
+  #f-title { width: 100%; min-width: 0; }
+  .st-kart-shop-grid { grid-template-columns: minmax(0, 1fr); }
+  .st-share-row, .st-kart-proj { flex-wrap: wrap; overflow-wrap: anywhere; }
+  .ptl-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .ptl-card { padding: 16px 14px; }
+  .ptl-hero { padding-inline: 16px; }
+  .ptl-charts, .ptl-kpis { padding-inline: 16px; }
+  .ptl-users { width: calc(100% - 32px); }
+  .ptl-hero-note { max-width: 100%; }
+  .adk-passport, .adk-passport-actions { flex-wrap: wrap; }
+  dialog, .st-modal-box {
+    box-sizing: border-box;
+    max-width: calc(100vw - 24px);
+    max-height: calc(100dvh - 24px);
+    overflow: auto;
+  }
+}
