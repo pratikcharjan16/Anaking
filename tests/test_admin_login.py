@@ -41,13 +41,18 @@ def out(client):
 
 
 # ------------------------------------------------------------------ the page
-def test_admin_login_page_is_separate_and_prefilled(app, client):
+def test_admin_login_page_is_separate_and_blank(app, client):
     app.config["STAFF_AUTH"] = True
     r = client.get("/admin-login")
     assert r.status_code == 200
     html = r.data.decode()
     assert "Admin login" in html and "separate from user sign-in" in html
-    assert 'value="Anaking.admin"' in html                # username ready to go
+    assert 'value="Anaking.admin"' not in html
+    assert 'placeholder="Enter your admin username"' in html
+    assert "First time, or locked out?" not in html
+    assert "ADMIN_PASSWORD" not in html
+    assert "ADMIN_EMAILS" not in html
+    assert "Anaking.admin" not in html
     assert "/signin" in html                                # way back for regular users
     # and the user sign-in page points owners here
     assert "/admin-login" in client.get("/signin").data.decode()
@@ -97,11 +102,14 @@ def test_wrong_admin_password_is_a_clear_no(app, client):
     assert client.get("/admin/console").status_code in (302, 401, 403)
 
 
-def test_unconfigured_admin_password_explains_the_fix(app, client):
+def test_unconfigured_admin_password_notice_is_not_shown(app, client):
     app.config["STAFF_AUTH"] = True
     with mock.patch("core.accounts.master_admin_password_configured", return_value=False):
         html = client.get("/admin-login").data.decode()
-        assert "isn't set up on this server yet" in html and "ADMIN_PASSWORD" in html
+        assert "isn't set up on this server yet" not in html
+        assert "Please contact the platform administrator" not in html
+        assert "ADMIN_PASSWORD" not in html
+        assert "Anaking.admin" not in html
         r = admin_login(client)
         assert r.status_code == 503
         assert r.get_json()["code"] == "admin_password_unconfigured"
