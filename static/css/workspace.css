@@ -676,6 +676,9 @@
   .likert-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 @media(max-width:640px){
+  /* Survey URLs are intentionally printed in the team view; wrap them instead of
+     making the project page wider than the phone viewport. */
+  .ws-team-proj-row code{overflow-wrap:anywhere;word-break:break-word}
   .workspace-top{padding:10px 12px}
   .workspace-main{padding:14px 10px}
   .scope-switch-banner{flex-wrap:wrap;gap:8px}

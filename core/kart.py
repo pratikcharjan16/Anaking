@@ -583,39 +583,84 @@ def summarize_cfg_changes(old_study: Study | None, new_title: str, new_cfg: dict
     return "; ".join(changes)[:220]
 
 
+def can_view_workspace_activity(user_id: int, user_email: str = "",
+                                study_slug: str = "", team_id: int = 0) -> bool:
+    """Only a study owner or currently accepted team/collaboration member can view its log."""
+    uid = int(user_id or 0)
+    if not uid:
+        return False
+    db = get_db()
+    email = str(user_email or "").strip().lower()
+    if team_id:
+        return bool(db.execute(
+            "SELECT 1 FROM workspace_teams wt WHERE wt.id=? AND "
+            "(wt.creator_id=? OR EXISTS (SELECT 1 FROM team_members tm WHERE tm.team_id=wt.id "
+            "AND tm.status='accepted' AND (tm.user_id=? OR (?!='' AND lower(tm.email)=?))))",
+            (int(team_id), uid, uid, email, email)).fetchone())
+    if study_slug:
+        row = db.execute("SELECT owner_id FROM studies WHERE slug=?", (study_slug,)).fetchone()
+        if not row:
+            return False
+        if int(row["owner_id"] or 0) == uid:
+            return True
+        team_ids = db.execute("SELECT team_id FROM team_projects WHERE study_slug=?", (study_slug,)).fetchall()
+        if team_ids:
+            return any(can_view_workspace_activity(uid, email, team_id=int(r["team_id"])) for r in team_ids)
+        return bool(db.execute(
+            "SELECT 1 FROM study_shares WHERE study_slug=? AND permission='collaborate' AND "
+            "(shared_with_user_id=? OR (shared_with_email!='' AND lower(shared_with_email)=? AND accepted_at!='')) LIMIT 1",
+            (study_slug, uid, email)).fetchone())
+    return True
+
+
 def list_workspace_changelogs(study_slug: str = "", team_id: int = 0,
                               user_id: int = 0, user_email: str = "",
                               limit: int = 40) -> list[dict]:
-    """Return short change-log entries for a study, a team, or all studies/teams accessible to a user."""
+    """Return log rows visible to this user, exposing only current team members' identities."""
+    uid = int(user_id or 0)
+    if not uid or (study_slug and not can_view_workspace_activity(uid, user_email, study_slug=study_slug)) \
+            or (team_id and not can_view_workspace_activity(uid, user_email, team_id=team_id)):
+        return []
+    email = str(user_email or "").strip().lower()
     db = get_db()
+    # A log is visible only when both its viewer and its actor are currently approved in
+    # that exact team/project. Pending, revoked, unrelated and anonymous actors are hidden.
+    team_scope = """(wc.team_id>0 AND EXISTS (
+        SELECT 1 FROM workspace_teams wt WHERE wt.id=wc.team_id AND
+          (wt.creator_id=? OR EXISTS (SELECT 1 FROM team_members vm WHERE vm.team_id=wt.id
+             AND vm.status='accepted' AND (vm.user_id=? OR (?!='' AND lower(vm.email)=?))))
+          AND ((wc.actor_id>0 AND wt.creator_id>0 AND wc.actor_id=wt.creator_id) OR EXISTS (SELECT 1 FROM team_members am WHERE am.team_id=wt.id
+             AND am.status='accepted' AND ((wc.actor_id>0 AND am.user_id=wc.actor_id)
+               OR (wc.actor_email!='' AND lower(am.email)=lower(wc.actor_email)))))
+    ))"""
+    project_scope = """(wc.team_id=0 AND EXISTS (
+        SELECT 1 FROM studies s WHERE s.slug=wc.study_slug AND
+          (s.owner_id=? OR EXISTS (SELECT 1 FROM study_shares vs WHERE vs.study_slug=s.slug
+             AND vs.permission='collaborate' AND (vs.shared_with_user_id=? OR
+               (vs.shared_with_email!='' AND lower(vs.shared_with_email)=? AND vs.accepted_at!=''))))
+          AND ((wc.actor_id>0 AND s.owner_id>0 AND wc.actor_id=s.owner_id) OR EXISTS (SELECT 1 FROM study_shares ass WHERE ass.study_slug=s.slug
+             AND ass.permission='collaborate' AND ((wc.actor_id>0 AND ass.shared_with_user_id=wc.actor_id) OR
+               (wc.actor_email!='' AND lower(ass.shared_with_email)=lower(wc.actor_email) AND ass.accepted_at!=''))))
+    ))"""
+    clauses = ["(" + team_scope + " OR " + project_scope + ")"]
+    params = [uid, uid, email, email, uid, uid, email]
     if study_slug:
-        rows = db.execute(
-            "SELECT wc.*, wt.name AS team_name FROM workspace_changelogs wc "
-            "LEFT JOIN workspace_teams wt ON wt.id=wc.team_id "
-            "WHERE wc.study_slug=? ORDER BY wc.id DESC LIMIT ?",
-            (study_slug, int(limit)),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        clauses.append("wc.study_slug=?"); params.append(study_slug)
     if team_id:
-        rows = db.execute(
-            "SELECT wc.*, wt.name AS team_name FROM workspace_changelogs wc "
-            "LEFT JOIN workspace_teams wt ON wt.id=wc.team_id "
-            "WHERE wc.team_id=? ORDER BY wc.id DESC LIMIT ?",
-            (int(team_id), int(limit)),
-        ).fetchall()
-        return [dict(r) for r in rows]
+        clauses.append("wc.team_id=?"); params.append(int(team_id))
+    params.append(max(1, min(120, int(limit))))
     rows = db.execute(
         "SELECT wc.*, wt.name AS team_name FROM workspace_changelogs wc "
-        "LEFT JOIN workspace_teams wt ON wt.id=wc.team_id "
-        "ORDER BY wc.id DESC LIMIT ?",
-        (int(limit),),
-    ).fetchall()
+        "LEFT JOIN workspace_teams wt ON wt.id=wc.team_id WHERE " + " AND ".join(clauses) +
+        " ORDER BY wc.id DESC LIMIT ?", params).fetchall()
     return [dict(r) for r in rows]
 
 
-def read_changelog_file_text(study_slug: str = "", team_id: int = 0, limit: int = 100) -> str:
-    """Format the backend change-log lines as plain text for direct file viewing/downloading."""
-    entries = list_workspace_changelogs(study_slug=study_slug, team_id=team_id, limit=limit)
+def read_changelog_file_text(study_slug: str = "", team_id: int = 0, limit: int = 100,
+                             user_id: int = 0, user_email: str = "") -> str:
+    """Format only the requesting member's authorized log lines for direct viewing/downloading."""
+    entries = list_workspace_changelogs(study_slug=study_slug, team_id=team_id,
+                                        user_id=user_id, user_email=user_email, limit=limit)
     header = (
         "# SURVEYKART SHARED WORKSPACE — SHORT BACKEND CHANGE LOG (workspace_changes.log)\n"
         "# Format: [TIMESTAMP] ACTOR_NAME <EMAIL> | PROJECT / TEAM | ACTION | SHORT_CHANGE_SUMMARY\n"
@@ -1146,9 +1191,10 @@ def shared_studies_for_user(user_id: int, user_email: str = "") -> list[dict]:
     return out
 
 
-def study_collaborators(slug: str) -> list[dict]:
-    """Return all collaborators (invited & accepted) for ``slug`` with their Account Name and email."""
+def study_collaborators(slug: str, accepted_only: bool = False) -> list[dict]:
+    """Return collaborator details, optionally limiting to members who accepted."""
     db = get_db()
+    accepted_clause = " AND (ss.accepted_at!='' OR ss.shared_with_user_id>0)" if accepted_only else ""
     rows = db.execute(
         "SELECT ss.*, "
         "COALESCE(u1.name, u2.name, '') AS account_name, "
@@ -1157,7 +1203,7 @@ def study_collaborators(slug: str) -> list[dict]:
         "FROM study_shares ss "
         "LEFT JOIN users u1 ON u1.id=ss.shared_with_user_id AND ss.shared_with_user_id > 0 "
         "LEFT JOIN users u2 ON ss.shared_with_email != '' AND u2.email=ss.shared_with_email "
-        "WHERE ss.study_slug=? AND ss.permission='collaborate' ORDER BY ss.id DESC",
+        "WHERE ss.study_slug=? AND ss.permission='collaborate'" + accepted_clause + " ORDER BY ss.id DESC",
         (slug,),
     ).fetchall()
     out = []
@@ -1293,8 +1339,9 @@ def list_teams_and_collaboration(user_id: int, user_email: str = "") -> dict:
         }]
         accepted_collaborators = 0
         for m in mem_rows:
-            if m["status"] == "accepted":
-                accepted_collaborators += 1
+            if m["status"] != "accepted":
+                continue
+            accepted_collaborators += 1
             members.append({
                 "member_id": m["id"],
                 "user_id": m["user_id"],
@@ -1327,6 +1374,9 @@ def list_teams_and_collaboration(user_id: int, user_email: str = "") -> dict:
                 pcfg = {}
             pts = study_points(pcfg)
             is_owner = int(pr["owner_id"] or 0) == uid
+            owner_id = int(pr["owner_id"] or 0)
+            accepted_team_ids = {int(m["user_id"] or 0) for m in mem_rows if m["status"] == "accepted"}
+            owner_is_approved_member = is_owner or owner_id == int(tr["creator_id"] or 0) or owner_id in accepted_team_ids
             t_projects.append({
                 "slug": pr["slug"],
                 "title": pr["title"],
@@ -1335,8 +1385,8 @@ def list_teams_and_collaboration(user_id: int, user_email: str = "") -> dict:
                 "questions_count": len(pcfg.get("questions") or []),
                 "points_used": pts,
                 "points_debited": pts if is_owner else 0,
-                "owner_name": pr["owner_name"] or pr["owner_email"] or "",
-                "owner_email": pr["owner_email"] or "",
+                "owner_name": (pr["owner_name"] or pr["owner_email"] or "") if owner_is_approved_member else "",
+                "owner_email": (pr["owner_email"] or "") if owner_is_approved_member else "",
                 "studio_url": f"/studio/#{pr['slug']}",
                 "workspace_url": f"/workspace/#{pr['slug']}",
                 "survey_url": f"/survey/{pr['slug']}",

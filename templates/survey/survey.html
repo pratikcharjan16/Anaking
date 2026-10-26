@@ -156,7 +156,7 @@ window.__beaconEscape = function () {
   for (i = 0; i < av.length; i++) { try { av[i].pause(); } catch (e) {} }
 };
 </script>
-<script>window.STUDY={slug:{{ slug|tojson }},paused:{{ (is_paused|default(false))|tojson }}};</script>
+<script>window.STUDY={slug:{{ slug|tojson }},paused:{{ (is_paused|default(false))|tojson }}};window.STUDY.rid={{ (respondent_token|default(''))|tojson }};</script>
 <script src="{{ asset('js/qlogic.js') }}"></script>
 <script src="{{ asset('js/voice.js') }}"></script>
 <script src="{{ asset('js/explainer.js') }}"></script>

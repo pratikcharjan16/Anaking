@@ -160,7 +160,7 @@
                   '<a class="btn sm primary" href="/studio/#'+enc(tp.slug)+'">Build in Studio ↗</a>' +
                   '<a class="btn sm" href="/survey/'+enc(tp.slug)+'" target="_blank" rel="noopener">Preview Survey ↗</a>' +
                   '<a class="btn sm" href="/survey/'+enc(tp.slug)+'/test" target="_blank" rel="noopener">Test Link ↗</a>' +
-                  '<button type="button" class="btn sm" data-copy-url="'+esc(location.origin + '/survey/' + tp.slug)+'">Copy Link</button>' +
+                  '<button type="button" class="btn sm" data-copy-respondent-link="'+esc(tp.slug)+'">Copy Single-use Link</button>' +
                 '</div>' +
               '</div>'
             ).join('')
@@ -216,7 +216,7 @@
           (p.owner_name ? ' &middot; Creator: <b>'+esc(p.owner_name)+'</b>' : '') +
           (collabNames ? ' &middot; With: <b>'+esc(collabNames)+'</b>' : '') + '</div>'
         : '';
-      return '<article class="project-card"><div class="project-card-main"><div class="project-card-top"><span class="project-icon '+(['','lavender','sand'][i%3])+'" aria-hidden="true">'+(['◈','▥','◎'][i%3])+'</span>'+pill(p.status)+'</div><h2><a href="'+link(p.slug)+'">'+esc(p.title)+'</a></h2><p>'+esc(p.parent ? 'Translation of '+p.parent : p.study_id || p.slug)+'</p>'+teamLine+'<div class="project-meta"><span>'+p.questions+' questions</span><span>'+esc(ptsTag)+'</span><span>~'+p.minutes+' min</span></div><div class="project-progress-label"><span>Responses · all data</span><b>'+complete+' / '+started+' completed</b></div><div class="progress-line" aria-hidden="true"><i style="width:'+pct+'%"></i></div></div><div class="project-card-footer ws-card-actions"><a href="/studio/#'+enc(p.slug)+'" title="Build together in Studio">Build in Studio →</a><a href="/survey/'+enc(p.slug)+'" target="_blank" rel="noopener" title="Preview live respondent survey link">Preview Link ↗</a><a href="/survey/'+enc(p.slug)+'/test" target="_blank" rel="noopener" title="Test survey in research test mode">Test Link ↗</a><a href="'+link(p.slug,'team')+'" title="Team members & short change log">👥 Team &amp; Log</a></div></article>';
+      return '<article class="project-card"><div class="project-card-main"><div class="project-card-top"><span class="project-icon '+(['','lavender','sand'][i%3])+'" aria-hidden="true">'+(['◈','▥','◎'][i%3])+'</span>'+pill(p.status)+'</div><h2><a href="'+link(p.slug)+'">'+esc(p.title)+'</a></h2><p>'+esc(p.parent ? 'Translation of '+p.parent : p.study_id || p.slug)+'</p>'+teamLine+'<div class="project-meta"><span>'+p.questions+' questions</span><span>'+esc(ptsTag)+'</span><span>~'+p.minutes+' min</span></div><div class="project-progress-label"><span>Responses · all data</span><b>'+complete+' / '+started+' completed</b></div><div class="progress-line" aria-hidden="true"><i style="width:'+pct+'%"></i></div></div><div class="project-card-footer ws-card-actions"><a href="/studio/#'+enc(p.slug)+'" title="Build together in Studio">Build in Studio →</a><a href="/survey/'+enc(p.slug)+'" target="_blank" rel="noopener" title="Preview live respondent survey link">Preview Link ↗</a><a href="/survey/'+enc(p.slug)+'/test" target="_blank" rel="noopener" title="Test survey in research test mode">Test Link ↗</a><a href="'+link(p.slug,'analysis')+'" title="Open this study’s analytics and charts">📊 Analytics</a><a href="'+link(p.slug,'team')+'" title="Team members & short change log">👥 Team &amp; Log</a></div></article>';
     }).join('')+(editable()?'<article class="project-card new"><button class="new-card-button" data-action="new"><span aria-hidden="true">+</span><b>Your next discovery</b><small>Create a new research project</small></button></article>':'');
     if (!visible.length && !editable()) $('#project-grid').innerHTML = empty('No matching projects','Try a different search or ask your owner for study access.');
   }
@@ -232,7 +232,7 @@
     const collabs = s.collaborators || [];
     const logs = s.changelogs || [];
     return '<div class="metric-grid">'+metric('Questions',checks.questions,'Current design')+metric('Estimated time',checks.estimated_minutes+' min','Rule-based reading-time estimate')+metric('Team collaborators',collabs.length + 1,'Creator: '+(s.owner_name||s.owner_email||'Owner'))+metric('Published version',s.publication?'v'+s.publication.revision_id:'—','Versioned release, not autosave')+'</div>' +
-    '<section class="panel" style="margin-bottom:18px"><div class="panel-head"><h2>Quick Survey Links &amp; Shared Team Space</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn sm primary" href="/studio/#'+enc(s.slug)+'">Build in Studio ↗</a><a class="btn sm" href="/survey/'+enc(s.slug)+'" target="_blank" rel="noopener">Preview Survey (/survey/'+esc(s.slug)+') ↗</a><button type="button" class="btn sm" data-copy-url="'+esc(location.origin+'/survey/'+s.slug)+'">Copy Survey Link</button><a class="btn sm" href="/survey/'+enc(s.slug)+'/test" target="_blank" rel="noopener">Test Mode (/survey/'+enc(s.slug)+'/test) ↗</a><button type="button" class="btn sm" data-copy-url="'+esc(location.origin+'/survey/'+s.slug+'/test')+'">Copy Test Link</button></div></div></section>' +
+    '<section class="panel" style="margin-bottom:18px"><div class="panel-head"><h2>Quick Survey Links &amp; Shared Team Space</h2><div style="display:flex;gap:8px;flex-wrap:wrap"><a class="btn sm primary" href="/studio/#'+enc(s.slug)+'">Build in Studio ↗</a><a class="btn sm" href="/survey/'+enc(s.slug)+'" target="_blank" rel="noopener">Preview Survey (/survey/'+esc(s.slug)+') ↗</a><button type="button" class="btn sm" data-copy-respondent-link="'+esc(s.slug)+'">Copy Single-use Survey Link</button><a class="btn sm" href="/survey/'+enc(s.slug)+'/test" target="_blank" rel="noopener">Test Mode (/survey/'+enc(s.slug)+'/test) ↗</a><button type="button" class="btn sm" data-copy-url="'+esc(location.origin+'/survey/'+s.slug+'/test')+'">Copy Test Link</button></div></div></section>' +
     '<div class="two-col"><section class="panel"><h2>Your research journey</h2><ol class="journey">'+[
       ['1','Design your questionnaire','Structure, wording, logic and translations','/studio/#'+enc(s.slug),'Open Studio'],
       ['2','Collaborate with your team',(collabs.length ? collabs.length+' collaborator(s) invited/active' : 'Invite teammates by Mail ID (Google ID) · 0 pts debited'),link(s.slug,'team'),'Team & Change Log'],
@@ -273,7 +273,7 @@
           }).join('') : '<p style="font-size:12.5px;color:var(--an-muted)">No collaborators invited yet. Click <b>+ Invite by Mail ID (Google ID)</b> to invite a teammate!</p>') +
         '</div>' +
         '<h3 style="margin-top:18px;font-size:14px">Survey Preview &amp; Test Links</h3>' +
-        '<div class="ws-team-proj-row" style="margin-bottom:8px"><div><strong>Live Respondent Survey Link</strong><div style="font-size:12px;color:var(--an-muted)"><code>'+esc(surveyFull)+'</code></div></div><div style="display:flex;gap:6px"><a class="btn sm primary" href="/survey/'+enc(s.slug)+'" target="_blank" rel="noopener">Preview Survey ↗</a><button type="button" class="btn sm" data-copy-url="'+esc(surveyFull)+'">Copy</button></div></div>' +
+        '<div class="ws-team-proj-row" style="margin-bottom:8px"><div><strong>Live Respondent Survey Link</strong><div style="font-size:12px;color:var(--an-muted)"><code>'+esc(surveyFull)+'</code></div></div><div style="display:flex;gap:6px"><a class="btn sm primary" href="/survey/'+enc(s.slug)+'" target="_blank" rel="noopener">Preview Survey ↗</a><button type="button" class="btn sm" data-copy-respondent-link="'+esc(s.slug)+'">Copy Single-use Link</button></div></div>' +
         '<div class="ws-team-proj-row"><div><strong>Team Test / Sandbox Link</strong><div style="font-size:12px;color:var(--an-muted)"><code>'+esc(testFull)+'</code></div></div><div style="display:flex;gap:6px"><a class="btn sm primary" href="/survey/'+enc(s.slug)+'/test" target="_blank" rel="noopener">Test Survey ↗</a><button type="button" class="btn sm" data-copy-url="'+esc(testFull)+'">Copy</button></div></div>' +
       '</section>' +
       '<section class="panel">' +
@@ -477,6 +477,17 @@
         toast(err.message);
         b.disabled = false;
       }
+      return;
+    }
+    if(b.dataset.copyRespondentLink){
+      try {
+        const response = await api('/api/studio/public-link', {slug:b.dataset.copyRespondentLink});
+        const url = response.url;
+        if (navigator.clipboard && navigator.clipboard.writeText) {
+          await navigator.clipboard.writeText(url).catch(() => {});
+          toast('Single-use respondent link copied. It resumes until completion, then closes.');
+        } else toast('Single-use respondent link: ' + url);
+      } catch (err) { toast(err.message); }
       return;
     }
     if(b.dataset.copyUrl){

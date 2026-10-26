@@ -2297,8 +2297,13 @@ body.landing [id]{
     border:1px solid rgba(180,132,48,0.18);
   }
   .skf-cube-readout{
+    left:8px;
     right:8px;
     bottom:6px;
+    max-width:calc(100% - 16px);
+    white-space:normal;
+    flex-wrap:wrap;
+    justify-content:center;
     font-size:9.5px;
     padding:3px 9px;
   }
@@ -2421,6 +2426,11 @@ body.landing [id]{
   }
   .sk-cat-tabs::-webkit-scrollbar{display:none}
   .sk-cat-tab{flex:0 0 auto}
+  /* Let the catalog's single-column grid shrink below its intrinsic card width on phones.
+     Without a zero-minimum track, the wide tab labels force the whole catalog off-screen. */
+  .sk-kart-showcase{grid-template-columns:minmax(0,1fr)}
+  .sk-kart-showcase > *{min-width:0;max-width:100%}
+  .sk-shop-panel{width:100%;box-sizing:border-box}
   .sk-catalog-grid{
     grid-template-columns:1fr;
   }

@@ -31,6 +31,32 @@ def base(s):
     return s.parent_study().cfg if s.is_child() and s.parent_study() else s.cfg
 
 
+def _owner_is_approved_member(slug: str, owner_id: int, viewer_id: int, viewer_email: str) -> bool:
+    """Only expose another account's details when they share an accepted team/project with the viewer."""
+    if not viewer_id:
+        return False
+    if int(owner_id or 0) == int(viewer_id):
+        return True
+    db = get_db()
+    email = str(viewer_email or '').strip().lower()
+    team_match = db.execute(
+        "SELECT 1 FROM team_projects tp JOIN workspace_teams wt ON wt.id=tp.team_id "
+        "WHERE tp.study_slug=? AND "
+        "(wt.creator_id=? OR EXISTS (SELECT 1 FROM team_members om WHERE om.team_id=wt.id "
+        "  AND om.status='accepted' AND om.user_id=?)) AND "
+        "(wt.creator_id=? OR EXISTS (SELECT 1 FROM team_members vm WHERE vm.team_id=wt.id "
+        "  AND vm.status='accepted' AND (vm.user_id=? OR (?!='' AND lower(vm.email)=?)))) LIMIT 1",
+        (slug, int(owner_id or 0), int(owner_id or 0), int(viewer_id), int(viewer_id), email, email),
+    ).fetchone()
+    if team_match:
+        return True
+    return bool(db.execute(
+        "SELECT 1 FROM study_shares WHERE study_slug=? AND permission='collaborate' AND "
+        "(shared_with_user_id=? OR (shared_with_email!='' AND lower(shared_with_email)=? AND accepted_at!='')) LIMIT 1",
+        (slug, int(viewer_id), email),
+    ).fetchone())
+
+
 @bp.get('/workspace/')
 def page():
     if not current_app.config["WORKSPACE_ENABLED"]:
@@ -64,6 +90,10 @@ def projects():
         checks = readiness(base(s))
         publication = get_db().execute('SELECT revision_id FROM publications WHERE study_id=?', (s.id,)).fetchone()
         is_shared = bool(uid and row.get('owner_id') != uid and can_collaborate(uid, row['slug'], uemail))
+        # Workspace cards show only collaborators whose access was actually accepted.
+        row['collaborators'] = [c for c in row.get('collaborators', []) if c.get('status') == 'accepted']
+        if not _owner_is_approved_member(row['slug'], row.get('owner_id', 0), uid, uemail):
+            row['owner_name'] = row['owner_email'] = ''
         row.update(questions=checks['questions'], errors=checks['errors'], warnings=checks['warnings'],
                    minutes=checks['estimated_minutes'],
                    publication=publication['revision_id'] if publication else None,
@@ -80,7 +110,7 @@ def projects():
     collab_state = list_teams_and_collaboration(uid, uemail) if uid else {
         'teams': [],
         'incoming_invites': [],
-        'changelogs': list_workspace_changelogs(limit=25),
+        'changelogs': [],
         'changelog_file_url': '/api/workspace/changelog.log',
     }
     return jsonify(projects=out, shared_surveys=shared_surveys,
@@ -108,6 +138,7 @@ def detail():
     uemail = u.get('email', '') if u else ''
     is_shared = bool(uid and s.owner_id != uid and can_collaborate(uid, s.slug, uemail))
     owner_row = db.execute("SELECT name, email FROM users WHERE id=?", (s.owner_id,)).fetchone()
+    owner_visible = _owner_is_approved_member(s.slug, s.owner_id, uid, uemail)
     team_row = db.execute(
         "SELECT wt.id, wt.name, wt.creator_id FROM team_projects tp "
         "JOIN workspace_teams wt ON wt.id=tp.team_id WHERE tp.study_slug=? ORDER BY tp.id DESC LIMIT 1",
@@ -117,18 +148,22 @@ def detail():
     comments = [dict(r) for r in db.execute('SELECT * FROM study_comments WHERE study_id=? ORDER BY id DESC LIMIT 100', (s.id,))]
     review = db.execute('SELECT * FROM study_reviews WHERE study_id=?', (s.id,)).fetchone()
     pub = db.execute('SELECT * FROM publications WHERE study_id=?', (s.id,)).fetchone()
-    events = [dict(r) for r in db.execute('SELECT actor,action,created_at,detail FROM audit_events WHERE study=? ORDER BY id DESC LIMIT 40', (s.slug,))]
-    changelogs = list_workspace_changelogs(study_slug=s.slug, limit=40)
+    changelogs = list_workspace_changelogs(study_slug=s.slug, user_id=uid, user_email=uemail, limit=40)
+    # The legacy audit feed is deliberately derived from the same approved-member-filtered
+    # rows, so it cannot expose names from unrelated workspace activity either.
+    events = [{"actor": r["actor_name"], "action": r["action_type"],
+               "created_at": r["created_at"], "detail": r["short_summary"]}
+              for r in changelogs]
     pts = study_points(cfg)
     return jsonify(slug=s.slug, title=s.title, status=s.status, parent=s.cfg.get('parent'),
                    owner_id=s.owner_id,
-                   owner_name=(owner_row['name'] or owner_row['email']) if owner_row else '',
-                   owner_email=owner_row['email'] if owner_row else '',
+                   owner_name=(owner_row['name'] or owner_row['email']) if owner_row and owner_visible else '',
+                   owner_email=owner_row['email'] if owner_row and owner_visible else '',
                    is_shared=is_shared,
                    points_used=pts,
                    points_debited=0 if is_shared else pts,
                    team=dict(team_row) if team_row else None,
-                   collaborators=study_collaborators(s.slug),
+                   collaborators=study_collaborators(s.slug, accepted_only=True),
                    changelogs=changelogs,
                    changelog_file_url=f"/api/workspace/changelog.log?study={s.slug}",
                    survey_url=f"/survey/{s.slug}",
@@ -250,12 +285,16 @@ def accept_workspace_team_invite():
 
 @bp.get('/api/workspace/changelog')
 def workspace_changelog_json():
-    from core.kart import get_changelog_file_path, list_workspace_changelogs
+    from core.kart import can_view_workspace_activity, list_workspace_changelogs
     slug = str(request.args.get('study') or request.args.get('slug') or '').strip()
     team_id = int(request.args.get('team_id') or 0)
-    if slug and not allowed(slug):
+    u = getattr(g, 'user', None) or {}
+    uid, uemail = int(u.get('id') or 0), u.get('email', '')
+    if (slug and not can_view_workspace_activity(uid, uemail, study_slug=slug)) or \
+            (team_id and not can_view_workspace_activity(uid, uemail, team_id=team_id)):
         abort(403)
-    entries = list_workspace_changelogs(study_slug=slug, team_id=team_id, limit=60)
+    entries = list_workspace_changelogs(study_slug=slug, team_id=team_id,
+                                        user_id=uid, user_email=uemail, limit=60)
     return jsonify(
         ok=True,
         study=slug,
@@ -269,12 +308,16 @@ def workspace_changelog_json():
 
 @bp.get('/api/workspace/changelog.log')
 def workspace_changelog_file():
-    from core.kart import read_changelog_file_text
+    from core.kart import can_view_workspace_activity, read_changelog_file_text
     slug = str(request.args.get('study') or request.args.get('slug') or '').strip()
     team_id = int(request.args.get('team_id') or 0)
-    if slug and not allowed(slug):
+    u = getattr(g, 'user', None) or {}
+    uid, uemail = int(u.get('id') or 0), u.get('email', '')
+    if (slug and not can_view_workspace_activity(uid, uemail, study_slug=slug)) or \
+            (team_id and not can_view_workspace_activity(uid, uemail, team_id=team_id)):
         abort(403)
-    text = read_changelog_file_text(study_slug=slug, team_id=team_id, limit=120)
+    text = read_changelog_file_text(study_slug=slug, team_id=team_id, limit=120,
+                                    user_id=uid, user_email=uemail)
     return Response(text, mimetype='text/plain; charset=utf-8')
 
 

@@ -12,17 +12,18 @@
 
   var STUDY = window.STUDY || { slug: "beacon" };
   var IS_TEST = /(^|\/)test$/.test(location.pathname.replace(/\/$/, ""));
+  var QS = (function () {
+    try { return new URLSearchParams(location.search); } catch (e) { return null; }
+  })();
+  var LINK_TOKEN = !IS_TEST ? ((QS && QS.get("rid")) || STUDY.rid || "") : "";
   var NS = (STUDY.slug === "beacon" ? "beacon" : "study_" + STUDY.slug) +
-           (IS_TEST ? "_test_" : "_");
+           (IS_TEST ? "_test_" : "_") + (LINK_TOKEN ? "link_" + encodeURIComponent(LINK_TOKEN) + "_" : "");
 
   // A test link is a rehearsal, not a saved interview.  Every fresh open of
   // /survey/<slug>/test starts at the first question with blank answers against the design
   // that is saved right now.  Two internal cases may carry a run forward instead:
   //   ?review=<token>  a shared team review (its saved answers + notes are restored), and
   //   ?keep=1          the language switch, which reloads the page mid-run.
-  var QS = (function () {
-    try { return new URLSearchParams(location.search); } catch (e) { return null; }
-  })();
   var REVIEW_PARAM = (IS_TEST && QS) ? (QS.get("review") || "") : "";
   var KEEP_TEST_RUN = IS_TEST && !!(QS && QS.get("keep"));
   var FRESH_TEST = IS_TEST && !KEEP_TEST_RUN;
@@ -65,6 +66,8 @@
     } else {
       var sid = recall("session_id");
       if (sid) url += "&sid=" + encodeURIComponent(sid);
+      var rid = (QS && QS.get("rid")) || STUDY.rid || "";
+      if (rid) url += "&rid=" + encodeURIComponent(rid);
     }
     return url + "&_=" + Date.now();
   }
@@ -84,7 +87,10 @@
         }
       } else {
         store('session_id'); store('answers'); store('cur');
-        location.href = location.pathname + '?lang=' + encodeURIComponent(lang);
+        var realQs = null;
+        try { realQs = new URLSearchParams(location.search); } catch (e) { realQs = null; }
+        if (realQs) { realQs.set('lang', lang); location.href = location.pathname + '?' + realQs.toString(); }
+        else location.href = location.pathname + '?lang=' + encodeURIComponent(lang) + (LINK_TOKEN ? '&rid=' + encodeURIComponent(LINK_TOKEN) : '');
       }
       return Promise.resolve();
     }
@@ -168,6 +174,7 @@
         var v = ps.get(n);
         if (v !== null) out[n] = v;
       });
+      if (!out.rid && LINK_TOKEN) out.rid = LINK_TOKEN;
     } catch (e) {}
     return out;
   }
@@ -3174,28 +3181,44 @@
   function renderGaugeComponent(min, max, step, unit, target, val, minLabel, midLabel, maxLabel, onPick) {
     var box = el("div", "gauge-box");
     box.setAttribute("role", "slider");
+    box.setAttribute("aria-orientation", "horizontal");
     box.tabIndex = 0;
     box.setAttribute("aria-valuemin", String(min));
     box.setAttribute("aria-valuemax", String(max));
+    box.setAttribute("aria-label", "Gauge meter. " + (minLabel || "Poor") + " at " + min +
+      (unit || "") + ", " + (maxLabel || "Excellent") + " at " + max + (unit || "") +
+      ". Use the arrow keys to adjust the value.");
     if (val !== undefined && val !== "") box.setAttribute("aria-valuenow", String(val));
 
     var cx = 130, cy = 130, r = 95;
-    function valueToAngle(v) {
-      var frac = max === min ? 0.5 : Math.max(0, Math.min(1, (v - min) / (max - min)));
-      return 180 + frac * 180;
+    // The dial is an upward-facing semicircle: minimum at the left, midpoint at the
+    // crown, maximum at the right. SVG's y axis points down, so ordinary polar
+    // coordinates (180°..360°) trace the upper arc.
+    function valueFraction(v) {
+      return max === min ? 0.5 : Math.max(0, Math.min(1, (Number(v) - min) / (max - min)));
     }
+    function valueToAngle(v) { return 180 + valueFraction(v) * 180; }
     function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
-      var angleInRadians = (angleInDegrees - 180) * Math.PI / 180.0;
+      var angleInRadians = angleInDegrees * Math.PI / 180;
       return {
         x: centerX + (radius * Math.cos(angleInRadians)),
         y: centerY + (radius * Math.sin(angleInRadians))
       };
     }
     function describeArc(x, y, radius, startAngle, endAngle) {
-      var start = polarToCartesian(x, y, radius, endAngle);
-      var end = polarToCartesian(x, y, radius, startAngle);
-      var arcSweep = endAngle - startAngle <= 180 ? "0" : "1";
-      return ["M", start.x, start.y, "A", radius, radius, 0, arcSweep, 0, end.x, end.y].join(" ");
+      var start = polarToCartesian(x, y, radius, startAngle);
+      var end = polarToCartesian(x, y, radius, endAngle);
+      var largeArc = endAngle - startAngle > 180 ? 1 : 0;
+      // sweep=1 walks from left, over the top, to the right in SVG coordinates.
+      return ["M", start.x, start.y, "A", radius, radius, 0, largeArc, 1, end.x, end.y].join(" ");
+    }
+    function needleRotation(v) { return -90 + valueFraction(v) * 180; }
+    function snapValue(v) {
+      var safeStep = Number(step);
+      if (!isFinite(safeStep) || safeStep <= 0) safeStep = 1;
+      var digits = Math.min(8, (String(safeStep).split(".")[1] || "").length);
+      var snapped = min + Math.round((Number(v) - min) / safeStep) * safeStep;
+      return Number(Math.max(min, Math.min(max, snapped)).toFixed(digits));
     }
 
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -3254,7 +3277,7 @@
     var needleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
     needleGroup.setAttribute("class", "gauge-needle");
     var curVal = val !== undefined && val !== "" ? Number(val) : Math.round((min + max) / 2);
-    needleGroup.style.transform = "rotate(" + (valueToAngle(curVal) - 90) + "deg)";
+    needleGroup.setAttribute("transform", "rotate(" + needleRotation(curVal) + " " + cx + " " + cy + ")");
 
     var needle = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
     needle.setAttribute("class", "gauge-needle-poly");
@@ -3289,6 +3312,9 @@
     var zInfo = getZone(curVal);
     var pill = el("div", "gauge-zone-pill " + zInfo.cls, zInfo.text);
     box.appendChild(pill);
+    box.setAttribute("aria-valuetext", val !== undefined && val !== ""
+      ? String(curVal) + (unit || "") + " — " + zInfo.text
+      : "Not answered");
 
     var ends = el("div", "gauge-ends");
     ends.appendChild(el("span", "g-min", (minLabel || String(min))));
@@ -3297,14 +3323,15 @@
     box.appendChild(ends);
 
     function place(nv, commit) {
-      nv = Math.max(min, Math.min(max, Math.round(nv / step) * step));
+      nv = snapValue(nv);
       curVal = nv;
-      needleGroup.style.transform = "rotate(" + (valueToAngle(nv) - 90) + "deg)";
+      needleGroup.setAttribute("transform", "rotate(" + needleRotation(nv) + " " + cx + " " + cy + ")");
       valEl.textContent = String(nv);
       box.setAttribute("aria-valuenow", String(nv));
       var zi = getZone(nv);
       pill.className = "gauge-zone-pill " + zi.cls;
       pill.textContent = zi.text;
+      box.setAttribute("aria-valuetext", String(nv) + (unit || "") + " — " + zi.text);
       if (commit) onPick(nv);
     }
 
@@ -3312,18 +3339,17 @@
 
     function fromPointerEvent(ev) {
       var rect = svg.getBoundingClientRect();
-      var svgX = ev.clientX - rect.left;
-      var svgY = ev.clientY - rect.top;
-      var scaleX = 260 / (rect.width || 260);
-      var scaleY = 155 / (rect.height || 155);
-      var px = svgX * scaleX;
-      var py = svgY * scaleY;
+      if (!rect.width || !rect.height) return curVal;
+      var px = (ev.clientX - rect.left) * 260 / rect.width;
+      var py = (ev.clientY - rect.top) * 155 / rect.height;
       var dx = px - cx;
+      // Positive dy means the pointer is above the pivot. Clamp touches below the
+      // dial baseline to the nearest endpoint; along the visible upper arc this
+      // gives a continuous left-to-right 0..1 value instead of snapping to 0/100.
       var dy = cy - py;
-      var rad = Math.atan2(dy, dx);
-      var deg = rad * 180 / Math.PI;
-      if (deg < 0) { deg = dx >= 0 ? 0 : 180; }
-      var frac = 1 - (deg / 180);
+      var theta = Math.atan2(dy, dx);
+      theta = Math.max(0, Math.min(Math.PI, theta));
+      var frac = 1 - theta / Math.PI;
       return min + frac * (max - min);
     }
 
@@ -3344,8 +3370,10 @@
 
     box.addEventListener("keydown", function (ev) {
       var v0 = curVal === undefined ? Math.round((min + max) / 2) : curVal;
-      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); place(Math.max(min, v0 - step), true); }
-      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); place(Math.min(max, v0 + step), true); }
+      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); place(v0 - step, true); }
+      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); place(v0 + step, true); }
+      if (ev.key === "Home") { ev.preventDefault(); place(min, true); }
+      if (ev.key === "End") { ev.preventDefault(); place(max, true); }
     });
 
     return box;
@@ -5028,7 +5056,7 @@
     clearTimeout(saveTimer);
     saveTimer = setTimeout(function () {
       var body = { session_id: SESSION.session_id, answers: answers,
-                   elapsed_seconds: (Date.now() - t0) / 1000 };
+                   current_step: cur, elapsed_seconds: (Date.now() - t0) / 1000 };
       if (extra) for (var k in extra) body[k] = extra[k];
       fetch("/api/save", {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body)
@@ -5124,7 +5152,8 @@
         : Promise.resolve({ exists: false });
 
       resume.then(function (prog) {
-        if (prog.exists && prog.status === "complete") {
+        if (prog.exists && (prog.status === "complete" || prog.status === "screened_out")) {
+          if (!IS_TEST) { showAlreadyCompleted(); return; }
           ["session_id", "answers", "cur"].forEach(function (k) { store(k); });
           location.reload(); return;
         }
@@ -5132,10 +5161,12 @@
           SESSION = { session_id: savedSid, respondent_code: prog.respondent_code,
                       task_order: prog.task_order, alt_positions: prog.alt_positions };
           answers = prog.answers || {};
+          store("cur", Number(prog.current_step || 0));
+          store("answers", answers);
           if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
           // Nothing answered yet: show the welcome page again so the choice of how to answer
-          // (tap or voice) is offered before Q1.  The saved session itself is kept.
-          afterSession(Object.keys(answers).length === 0);
+          // (tap or voice) is offered before Q1. The saved session itself is kept.
+          afterSession(Object.keys(answers).length === 0 && Number(prog.current_step || 0) === 0);
         } else if (STUDY.paused) {
           showPaused();                      // nobody new starts while the study is paused
         } else {
@@ -5174,6 +5205,7 @@
                              // so test data stays clean and no answer can carry over
                              previous_session: IS_TEST ? PREV_SESSION : "" })
     }).then(function (r) { return r.json(); }).then(function (s) {
+      if (s && s.completed) { showAlreadyCompleted(); return; }
       if (s && s.paused) { showPaused(); return; }
       if (!s || !s.session_id) {
         $("#app").innerHTML = '<div class="card"><h1>Unable to start</h1><p>' +
@@ -5181,10 +5213,34 @@
         return;
       }
       SESSION = s;
-      answers = {};
       store("session_id", s.session_id);
+      if (s.resumed) {
+        fetch("/api/progress?sid=" + encodeURIComponent(s.session_id)).then(function (r) { return r.json(); }).then(function (prog) {
+          if (prog.status === "complete" || prog.status === "screened_out") { showAlreadyCompleted(); return; }
+          answers = prog.answers || {};
+          store("answers", answers);
+          store("cur", Number(prog.current_step || 0));
+          if (prog.elapsed_seconds) t0 = Date.now() - prog.elapsed_seconds * 1000;
+          afterSession(Object.keys(answers).length === 0 && Number(prog.current_step || 0) === 0);
+        }).catch(function () {
+          $("#app").innerHTML = '<div class="card"><h1>Unable to resume</h1><p>Please check your connection and reload this page to continue.</p></div>';
+        });
+        return;
+      }
+      answers = {};
+      store("answers", answers); store("cur", 0);
       afterSession(true);
     });
+  }
+
+  function showAlreadyCompleted() {
+    document.body.classList.remove("answering");
+    $("#progress-wrap").style.display = "none";
+    $("#hud").hidden = true;
+    $("#app").innerHTML = '<div class="card completed-link" role="status" aria-live="polite">' +
+      '<div class="done-icon">&#10003;</div><h1>Already completed — thank you</h1>' +
+      '<p>This single-use survey link has already been completed. Thank you for your time and contribution.</p>' +
+      '<p>You do not need to submit another response.</p></div>';
   }
 
   // A paused study keeps its door closed to new respondents, but someone already answering

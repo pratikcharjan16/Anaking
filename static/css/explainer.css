@@ -36,9 +36,10 @@
 @keyframes aDraw{to{stroke-dashoffset:0}}
 @keyframes aDonut{to{stroke-dashoffset:290}}
 
-.ex-close{margin-left:auto;background:rgba(255,255,255,.16);border:none;color:#fff;width:30px;
-  height:30px;border-radius:7px;font-size:17px;line-height:1;cursor:pointer}
+.ex-close{margin-left:auto;background:rgba(255,255,255,.16);border:none;color:#fff;width:40px;height:40px;
+  min-width:40px;min-height:40px;flex:0 0 auto;display:grid;place-items:center;border-radius:9px;font-size:21px;line-height:1;cursor:pointer}
 .ex-close:hover{background:rgba(255,255,255,.3)}
+@media(max-width:640px){.overlay-head .ex-close{width:44px;height:44px;min-width:44px;min-height:44px;font-size:23px}}
 .ex-fallback{padding:16px 22px 20px;font-size:14px;line-height:1.6;color:var(--ink)}
 .ex-fallback ul{margin:10px 0;padding-left:18px;display:flex;flex-direction:column;gap:6px}
 .ex-fallback-note{color:var(--muted);font-size:12.5px;margin:10px 0 0}

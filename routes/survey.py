@@ -17,9 +17,9 @@ from __future__ import annotations
 
 import json
 import base64
+import hashlib
 import os
 import re
-
 from flask import (Blueprint, abort, current_app, jsonify, render_template, request,
                    send_from_directory)
 
@@ -47,22 +47,47 @@ def _survey_page(slug: str):
     if not study:
         abort(404, "unknown study")
     is_test = request.path.rstrip("/").endswith("/test")
-    # The respondent link only opens once the study is live; test mode always renders so
-    # the team can preview a draft (the Studio's "Preview" button opens /survey/<slug>/test).
     paused = study.status == "paused"
-    if not study.effective_live() and not is_test and not paused:
-        return render_template("survey/not_live.html", slug=slug, study_title=study.title), 403
-    # A paused study still serves the page: nobody can *start* (the client shows a paused
-    # notice and /api/start refuses), but anyone already answering can resume and finish.
+    link_token = str(request.args.get("rid") or "")[:200] if not is_test else ""
+    linked_resp = None
+    cookie_name = "sk_survey_" + hashlib.sha256(slug.encode("utf-8")).hexdigest()[:18]
+    respondent_token = link_token
+
+    if not is_test:
+        if link_token:
+            if not Study.is_single_use_link(slug, link_token):
+                return render_template("survey/invalid_link.html", study_title=study.title), 404
+            linked_resp = Respondent.by_invite_token(study.id, link_token)
+            if linked_resp and linked_resp.status in ("complete", "screened_out"):
+                return render_template("survey/completed.html", study_title=study.title)
+        elif study.effective_live():
+            # Keep the canonical public URL and page behavior intact while assigning each
+            # browser a private token, which makes its response resumable on that browser.
+            respondent_token = request.cookies.get(cookie_name, "")
+            if not Study.is_single_use_link(slug, respondent_token):
+                respondent_token = Study.create_public_survey_link(slug)
+            linked_resp = Respondent.by_invite_token(study.id, respondent_token)
+            if linked_resp and linked_resp.status in ("complete", "screened_out"):
+                return render_template("survey/completed.html", study_title=study.title)
+
+        if not study.effective_live() and not linked_resp and not paused:
+            return render_template("survey/not_live.html", slug=slug, study_title=study.title), 403
+        # Existing token-bound sessions can finish after pause/closure; /api/start enforces
+        # that no new session can start unless the study is live.
+
     design_version = ""
     if is_test:
-        # Stamped into the team strip so it is obvious that the open test link is tied to the
-        # design as it stands right now (and visibly changes whenever the design is saved).
         design_version = fingerprint(survey_config(study, True))[:10]
-    return render_template("survey/survey.html", slug=slug, study_title=study.title,
-                           is_test=is_test, is_draft=not study.effective_live(),
-                           is_paused=paused and not is_test,
-                           design_version=design_version)
+    response = current_app.make_response(render_template(
+        "survey/survey.html", slug=slug, study_title=study.title,
+        is_test=is_test, is_draft=not study.effective_live(),
+        is_paused=paused and not is_test, respondent_token=respondent_token,
+        design_version=design_version))
+    if respondent_token and not is_test and not link_token:
+        response.set_cookie(cookie_name, respondent_token, max_age=60 * 60 * 24 * 365,
+                            httponly=True, secure=request.is_secure, samesite="Lax",
+                            path="/survey/" + slug)
+    return response
 
 
 @bp.get("/survey/")
@@ -119,6 +144,9 @@ def spec(slug="beacon"):
         return jsonify({"error": "unknown study"}), 404
     preview = request.args.get('preview') == '1'
     resp = Respondent.by_session(request.args.get('sid'))
+    link_token = str(request.args.get('rid') or '')[:200]
+    if not resp and link_token and Study.is_single_use_link(slug, link_token):
+        resp = Respondent.by_invite_token(study.id, link_token)
     if resp and resp.study_id != study.id:
         abort(403, 'Session belongs to another study.')
     if current_app.config['STAFF_AUTH'] and not study.effective_live() and not resp and not preview:
@@ -186,7 +214,17 @@ def start():
     study = Study.get(slug)
     if not study:
         return jsonify({"error": "unknown study"}), 404
-    if not study.effective_live() and not body.get("is_test"):
+    is_test = bool(body.get("is_test"))
+    sent = body.get("embedded") if isinstance(body.get("embedded"), dict) else {}
+    invite_token = str(sent.get("rid") or "")[:200] if not is_test else ""
+    linked_resp = None
+    if invite_token:
+        if not Study.is_single_use_link(slug, invite_token):
+            return jsonify({"error": "This personal survey link is invalid.", "invalid_link": True}), 404
+        linked_resp = Respondent.by_invite_token(study.id, invite_token)
+        if linked_resp and linked_resp.status in ("complete", "screened_out"):
+            return jsonify({"completed": True, "message": "You have already completed this survey. Thank you."})
+    if not study.effective_live() and not is_test and not linked_resp:
         if study.status == "paused":
             return jsonify({"error": "This study is paused - the research team has stopped new "
                                      "responses for now. Please try again later.",
@@ -195,22 +233,28 @@ def start():
     lang = str(body.get("language") or "")[:12]
     if lang and not valid_language(lang):
         lang = ""
-    cfg = survey_config(study, bool(body.get('is_test')), lang)
-    if body.get('survey_version') and body['survey_version'] != fingerprint(cfg):
-        return jsonify(error='The survey changed before you started. Reload to use the current version.'), 409
-    # A new test run replaces the previous one from this browser: test links start blank
-    # instead of inheriting old answers. Real respondent sessions are never touched.
-    previous = str(body.get('previous_session') or '')
-    if body.get('is_test') and previous:
+    cfg = survey_config(study, is_test, lang)
+    if body.get("survey_version") and body["survey_version"] != fingerprint(cfg):
+        return jsonify(error="The survey changed before you started. Reload to use the current version."), 409
+    # Test links are always fresh. A real invite/public token instead resumes its one server-side
+    # session until completion, including on another device or after the study was paused.
+    previous = str(body.get("previous_session") or "")
+    if is_test and previous:
         Respondent.discard_test_session(study, previous)
+    if linked_resp:
+        return jsonify({"session_id": linked_resp.session_id, "respondent_code": linked_resp.code,
+                        "is_test": False, "study": slug, "resumed": True,
+                        "task_order": json.loads(linked_resp.row["task_order"] or "[]"),
+                        "alt_positions": json.loads(linked_resp.row["alt_positions"] or "{}")})
+
     wanted = [e.get("name") for e in cfg.get("embedded", []) or [] if e.get("name")]
-    sent = body.get("embedded") if isinstance(body.get("embedded"), dict) else {}
     embedded = {k: str(v)[:200] for k, v in sent.items() if k in wanted}
-    invite_token = str(sent.get('rid') or '')[:200]
-    if invite_token and get_db().execute('SELECT 1 FROM invites WHERE study_slug=? AND token=? LIMIT 1', (slug, invite_token)).fetchone():
-        embedded['rid'] = invite_token
-    resp = Respondent.create(study, bool(body.get("is_test")),
-                             request.headers.get("User-Agent", ""), lang, embedded, snapshot=cfg)
+    if invite_token:
+        embedded["rid"] = invite_token
+    resp = Respondent.create(study, is_test, request.headers.get("User-Agent", ""), lang,
+                             embedded, snapshot=cfg, invite_token=invite_token)
+    if not is_test and resp.status in ("complete", "screened_out"):
+        return jsonify({"completed": True, "message": "You have already completed this survey. Thank you."})
     design = cfg.get("conjoint")
     task_map = load_task_map() if slug == "beacon" else None
     assignment = (assignment_for(resp.code, design, task_map) if design
@@ -249,6 +293,8 @@ def save():
     resp = Respondent.by_session(body.get("session_id"))
     if resp is None:
         return jsonify({"error": "unknown session"}), 400
+    if not resp.is_test and resp.status in ("complete", "screened_out"):
+        return jsonify({"error": "This response is already complete.", "completed": True}), 409
     require_consent(resp)
     return jsonify({"ok": True, "status": resp.persist(body)})
 
@@ -259,6 +305,8 @@ def submit():
     resp = Respondent.by_session(body.get("session_id"))
     if resp is None:
         return jsonify({"error": "unknown session"}), 400
+    if not resp.is_test and resp.status in ("complete", "screened_out"):
+        return jsonify({"error": "This response is already complete.", "completed": True}), 409
     require_consent(resp)
     resp.persist(body)
     seconds = float(body.get("elapsed_seconds") or 0)
