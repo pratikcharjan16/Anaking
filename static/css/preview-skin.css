@@ -675,9 +675,15 @@
   height: 155px;
   overflow: visible;
   filter: drop-shadow(0 4px 10px rgba(15, 43, 72, 0.08));}
-.survey-skin .gauge-needle{transform-origin: 130px 130px;
-  transition: transform 0.25s cubic-bezier(0.2, 1, 0.3, 1);}
-.survey-skin .gauge-needle-poly{fill: #0f2b48;}
+.survey-skin .gauge-needle-poly{fill: #0f2b48;
+  stroke: #0f2b48;
+  stroke-width: 1;
+  stroke-linejoin: round;
+  pointer-events: none;}
+.survey-skin .gauge-tip{transition: fill 0.2s ease;
+  pointer-events: none;}
+.survey-skin .gauge-hub,.survey-skin .gauge-hub-dot{pointer-events: none;}
+.survey-skin .gauge-zone,.survey-skin .gauge-track,.survey-skin .gauge-target,.survey-skin .gauge-target-halo{pointer-events: none;}
 .survey-skin .gauge-readout{display: flex;
   align-items: baseline;
   justify-content: center;

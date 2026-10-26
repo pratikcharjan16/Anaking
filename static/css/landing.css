@@ -2705,3 +2705,297 @@ body.landing [id]{
 .ln-gate-label{display:flex;align-items:baseline;gap:7px;flex-wrap:wrap}
 .ln-gate-label em{font-style:normal;font-weight:600;text-transform:none;letter-spacing:0;
   font-size:10.5px;color:var(--an-muted)}
+
+/* ---------------------------------------------------------------- Request a demo
+   A lead form, not a registration form: it posts to /api/demo/request and the
+   request lands in its own panel in the admin console. */
+.ln-demo-inline {
+  background: none; border: 0; padding: 0; cursor: pointer;
+  font: inherit; font-weight: 800; color: var(--ln-teal, #12789e);
+  text-decoration: underline; text-underline-offset: 3px;
+}
+.ln-demo-modal { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 18px; }
+.ln-demo-modal[hidden] { display: none; }
+.ln-demo-backdrop { position: absolute; inset: 0; background: rgba(9, 26, 40, .55); backdrop-filter: blur(3px); }
+.ln-demo-card {
+  position: relative; width: min(680px, 100%); max-height: calc(100vh - 36px); overflow: auto;
+  background: #fff; border-radius: 18px; padding: 26px 26px 22px;
+  box-shadow: 0 30px 80px rgba(9, 26, 40, .35); animation: lnDemoIn .22s ease-out;
+}
+@keyframes lnDemoIn { from { opacity: 0; transform: translateY(10px) scale(.99); } }
+.ln-demo-card h2 { margin: 4px 0 6px; font-size: 25px; letter-spacing: -.02em; color: #0f2b48; }
+.ln-demo-sub { margin: 0 0 16px; color: #4b6478; font-size: 14px; line-height: 1.55; }
+.ln-demo-x {
+  position: absolute; top: 12px; right: 14px; width: 34px; height: 34px; border-radius: 50%;
+  border: 1px solid #e2e8f0; background: #fff; font-size: 20px; line-height: 1; cursor: pointer; color: #64748b;
+}
+.ln-demo-x:hover { background: #f1f5f9; color: #0f2b48; }
+.ln-demo-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; }
+.ln-demo-card label { display: flex; flex-direction: column; gap: 5px; font-size: 12px; font-weight: 700; color: #334155; }
+.ln-demo-card input, .ln-demo-card select, .ln-demo-card textarea {
+  width: 100%; padding: 9px 11px; border: 1px solid #cbd5e1; border-radius: 9px;
+  font: inherit; font-weight: 500; font-size: 13.5px; color: #0f2b48; background: #fff;
+}
+.ln-demo-card textarea { resize: vertical; min-height: 74px; }
+.ln-demo-card input:focus, .ln-demo-card select:focus, .ln-demo-card textarea:focus {
+  outline: 2px solid rgba(18, 120, 158, .35); border-color: #12789e;
+}
+.ln-demo-trap { position: absolute; left: -9999px; width: 1px; height: 1px; overflow: hidden; }
+.ln-demo-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+.ln-demo-status { min-height: 18px; margin: 10px 0 0; font-size: 13px; font-weight: 600; color: #b91c1c; }
+.ln-demo-status.ok { color: #047857; }
+.ln-demo-fine { display: block; margin-top: 8px; color: #7b8fa1; font-size: 11.5px; line-height: 1.5; }
+.ln-demo-card .ln-btn { cursor: pointer; }
+@media (max-width: 640px) {
+  .ln-demo-grid { grid-template-columns: 1fr; }
+  .ln-demo-card { padding: 20px 16px 18px; }
+}
+
+/* ---------- landing footer: the dark five-column directory ----------
+   Included by landing.html only (templates/_footer_landing.html). Sits on the
+   cream page as a deliberate dark slab: near-black ground, mint column headings,
+   one hairline, and a bottom rail with the app entrances, quick destinations,
+   the team contact and the copyright. */
+.lnf {
+  position: relative;
+  z-index: 1;
+  margin-top: clamp(44px, 6vw, 84px);
+  color: rgba(255, 255, 255, .68);
+  background:
+    radial-gradient(58% 120% at 10% 0%, rgba(29, 138, 111, .18), transparent 62%),
+    radial-gradient(46% 110% at 94% 0%, rgba(201, 162, 39, .10), transparent 60%),
+    #090e0c;
+  border-top: 1px solid rgba(255, 255, 255, .09);
+  font-size: 13px;
+}
+.lnf-wrap {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: clamp(40px, 5.6vw, 66px) clamp(18px, 4vw, 44px) 26px;
+}
+.lnf-cols {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 30px 26px;
+}
+.lnf-col { min-width: 0; }
+.lnf-h {
+  margin: 0 0 14px;
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: #4fd6a9;
+}
+.lnf-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.lnf-list li { line-height: 1.35; }
+
+/* Links and the two dialog-opening buttons share one look. */
+.lnf a,
+.lnf .lnf-link {
+  color: rgba(255, 255, 255, .66);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: color .16s ease, border-color .16s ease;
+}
+.lnf .lnf-link { display: inline; }
+.lnf a:hover,
+.lnf .lnf-link:hover {
+  color: #ffffff;
+  border-bottom-color: rgba(79, 214, 169, .55);
+}
+.lnf a:focus-visible,
+.lnf .lnf-link:focus-visible {
+  outline: 2px solid #4fd6a9;
+  outline-offset: 3px;
+  border-radius: 4px;
+}
+/* A button must read exactly like the link above it. */
+.lnf button.lnf-link {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-bottom: 1px solid transparent;
+  background: none;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, .66);
+  text-align: left;
+  cursor: pointer;
+  appearance: none;
+}
+.lnf button.lnf-link:hover { color: #ffffff; border-bottom-color: rgba(79, 214, 169, .55); }
+
+.lnf-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 18px 24px;
+  margin-top: clamp(30px, 4vw, 44px);
+  padding-top: 24px;
+  border-top: 1px solid rgba(255, 255, 255, .11);
+}
+.lnf-badges { display: flex; flex-wrap: wrap; gap: 10px; }
+.lnf .lnf-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 15px 8px 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .04);
+  transition: border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.lnf .lnf-badge:hover {
+  border-color: rgba(79, 214, 169, .55);
+  background: rgba(79, 214, 169, .08);
+  transform: translateY(-1px);
+}
+.lnf-badge svg { width: 21px; height: 21px; color: #4fd6a9; flex: none; }
+.lnf-badge span { display: flex; flex-direction: column; gap: 1px; }
+.lnf-badge small {
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .09em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, .58);
+}
+.lnf-badge b { font-size: 12.5px; font-weight: 750; color: #f4f8f5; }
+.lnf .lnf-badge:hover b { color: #ffffff; }
+
+.lnf-social {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.lnf .lnf-soc {
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .04);
+  color: rgba(255, 255, 255, .72);
+  cursor: pointer;
+  appearance: none;
+  transition: color .18s ease, border-color .18s ease, background .18s ease, transform .18s ease;
+}
+.lnf-soc svg { width: 17px; height: 17px; }
+.lnf .lnf-soc:hover {
+  color: #4fd6a9;
+  border-color: rgba(79, 214, 169, .55);
+  background: rgba(79, 214, 169, .09);
+  transform: translateY(-1px);
+}
+.lnf .lnf-soc:focus-visible { outline: 2px solid #4fd6a9; outline-offset: 3px; }
+
+.lnf-legal {
+  margin-left: auto;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  text-align: right;
+}
+.lnf .lnf-contact {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 13px;
+  border-radius: 999px;
+  border: 1px solid rgba(79, 214, 169, .38);
+  background: rgba(79, 214, 169, .08);
+  color: #9df0d3;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  appearance: none;
+  transition: background .18s ease, color .18s ease, border-color .18s ease;
+}
+.lnf-contact svg { width: 14px; height: 14px; }
+.lnf .lnf-contact:hover {
+  background: rgba(79, 214, 169, .18);
+  border-color: rgba(79, 214, 169, .62);
+  color: #ffffff;
+}
+.lnf .lnf-contact:focus-visible { outline: 2px solid #4fd6a9; outline-offset: 3px; }
+.lnf-copy { margin: 0; font-size: 11.5px; color: rgba(255, 255, 255, .58); }
+.lnf-fine {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  font-size: 11px;
+  color: rgba(255, 255, 255, .52);
+}
+.lnf-fine a { font-size: 11px; color: rgba(255, 255, 255, .64); }
+.lnf-fine a:hover { color: #ffffff; }
+.lnf .lnf-mark {
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 11px;
+  border: 1px solid rgba(255, 255, 255, .16);
+  background: rgba(255, 255, 255, .04);
+  color: rgba(255, 255, 255, .72);
+}
+.lnf-mark svg { width: 20px; height: 20px; }
+.lnf .lnf-mark:hover { color: #4fd6a9; border-color: rgba(79, 214, 169, .5); }
+
+/* Search-alias index: the same spellings the shared footer carries, kept quiet. */
+.lnf-alias {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 5px 9px;
+  margin: 22px 0 0;
+  padding-top: 16px;
+  border-top: 1px solid rgba(255, 255, 255, .07);
+  font-size: 11px;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, .5);
+}
+.lnf-alias strong { color: rgba(255, 255, 255, .66); font-weight: 700; letter-spacing: .02em; }
+.lnf-alias a { font-size: 11px; color: rgba(255, 255, 255, .56); }
+.lnf-alias a:hover { color: rgba(255, 255, 255, .82); }
+
+@media (max-width: 1180px) {
+  .lnf-cols { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 28px 24px; }
+}
+@media (max-width: 960px) {
+  .lnf-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 26px 22px; }
+  .lnf-legal { margin-left: 0; align-items: flex-start; text-align: left; }
+}
+@media (max-width: 640px) {
+  .lnf-cols { grid-template-columns: 1fr; gap: 22px; }
+  .lnf-h { margin-bottom: 10px; }
+  .lnf-list { gap: 7px; }
+  .lnf-bottom { gap: 16px; }
+  .lnf-badges { width: 100%; }
+  .lnf-badge { flex: 1 1 150px; }
+  .lnf-mark { display: none; }
+  .lnf-legal { gap: 8px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lnf .lnf-badge:hover, .lnf .lnf-soc:hover { transform: none; }
+}

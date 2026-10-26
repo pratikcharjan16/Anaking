@@ -43,6 +43,27 @@ preview database. Use `CHROMIUM_PATH` for an installed browser. The test creates
 and deletes its own study. Do not run destructive test suites against production.
 The sandbox used @sparticuz/chromium plus its packaged shared libraries.
 
+## Added since the 3.4 checkpoint
+
+- **Exports hardened** — the PPT path now imports `python-pptx` lazily, reports its health
+  through `GET /api/workspace/export_status`, and downloads through a `Blob` + `<a download>`
+  helper so a failed export surfaces the server's message instead of a blank tab. The
+  workbook can be sent to the researcher's own **Google Sheets** account (OAuth web client,
+  `GOOGLE_SHEETS_CLIENT_ID`) or downloaded sheet-by-sheet as CSV, which needs no account.
+- **Request a demo** — the landing page has three entry points into one dialog that posts to
+  `/api/demo/request`; leads are stored in `demo_requests` and shown in their own block on
+  the admin account desk, separate from registration approvals, with statuses
+  `new → contacted → scheduled → closed` and an optional SMTP alert.
+- **Mail settings in the console** — `GET/POST /api/admin/console/smtp` and
+  `/smtp/test` let an admin configure, verify and test SMTP from the browser; the password is
+  write-only. See `docs/smtp-setup.md`.
+- **English-only interface chrome** — `core/i18n.CHROME_EN` is no longer extracted for
+  translation, so child surveys translate their questionnaire but keep `Begin survey` /
+  `Next` / `Listen` in English in every language.
+- **Translation provider chain** — Google Cloud → DeepL → LibreTranslate → keyless Google →
+  MyMemory, with per-provider errors, one retry on transient failures, a three-strike abort
+  and a CSV worksheet fallback; `GET /api/studio/translate/status` probes the live service.
+
 ## Explicitly not released / still pending
 
 - Model-based conjoint utilities, forecasts, weighting and significance testing:

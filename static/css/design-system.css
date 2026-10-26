@@ -916,7 +916,7 @@ img, video, canvas { max-width: 100%; }
 }
 
 @media print {
-  .an-appbar, .appnav, .skip-link, .an-foot, .teambar,
+  .an-appbar, .appnav, .skip-link, .an-foot, .lnf, .teambar,
   .builder-view-controls, .test-console, .st-ai-fab { display: none !important; }
   body { background: #fff; }
   a[href]::after { content: ""; }

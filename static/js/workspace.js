@@ -309,7 +309,9 @@
           '<span class="live-pill"><span class="live-dot"></span> Live survey data linked</span>' +
           (dataRole() ? '<button type="button" class="btn primary" id="btn-dl-full-ppt">Download full report (PPT) ↓</button>' +
                         '<button type="button" class="btn" id="btn-dl-custom-ppt">Customize PPT download ⚙ ↓</button>' +
-                        '<a id="report-download" class="btn ghost" href="'+endpoint('export','&scope=real')+'">Download JSON ↓</a>' : '') +
+                        '<button type="button" class="btn" id="btn-export-sheets">Export to Google Sheets / CSV ↑</button>' +
+                        '<a id="report-download" class="btn ghost" href="'+endpoint('export','&scope=real')+'">Download JSON ↓</a>'
+                      : '<span class="st-meta" title="Ask the project owner for editor or analyst access">Exports need editor or analyst access &mdash; your role is read-only.</span>') +
         '</div>' +
       '</div>' +
       '<form id="analysis-form" class="toolbar">' +
@@ -446,6 +448,137 @@
       if (tNameWrap) tNameWrap.style.display = tSelEl.value ? 'none' : '';
     });
   }
+  // ---------------------------------------------------------------- exports
+  // A plain `window.location = url` download hides every failure behind a blank
+  // tab.  Fetching the file lets us show the server's reason ("python-pptx is not
+  // importable…") and works the same for PPTX, CSV and Google-Sheets payloads.
+  async function downloadExport(url, btn, fallbackName) {
+    const label = btn ? btn.textContent : '';
+    if (btn) { btn.disabled = true; btn.textContent = 'Building file…'; }
+    try {
+      const r = await fetch(url, { credentials: 'same-origin' });
+      if (!r.ok) {
+        let msg = 'HTTP ' + r.status;
+        try { const j = await r.json(); msg = j.detail || j.error || msg; } catch (err) { /* html error page */ }
+        throw new Error(msg);
+      }
+      const blob = await r.blob();
+      if (!blob.size) throw new Error('the server returned an empty file');
+      const cd = r.headers.get('Content-Disposition') || '';
+      const m = /filename="?([^";]+)"?/.exec(cd);
+      const name = (m && m[1]) || fallbackName || 'export';
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      toast('Downloaded ' + name);
+    } catch (e) {
+      toast('Export failed: ' + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
+  }
+
+  let sheetsPayload = null, sheetsToken = null;
+  function loadScriptOnce(src) {
+    return new Promise((resolve, reject) => {
+      if ([...document.scripts].some(x => x.src === src)) return resolve();
+      const s = document.createElement('script');
+      s.src = src; s.async = true; s.defer = true;
+      s.onload = () => resolve();
+      s.onerror = () => reject(new Error('could not load Google Identity Services'));
+      document.head.appendChild(s);
+    });
+  }
+  async function googleAccessToken(cfg) {
+    if (sheetsToken && Date.now() < sheetsToken.expires - 60000) return sheetsToken.token;
+    await loadScriptOnce('https://accounts.google.com/gsi/client');
+    if (!window.google || !google.accounts || !google.accounts.oauth2) {
+      throw new Error('Google sign-in script did not load (check the browser network/firewall)');
+    }
+    return await new Promise((resolve, reject) => {
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: cfg.client_id,
+        scope: cfg.scope,
+        callback: (resp) => {
+          if (resp.error || !resp.access_token) return reject(new Error(resp.error || 'no access token'));
+          sheetsToken = { token: resp.access_token,
+                          expires: Date.now() + (Number(resp.expires_in) || 3600) * 1000 };
+          resolve(resp.access_token);
+        },
+      });
+      client.requestAccessToken();
+    });
+  }
+  async function openSheetsDialog() {
+    open('sheets-dialog');
+    const body = $('#sheets-body');
+    body.innerHTML = '<p>Loading the workbook…</p>';
+    try {
+      const r = await fetch(endpoint('export_sheets', currentAnalysisParams), { credentials: 'same-origin' });
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.detail || d.error || 'HTTP ' + r.status);
+      sheetsPayload = d;
+      const rows = d.sheets.map(x => '<li><b>' + esc(x.name) + '</b> <span class="st-meta">'
+        + x.rows.length + ' rows · ' + x.columns.length + ' columns</span></li>').join('');
+      body.innerHTML =
+        '<p><b>' + esc(d.title) + '</b> · scope ' + esc(d.scope) +
+        (d.truncated ? ' · first ' + d.limit + ' rows per sheet' : '') + '</p>' +
+        '<ul class="sheets-list">' + rows + '</ul>' +
+        (d.google.configured
+          ? '<p>Create the workbook in your own Google Account, then open it in Google Sheets.</p>' +
+            '<button type="button" class="btn primary" id="sheets-create">Create in my Google Sheets ↑</button>'
+          : '<div class="notice">' + esc(d.google.hint) + '</div>') +
+        '<p class="st-meta">No Google account? Download the Responses sheet as CSV and import it: ' +
+        'Google Sheets → File → Import → Upload.</p>' +
+        '<div class="toolbar" style="gap:8px">' +
+        '<button type="button" class="btn" id="sheets-csv" data-sheet="Responses">Download Responses CSV ↓</button>' +
+        '<button type="button" class="btn ghost" id="sheets-csv-summary" data-sheet="Field summary">Download summary CSV ↓</button>' +
+        '</div>';
+    } catch (e) {
+      body.innerHTML = '<div class="notice">Could not prepare the export: ' + esc(e.message) + '</div>';
+    }
+  }
+  async function createGoogleSheet(btn) {
+    if (!sheetsPayload) return;
+    const label = btn.textContent;
+    btn.disabled = true; btn.textContent = 'Creating the sheet…';
+    try {
+      const token = await googleAccessToken(sheetsPayload.google);
+      const sheets = sheetsPayload.sheets;
+      const created = await fetch('https://sheets.googleapis.com/v4/spreadsheets', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ properties: { title: sheetsPayload.title },
+                               sheets: sheets.map(x => ({ properties: { title: x.name } })) }),
+      });
+      const ss = await created.json();
+      if (!created.ok) throw new Error((ss.error && ss.error.message) || 'HTTP ' + created.status);
+      const data = sheets.map(x => ({
+        range: "'" + x.name.replace(/'/g, "''") + "'!A1",
+        values: [x.columns, ...x.rows],
+      }));
+      const filled = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + ss.spreadsheetId +
+                                 '/values:batchUpdate', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ valueInputOption: 'RAW', data }),
+      });
+      if (!filled.ok) {
+        const err = await filled.json().catch(() => ({}));
+        throw new Error((err.error && err.error.message) || 'could not fill the sheet');
+      }
+      window.open(ss.spreadsheetUrl, '_blank', 'noopener');
+      toast('Google Sheet created — opening it now.');
+    } catch (e) {
+      toast('Google Sheets export failed: ' + e.message);
+    } finally {
+      btn.disabled = false; btn.textContent = label;
+    }
+  }
+
   document.addEventListener('click',async e=>{
     const b=e.target.closest('button, a');if(!b)return;
     if(b.hasAttribute('data-close')){close(b);return;}
@@ -510,7 +643,14 @@
     if(b.dataset.revision){b.disabled=true;try{const r=await api(endpoint('revision','&revision='+enc(b.dataset.revision)));$('#revision-content').innerHTML=notice('Fields different from the current draft: '+(r.changed_fields.join(', ')||'none'))+'<details><summary>View saved configuration</summary><pre>'+esc(JSON.stringify(r.cfg,null,2))+'</pre></details>'+(owner()?'<button class="danger section-spaced" data-restore="'+r.revision+'">Restore this version as a draft</button>':'');open('revision-dialog');}catch(x){toast(x.message);}finally{b.disabled=false;}return;}
     if(b.dataset.restore){if(!confirm('Restore this saved draft? Your current draft is retained in history.'))return;b.disabled=true;try{await api('/api/workspace/restore',{slug:current.slug,revision:Number(b.dataset.restore)});close(b);toast('Draft restored. Published version unchanged.');await route();}catch(x){toast(x.message);b.disabled=false;}}
     if (b.id === 'btn-dl-full-ppt') {
-      window.location.href = endpoint('export_ppt', currentAnalysisParams);
+      downloadExport(endpoint('export_ppt', currentAnalysisParams), b, current.slug + '-report.pptx');
+      return;
+    }
+    if (b.id === 'btn-export-sheets') { openSheetsDialog(); return; }
+    if (b.id === 'sheets-create') { createGoogleSheet(b); return; }
+    if (b.id === 'sheets-csv' || b.id === 'sheets-csv-summary') {
+      downloadExport(endpoint('export_sheets.csv', currentAnalysisParams + '&sheet=' + enc(b.dataset.sheet)),
+                     b, b.dataset.sheet + '.csv');
       return;
     }
     if (b.id === 'btn-dl-custom-ppt') {
@@ -522,6 +662,21 @@
         }).join('') || '<p>No questions found in this study.</p>';
       }
       open('ppt-dialog');
+      const health = $('#ppt-health');
+      if (health) {
+        health.textContent = 'Checking the PowerPoint engine on this server…';
+        fetch(endpoint('export_status'), { credentials: 'same-origin' })
+          .then(r => r.json())
+          .then(d => {
+            const p = d.powerpoint || {};
+            health.textContent = p.available
+              ? 'PowerPoint engine ready (' + p.engine + '). ' + (d.counts.real || 0) + ' real · ' +
+                (d.counts.test || 0) + ' test responses.'
+              : 'PowerPoint export is unavailable on this server: ' + (p.import_error || 'python-pptx missing') +
+                ' — use the CSV/Google Sheets export instead.';
+          })
+          .catch(() => { health.textContent = ''; });
+      }
       return;
     }
     if (b.id === 'ppt-select-all') {
@@ -539,12 +694,14 @@
       if (!checked.length) { alert('Please select at least one question to include in the PowerPoint deck.'); return; }
       close(b);
       const qsParam = '&questions=' + enc(checked.join(','));
-      window.location.href = endpoint('export_ppt', currentAnalysisParams + qsParam);
+      downloadExport(endpoint('export_ppt', currentAnalysisParams + qsParam), null,
+                     current.slug + '-report.pptx');
       return;
     }
     if (b.classList.contains('btn-dl-single-ppt')) {
       const qid = b.dataset.qid;
-      window.location.href = endpoint('export_ppt', currentAnalysisParams + '&q=' + enc(qid));
+      downloadExport(endpoint('export_ppt', currentAnalysisParams + '&q=' + enc(qid)), null,
+                     current.slug + '-' + qid + '.pptx');
       return;
     }
     if (b.id === 'btn-switch-scope-all') {
@@ -584,7 +741,14 @@
         const resBox = $('#team-invite-result');
         if (d.share_url && resBox) {
           resBox.hidden = false;
-          resBox.innerHTML = '<strong>✓ Collaboration Invite Created!</strong><p style="margin:4px 0">Your teammate (<code>' + esc(payload.email) + '</code>) will see this request on their Workspace, or you can share this direct link (asks them to login/register if needed, then forms the team with 0 pts debited from them):</p>' +
+          const mailed = d.invite_mail === 'sent'
+            ? ' We e-mailed the invitation to them as well.'
+            : d.invite_mail === 'failed'
+              ? ' The e-mail could not be sent (check Mail &amp; invitations on the account desk) — copy the link below and send it to them.'
+              : d.invite_mail === 'queued'
+                ? ' SMTP is not configured yet, so nothing was e-mailed — copy the link below and send it to them, or set up mail on the account desk.'
+                : '';
+          resBox.innerHTML = '<strong>✓ Collaboration Invite Created!</strong><p style="margin:4px 0">Your teammate (<code>' + esc(payload.email) + '</code>) will see this request on their Workspace, or you can share this direct link (asks them to login/register if needed, then forms the team with 0 pts debited from them).' + mailed + '</p>' +
             '<div style="display:flex;gap:8px;align-items:center;margin-top:6px"><input readonly value="' + esc(d.share_url) + '" style="flex:1;padding:7px 10px;border:1px solid #cbd5e1;border-radius:7px;background:#fff"><button type="button" class="btn sm primary" data-copy-url="' + esc(d.share_url) + '">Copy Link</button></div>';
           toast('Team & collaboration invite ready! Link generated.');
         } else {

@@ -22,6 +22,7 @@
     <a class="ln-btn ln-btn-ghost sm" href="#surveykart-flow-showcase" title="SurveyKart 4-Engine Animated Architecture Flow">&#10022; Key Features Flow</a>
     <a class="ln-btn ln-btn-gold sm" href="#kart-demo" title="Interactive 100-Point SurveyKart Store Demo">&#128722; Kart Demo</a>
     <a class="ln-btn ln-btn-ghost sm" href="/sitemap" title="SurveyKart Advanced Platform Sitemap &amp; Page Directory">Sitemap</a>
+    <button class="ln-btn ln-btn-gold sm" type="button" data-demo-open title="Request a live SurveyKart platform demo">Request a demo</button>
     {% if config.STAFF_AUTH %}
     <a class="ln-btn ln-btn-ghost sm" href="/register" title="Register on SurveyKart &amp; Claim 100 Free Kart Points">Register (+100 pts)</a>
     <a class="ln-btn ln-btn-primary sm" href="/signin" title="Sign In to SurveyKart Studio &amp; Admin">Sign in</a>
@@ -108,6 +109,7 @@
         <a class="ln-btn ln-btn-primary lg" href="/studio/">Open SurveyKart Studio</a>
         <a class="ln-btn ln-btn-gold lg" href="#kart-demo">&#9654; Watch Kart Point Demo</a>
         {% endif %}
+        <button class="ln-btn ln-btn-ghost lg" type="button" data-demo-open>&#128222; Request a demo</button>
       </div>
       <p class="ln-hero2-note">100 default Kart points on registration &middot; 0 points debited on shared collaboration &amp; respondent links &middot; Protected Admin governance</p>
     </div>
@@ -1418,26 +1420,29 @@
         <div class="sk-ai-gauge-row">
           <div class="sk-ai-arc-wrap">
             <svg viewBox="0 0 180 112" class="sk-ai-arc-svg" aria-hidden="true">
-              {#- Outer Segmented Zone Scale Ring (Always Visible: 0-34 Green, 35-59 Amber, 60-100 Coral) -#}
-              <path d="M 14 92 A 76 76 0 0 1 68 19.3" class="sk-arc-zone ok"/>
-              <path d="M 71 18.4 A 76 76 0 0 1 113 19.6" class="sk-arc-zone warn"/>
-              <path d="M 116 20.6 A 76 76 0 0 1 166 92" class="sk-arc-zone bad"/>
+              {#- Outer Segmented Zone Scale Ring - 0-35 green, 35-60 amber, 60-100 coral.
+                  The boundaries sit exactly where the needle points for a score of 35 / 60,
+                  so the band under the needle always matches the tick it passed. -#}
+              <path d="M 14.0 90.0 A 76 76 0 0 1 53.7 25.2" class="sk-arc-zone ok"/>
+              <path d="M 57.3 23.4 A 76 76 0 0 1 111.6 19.1" class="sk-arc-zone warn"/>
+              <path d="M 115.4 20.4 A 76 76 0 0 1 166.0 90.0" class="sk-arc-zone bad"/>
 
               {#- Scale Tick Labels Around the Gauge -#}
               <text x="8" y="103" font-size="7.5" font-weight="800" fill="#8fb3a3" text-anchor="middle">0</text>
-              <text x="64" y="13" font-size="7.5" font-weight="800" fill="#6ee7b7" text-anchor="middle">35</text>
-              <text x="117" y="13" font-size="7.5" font-weight="800" fill="#fcd34d" text-anchor="middle">60</text>
+              <text x="51" y="15.4" font-size="7.5" font-weight="800" fill="#6ee7b7" text-anchor="middle">35</text>
+              <text x="116.6" y="10.2" font-size="7.5" font-weight="800" fill="#fcd34d" text-anchor="middle">60</text>
               <text x="171" y="103" font-size="7.5" font-weight="800" fill="#fca5a5" text-anchor="middle">100</text>
 
               {#- Main Inner Gauge Track & Active Progress Fill (R = 64, Center = 90,92, Length = 201.06) -#}
               <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-track"/>
               <path d="M 26 92 A 64 64 0 0 1 154 92" class="sk-arc-fill" id="sk-ai-arc-fill"/>
 
-              {#- Direct-Coordinate Precision Tapered Needle & Glowing Arc Beacon -#}
+              {#- Direct-Coordinate Precision Tapered Needle & Arc Beacon.  landing.js rewrites
+                  every point for the live score; this is the 89-out-of-100 first paint. -#}
               <g id="sk-ai-needle">
-                <circle id="sk-ai-needle-beacon" cx="142.4" cy="55.3" r="5" fill="#e06c5a" stroke="#ffffff" stroke-width="1.8"/>
-                <polygon id="sk-ai-needle-poly" points="82.2,96.9 88.1,89.0 137.5,58.7 91.9,95.0" fill="#faf6ee" opacity="0.95"/>
-                <line id="sk-ai-needle-line" x1="90" y1="92" x2="137.5" y2="58.7" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
+                <circle id="sk-ai-needle-beacon" cx="150.2" cy="70.3" r="5" fill="#e06c5a" stroke="#ffffff" stroke-width="1.8"/>
+                <polygon id="sk-ai-needle-poly" points="81.5,95.0 91.2,95.4 146.5,71.7 88.8,88.6" fill="#faf6ee" opacity="0.95"/>
+                <line id="sk-ai-needle-line" x1="90" y1="92" x2="146.5" y2="71.7" stroke="#ffffff" stroke-width="2.6" stroke-linecap="round"/>
                 <circle cx="90" cy="92" r="7.5" fill="#132a21" stroke="#d4af37" stroke-width="2.4"/>
                 <circle cx="90" cy="92" r="3" fill="#fde047"/>
               </g>
@@ -1527,6 +1532,10 @@
         </div>
       </div>
     </div>
+    <p class="ln-join-recover ln-reveal">
+      <button class="ln-demo-inline" type="button" data-demo-open>Request a SurveyKart platform demo &rarr;</button>
+      &middot; the team will walk your own study through Studio, fieldwork and the PPT/Sheets exports.
+    </p>
     <p class="ln-join-recover ln-reveal">Forgot which address you used? <a href="/recover" title="Account Lookup &amp; Password Recovery — SurveyKart">Look up your account</a> &middot;
       Platform administrators can sign in at <a href="/admin-login" title="SurveyKart Admin Login — Platform Owner Only">/admin-login</a>. <a href="/sitemap" title="SurveyKart Advanced Platform Sitemap &amp; SEO Directory">Platform Sitemap</a>.</p>
     <div id="ln-devbox" class="ln-devbox" hidden>
@@ -1583,7 +1592,44 @@
 }
 </script>
 
-{% include '_footer.html' %}
+{#- ---------------- Request a demo ---------------- -#}
+<div class="ln-demo-modal" id="ln-demo-modal" hidden>
+  <div class="ln-demo-backdrop" data-demo-close></div>
+  <div class="ln-demo-card" role="dialog" aria-modal="true" aria-labelledby="ln-demo-title">
+    <button class="ln-demo-x" type="button" data-demo-close aria-label="Close the demo request form">&times;</button>
+    <p class="an-eyebrow">SURVEYKART PLATFORM DEMO</p>
+    <h2 id="ln-demo-title">See your own study on SurveyKart</h2>
+    <p class="ln-demo-sub">Thirty minutes with the team: import a questionnaire, watch a live field run,
+      then export the deck and the data into Google Sheets. No commitment.</p>
+    <form id="ln-demo-form" novalidate>
+      <div class="ln-demo-grid">
+        <label>Your name<input name="name" required maxlength="80" autocomplete="name"></label>
+        <label>Work e-mail<input name="email" type="email" required maxlength="254" autocomplete="email"
+          placeholder="you@company.com"></label>
+        <label>Organisation<input name="organization" required maxlength="120" autocomplete="organization"></label>
+        <label>Your role<input name="role" maxlength="60" placeholder="Research lead, Insights manager&hellip;"></label>
+        <label>Team size<select name="team_size">
+          <option value="">Select&hellip;</option>
+          <option>Just me</option><option>2-10</option><option>11-50</option>
+          <option>51-200</option><option>200+</option>
+        </select></label>
+      </div>
+      <label>What would you like to see?<textarea name="message" rows="3" maxlength="2000"
+        placeholder="Panel fieldwork, quota control, Hindi translation, PPT decks&hellip;"></textarea></label>
+      {#- honeypot: invisible to people, irresistible to bots -#}
+      <div class="ln-demo-trap" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+      <p class="ln-demo-status" id="ln-demo-status" role="status" aria-live="polite"></p>
+      <div class="ln-demo-actions">
+        <button class="ln-btn ln-btn-primary" type="submit">Request my demo &rarr;</button>
+        <button class="ln-btn ln-btn-ghost" type="button" data-demo-close>Cancel</button>
+      </div>
+      <small class="ln-demo-fine">The request goes straight to the SurveyKart admin desk, separately from
+        account registrations. We reply within one business day.</small>
+    </form>
+  </div>
+</div>
+
+{% include '_footer_landing.html' %}
 <script src="{{ asset('js/landing.js') }}"></script>
 </body>
 </html>

@@ -72,6 +72,11 @@
     <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.events_today }}">0</span>
       <span class="ptl-kpi-l">Actions today</span>
       <em class="ptl-kpi-t up">tracked live</em></div>
+    <div class="ptl-kpi"><span class="ptl-kpi-n" data-count="{{ stats.demo_new }}">0</span>
+      <span class="ptl-kpi-l">Demo requests</span>
+      <em class="ptl-kpi-t {% if stats.demo_new %}warn{% else %}up{% endif %}">
+        {% if stats.demo_new %}<a href="/admin/console#adk-demos" style="color:inherit">new · open desk &rarr;</a>
+        {% else %}{{ stats.demo_total }} handled · sales leads{% endif %}</em></div>
   </section>
 
   {#- ---------------- charts ---------------- -#}

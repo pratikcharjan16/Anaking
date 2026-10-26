@@ -26,7 +26,7 @@ from flask import (Blueprint, abort, current_app, jsonify, render_template, requ
 from core.ai_detect import MAX_TEXT, ai_settings, score_text, MAIN_ITEM, field_key
 from core.conjoint import assignment_for
 from core.i18n import (LANG_BY_CODE, apply_language, default_language, extract_strings,
-                       valid_language)
+                       ui_strings, valid_language)
 from core.qc import qc_flags
 from core.seed import load_task_map
 from core.survey_spec import TERMINATE_TEXT
@@ -155,15 +155,57 @@ def spec(slug="beacon"):
     # snapshot they started with, which meant edits made in the Studio stayed invisible in
     # the test link until the browser's saved run was wiped.  Real respondents keep their
     # pinned version; test runs follow the live design.
+    requested = str(request.args.get('lang') or '').strip()[:20]
+    if requested and not valid_language(requested):
+        requested = ""
     test_view = resp.is_test if resp is not None else preview
-    if resp is not None and not test_view:
-        merged_src = response_cfg(resp, survey_config(study, False, request.args.get('lang')))
+    # A real response keeps the design it started with, but its *language tables* are read
+    # from the study as it stands now.  Pinning them too used to freeze the untranslated
+    # version into every live session: respondents who started before (or while) a
+    # translation was saved kept seeing the default language, and a mid-run language switch
+    # reloaded into English.  Refreshing only translations never changes a question, an
+    # option or the flow of a published study.
+    pinned = response_cfg(resp, None) if (resp is not None and not test_view) else None
+    session_lang = str((pinned or {}).get('_selected_language') or '')
+    # The language saved on the response follows the respondent across reloads; the language
+    # the session was pinned to is the fallback for responses created before that existed.
+    stored_lang = str(resp.language or "") if resp is not None else ""
+    fresh = survey_config(study, test_view, requested or stored_lang or session_lang or None)
+    if pinned:
+        merged_src = dict(pinned)
+        merged_src['translations'] = fresh.get('translations') or {}
+        merged_src['translation_excluded'] = fresh.get('translation_excluded') or {}
+        merged_src['_selected_language'] = (requested or session_lang
+                                            or fresh.get('_selected_language'))
     else:
-        merged_src = survey_config(study, test_view, request.args.get('lang'))
+        merged_src = fresh
     base = merged_src
-    home = study.parent_study() if study.is_child() else study
-    lang = merged_src.get('_selected_language') or (study.cfg.get('language') if study.is_child() else request.args.get('lang')) or default_language(base)
+    home = (study.parent_study() if study.is_child() else study) or study
+    languages = _family_languages(home, base)
+    family = {l['code'] for l in languages}
+    # An explicit ?lang= always outranks the language the session was started in: that is
+    # how the welcome picker and the in-survey switcher move a live session to another
+    # language.  Otherwise the language saved on the response wins, so a respondent who
+    # switched to Spanish mid-interview and reloads later comes back to Spanish.
+    # A language that is no longer part of the study falls back to the default.
+    lang = ((requested if requested in family else "")
+            or (stored_lang if stored_lang in family else "")
+            or (session_lang if session_lang in family else "")
+            or merged_src.get('_selected_language')
+            or (study.cfg.get('language') if study.is_child() else "")
+            or default_language(base))
+    if lang not in family:
+        lang = default_language(base)
+    if resp is not None and not test_view and resp.status not in ("complete", "screened_out"):
+        try:
+            resp.set_language(lang)      # the respondent's own language follows them
+        except Exception:                # never block a spec request on a bookkeeping write
+            current_app.logger.debug("could not record respondent language", exc_info=True)
     cfg = apply_language(merged_src, lang)
+    # apply_language() leaves render_language unset for the authoring language, so resolve it
+    # once here: the welcome copy, the <html lang> and the "show the original wording" chip
+    # all read it, and a child viewed in the parent language must not claim a translation.
+    render_language = cfg.get("render_language") or lang
     conj = cfg.get("conjoint")
     if conj and isinstance(conj.get("tasks"), list):
         conj = dict(conj, tasks={str(i + 1): t for i, t in enumerate(conj["tasks"])})
@@ -193,12 +235,14 @@ def spec(slug="beacon"):
         "ai_check": cfg.get("qc", {}).get("ai", {}),
         # globalisation + flow objects
         "default_language": default_language(base),
-        "render_language": cfg.get("render_language") or default_language(study.cfg),
+        "render_language": render_language,
         "render_dir": cfg.get("render_dir", "ltr"),
-        "languages": _family_languages(home, base),
+        "languages": languages,
+        # the wording of the interface itself (Begin, Next, Listen ...) in this language
+        "ui": ui_strings(cfg),
         # the original wording of every respondent string, so respondents can flip any
         # question back to the default language whenever they prefer it
-        "default_text": ({} if cfg.get("render_language") == default_language(base)
+        "default_text": ({} if render_language == default_language(base)
                          else {x["key"]: x["text"] for x in extract_strings(base)}),
         "embedded": [e.get("name") for e in cfg.get("embedded", []) or [] if e.get("name")],
         "randomize_pages": bool(cfg.get("randomize_pages")),

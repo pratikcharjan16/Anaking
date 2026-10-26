@@ -572,24 +572,40 @@
         });
         return renderSvgDonut(zones, q.base);
       }
-      // Default: Dial
+      // Default: Dial.  Same geometry rules as the respondent gauge: direct coordinates,
+      // 180deg = minimum at the left shoulder, 360deg = maximum at the right.  The old
+      // version rotated the needle with a CSS transform-origin - which browsers resolve
+      // against the element box, not the SVG user space, so the needle drifted off the
+      // pivot (and the rotation mirrored the scale).
       var m = q.mean != null ? q.mean : (q.min || 0);
       var gMin = q.min != null ? q.min : 0;
       var gMax = q.max != null ? q.max : 100;
       var frac = gMax === gMin ? 0.5 : Math.max(0, Math.min(1, (m - gMin) / (gMax - gMin)));
-      var rot = (180 + frac * 180) - 90;
       var zList = q.zones || [];
+      var gcx = 120, gcy = 120, gr = 95;
+      function gPolar(radius, deg) {
+        var a = deg * Math.PI / 180;
+        return [gcx + radius * Math.cos(a), gcy + radius * Math.sin(a)];
+      }
+      function gArc(fromFrac, toFrac) {
+        var p1 = gPolar(gr, 180 + fromFrac * 180), p2 = gPolar(gr, 180 + toFrac * 180);
+        return 'M ' + p1[0].toFixed(1) + ' ' + p1[1].toFixed(1) + ' A ' + gr + ' ' + gr + ' 0 0 1 ' +
+               p2[0].toFixed(1) + ' ' + p2[1].toFixed(1);
+      }
+      var nDeg = 180 + frac * 180;
+      var tipPt = gPolar(gr - 9, nDeg), lPt = gPolar(4, nDeg + 90), rPt = gPolar(4, nDeg - 90);
+      var needlePts = lPt[0].toFixed(1) + ',' + lPt[1].toFixed(1) + ' ' +
+                      tipPt[0].toFixed(1) + ',' + tipPt[1].toFixed(1) + ' ' +
+                      rPt[0].toFixed(1) + ',' + rPt[1].toFixed(1);
       return '<div class="dashboard-gauge-card">' +
         '<svg class="dash-gauge-svg" viewBox="0 0 240 140">' +
-          '<path d="M 25 120 A 95 95 0 0 1 215 120" fill="none" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>' +
-          '<path d="M 27 120 A 95 95 0 0 1 103 36" fill="none" stroke="#ef4444" stroke-width="14" opacity="0.85"/>' +
-          '<path d="M 106 34 A 95 95 0 0 1 154 39" fill="none" stroke="#f59e0b" stroke-width="14" opacity="0.85"/>' +
-          '<path d="M 157 41 A 95 95 0 0 1 213 120" fill="none" stroke="#10b981" stroke-width="14" opacity="0.85"/>' +
-          '<g style="transform-origin:120px 120px;transform:rotate(' + rot + 'deg);transition:transform 0.4s ease">' +
-            '<polygon points="116,120 124,120 120,38" fill="#0f2b48"/>' +
-            '<circle cx="120" cy="120" r="9" fill="#0f2b48"/>' +
-            '<circle cx="120" cy="120" r="3" fill="#ffffff"/>' +
-          '</g>' +
+          '<path d="' + gArc(0, 1) + '" fill="none" stroke="#e2e8f0" stroke-width="16" stroke-linecap="round"/>' +
+          '<path d="' + gArc(0, 0.4) + '" fill="none" stroke="#ef4444" stroke-width="14" opacity="0.85"/>' +
+          '<path d="' + gArc(0.4, 0.7) + '" fill="none" stroke="#f59e0b" stroke-width="14" opacity="0.85"/>' +
+          '<path d="' + gArc(0.7, 1) + '" fill="none" stroke="#10b981" stroke-width="14" opacity="0.85"/>' +
+          '<polygon points="' + needlePts + '" fill="#0f2b48"/>' +
+          '<circle cx="' + gcx + '" cy="' + gcy + '" r="9" fill="#0f2b48"/>' +
+          '<circle cx="' + gcx + '" cy="' + gcy + '" r="3" fill="#ffffff"/>' +
         '</svg>' +
         '<div class="dash-gauge-readout"><strong class="dash-gauge-val">' + (q.mean != null ? q.mean : '—') + '</strong><span class="dash-gauge-unit">' + esc(q.unit || '%') + '</span></div>' +
         (q.target != null ? '<div style="font-size:11.5px;color:#64748b;margin-top:2px">Target benchmark: <b>' + q.target + esc(q.unit || '%') + '</b></div>' : '') +
