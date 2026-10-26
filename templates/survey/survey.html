@@ -108,6 +108,23 @@
   </div>
 </main>
 
+<div class="voice-intro-overlay" id="voice-intro-overlay" hidden>
+  <section class="voice-intro-card" role="dialog" aria-modal="true"
+           aria-labelledby="voice-intro-title" aria-describedby="voice-intro-copy" tabindex="-1">
+    <div class="voice-intro-mark" aria-hidden="true">&#127908;</div>
+    <p class="voice-intro-kicker">VOICE ANSWERING ENABLED</p>
+    <h2 id="voice-intro-title">You can answer by speaking</h2>
+    <p id="voice-intro-copy">When you are ready, start speaking your answer. If your browser asks, allow microphone access.</p>
+    <ul class="voice-intro-tips">
+      <li><strong>Choices:</strong> say the option name or its number.</li>
+      <li><strong>Scales and grids:</strong> say a value, for example, “row 2 is 5.”</li>
+      <li><strong>Text answers:</strong> speak naturally. Say “next” or “next field” to continue, or “back” to return.</li>
+    </ul>
+    <p class="voice-intro-footnote">You can still tap answers. Use <strong>Stop</strong> in the listening bar to turn voice answering off.</p>
+    <button class="voice-intro-start" id="voice-intro-start" type="button">Got it — start speaking</button>
+  </section>
+</div>
+
 <!-- animated product-profile explainer -->
 <div class="overlay" id="explainer" hidden>
   <div class="overlay-box">

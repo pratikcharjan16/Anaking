@@ -5365,6 +5365,41 @@
       '">Studio</a>.</p></div>';
   }
 
+  var voiceIntroContinue = null;
+  function dismissVoiceIntro() {
+    var overlay = $("#voice-intro-overlay");
+    if (!overlay || overlay.hidden) return;
+    overlay.hidden = true;
+    document.body.classList.remove("voice-intro-open");
+    var nextAction = voiceIntroContinue;
+    voiceIntroContinue = null;
+    if (nextAction) nextAction();
+  }
+
+  function showVoiceIntro(onContinue) {
+    var overlay = $("#voice-intro-overlay");
+    var button = $("#voice-intro-start");
+    if (!overlay || !button) { if (onContinue) onContinue(); return; }
+    voiceIntroContinue = onContinue || null;
+    if (!overlay._voiceIntroBound) {
+      overlay._voiceIntroBound = true;
+      button.addEventListener("click", dismissVoiceIntro);
+      overlay.addEventListener("keydown", function (event) {
+        if (event.key === "Escape") {
+          event.preventDefault();
+          dismissVoiceIntro();
+        } else if (event.key === "Tab") {
+          // There is one action in this dialog; keep keyboard focus inside it.
+          event.preventDefault();
+          button.focus();
+        }
+      });
+    }
+    overlay.hidden = false;
+    document.body.classList.add("voice-intro-open");
+    button.focus();
+  }
+
   function afterSession(waitForClick) {
     buildSteps();
     testNotes = recall("test_notes") || {};
@@ -5440,14 +5475,21 @@
         audioPref = pref ? pref.value : "manual";
         store("audio_pref", audioPref); setSound(audioPref !== "off");
         var vpref = document.querySelector('input[name="voice-pref"]:checked');
-        store("voice_pref", vpref ? vpref.value : "manual");
-        if (vpref && vpref.value === "voice") setVoice(true);
+        var startInVoiceMode = !!(vpref && vpref.value === "voice");
+        store("voice_pref", startInVoiceMode ? "voice" : "manual");
         t0 = Date.now();
         $("#welcome").remove();
         stopNarration();
         cur = 0;
         render();
-        onEnterSection(sectionOf(steps[0].q));
+        if (startInVoiceMode) {
+          showVoiceIntro(function () {
+            setVoice(true);
+            onEnterSection(sectionOf(steps[0].q));
+          });
+        } else {
+          onEnterSection(sectionOf(steps[0].q));
+        }
       });
     } else {
       $("#welcome").remove();

@@ -60,6 +60,15 @@ def test_survey_pages_inject_study_slug(client):
     assert client.get("/survey/does-not-exist").status_code == 404
 
 
+def test_survey_page_contains_accessible_voice_mode_instructions(client):
+    response = client.get("/survey/beacon/test")
+    assert response.status_code == 200
+    assert b'id="voice-intro-overlay"' in response.data
+    assert b'aria-modal="true"' in response.data
+    assert b'allow microphone access' in response.data
+    assert b'Got it' in response.data and b'start speaking' in response.data
+
+
 def test_legacy_urls_redirect(client):
     assert client.get("/test").headers["Location"].endswith("/survey/test")
     r = client.get("/s/beacon/test", query_string={"new": "1"})     # query string survives
