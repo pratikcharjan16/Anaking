@@ -618,3 +618,18 @@ def test_google_redirect_uri_can_be_explicitly_set_for_a_hosted_proxy(app, clien
         callback = client.get("/auth/google/callback", query_string={"state": state, "code": "code"})
     assert callback.status_code == 302
     assert exchange.call_args.args == ("code", expected, "test-client-id", "test-secret")
+
+
+def test_platform_account_can_export_ppt_without_legacy_staff_record(app, client):
+    auth_on(app)
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co")
+    slug = make_study(client, "Platform user PPT export", headers=H())
+
+    response = client.get("/api/workspace/export_ppt", query_string={
+        "study": slug, "scope": "all",
+    })
+    assert response.status_code == 200
+    assert "presentation" in response.headers["Content-Type"]
+    assert len(response.data) > 1000

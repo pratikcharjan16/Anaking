@@ -11,7 +11,7 @@ from flask import Blueprint, redirect, abort, current_app, g, jsonify, render_te
 from models import Study, Respondent, get_db, now
 from core.research import readiness, summarize, crosstab, fingerprint, plain
 from core.governance import revision, effective_cfg
-from core.security import actor, allowed, audit
+from core.security import actor, allowed, audit, effective_role
 from .helpers import records
 
 bp = Blueprint('workspace', __name__)
@@ -479,7 +479,7 @@ def cross():
 @bp.get('/api/workspace/export_ppt')
 def export_ppt():
     s = study()
-    if current_app.config['STAFF_AUTH'] and g.staff['role'] not in ('owner', 'editor', 'analyst'):
+    if current_app.config['STAFF_AUTH'] and effective_role() not in ('owner', 'editor', 'analyst'):
         abort(403)
     data = scoped_records(s)
     cut_q = request.args.get('cut_q')
@@ -512,7 +512,7 @@ def export_ppt():
 @bp.get('/api/workspace/export')
 def export():
     s = study()
-    if current_app.config['STAFF_AUTH'] and g.staff['role'] not in ('owner', 'editor', 'analyst'):
+    if current_app.config['STAFF_AUTH'] and effective_role() not in ('owner', 'editor', 'analyst'):
         abort(403)
     result = summarize(scoped_records(s), base(s), request.args.get('segment'), request.args.get('value'))
     result.update(study=s.slug, generated_at=now(), scope=request.args.get('scope', 'real'),

@@ -28,6 +28,22 @@ def actor():
     return (getattr(g, 'staff', None) or {}).get('username', 'local-preview')
 
 
+def effective_role():
+    """Return the authorization role for either account system.
+
+    Legacy staff logins carry explicit workspace roles in ``g.staff``. New platform
+    accounts are stored in ``g.user`` instead, with study ownership/collaboration
+    checked separately by ``allowed()``; for the legacy permission matrix they act as
+    owners. Unauthenticated requests return no role so checks fail closed.
+    """
+    staff = getattr(g, 'staff', None)
+    if staff:
+        return staff.get('role')
+    if getattr(g, 'user', None):
+        return 'owner'
+    return None
+
+
 def audit(action, study='', detail=''):
     db = get_db()
     db.execute('INSERT INTO audit_events(actor,action,study,created_at,detail) VALUES(?,?,?,?,?)',
@@ -155,7 +171,7 @@ def init_security(app):
             slugs = [s for s in slugs if Study.get(s) is not None]
         if any(not isinstance(slug, str) or not allowed(slug) for slug in slugs):
             abort(403, 'This study is outside your access scope.')
-        role = g.staff['role'] if g.staff else 'owner'
+        role = effective_role()
         if path.startswith(('/admin/export', '/admin/voice/', '/api/workspace/export', '/api/workspace/verbatims', '/api/admin/verbatims', '/api/workspace/validation')) and role not in {'owner', 'analyst', 'editor'}:
             abort(403, 'Data access permission required.')
         if request.method not in ('GET', 'HEAD', 'OPTIONS'):
