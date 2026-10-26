@@ -537,6 +537,7 @@
           '<button type="button" class="adk-btn sm danger-ghost" data-act="points-apply" data-mode="remove">' +
             "&minus; Remove points</button>" +
           '<button type="button" class="adk-btn sm ghost" data-act="points-tab">Set an exact limit &rarr;</button>' +
+          (left > 0 ? '<button type="button" class="adk-btn sm danger" data-act="points-expire" title="Expire all currently unused points">Expire remaining points</button>' : '') +
         "</div>" +
       "</div></div>";
   }
@@ -631,6 +632,7 @@
     var used = u.points_used || 0;
     var pct = Math.min(100, Math.round(100 * used / Math.max(1, limit)));
     var value = isAdmin ? "∞" : n(Math.max(0, limit - used));
+    var available = Math.max(0, limit - used);
     var rows = d.ledger.map(function (t) {
       var delta = Number(t.delta || 0);
       return "<tr><td class=\"when\">" + esc(when(t.created_at)) + "</td>" +
@@ -653,6 +655,7 @@
             '<button type="button" class="adk-btn sm" data-act="points-delta" data-delta="-20">−20</button>' +
             '<button type="button" class="adk-btn sm gold" data-act="points-delta" data-delta="20">+20</button>' +
             '<button type="button" class="adk-btn sm gold" data-act="points-delta" data-delta="50">+50</button>' +
+            (available > 0 ? '<button type="button" class="adk-btn sm danger" data-act="points-expire">Expire remaining points</button>' : '') +
           "</div>" +
         "</div>";
 
@@ -926,6 +929,24 @@
           var left = out.user && out.user.points_balance;
           refreshAll((removing ? "\u2212" : "+") + amount + " Kart points applied" +
                      (left != null ? " · " + n(left) + " left" : "") + ".");
+        });
+      });
+    },
+    "points-expire": function (btn) {
+      var u = state.detail && state.detail.user;
+      if (!u || u.role === "admin") return Promise.resolve();
+      var balance = Math.max(0, (u.points_limit || 0) - (u.points_used || 0));
+      if (!balance) { toast("This account has no available points to expire.", true); return Promise.resolve(); }
+      if (!window.confirm("Expire all " + n(balance) + " unused Kart points for " + firstName(u) + "? This takes effect immediately and is recorded in the ledger.")) {
+        return Promise.resolve();
+      }
+      return run(btn, function () {
+        return api("/api/admin/console/points", {
+          user_id: u.id, expire_remaining: true,
+          reason: "Admin expired " + balance + " remaining Kart points"
+        }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          return refreshAll(n(out.points_expired || balance) + " remaining Kart points expired.");
         });
       });
     },

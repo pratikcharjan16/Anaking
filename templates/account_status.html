@@ -47,8 +47,8 @@
       {% if user.picture %}<img src="{{ user.picture }}" alt="" referrerpolicy="no-referrer">
       {% else %}<i class="sk-av">{{ (user.name or user.email)[:1]|upper }}</i>{% endif %}
       <span>
-        <b>{{ user.name or user.email }}</b>
-        <small>{{ user.email }}{% if user.auth_source == 'google' %} · via Google{% endif %}</small>
+        <b>{{ user.name or user.username or 'Your account' }}</b>
+        <small>{{ user.email_masked or user.email }}{% if user.auth_source == 'google' %} · via Google{% endif %}</small>
       </span>
     </div>
 
@@ -61,7 +61,8 @@
           <span class="sk-pts">🛒 {{ user.points_balance }} Kart points</span> in your Kart
           <small>({{ user.points_used }} used of {{ user.points_limit }} allocated)</small><br>
           Shop question types in Studio and launch your first study — running low later?
-          You can request more points from the admin anytime.
+          You can request more points from the admin anytime.<br>
+          <small><strong>Kart points expiry:</strong> No expiry unless the admin expires unused points.</small>
         {% endif %}
       </div>
       {% if redeemed %}
@@ -75,36 +76,29 @@
       </div>
 
     {% elif user.status == 'pending' %}
-      <p class="ln-gate-sub"><strong>Your approval request has been sent to the SurveyKart admin.</strong>
-        New accounts get a quick one-time review — {% if user.auth_source == 'google' %}Google sign-ins included{% else %}by username or Google, it is the same queue{% endif %} —
-        and you are already in it. There is nothing else you need to do.</p>
+      <p class="ln-gate-sub"><strong>Your approval request has been sent to the admin.</strong>
+        Approval usually takes up to 24 hours. We’ll email you as soon as your account is approved; no manual status check is needed.</p>
       <div class="sk-status-kart warn">
         🛒 <span class="sk-pts">{{ user.welcome_points_pending or 100 }} Kart points</span> are reserved for you.<br>
-        They're added to your Kart <strong>automatically the moment the admin approves</strong> your account.
+        They're added to your Kart <strong>automatically the moment the admin approves</strong> your account.<br>
+        <small><strong>Expiry:</strong> No automatic expiry; the admin may expire unused points anytime.</small>
       </div>
       {% if has_share %}
       <p class="ln-gate-sub">🔗 The shared link you opened is saved and will open right after approval
         (<strong>0 Kart points debited</strong>).</p>
       {% endif %}
-      <ul class="sk-status-next">
-        <li><strong>Keep this tab open</strong> — this page checks for you and changes by itself the second you're approved.</li>
-        <li><strong>Or come back later</strong> — close the tab anytime; sign in again with the same
-          {% if user.auth_source == 'google' %}Google account{% else %}username and password{% endif %}
-          and you will land right back here (or straight into SurveyKart once approved).</li>
-      </ul>
       <div class="sk-status-actions">
-        <button class="ln-btn ln-btn-primary" type="button" id="sk-check-now">Check status now</button>
-        <p class="sk-status-checkhint" id="sk-check-hint" role="status">Waiting for admin approval · checking automatically…</p>
+        <p class="sk-status-checkhint" id="sk-check-hint" role="status">We’ll notify you by email when approved. This page updates automatically while open; you can safely come back later.</p>
       </div>
 
     {% else %}
       <p class="ln-gate-sub">
         {% if user.status == 'rejected' %}
           The platform admin reviewed this account and didn't approve it, so Studio access
-          and Kart points haven't been activated for <code>{{ user.email }}</code>.
+          and Kart points haven't been activated for <code>{{ user.email_masked or user.email }}</code>.
         {% else %}
           This account has been disabled by the platform admin, so Studio access is paused
-          for <code>{{ user.email }}</code>.
+          for <code>{{ user.email_masked or user.email }}</code>.
         {% endif %}
       </p>
       <p class="ln-gate-sub">Think this is a mistake, or signed in with the wrong account?
@@ -112,13 +106,14 @@
         different account. Lost the username or password? <a href="/recover">Recover it here</a>.</p>
     {% endif %}
 
-    <div class="ln-gate-alt">
-      <form class="sk-status-signout" method="post" action="/auth/logout" id="sk-signout-form" style="display:inline">
+    <nav class="sk-status-account-actions" aria-label="Account actions">
+      <form class="sk-status-signout" method="post" action="/auth/logout" id="sk-signout-form">
         <input type="hidden" name="csrf" value="{{ csrf_token() }}">
-        <button type="submit" class="ln-btn ln-btn-ghost sm" data-signout="/signin">Sign out{% if user.status != 'approved' %} · use a different account{% endif %}</button>
+        <button type="submit" class="ln-btn ln-btn-ghost sm" data-signout="/signin?next=/welcome">Sign out</button>
       </form>
-      {% if user.status == 'pending' %} · <a href="/recover">Check a different e-mail's status</a>{% endif %}
-    </div>
+      <a class="ln-btn ln-btn-ghost sm" href="/signin?next=/welcome">Use a different account</a>
+      {% if user.status == 'pending' %}<a class="ln-btn ln-btn-ghost sm" href="/recover">Check another e-mail</a>{% endif %}
+    </nav>
   </section>
 
   <p class="ln-gate-foot"><a href="/">&larr; Back to SurveyKart home</a></p>

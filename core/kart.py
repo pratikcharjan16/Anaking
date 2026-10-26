@@ -357,6 +357,7 @@ def user_kart_summary(user_id: int) -> dict:
         "points_limit": limit,
         "points_used": used,
         "points_balance": 999999 if is_admin else max(0, limit - used),
+        "points_expiry": "No expiry; an admin may expire unused points at any time.",
         "raw_balance": limit - used,
         "owned_projects": owned_projects,
         "shared_projects": shared_projects,

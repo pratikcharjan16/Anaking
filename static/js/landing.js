@@ -6,6 +6,13 @@
       return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
     });
   }
+  function maskedEmail(email) {
+    var parts = String(email || "").split("@");
+    return parts.length === 2 && parts[0] ? parts[0].charAt(0) + "xxx@" + parts[1] : "";
+  }
+  function accountLabel(user) {
+    return user.name || user.username || user.email_masked || maskedEmail(user.email) || "Account";
+  }
   var reduce = window.matchMedia && matchMedia("(prefers-reduced-motion: reduce)").matches;
 
   // ---- hero: "Shop your questions. Insights Delivered." -------------------
@@ -1713,12 +1720,15 @@
         : '<span class="ln-btn ln-btn-gold sm" style="cursor:default">&#128722; ' + me.user.points_balance + ' / ' + me.user.points_limit + ' pts</span>';
       chip.innerHTML = '<span class="ln-joined" style="flex-wrap:wrap">' +
         kartBadge +
-        '<span class="ln-uname">' + esc(me.user.name || me.user.username || me.user.email) + "</span>" +
+        '<span class="ln-uname">' + esc(accountLabel(me.user)) + "</span>" +
         '<a class="ln-btn ln-btn-primary sm" href="/studio/">Studio</a>' +
+        '<a class="ln-btn ln-btn-ghost sm" href="/signin?next=/welcome">Use a different account</a>' +
         '<button class="ln-btn ln-btn-ghost sm" id="ln-signout" type="button">Sign out</button></span>';
     } else {
-      chip.innerHTML = '<span class="ln-uname">' + esc(me.user.email) + "</span>" +
-        '<button class="ln-btn ln-btn-ghost sm" id="ln-signout" type="button">Sign out</button>';
+      chip.innerHTML = '<span class="ln-joined">' +
+        '<span class="ln-uname">' + esc(accountLabel(me.user)) + "</span>" +
+        '<a class="ln-btn ln-btn-ghost sm" href="/signin?next=/welcome">Use a different account</a>' +
+        '<button class="ln-btn ln-btn-ghost sm" id="ln-signout" type="button">Sign out</button></span>';
     }
     var out = document.getElementById("ln-signout");
     if (out) out.addEventListener("click", function () {

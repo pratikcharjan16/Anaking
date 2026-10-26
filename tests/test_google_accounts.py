@@ -159,6 +159,21 @@ def test_login_mode_still_bootstraps_admin_emails(app, client):
     assert client.get("/api/me").get_json()["user"]["role"] == "admin"
 
 
+def test_user_identity_is_masked_on_user_pages_but_remains_in_admin_views(app, client):
+    signin(client, "ana@research.co")
+    me = client.get("/api/me").get_json()["user"]
+    assert me["name"] == "Ana" and me["email_masked"] == "axxx@research.co"
+    welcome = client.get("/welcome").data.decode()
+    assert "axxx@research.co" in welcome and "ana@research.co" not in welcome
+    landing = client.get("/").data.decode()
+    assert "ana@research.co" not in landing
+    js = client.get("/static/js/landing.js").data.decode()
+    assert "accountLabel(me.user)" in js and "esc(me.user.email)" not in js
+    assert "Use a different account" in js and "Sign out" in js
+    from routes.auth import masked_email
+    assert masked_email("sarah@gmail.com") == "sxxx@gmail.com"
+
+
 def test_signin_register_and_recover_pages_exist(app, client):
     auth_on(app)                                   # the Google buttons render with the gate on
     for path in ("/signin", "/register", "/recover"):
@@ -548,7 +563,9 @@ def test_welcome_page_shows_each_account_state(app, client):
     signin(client, "ana@research.co", mode="login")
     html = client.get("/welcome").data.decode()
     assert "approval request has been sent" in html            # pending: request is with the admin
-    assert "ana@research.co" in html and "100 Kart points" in html
+    assert "axxx@research.co" in html and "ana@research.co" not in html and "100 Kart points" in html
+    assert "up to 24 hours" in html and "email you" in html.lower()
+    assert "Check status now" not in html
 
     approve_direct(app, "ana@research.co")                     # set_status grants the 100 too
     html = client.get("/welcome").data.decode()

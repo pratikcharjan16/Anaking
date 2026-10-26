@@ -93,6 +93,15 @@ def current_user() -> dict | None:
     return accounts.by_id(uid) if uid else None
 
 
+def masked_email(email: str) -> str:
+    """Expose just a small clue to the account owner; full addresses stay in admin views."""
+    value = str(email or "").strip()
+    local, at, domain = value.partition("@")
+    if not at or not local or not domain:
+        return ""
+    return local[:1] + "xxx@" + domain
+
+
 def session_user_payload(user: dict) -> dict:
     used = user_points_usage(user["id"])
     limit = int(user.get("points_limit") if user.get("points_limit") is not None else DEFAULT_INITIAL_POINTS)
@@ -100,6 +109,7 @@ def session_user_payload(user: dict) -> dict:
     return {
         "id": user["id"],
         "email": user["email"],
+        "email_masked": masked_email(user.get("email", "")),
         "username": user.get("username") or "",
         "name": user["name"],
         "picture": user["picture"],
@@ -110,6 +120,7 @@ def session_user_payload(user: dict) -> dict:
         "points_limit": limit,
         "points_used": used,
         "points_balance": 999999 if is_admin else max(0, limit - used),
+        "points_expiry": "No expiry; an admin may expire unused points at any time.",
         # 100 while a Google account waits for admin approval (the welcome
         # allocation lands in the Kart at the moment of approval), else 0.
         "welcome_points_pending": accounts.welcome_points_pending(user),

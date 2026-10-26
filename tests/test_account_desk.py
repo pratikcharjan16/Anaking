@@ -384,6 +384,35 @@ def test_admin_manages_kart_points_from_the_desk(app, client):
                        json={"user_id": 99999, "delta": 10}).status_code == 404
 
 
+def test_admin_can_expire_all_remaining_points_and_the_action_is_ledgered(app, client):
+    setup_admin(client, app)
+    ana_id = uid_of(app, "ana@research.co")
+    response = client.post("/api/admin/console/points", headers=H(), json={
+        "user_id": ana_id, "expire_remaining": True,
+    })
+    assert response.status_code == 200, response.get_json()
+    payload = response.get_json()
+    assert payload["points_expired"] == 100
+    assert payload["user"]["points_balance"] == 0
+    detail = client.get("/api/admin/console/account", query_string={"user_id": ana_id}).get_json()
+    assert detail["ledger"][0]["delta"] == -100
+    assert "expired 100 remaining Kart points" in detail["ledger"][0]["reason"]
+    assert client.post("/api/admin/console/points", headers=H(), json={
+        "user_id": ana_id, "expire_remaining": True,
+    }).status_code == 400
+
+
+def test_user_wallet_explains_points_expiry(app, client):
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co", mode="login")
+    html = client.get("/welcome").data.decode()
+    assert "Kart points expiry" in html
+    assert "No expiry unless the admin expires unused points" in html
+    assert client.get("/api/kart/me").get_json()["kart"]["points_expiry"] == \
+        "No expiry; an admin may expire unused points at any time."
+
+
 def test_points_management_is_admin_only(app, client):
     auth_on(app)
     signin(client, "ana@research.co")
@@ -397,7 +426,7 @@ def test_desk_ships_the_overview_kart_control(app, client):
     """The points control is on the default tab, not buried in the ledger."""
     setup_admin(client, app)
     js = client.get("/static/js/console.js").data.decode()
-    for needle in ("kartQuickBox", 'data-act="points-apply"', "points-tab",
+    for needle in ("kartQuickBox", 'data-act="points-apply"', 'data-act="points-expire"', "points-tab",
                    "adk-quick-amt", "adk-quick-reason"):
         assert needle in js, needle
     css = client.get("/static/css/console.css").data.decode()
