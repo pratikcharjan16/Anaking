@@ -202,6 +202,15 @@ export USERS_DB_PATH=/var/lib/anaking/users.db  # optional; accounts live here (
 gunicorn -w 2 -b 0.0.0.0:8000 "app:create_app()"
 ```
 
+For hosting panels that require a WSGI callable named `application`, set the WSGI entry file
+to this repository's `wsgi.py` (or import `application` from `wsgi`). That entry point calls
+`app.create_app()` and exports the returned Flask app. Do not load `app.py` and read
+`wsgi.application`: `app.py` is an application factory and does not define a module-level
+`application` object. If your provider's editor specifically loads `app.py`, use
+`application = wsgi.create_app()` after loading it, and make sure the repository root is on
+`sys.path`. Avoid the deprecated `imp.load_source`; use a normal import or the provider's
+supported WSGI file setting.
+
 In Google Cloud Console create an **OAuth 2.0 Client ID** (Web application) and add the
 platform's exact callback URL: `https://<your-host>/auth/google/callback`. The app refuses
 to start in production without `STAFF_AUTH` and a non-default `SECRET_KEY`; `DEV_LOGIN`
