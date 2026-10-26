@@ -6,6 +6,7 @@ everything after the claims - profile creation, sessions, approval gates,
 ownership and the console - runs against the real database.
 """
 
+from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
 import pytest
@@ -593,3 +594,27 @@ def test_google_unconfigured_is_a_friendly_detour_not_an_error_page(app, client)
     assert r.status_code == 302 and "notice=google-off" in r.headers["Location"]
     html = client.get(r.headers["Location"]).data.decode()
     assert "Google sign-in isn't switched on yet" in html
+
+
+def test_google_signin_requires_both_client_credentials(app, client):
+    app.config["GOOGLE_CLIENT_ID"] = "configured-client"
+    app.config["GOOGLE_CLIENT_SECRET"] = ""
+    assert client.get("/api/me").get_json()["google_configured"] is False
+    response = client.get("/auth/google")
+    assert response.status_code == 302
+    assert "notice=google-off" in response.headers["Location"]
+
+
+def test_google_redirect_uri_can_be_explicitly_set_for_a_hosted_proxy(app, client):
+    expected = "https://surveys.example.org/auth/google/callback"
+    app.config["GOOGLE_REDIRECT_URI"] = expected
+    start = client.get("/auth/google")
+    assert start.status_code == 302
+    query = parse_qs(urlparse(start.headers["Location"]).query)
+    assert query["redirect_uri"] == [expected]
+    with client.session_transaction() as sess:
+        state = sess["oauth_state"]
+    with mock.patch("routes.auth.exchange_and_verify", return_value=CLAIMS["ana@research.co"]) as exchange:
+        callback = client.get("/auth/google/callback", query_string={"state": state, "code": "code"})
+    assert callback.status_code == 302
+    assert exchange.call_args.args == ("code", expected, "test-client-id", "test-secret")

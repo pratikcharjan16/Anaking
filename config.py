@@ -35,6 +35,9 @@ class Config:
     # explicitly enabled DEV_LOGIN shortcut works (never in production).
     GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
     GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "")
+    # Optional exact external callback URL for hosts whose reverse-proxy headers do not
+    # preserve the public https host. Must exactly match the Google OAuth client config.
+    GOOGLE_REDIRECT_URI = os.environ.get("GOOGLE_REDIRECT_URI", "").strip()
     # Protected username/password admin. Leave ADMIN_PASSWORD empty to disable
     # password sign-in for this account; Google admins can use ADMIN_EMAILS below.
     ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "Anaking.admin").strip() or "Anaking.admin"

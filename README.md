@@ -194,6 +194,8 @@ export SECRET_KEY="..."                     # required; a long random string
 export STAFF_AUTH=1                         # forced on in production anyway
 export GOOGLE_CLIENT_ID="....apps.googleusercontent.com"
 export GOOGLE_CLIENT_SECRET="..."
+# Optional if the proxy-generated callback URL is wrong; must match Google Cloud Console exactly.
+# export GOOGLE_REDIRECT_URI="https://your-host/auth/google/callback"
 export ADMIN_USERNAME="your-admin-username"
 export ADMIN_PASSWORD="your-strong-admin-password"
 export ADMIN_EMAILS="you@your.org"

@@ -27,8 +27,9 @@ class GoogleAuthError(Exception):
     """The sign-in round trip failed - shown to the user as a friendly message."""
 
 
-def configured(client_id: str) -> bool:
-    return bool(client_id)
+def configured(client_id: str, client_secret: str = "") -> bool:
+    """Google's Web OAuth flow needs both halves of its server-side credentials."""
+    return bool(client_id and client_secret)
 
 
 def authorization_url(client_id: str, redirect_uri: str, state: str) -> str:
@@ -66,8 +67,14 @@ def exchange_and_verify(code: str, redirect_uri: str, client_id: str, client_sec
             payload = json.loads(resp.read().decode())
     except Exception as exc:                                  # noqa: BLE001 - network/malformed
         raise GoogleAuthError("Could not reach Google to complete the sign-in.") from exc
+    if not isinstance(payload, dict):
+        raise GoogleAuthError("Google returned an invalid sign-in response.")
+    if payload.get("error"):
+        # Do not pass provider diagnostics through to end users; invalid_grant, for
+        # example, commonly means the code expired or the callback URI did not match.
+        raise GoogleAuthError("Google could not complete sign-in. Please try again.")
     id_token = payload.get("id_token")
-    if not id_token:
+    if not isinstance(id_token, str) or not id_token:
         raise GoogleAuthError("Google did not return an identity token.")
     return verify_id_token(id_token, client_id)
 
@@ -76,12 +83,14 @@ def verify_id_token(id_token: str, client_id: str) -> dict:
     """Signature + issuer + audience + expiry checks, via google-auth's verifier."""
     try:
         from google.oauth2 import id_token as google_id_token
-        from google.auth.transport import urllib_request
+        from google.auth.transport.requests import Request
     except ImportError as exc:                                 # pragma: no cover - deploy error
-        raise GoogleAuthError("The google-auth package is not installed on this server.") from exc
+        raise GoogleAuthError(
+            "Google sign-in dependencies are missing; install google-auth[requests]."
+        ) from exc
     try:
         claims = google_id_token.verify_oauth2_token(
-            id_token, urllib_request.Request(), audience=client_id)
+            id_token, Request(), audience=client_id)
     except Exception as exc:                                  # noqa: BLE001 - any verify failure
         raise GoogleAuthError("Google sign-in could not be verified.") from exc
     if str(claims.get("iss")) not in ("accounts.google.com", "https://accounts.google.com"):
