@@ -1716,7 +1716,7 @@
     if (!chip || !me.user) return;
     if (me.user.status === "approved") {
       var kartBadge = me.user.role === "admin"
-        ? '<a class="ln-btn ln-btn-gold sm" href="/admin/console">&#9733; Admin Console</a><a class="ln-btn ln-btn-ghost sm" href="/admin-portal">Portal</a>'
+        ? '<a class="ln-btn ln-btn-gold sm" href="/admin/console">&#9733; Admin Console</a>'
         : '<span class="ln-btn ln-btn-gold sm" style="cursor:default">&#128722; ' + me.user.points_balance + ' / ' + me.user.points_limit + ' pts</span>';
       chip.innerHTML = '<span class="ln-joined" style="flex-wrap:wrap">' +
         kartBadge +

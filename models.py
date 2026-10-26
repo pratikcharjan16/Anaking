@@ -829,9 +829,10 @@ class Respondent:
                 "alt_positions": json.loads(self.row["alt_positions"] or "{}"),
                 "elapsed_seconds": self.row["elapsed_seconds"]}
 
-    def voice_filename(self, qid: str, ext: str) -> str:
+    def voice_filename(self, qid: str, ext: str, item: str | None = None) -> str:
         study = Study.get_by_id(self.study_id)
-        return f"{study.slug}__{self.code}_{qid}.{ext}"
+        item_part = f"_{item}" if item else ""
+        return f"{study.slug}__{self.code}_{qid}{item_part}.{ext}"
 
     # ---- bulk
     @staticmethod

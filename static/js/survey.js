@@ -655,15 +655,21 @@
 
 
   // ============================================================ voice verbatims
-  // Optional recorded answer via MediaRecorder; uploaded to /api/voice and referenced
-  // from the answers payload by filename only.
-  function recorderFor(q) {
+  // Optional audio capture for each open-ended answer. Browser speech recognition runs
+  // alongside MediaRecorder so the spoken words are saved as a transcript with that field.
+  function recorderFor(q, item, textarea) {
+    item = item || "_";
+    var voiceKey = item === "_" ? "voice" : item + "_voice";
+    var transcriptKey = item === "_" ? "transcript" : item + "_transcript";
     var row = el("div", "rec-row");
     var can = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia) &&
               ("MediaRecorder" in window);
-    var rec = el("button", "g-btn rec-btn", '<span class="g-ico">&#127908;</span> Record voice answer');
+    var SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+    var rec = el("button", "g-btn rec-btn", '<span class="g-ico">&#127908;</span> Record audio + transcript');
     rec.type = "button";
-    var note = el("span", "g-hint", "optional &middot; stored on the study server");
+    var note = el("span", "g-hint", SR
+      ? "Audio and transcript are saved with this answer"
+      : "Audio is saved; transcript needs browser speech recognition");
     row.appendChild(rec);
     row.appendChild(note);
     if (!can) {
@@ -673,6 +679,9 @@
     }
 
     var mrec = null, chunks = [], recMime = "", blobUrl = null, play = null, del = null;
+    var recognition = null, recognitionTimer = null, recording = false;
+    var stopRecognitionRequested = false, baseText = "", transcript = "";
+    var recognitionCycleBase = "", pausedGlobalVoice = false;
 
     function clearPlay() {
       if (play) { play.remove(); play = null; }
@@ -680,27 +689,113 @@
       if (blobUrl) { URL.revokeObjectURL(blobUrl); blobUrl = null; }
     }
 
+    function syncTranscript(interim) {
+      setAns(q.id, transcriptKey, transcript || null);
+      if (textarea && (transcript || interim)) {
+        textarea.value = joinSpeechText(baseText, joinSpeechText(transcript, interim || ""));
+        textarea.dispatchEvent(new Event("input", { bubbles: true }));
+      } else if (transcript) {
+        save();
+      }
+    }
+
+    function startRecognition() {
+      if (!recording || !SR || stopRecognitionRequested) return;
+      var inst;
+      try { inst = new SR(); } catch (e) { return; }
+      recognitionCycleBase = transcript;
+      inst.continuous = true;
+      inst.interimResults = true;
+      if (SPEC && SPEC.render_language) inst.lang = SPEC.render_language;
+      inst.onresult = function (e) {
+        var finals = [], interims = [];
+        for (var i = 0; i < e.results.length; i++) {
+          var result = e.results[i];
+          if (!result || !result[0] || !result[0].transcript) continue;
+          (result.isFinal ? finals : interims).push(result[0].transcript);
+        }
+        transcript = joinSpeechText(recognitionCycleBase, joinSpeechSegments(finals));
+        syncTranscript(joinSpeechSegments(interims));
+      };
+      inst.onerror = function (e) {
+        if (e && (e.error === "not-allowed" || e.error === "service-not-allowed")) {
+          stopRecognitionRequested = true;
+          note.textContent = "Audio is recording; browser speech recognition permission is needed for a transcript";
+        }
+      };
+      inst.onend = function () {
+        if (recognition === inst) recognition = null;
+        if (recording && !stopRecognitionRequested) {
+          recognitionTimer = setTimeout(startRecognition, 120);
+        }
+      };
+      recognition = inst;
+      try { inst.start(); } catch (e) { recognition = null; }
+    }
+
+    function stopRecognition() {
+      stopRecognitionRequested = true;
+      if (recognitionTimer) { clearTimeout(recognitionTimer); recognitionTimer = null; }
+      if (recognition) {
+        try { recognition.stop(); } catch (e) {}
+      }
+    }
+
+    function resumeGlobalVoice() {
+      if (pausedGlobalVoice && voiceOn && voice) {
+        pausedGlobalVoice = false;
+        try { voice.start(); } catch (e) {}
+      }
+    }
+
     rec.addEventListener("click", function () {
-      if (mrec) { try { mrec.stop(); } catch (e) {} return; }
+      if (mrec) {
+        recording = false;
+        stopRecognition();
+        try { mrec.stop(); } catch (e) {}
+        return;
+      }
+      if (activeDictateStop) activeDictateStop();
+      if (voiceOn && voice) {
+        pausedGlobalVoice = true;
+        try { voice.stop(); } catch (e) {}
+      }
+      baseText = textarea ? (textarea.value || "") : "";
+      transcript = "";
+      stopRecognitionRequested = false;
+      setAns(q.id, transcriptKey, null);
       navigator.mediaDevices.getUserMedia({ audio: true }).then(function (stream) {
         recMime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
           ? "audio/webm;codecs=opus"
           : (MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : "");
-        mrec = recMime ? new MediaRecorder(stream, { mimeType: recMime }) : new MediaRecorder(stream);
+        try {
+          mrec = recMime ? new MediaRecorder(stream, { mimeType: recMime }) : new MediaRecorder(stream);
+        } catch (err) {
+          stream.getTracks().forEach(function (tr) { tr.stop(); });
+          mrec = null;
+          resumeGlobalVoice();
+          note.textContent = "Could not start audio recording on this device.";
+          return;
+        }
         chunks = [];
         mrec.ondataavailable = function (e) { if (e.data && e.data.size) chunks.push(e.data); };
         mrec.onstop = function () {
           stream.getTracks().forEach(function (tr) { tr.stop(); });
           mrec = null;
+          recording = false;
           rec.classList.remove("recording");
-          rec.innerHTML = '<span class="g-ico">&#127908;</span> Record voice answer';
+          rec.innerHTML = '<span class="g-ico">&#127908;</span> Record audio + transcript';
+          resumeGlobalVoice();
           var blob = new Blob(chunks, { type: recMime || "audio/webm" });
           attach(blob);
         };
         mrec.start();
+        recording = true;
         rec.classList.add("recording");
-        rec.innerHTML = '<span class="g-ico">&#9724;</span> Stop &amp; attach';
+        rec.innerHTML = '<span class="g-ico">&#9724;</span> Stop recording';
+        if (SR) startRecognition();
       }).catch(function () {
+        resumeGlobalVoice();
         coachSay("Microphone access was blocked - you can still type your answer below.", "warn");
       });
     });
@@ -713,30 +808,41 @@
       play.src = blobUrl;
       play.className = "rec-play";
       row.insertBefore(play, note);
-      del = el("button", "g-btn", "Delete");
+      del = el("button", "g-btn", "Delete audio/transcript");
       del.type = "button";
       del.addEventListener("click", function () {
         clearPlay();
-        setAns(q.id, "voice", null);
+        setAns(q.id, voiceKey, null);
+        setAns(q.id, transcriptKey, null);
         save();
       });
       row.insertBefore(del, note);
 
+      if (blob.size > 2_500_000) {
+        note.textContent = "Recording is too large to upload. Please record a shorter answer.";
+        return;
+      }
       var fr = new FileReader();
       fr.onload = function () {
         var b64 = String(fr.result).split(",")[1] || "";
         var ext = recMime.indexOf("mp4") >= 0 ? "m4a"
                 : recMime.indexOf("ogg") >= 0 ? "ogg" : "webm";
+        var payload = { session_id: SESSION.session_id, qid: q.id, data: b64, ext: ext };
+        if (item !== "_") payload.item = item;
         fetch("/api/voice", {
           method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ session_id: SESSION.session_id, qid: q.id, data: b64, ext: ext })
-        }).then(function (r) { return r.json(); }).then(function (res) {
-          if (res.ok) {
-            setAns(q.id, "voice", res.file);
-            save();
-            coachSay("Voice answer attached - thank you.", "good");
-          }
-        }).catch(function () {});
+          body: JSON.stringify(payload)
+        }).then(function (r) { return r.json().then(function (body) { return { ok: r.ok, body: body }; }); })
+          .then(function (result) {
+            if (result.ok && result.body.ok) {
+              setAns(q.id, voiceKey, result.body.file);
+              save();
+              note.textContent = SR ? "Audio saved with its transcript" : "Audio saved with this answer";
+              coachSay("Voice answer attached - thank you.", "good");
+            } else {
+              note.textContent = result.body.error || "Audio could not be saved. Please try a shorter recording.";
+            }
+          }).catch(function () { note.textContent = "Audio upload failed. Please try again."; });
       };
       fr.readAsDataURL(blob);
     }
@@ -2584,6 +2690,7 @@
         watchQuietField(q, ta, key);          // every cell is checked like an open-text box
         cell.appendChild(ta);
         try { attachVoiceTranscript(ta, q.id, key); } catch(e) {}
+        cell.appendChild(recorderFor(q, key, ta));
         row.appendChild(cell);
       });
       tbl.appendChild(row);
@@ -4200,7 +4307,7 @@
         try { attachVoiceTranscript(ta, q.id, "_"); } catch(e) {}
         body.appendChild(chip);
         body.appendChild(aiBox);
-        body.appendChild(recorderFor(q));
+        body.appendChild(recorderFor(q, "_", ta));
         wireTextWatch(q, ta, chip, aiBox);
         break;
       }

@@ -353,11 +353,14 @@ def progress():
 def voice():
     body = json_body()
     qid = str(body.get("qid") or "")
+    item = str(body.get("item") or "")
     ext = str(body.get("ext") or "webm").lower()
     if ext not in ("webm", "mp4", "ogg", "opus", "m4a"):
         return jsonify({"error": "unsupported format"}), 400
     if not re.fullmatch(r"[A-Za-z0-9]+", qid):
         return jsonify({"error": "bad question id"}), 400
+    if item and not re.fullmatch(r"[A-Za-z0-9_-]{1,80}", item):
+        return jsonify({"error": "bad answer field"}), 400
     try:
         raw = base64.b64decode(body.get("data") or "", validate=True)
     except (ValueError, TypeError):
@@ -370,7 +373,7 @@ def voice():
     require_consent(resp)
     voice_dir = current_app.config["VOICE_DIR"]
     os.makedirs(voice_dir, exist_ok=True)
-    fname = resp.voice_filename(qid, ext)
+    fname = resp.voice_filename(qid, ext, item or None)
     with open(os.path.join(voice_dir, fname), "wb") as f:
         f.write(raw)
     return jsonify({"ok": True, "file": fname})
