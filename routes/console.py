@@ -353,8 +353,23 @@ def manage_points():
     new_limit = body.get("points_limit")
     delta = body.get("delta")
     reason = str(body.get("reason") or "").strip()
+    points_expired = 0
     try:
-        if new_limit is not None and new_limit != "":
+        if body.get("expire_remaining"):
+            if user.get("role") == "admin":
+                abort(400, "Admin accounts have unlimited Kart points and cannot be expired.")
+            from core.kart import user_points_usage
+            used_before = user_points_usage(uid)
+            current_limit = int(user.get("points_limit") or 0)
+            points_expired = max(0, current_limit - used_before)
+            if points_expired <= 0:
+                abort(400, "This account has no available Kart points to expire.")
+            updated = accounts.adjust_points(
+                uid, new_limit=used_before,
+                reason=reason or f"Admin expired {points_expired} remaining Kart points",
+                actor=adm.get("email", "admin"),
+            )
+        elif new_limit is not None and new_limit != "":
             updated = accounts.adjust_points(
                 uid, new_limit=int(new_limit), reason=reason or "Admin set Kart point limit",
                 actor=adm.get("email", "admin")
@@ -372,8 +387,10 @@ def manage_points():
     used = user_points_usage(uid)
     updated["points_used"] = used
     updated["points_balance"] = max(0, int(updated["points_limit"]) - used)
-    audit("console/points", detail=f"{user['email']} -> limit {updated['points_limit']} pts")
-    return jsonify({"ok": True, "user": _public_user(updated)})
+    detail = (f"{user['email']} -> expired {points_expired} remaining Kart points"
+              if points_expired else f"{user['email']} -> limit {updated['points_limit']} pts")
+    audit("console/points", detail=detail)
+    return jsonify({"ok": True, "user": _public_user(updated), "points_expired": points_expired})
 
 
 @bp.post("/api/admin/console/point-requests/decide")

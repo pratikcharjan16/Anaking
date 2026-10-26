@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Survey completed · SurveyKart', 'This single-use survey link has already been completed. Thank you for taking part.') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+</head>
+<body>
+<header class="an-appbar">{% from "_brand.html" import brand %}{{ brand('SURVEY', '/', 38, 'done', title='SurveyKart — Insights Delivered') }}</header>
+<main class="panel-main">
+  <section class="panel-card" role="status" aria-live="polite">
+    <div class="done-icon" aria-hidden="true">&#10003;</div>
+    <h1>Already completed — thank you</h1>
+    <p>This survey link has already been completed. Thank you for your time and contribution to <strong>{{ study_title }}</strong>.</p>
+    <p>You do not need to submit another response.</p>
+  </section>
+</main>
+{% include "_footer.html" %}
+</body>
+</html>

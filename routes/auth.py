@@ -36,7 +36,8 @@ from flask import (Blueprint, abort, current_app, g, jsonify, redirect,
 
 import core.accounts as accounts
 import core.recovery as recovery
-from core.google_auth import GoogleAuthError, authorization_url, exchange_and_verify
+from core.google_auth import (GoogleAuthError, authorization_url, configured as google_configured,
+                              exchange_and_verify)
 from core.kart import (DEFAULT_INITIAL_POINTS, KART_CATALOG, QUESTION_POINTS,
                        create_point_request, get_share_by_token, redeem_share,
                        user_kart_summary, user_points_usage)
@@ -84,13 +85,31 @@ def _mode(raw) -> str:
 
 
 def _redirect_uri() -> str:
-    return url_for("auth.google_callback", _external=True)
+    # Reverse proxies should supply X-Forwarded-Proto/Host (handled by ProxyFix), but
+    # hosting panels sometimes omit one. An explicit URI avoids Google redirect_uri
+    # mismatches in those deployments while preserving automatic local development.
+    configured_uri = str(current_app.config.get("GOOGLE_REDIRECT_URI") or "").strip()
+    return configured_uri or url_for("auth.google_callback", _external=True)
+
+
+def _google_oauth_configured() -> bool:
+    return google_configured(current_app.config.get("GOOGLE_CLIENT_ID", ""),
+                             current_app.config.get("GOOGLE_CLIENT_SECRET", ""))
 
 
 def current_user() -> dict | None:
     """The signed-in, still-existing platform profile for this request."""
     uid = session.get("uid")
     return accounts.by_id(uid) if uid else None
+
+
+def masked_email(email: str) -> str:
+    """Expose just a small clue to the account owner; full addresses stay in admin views."""
+    value = str(email or "").strip()
+    local, at, domain = value.partition("@")
+    if not at or not local or not domain:
+        return ""
+    return local[:1] + "xxx@" + domain
 
 
 def session_user_payload(user: dict) -> dict:
@@ -100,6 +119,7 @@ def session_user_payload(user: dict) -> dict:
     return {
         "id": user["id"],
         "email": user["email"],
+        "email_masked": masked_email(user.get("email", "")),
         "username": user.get("username") or "",
         "name": user["name"],
         "picture": user["picture"],
@@ -110,6 +130,7 @@ def session_user_payload(user: dict) -> dict:
         "points_limit": limit,
         "points_used": used,
         "points_balance": 999999 if is_admin else max(0, limit - used),
+        "points_expiry": "No expiry; an admin may expire unused points at any time.",
         # 100 while a Google account waits for admin approval (the welcome
         # allocation lands in the Kart at the moment of approval), else 0.
         "welcome_points_pending": accounts.welcome_points_pending(user),
@@ -628,7 +649,7 @@ def google_login():
     mode = _mode(request.args.get("mode"))
     if request.args.get("share"):
         session["pending_share_token"] = request.args.get("share")
-    if not current_app.config.get("GOOGLE_CLIENT_ID"):
+    if not _google_oauth_configured():
         dest = "/register" if mode == "register" else "/signin"
         share = session.get("pending_share_token") or ""
         if share:
@@ -793,7 +814,7 @@ def me():
     user = current_user()
     return jsonify({
         "user": session_user_payload(user) if user else None,
-        "google_configured": bool(current_app.config.get("GOOGLE_CLIENT_ID")),
+        "google_configured": _google_oauth_configured(),
         "dev_login": bool(current_app.config.get("DEV_LOGIN")),
         "staff_auth": bool(current_app.config.get("STAFF_AUTH")),
     })

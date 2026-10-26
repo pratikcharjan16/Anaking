@@ -577,6 +577,10 @@
 .account-chip{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:12px;
   font-weight:700;padding:8px 4px}
 .account-chip .console-link{font-size:11px;font-weight:750;color:var(--accent,#1c6652)}
+.account-chip .account-kart-summary{font-size:11px;color:var(--an-muted);font-weight:400}
+.account-chip .switch-account-link{font-size:10px;font-weight:650;color:var(--teal);text-decoration:none;padding:5px 8px;border:1px solid var(--line);border-radius:7px}
+.account-chip .switch-account-link:hover{background:#f0f4f0}
+.account-chip .points-expiry-note{flex:1 0 100%;font-size:10px;line-height:1.4;color:var(--an-muted);font-weight:400;margin-top:-7px}
 .account-chip .logout{margin-left:auto}
 
 /* ── Team & Collaboration Space + Short Change Log ── */
@@ -676,6 +680,9 @@
   .likert-table{display:block;overflow-x:auto;-webkit-overflow-scrolling:touch}
 }
 @media(max-width:640px){
+  /* Survey URLs are intentionally printed in the team view; wrap them instead of
+     making the project page wider than the phone viewport. */
+  .ws-team-proj-row code{overflow-wrap:anywhere;word-break:break-word}
   .workspace-top{padding:10px 12px}
   .workspace-main{padding:14px 10px}
   .scope-switch-banner{flex-wrap:wrap;gap:8px}

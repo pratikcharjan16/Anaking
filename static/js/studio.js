@@ -679,6 +679,8 @@
       out += '<button class="st-btn st-act-launch" data-act="launch" data-slug="' + esc(s.slug) +
         '" title="Go live, create the public link and send the invites">\u{1F680} Launch Survey</button>';
     }
+    out += '<a class="st-btn st-act-analytics" data-act="analytics" href="/workspace/#' +
+      encodeURIComponent(s.slug) + '/analysis" title="Open this study’s analysis and charts">\u{1F4CA} Analytics</a>';
     var remindTip = !s.recipients
       ? "Add recipients when you launch, then send them a reminder"
       : (left ? "Email everyone on the list who has not taken part yet" : "Both reminders have already been sent");
@@ -885,14 +887,25 @@
   function syncTabs() {
     if (!cur || syncingTabs) return;
     var nav = $(".st-tabs"); if (!nav) return;
-    var wanted = tabList(cur.cfg).map(function (t) { return t[0]; });
+    var wanted = tabList(cur.cfg);
     var have = $$(".st-tab", nav).map(function (b) { return b.getAttribute("data-tab"); });
-    if (wanted.join(",") !== have.join(",")) {
+    var ids = wanted.map(function (t) { return t[0]; });
+    if (ids.join(",") !== have.join(",")) {
       syncingTabs = true;
       try { renderEditor(); } finally { syncingTabs = false; }
       return;
     }
-    if (tab === "conjoint" && wanted.indexOf("conjoint") < 0) { tab = "questions"; renderTab(); }
+    // Update existing badges in place as question/section/quota items are added or removed.
+    // Comparing only tab IDs here left the Questions badge stale until a full editor rerender.
+    wanted.forEach(function (t) {
+      var button = $(".st-tab[data-tab='" + t[0] + "']", nav);
+      if (!button) return;
+      var badge = $(".st-count", button), count = t[2] === "" ? "" : String(t[2]);
+      if (!count) { if (badge) badge.remove(); return; }
+      if (!badge) { badge = document.createElement("span"); badge.className = "st-count"; button.appendChild(badge); }
+      badge.textContent = count;
+    });
+    if (tab === "conjoint" && ids.indexOf("conjoint") < 0) { tab = "questions"; renderTab(); }
   }
 
   function renderTab() {
@@ -1070,10 +1083,12 @@
   function renderOutline() {
     var host = document.getElementById("st-outline"); if (!host) return;
     var c = cur.cfg, thumbs = outlineView === "thumbs";
-    var html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' + c.questions.length + " total</span>" +
-      '<div class="st-seg sm st-viewseg"><button class="st-seg-btn' + (thumbs ? "" : " on") + '" data-act="outline-view" data-v="list" title="Compact list">\u2261 List</button>' +
-      '<button class="st-seg-btn' + (thumbs ? " on" : "") + '" data-act="outline-view" data-v="thumbs" title="Preview thumbnails">\u25A6 Thumbnails</button></div>' +
-      '<button class="st-ibtn" data-act="addsec" title="Add a section">+ Section</button></div>';
+    var html = '<div class="st-outline-head"><strong>Questions</strong><span class="st-meta">' +
+      c.questions.length + (c.questions.length === 1 ? " question" : " questions") + " · " +
+      c.sections.length + (c.sections.length === 1 ? " section" : " sections") + "</span>" +
+      '<div class="st-seg sm st-viewseg" role="group" aria-label="Question outline view"><button type="button" class="st-seg-btn' + (thumbs ? "" : " on") + '" data-act="outline-view" data-v="list" title="Compact list">\u2261 List</button>' +
+      '<button type="button" class="st-seg-btn' + (thumbs ? " on" : "") + '" data-act="outline-view" data-v="thumbs" title="Preview thumbnails">\u25A6 Thumbnails</button></div>' +
+      '<button type="button" class="st-btn sm st-outline-addsec" data-act="addsec" title="Add a section">+ Add section</button></div>';
     c.sections.forEach(function (sec, si) {
       var n = c.questions.filter(function (q) { return q.section === sec.id; }).length;
       html += '<div class="st-sec' + (thumbs ? " thumbs" : "") + '"><div class="st-sec-head">' +
@@ -7224,10 +7239,15 @@
     });
   }
   function copyLink(slug) {
-    var url = location.origin + "/survey/" + slug;
-    var done = function () { toast("Link copied: " + url); };
-    if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(url).then(done, function () { prompt("Respondent link", url); });
-    else prompt("Respondent link", url);
+    api("/api/studio/public-link", { slug: slug }).then(function (d) {
+      if (!d || d.error || !d.url) throw new Error((d && d.error) || "Could not create the respondent link.");
+      var url = d.url;
+      var field = document.getElementById("lf-link"); if (field) field.value = url;
+      var done = function () { toast("Single-use respondent link copied. It resumes until completion, then closes."); };
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(done, function () { prompt("Single-use respondent link", url); });
+      } else prompt("Single-use respondent link", url);
+    }).catch(function (e) { toast(e.message || "Could not create the respondent link."); });
   }
   function setStatus(slug, st, after) {
     var go = function () {

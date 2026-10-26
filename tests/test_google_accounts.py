@@ -6,6 +6,7 @@ everything after the claims - profile creation, sessions, approval gates,
 ownership and the console - runs against the real database.
 """
 
+from urllib.parse import parse_qs, urlparse
 from unittest import mock
 
 import pytest
@@ -157,6 +158,21 @@ def test_login_mode_still_bootstraps_admin_emails(app, client):
     loc = signin(client, "chief@platform.co", mode="login")
     assert "/workspace/" in loc                                  # admin cannot be locked out
     assert client.get("/api/me").get_json()["user"]["role"] == "admin"
+
+
+def test_user_identity_is_masked_on_user_pages_but_remains_in_admin_views(app, client):
+    signin(client, "ana@research.co")
+    me = client.get("/api/me").get_json()["user"]
+    assert me["name"] == "Ana" and me["email_masked"] == "axxx@research.co"
+    welcome = client.get("/welcome").data.decode()
+    assert "axxx@research.co" in welcome and "ana@research.co" not in welcome
+    landing = client.get("/").data.decode()
+    assert "ana@research.co" not in landing
+    js = client.get("/static/js/landing.js").data.decode()
+    assert "accountLabel(me.user)" in js and "esc(me.user.email)" not in js
+    assert "Use a different account" in js and "Sign out" in js
+    from routes.auth import masked_email
+    assert masked_email("sarah@gmail.com") == "sxxx@gmail.com"
 
 
 def test_signin_register_and_recover_pages_exist(app, client):
@@ -548,7 +564,9 @@ def test_welcome_page_shows_each_account_state(app, client):
     signin(client, "ana@research.co", mode="login")
     html = client.get("/welcome").data.decode()
     assert "approval request has been sent" in html            # pending: request is with the admin
-    assert "ana@research.co" in html and "100 Kart points" in html
+    assert "axxx@research.co" in html and "ana@research.co" not in html and "100 Kart points" in html
+    assert "up to 24 hours" in html and "email you" in html.lower()
+    assert "Check status now" not in html
 
     approve_direct(app, "ana@research.co")                     # set_status grants the 100 too
     html = client.get("/welcome").data.decode()
@@ -576,3 +594,42 @@ def test_google_unconfigured_is_a_friendly_detour_not_an_error_page(app, client)
     assert r.status_code == 302 and "notice=google-off" in r.headers["Location"]
     html = client.get(r.headers["Location"]).data.decode()
     assert "Google sign-in isn't switched on yet" in html
+
+
+def test_google_signin_requires_both_client_credentials(app, client):
+    app.config["GOOGLE_CLIENT_ID"] = "configured-client"
+    app.config["GOOGLE_CLIENT_SECRET"] = ""
+    assert client.get("/api/me").get_json()["google_configured"] is False
+    response = client.get("/auth/google")
+    assert response.status_code == 302
+    assert "notice=google-off" in response.headers["Location"]
+
+
+def test_google_redirect_uri_can_be_explicitly_set_for_a_hosted_proxy(app, client):
+    expected = "https://surveys.example.org/auth/google/callback"
+    app.config["GOOGLE_REDIRECT_URI"] = expected
+    start = client.get("/auth/google")
+    assert start.status_code == 302
+    query = parse_qs(urlparse(start.headers["Location"]).query)
+    assert query["redirect_uri"] == [expected]
+    with client.session_transaction() as sess:
+        state = sess["oauth_state"]
+    with mock.patch("routes.auth.exchange_and_verify", return_value=CLAIMS["ana@research.co"]) as exchange:
+        callback = client.get("/auth/google/callback", query_string={"state": state, "code": "code"})
+    assert callback.status_code == 302
+    assert exchange.call_args.args == ("code", expected, "test-client-id", "test-secret")
+
+
+def test_platform_account_can_export_ppt_without_legacy_staff_record(app, client):
+    auth_on(app)
+    signin(client, "ana@research.co")
+    approve_direct(app, "ana@research.co")
+    signin(client, "ana@research.co")
+    slug = make_study(client, "Platform user PPT export", headers=H())
+
+    response = client.get("/api/workspace/export_ppt", query_string={
+        "study": slug, "scope": "all",
+    })
+    assert response.status_code == 200
+    assert "presentation" in response.headers["Content-Type"]
+    assert len(response.data) > 1000

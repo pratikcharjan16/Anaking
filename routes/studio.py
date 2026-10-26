@@ -119,7 +119,8 @@ def get_study():
         return jsonify({"error": "unknown study"}), 404
     u = getattr(g, "user", None)
     uid = u["id"] if u else 0
-    is_shared = bool(uid and study.owner_id != uid and can_collaborate(uid, study.slug, u.get("email", "")))
+    user_email = u.get("email", "") if u else ""
+    is_shared = bool(uid and study.owner_id != uid and can_collaborate(uid, study.slug, user_email))
     owner_row = get_db().execute("SELECT email, name FROM users WHERE id=?", (study.owner_id,)).fetchone()
     owner_email = owner_row["email"] if owner_row else ""
     owner_name = (owner_row["name"] or owner_email) if owner_row else "Creator"
@@ -133,7 +134,8 @@ def get_study():
                     "owner_email": owner_email,
                     "owner_name": owner_name,
                     "collaborators": study_collaborators(study.slug),
-                    "changelogs": list_workspace_changelogs(study_slug=study.slug, limit=20)})
+                    "changelogs": list_workspace_changelogs(
+                        study_slug=study.slug, user_id=uid, user_email=user_email, limit=20)})
 
 
 @bp.get("/api/studio/delta-source")
@@ -729,7 +731,9 @@ def list_study_shares():
     study = Study.get(slug)
     if not study:
         return jsonify({"error": "unknown study"}), 404
+    from flask import g
     from core.kart import shares_for_study, list_workspace_changelogs, study_points
+    u = getattr(g, "user", None) or {}
     rows = shares_for_study(slug)
     base = request.host_url.rstrip("/")
     for r in rows:
@@ -744,8 +748,27 @@ def list_study_shares():
                     "points_used": study_points(study.cfg),
                     "respondent_url": f"{base}/survey/{slug}",
                     "test_url": f"{base}/survey/{slug}/test",
-                    "changelogs": list_workspace_changelogs(study_slug=slug, limit=25),
+                    "changelogs": list_workspace_changelogs(
+                        study_slug=slug, user_id=u.get("id", 0), user_email=u.get("email", ""), limit=25),
                     "changelog_file_url": f"/api/workspace/changelog.log?study={slug}"})
+
+
+@bp.post("/api/studio/public-link")
+def create_single_use_public_link():
+    """Issue a tokenized respondent URL; that URL resumes one session and then closes."""
+    from flask import g
+    body = json_body()
+    slug = str(body.get("slug") or "").strip()
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    user = getattr(g, "user", None) or {}
+    from core.security import allowed as study_allowed
+    if not study_allowed(slug):
+        abort(403, "This project is outside your access scope.")
+    token = Study.create_public_survey_link(slug, created_by=user.get("id", 0))
+    url = request.host_url.rstrip("/") + f"/survey/{slug}?rid={token}"
+    return jsonify({"ok": True, "token": token, "url": url})
 
 
 @bp.post("/api/studio/share")

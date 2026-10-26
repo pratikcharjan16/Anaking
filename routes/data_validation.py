@@ -5,7 +5,7 @@ from flask import Blueprint, abort, current_app, g, jsonify, request
 from core.data_validation import REASONS, STATUSES, decide, validation_rows, state, progress_status
 from core.governance import response_cfg, effective_cfg
 from core.research import plain
-from core.security import actor, allowed
+from core.security import actor, allowed, effective_role
 from models import Study, Respondent, StudyError, get_db
 from .helpers import attachment, error, safe_csv_cell
 
@@ -22,7 +22,7 @@ def study():
         abort(404, 'Study not found.')
     if not allowed(s.slug):
         abort(403)
-    if current_app.config['STAFF_AUTH'] and g.staff['role'] not in ('owner', 'editor', 'analyst'):
+    if current_app.config['STAFF_AUTH'] and effective_role() not in ('owner', 'editor', 'analyst'):
         abort(403, 'Data Validation requires owner, editor or analyst access.')
     return s
 

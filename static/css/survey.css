@@ -1257,3 +1257,20 @@ body.voice-on .voice-rating-hint{display:block}
   }
 }
 
+
+/* First-use guidance shown after the respondent chooses Answer by voice. */
+.voice-intro-overlay{position:fixed;inset:0;z-index:110;display:grid;place-items:center;padding:20px;background:rgba(9,25,37,.72);backdrop-filter:blur(4px)}
+.voice-intro-card{width:min(540px,100%);max-height:min(90vh,760px);overflow:auto;padding:30px;border:1px solid rgba(255,255,255,.65);border-radius:22px;background:#fff;box-shadow:0 24px 80px rgba(0,0,0,.3);color:var(--ink);animation:voiceIntroIn .2s ease-out}
+.voice-intro-mark{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#e8f2f7;font-size:24px}
+.voice-intro-kicker{margin:18px 0 4px;color:var(--accent2);font-size:11px;font-weight:850;letter-spacing:.13em}
+.voice-intro-card h2{margin:0 0 9px;font-size:clamp(23px,5vw,30px);line-height:1.2;letter-spacing:-.025em}
+.voice-intro-card>p:not(.voice-intro-kicker){color:var(--muted);line-height:1.55}
+.voice-intro-tips{display:grid;gap:10px;margin:18px 0;padding:16px 18px 16px 36px;border-radius:14px;background:#f3f7f9;color:var(--ink);font-size:14px}
+.voice-intro-tips strong{color:var(--accent)}
+.voice-intro-card .voice-intro-footnote{font-size:13px}
+.voice-intro-start{width:100%;min-height:48px;margin-top:8px;padding:12px 18px;border:0;border-radius:12px;background:var(--accent);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+.voice-intro-start:hover{background:var(--accent2)}
+.voice-intro-start:focus-visible{outline:3px solid #ffd166;outline-offset:3px}
+@keyframes voiceIntroIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(max-width:520px){.voice-intro-overlay{padding:12px}.voice-intro-card{padding:22px 18px;border-radius:18px}.voice-intro-tips{padding:14px 14px 14px 32px;font-size:13px}}
+@media(prefers-reduced-motion:reduce){.voice-intro-card{animation:none}}

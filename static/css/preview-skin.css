@@ -864,3 +864,20 @@
 .survey-skin .voice-bar{bottom:10px;
     padding:8px 12px;
     font-size:12.5px;}}
+.survey-skin .voice-intro-overlay{position:fixed;inset:0;z-index:110;display:grid;place-items:center;padding:20px;background:rgba(9,25,37,.72);backdrop-filter:blur(4px)}
+.survey-skin .voice-intro-card{width:min(540px,100%);max-height:min(90vh,760px);overflow:auto;padding:30px;border:1px solid rgba(255,255,255,.65);border-radius:22px;background:#fff;box-shadow:0 24px 80px rgba(0,0,0,.3);color:var(--ink);animation:voiceIntroIn .2s ease-out}
+.survey-skin .voice-intro-mark{width:48px;height:48px;display:grid;place-items:center;border-radius:15px;background:#e8f2f7;font-size:24px}
+.survey-skin .voice-intro-kicker{margin:18px 0 4px;color:var(--accent2);font-size:11px;font-weight:850;letter-spacing:.13em}
+.survey-skin .voice-intro-card h2{margin:0 0 9px;font-size:clamp(23px,5vw,30px);line-height:1.2;letter-spacing:-.025em}
+.survey-skin .voice-intro-card>p:not(.voice-intro-kicker){color:var(--muted);line-height:1.55}
+.survey-skin .voice-intro-tips{display:grid;gap:10px;margin:18px 0;padding:16px 18px 16px 36px;border-radius:14px;background:#f3f7f9;color:var(--ink);font-size:14px}
+.survey-skin .voice-intro-tips strong{color:var(--accent)}
+.survey-skin .voice-intro-card .voice-intro-footnote{font-size:13px}
+.survey-skin .voice-intro-start{width:100%;min-height:48px;margin-top:8px;padding:12px 18px;border:0;border-radius:12px;background:var(--accent);color:#fff;font:inherit;font-weight:800;cursor:pointer}
+.survey-skin .voice-intro-start:hover{background:var(--accent2)}
+.survey-skin .voice-intro-start:focus-visible{outline:3px solid #ffd166;outline-offset:3px}
+@keyframes voiceIntroIn{from{opacity:0;transform:translateY(8px) scale(.985)}to{opacity:1;transform:none}}
+@media(max-width:520px){.survey-skin .voice-intro-overlay{padding:12px}
+.survey-skin .voice-intro-card{padding:22px 18px;border-radius:18px}
+.survey-skin .voice-intro-tips{padding:14px 14px 14px 32px;font-size:13px}}
+@media(prefers-reduced-motion:reduce){.survey-skin .voice-intro-card{animation:none}}

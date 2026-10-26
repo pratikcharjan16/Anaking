@@ -1,0 +1,19 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+{% from "_head.html" import head %}
+{{ head('Invalid survey link · SurveyKart', 'This personal survey link is invalid or no longer available.') }}
+<link rel="stylesheet" href="{{ asset('css/home.css') }}">
+<link rel="stylesheet" href="{{ asset('css/design-system.css') }}">
+</head>
+<body>
+<header class="an-appbar">{% from "_brand.html" import brand %}{{ brand('SURVEY', '/', 38, 'invalid', title='SurveyKart — Insights Delivered') }}</header>
+<main class="panel-main">
+  <section class="panel-card" role="alert">
+    <h1>This survey link is not valid</h1>
+    <p>The personal link may have been copied incorrectly or revoked. Please ask the research team for a fresh link.</p>
+  </section>
+</main>
+{% include "_footer.html" %}
+</body>
+</html>

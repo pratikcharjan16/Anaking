@@ -28,7 +28,7 @@ from core.research import numeric
 from core.ai_detect import (VERDICT_LIKELY, VERDICT_POSSIBLE, ai_settings,
                             duplicate_verbatims, field_key, field_split, verdict_of)
 from core.qc import free_text, qc_flags, score_free_text
-from core.reporting import build_sheets
+from core.reporting import build_sheets, voice_transcript_rows
 from models import Respondent, Study, StudyError
 
 from .helpers import attachment, error, records, scope_arg, stamp, study_arg, safe_csv_cell
@@ -222,7 +222,15 @@ def export_csv():
 @bp.get("/admin/export.json")
 def export_json():
     slug, scope = study_arg(), scope_arg()
-    out = [{k: v for k, v in r.items() if k != "flat"} for r in records(slug, scope, include_invalid=request.args.get("include_invalid") == "1")]
+    recs = records(slug, scope, include_invalid=request.args.get("include_invalid") == "1")
+    cfg = Study.cfg_of(slug)
+    out = []
+    for r in recs:
+        item = {k: v for k, v in r.items() if k != "flat"}
+        # Keep the legacy top-level response array while adding a distinct, question-wise
+        # voice transcript section to every respondent record.
+        item["voice_transcripts"] = voice_transcript_rows([r], cfg)
+        out.append(item)
     return attachment(json.dumps(out, indent=2).encode(), "application/json; charset=utf-8",
                       f"{slug}_responses_{scope}_{stamp()}.json")
 

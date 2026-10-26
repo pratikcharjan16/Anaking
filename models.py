@@ -51,7 +51,9 @@ CREATE TABLE IF NOT EXISTS respondents (
     alt_positions TEXT,
     user_agent TEXT,
     language TEXT DEFAULT '',
-    embedded TEXT DEFAULT '{}'
+    embedded TEXT DEFAULT '{}',
+    invite_token TEXT NOT NULL DEFAULT '',
+    current_step INTEGER NOT NULL DEFAULT 0
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ux_resp_code ON respondents(study_id, respondent_code);
 CREATE TABLE IF NOT EXISTS test_reviews (
@@ -83,6 +85,14 @@ CREATE TABLE IF NOT EXISTS invites (
     sent_at TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_invites_study ON invites(study_slug, id);
+CREATE TABLE IF NOT EXISTS public_survey_links (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    study_slug TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    created_by INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ix_public_survey_links_study ON public_survey_links(study_slug, created_at);
 CREATE TABLE IF NOT EXISTS research_agent_sessions (
     study_slug TEXT PRIMARY KEY,
     messages TEXT NOT NULL DEFAULT '[]',
@@ -108,12 +118,17 @@ CREATE TABLE respondents_new (
     elapsed_seconds REAL DEFAULT 0,
     task_order TEXT,
     alt_positions TEXT,
-    user_agent TEXT
+    user_agent TEXT,
+    language TEXT DEFAULT '',
+    embedded TEXT DEFAULT '{}',
+    invite_token TEXT NOT NULL DEFAULT '',
+    current_step INTEGER NOT NULL DEFAULT 0
 );
 INSERT INTO respondents_new
     SELECT id, respondent_code, session_id, study_id, is_test, status,
            screen_out_at, screen_out_reason, started_at, completed_at,
-           elapsed_seconds, task_order, alt_positions, user_agent
+           elapsed_seconds, task_order, alt_positions, user_agent, language,
+           embedded, invite_token, current_step
     FROM respondents;
 DROP TABLE respondents;
 ALTER TABLE respondents_new RENAME TO respondents;
@@ -204,11 +219,25 @@ def init_db(path: str | None = None) -> None:
                 conn.execute("ALTER TABLE respondents ADD COLUMN language TEXT DEFAULT ''")
             if "embedded" not in cols:
                 conn.execute("ALTER TABLE respondents ADD COLUMN embedded TEXT DEFAULT '{}'")
+            if "invite_token" not in cols:
+                conn.execute("ALTER TABLE respondents ADD COLUMN invite_token TEXT NOT NULL DEFAULT ''")
+            if "current_step" not in cols:
+                conn.execute("ALTER TABLE respondents ADD COLUMN current_step INTEGER NOT NULL DEFAULT 0")
             tbl_sql = conn.execute(
                 "SELECT sql FROM sqlite_master WHERE type='table' AND name='respondents'"
             ).fetchone()[0]
             if "respondent_code TEXT UNIQUE" in tbl_sql:
                 conn.executescript(_MIGRATE_OLD_UNIQUE)
+            # Older invite respondents stored the bearer token only in embedded JSON.
+            # Backfill the indexed column so their existing in-progress links still resume.
+            for row in conn.execute("SELECT id, embedded FROM respondents WHERE invite_token='' AND is_test=0"):
+                try:
+                    token = str((json.loads(row["embedded"] or "{}") or {}).get("rid") or "")[:200]
+                except (TypeError, ValueError):
+                    token = ""
+                if token:
+                    conn.execute("UPDATE respondents SET invite_token=? WHERE id=?", (token, row["id"]))
+            conn.execute("CREATE INDEX IF NOT EXISTS ix_respondents_invite_token ON respondents(study_id, invite_token) WHERE invite_token != ''")
     finally:
         conn.close()
 
@@ -451,6 +480,7 @@ class Study:
                          (new_slug, now(), old_slug))
             conn.execute("UPDATE study_shares SET study_slug=? WHERE study_slug=?", (new_slug, old_slug))
             conn.execute("UPDATE team_projects SET study_slug=? WHERE study_slug=?", (new_slug, old_slug))
+            conn.execute("UPDATE public_survey_links SET study_slug=? WHERE study_slug=?", (new_slug, old_slug))
         from core.kart import record_workspace_change
         record_workspace_change(
             study_slug=new_slug,
@@ -510,6 +540,27 @@ class Study:
         return new_slug
 
     @staticmethod
+    def create_public_survey_link(slug: str, created_by: int = 0) -> str:
+        """Issue a bearer link that allows one respondent session for this study."""
+        if not Study.get(slug):
+            raise StudyError("unknown study", 404)
+        token = secrets.token_urlsafe(18)
+        conn = get_db()
+        with write_lock, conn:
+            conn.execute("INSERT INTO public_survey_links (study_slug, token, created_by, created_at) VALUES (?,?,?,?)",
+                         (slug, token, int(created_by or 0), now()))
+        return token
+
+    @staticmethod
+    def is_single_use_link(slug: str, token: str) -> bool:
+        if not slug or not token:
+            return False
+        return bool(get_db().execute(
+            "SELECT 1 FROM invites WHERE study_slug=? AND token=? AND kind IN ('invite','reminder') "
+            "UNION ALL SELECT 1 FROM public_survey_links WHERE study_slug=? AND token=? LIMIT 1",
+            (slug, token, slug, token)).fetchone())
+
+    @staticmethod
     def add_invites(slug: str, rows: list[dict]) -> None:
         """Append outbox rows (``{email, name, kind, status, error, link, token}``)."""
         ts = now()
@@ -567,6 +618,7 @@ class Study:
         conn = get_db()
         with write_lock, conn:
             conn.execute("DELETE FROM study_shares WHERE study_slug=?", (slug,))
+            conn.execute("DELETE FROM public_survey_links WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM team_projects WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM workspace_changelogs WHERE study_slug=?", (slug,))
             conn.execute("DELETE FROM research_agent_sessions WHERE study_slug=?", (slug,))
@@ -663,6 +715,16 @@ class Respondent:
         return Respondent(row) if row else None
 
     @staticmethod
+    def by_invite_token(study_id: int, token: str) -> Respondent | None:
+        if not token:
+            return None
+        row = get_db().execute(
+            "SELECT * FROM respondents WHERE study_id=? AND is_test=0 AND invite_token=? "
+            "ORDER BY CASE status WHEN 'complete' THEN 0 WHEN 'screened_out' THEN 1 ELSE 2 END, id DESC LIMIT 1",
+            (int(study_id), str(token)[:200])).fetchone()
+        return Respondent(row) if row else None
+
+    @staticmethod
     def for_study(study_id: int, scope: str = "all") -> list[sqlite3.Row]:
         rows = get_db().execute("SELECT * FROM respondents WHERE study_id=? ORDER BY id",
                                 (study_id,)).fetchall()
@@ -675,12 +737,21 @@ class Respondent:
     # ---- lifecycle
     @staticmethod
     def create(study: Study, is_test: bool, user_agent: str = "", language: str = "",
-               embedded: dict | None = None, snapshot: dict | None = None) -> Respondent:
-        """Allocate the next T###/R### code for the study and open a session."""
+               embedded: dict | None = None, snapshot: dict | None = None,
+               invite_token: str = "") -> Respondent:
+        """Allocate a respondent code and open a session; token links reuse one real session."""
         conn = get_db()
         sid = secrets.token_urlsafe(16)
         prefix = "T" if is_test else "R"
+        invite_token = "" if is_test else str(invite_token or "")[:200]
         with write_lock, conn:
+            if invite_token:
+                existing = conn.execute(
+                    "SELECT * FROM respondents WHERE study_id=? AND is_test=0 AND invite_token=? "
+                    "ORDER BY CASE status WHEN 'complete' THEN 0 WHEN 'screened_out' THEN 1 ELSE 2 END, id DESC LIMIT 1",
+                    (study.id, invite_token)).fetchone()
+                if existing:
+                    return Respondent(existing)
             row = conn.execute(
                 "SELECT MAX(CAST(SUBSTR(respondent_code,2) AS INTEGER)) AS m FROM respondents "
                 "WHERE study_id=? AND respondent_code LIKE ?", (study.id, prefix + "%")
@@ -688,9 +759,10 @@ class Respondent:
             code = f"{prefix}{(row['m'] or 0) + 1:03d}"
             conn.execute(
                 "INSERT INTO respondents (respondent_code, session_id, study_id, is_test, "
-                "started_at, user_agent, language, embedded) VALUES (?,?,?,?,?,?,?,?)",
+                "started_at, user_agent, language, embedded, invite_token, current_step) "
+                "VALUES (?,?,?,?,?,?,?,?,?,0)",
                 (code, sid, study.id, int(is_test), now(), (user_agent or "")[:300],
-                 (language or "")[:12], json.dumps(embedded or {})))
+                 (language or "")[:12], json.dumps(embedded or {}), invite_token))
             if snapshot is not None:
                 from core.research import fingerprint
                 rid = conn.execute('SELECT id FROM respondents WHERE session_id=?', (sid,)).fetchone()['id']
@@ -723,17 +795,21 @@ class Respondent:
                          (json.dumps(task_order), json.dumps(alt_positions), self.id))
 
     def persist(self, body: dict) -> str:
-        """Upsert answers + timing from a save/submit payload. Returns new status."""
+        """Upsert answers, timing and resumable step position. Returns the new status."""
         seconds = float(body.get("elapsed_seconds") or 0)
         status = "screened_out" if body.get("screened_out") else self.status
+        try:
+            current_step = max(0, min(100000, int(body.get("current_step", self.row["current_step"] or 0))))
+        except (TypeError, ValueError, KeyError):
+            current_step = 0
         conn = get_db()
         with write_lock, conn:
             Answer.upsert_many(conn, self.id, body.get("answers"), seconds)
             conn.execute(
                 "UPDATE respondents SET elapsed_seconds=?, status=?, screen_out_at=?, "
-                "screen_out_reason=? WHERE id=?",
+                "screen_out_reason=?, current_step=? WHERE id=?",
                 (seconds, status, body.get("screen_out_at") or self.row["screen_out_at"],
-                 body.get("screen_out_reason") or self.row["screen_out_reason"], self.id))
+                 body.get("screen_out_reason") or self.row["screen_out_reason"], current_step, self.id))
         return status
 
     def complete(self, seconds: float) -> None:
@@ -748,13 +824,15 @@ class Respondent:
     def progress(self) -> dict:
         return {"exists": True, "respondent_code": self.code, "status": self.status,
                 "is_test": self.is_test, "answers": self.answers(),
+                "current_step": int(self.row["current_step"] or 0),
                 "task_order": json.loads(self.row["task_order"] or "[]"),
                 "alt_positions": json.loads(self.row["alt_positions"] or "{}"),
                 "elapsed_seconds": self.row["elapsed_seconds"]}
 
-    def voice_filename(self, qid: str, ext: str) -> str:
+    def voice_filename(self, qid: str, ext: str, item: str | None = None) -> str:
         study = Study.get_by_id(self.study_id)
-        return f"{study.slug}__{self.code}_{qid}.{ext}"
+        item_part = f"_{item}" if item else ""
+        return f"{study.slug}__{self.code}_{qid}{item_part}.{ext}"
 
     # ---- bulk
     @staticmethod

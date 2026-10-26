@@ -72,6 +72,52 @@ def _flatten_synthetic(qid, answers, out):
 
 
 
+def voice_transcript_rows(records: list, cfg: dict) -> list:
+    """Return recorded speech as one export row per respondent and open-text field."""
+    rows = []
+    for respondent in records:
+        answers = respondent.get("answers") or {}
+        for q in cfg.get("questions", []):
+            qid, qtype = q.get("id"), q.get("type")
+            answer = answers.get(qid, {}) or {}
+            if qtype == "open_text":
+                transcript = answer.get("transcript", "")
+                filename = answer.get("voice", "")
+                if transcript or filename:
+                    rows.append({
+                        "respondent_code": respondent.get("respondent_code", ""),
+                        "is_test": "test" if respondent.get("is_test") else "real",
+                        "question_id": qid, "question": q.get("stem", ""),
+                        "item_id": "_", "item_label": "Open-text answer",
+                        "transcript": transcript or "",
+                        "audio_file": f"/admin/voice/{filename}" if filename else "",
+                    })
+            elif qtype == "text_grid":
+                row_labels = {str(r.get("code")): r.get("label", "")
+                              for r in q.get("rows", [])}
+                col_labels = {str(c.get("code")): c.get("label", "")
+                              for c in q.get("cols", [])}
+                for row in q.get("rows", []):
+                    for col in q.get("cols", []):
+                        item = f"{row.get('code')}_{col.get('code')}"
+                        transcript = answer.get(item + "_transcript", "")
+                        filename = answer.get(item + "_voice", "")
+                        if not transcript and not filename:
+                            continue
+                        rows.append({
+                            "respondent_code": respondent.get("respondent_code", ""),
+                            "is_test": "test" if respondent.get("is_test") else "real",
+                            "question_id": qid, "question": q.get("stem", ""),
+                            "item_id": item,
+                            "item_label": " / ".join(x for x in
+                                (row_labels.get(str(row.get("code")), ""),
+                                 col_labels.get(str(col.get("code")), "")) if x),
+                            "transcript": transcript or "",
+                            "audio_file": f"/admin/voice/{filename}" if filename else "",
+                        })
+    return rows
+
+
 def flatten(respondent, answers: dict, cfg: dict) -> dict:
     quota = cfg.get("quota", {})
     ai = score_free_text(answers, cfg, _verbatim_qs(cfg))
@@ -126,11 +172,19 @@ def flatten(respondent, answers: dict, cfg: dict) -> dict:
             out[qid] = a.get("_", "")
             if a.get("voice"):
                 out[qid + "_voice"] = "recorded"
+                out[qid + "_voice_file"] = f"/admin/voice/{a['voice']}"
+            if a.get("transcript"):
+                out[qid + "_transcript"] = a["transcript"]
         elif t == "text_grid":
             for r in q.get("rows", []):
                 for c in q.get("cols", []):
                     key = f"{r['code']}_{c['code']}"
                     out[f"{qid}_{key}"] = a.get(key, "")
+                    if a.get(key + "_voice"):
+                        out[f"{qid}_{key}_voice_file"] = \
+                            f"/admin/voice/{a[key + '_voice']}"
+                    if a.get(key + "_transcript"):
+                        out[f"{qid}_{key}_transcript"] = a[key + "_transcript"]
         elif t == "rating_grid" and q.get("cols"):
             # a rows x columns choice grid: one column code per row, plus its wording
             col_labels = {str(c["code"]): c.get("label", "") for c in q["cols"]}
@@ -457,6 +511,10 @@ def build_sheets(records: list, scope: str, cfg: dict):
     order = {"likely_ai": 0, "possible_ai": 1, "human": 2, "too_short": 3}
     ver_rows.sort(key=lambda x: (order.get(x[6], 4), -(x[5] or 0)))
 
+    voice_headers = ["respondent_code", "is_test", "question_id", "question",
+                     "item_id", "item_label", "transcript", "audio_file"]
+    voice_rows = [[v[h] for h in voice_headers] for v in voice_transcript_rows(records, cfg)]
+
     qc_headers = ["respondent_code", "is_test", "elapsed_minutes", "flags", "clean"]
     qc_rows = []
     for r in complete:
@@ -627,7 +685,8 @@ def build_sheets(records: list, scope: str, cfg: dict):
                   "QC flags": [16, 9, 15, 46, 8], "Verbatim AI check": [16, 8, 12, 46, 8, 9,
                                                                          13, 12, 10, 10, 9, 12,
                                                                          52, 40, 90],
-                  "Data dictionary": [18, 8, 14, 58, 10, 52, 40]}
+                  "Data dictionary": [18, 8, 14, 58, 10, 52, 40],
+                  "Voice transcripts": [16, 8, 12, 58, 18, 42, 90, 50]}
     return [
         ("Field summary", ["Metric", "Value"], summary_rows, widths_map["Field summary"]),
         ("Responses", wide_headers, wide_rows, None),
@@ -635,6 +694,7 @@ def build_sheets(records: list, scope: str, cfg: dict):
         ("Screen-outs", so_headers, so_rows, widths_map["Screen-outs"]),
         ("QC flags", qc_headers, qc_rows, widths_map["QC flags"]),
         ("Verbatim AI check", ver_headers, ver_rows, widths_map["Verbatim AI check"]),
+        ("Voice transcripts", voice_headers, voice_rows, widths_map["Voice transcripts"]),
         ("Data dictionary", dd_headers, dd_rows, widths_map["Data dictionary"]),
     ]
 
