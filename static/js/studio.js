@@ -11,12 +11,13 @@
   var Q = window.BeaconQ;
 
   function api(path, body) {
+    var form = (typeof FormData !== "undefined") && (body instanceof FormData);
     return fetch(path, {
-      method: body ? "POST" : "GET",
+      method: (body && !form) ? "POST" : (form ? "POST" : "GET"),
       credentials: "same-origin",
-      headers: body ? { "Content-Type": "application/json" } : {},
-      body: body ? JSON.stringify(body) : undefined
-    }).then(function (r) { return r.json(); });
+      headers: (body && !form) ? { "Content-Type": "application/json" } : {},
+      body: form ? body : (body ? JSON.stringify(body) : undefined)
+    }).then(function (r) { return r.json().catch(function () { return { error: "HTTP " + r.status }; }); });
   }
   var LANGCAT = [];
   var langPanel = { lang: null, onlyMissing: false, q: "", data: null };
@@ -30,6 +31,33 @@
     return cat.map(function (l) {
       return '<option value="' + l.code + '"' + (l.code === sel ? " selected" : "") + ">" + esc(l.name) + " (" + esc(l.native) + ")</option>";
     }).join("");
+  }
+
+  async function downloadExport(url, btn, fallbackName) {
+    var label = btn ? btn.textContent : "";
+    if (btn) { btn.disabled = true; btn.textContent = "Building file\u2026"; }
+    try {
+      var r = await fetch(url, { credentials: "same-origin" });
+      if (!r.ok) {
+        var msg = "HTTP " + r.status;
+        try { var j = await r.json(); msg = j.detail || j.error || msg; } catch (e) {}
+        throw new Error(msg);
+      }
+      var blob = await r.blob();
+      if (!blob.size) throw new Error("the server returned an empty file");
+      var cd = r.headers.get("Content-Disposition") || "";
+      var m = /filename="?([^";]+)"?/.exec(cd);
+      var a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = (m && m[1]) || fallbackName || "export";
+      document.body.appendChild(a); a.click();
+      setTimeout(function () { URL.revokeObjectURL(a.href); a.remove(); }, 4000);
+      toast("Downloaded " + a.download);
+    } catch (e) {
+      toast("Export failed: " + e.message);
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = label; }
+    }
   }
 
   function esc(s) {
@@ -1256,57 +1284,217 @@
     return {slug: cur.slug, lang: langPanel.lang, strings: strings,
       excluded: (langPanel.data && langPanel.data.excluded) || []};
   }
-  function aiTranslate(b) {
-    if (translationBusy) return;
-    // Always edit the child, never write a table on the parent accidentally.
-    if (!cur.cfg.parent) {
-      var child = (langPanel.children || []).filter(function (x) { return x.language === b.dataset.lang; })[0];
-      if (child) openEditor(child.slug);
-      else toast("Create a child survey first.");
-      return;
-    }
-    translationBusy = true;
-    b.disabled = true;
-    $$("#lang-tr-host input, #lang-tr-host textarea").forEach(function (n) { n.disabled = true; });
-    var slug = cur.slug, lg = langPanel.lang, result = document.getElementById("translation-progress");
-    var completed = 0, success = 0, failures = [];
-    function report(total, finished) {
-      if (!result) return;
-      result.innerHTML = '<progress max="' + Math.max(total, 1) + '" value="' + completed + '"></progress><p>' +
-        (finished ? "Finished" : "Translating") + ': ' + completed + '/' + total + ' processed · ' + success +
-        ' succeeded · ' + failures.length + ' failed</p>' + failures.map(function (x) { return '<div>' + esc(x) + '</div>'; }).join("");
-    }
-    flushSave(function () {
-      api("/api/studio/translate", translationEdits()).then(function (saved) {
-        if (saved.error) throw new Error(saved.error);
-        return api("/api/studio/strings?study=" + encodeURIComponent(slug));
-      }).then(async function (d) {
-        var keys = (d.strings || []).filter(function (x) {
-          return (d.excluded || []).indexOf(x.key) < 0 && !(d.translations[x.key] || "").trim();
-        }).map(function (x) { return x.key; });
-        report(keys.length, false);
-        for (var i = 0; i < keys.length; i++) {
-          try {
-            var r = await api("/api/studio/autotranslate", {slug: slug, lang: lg, keys: [keys[i]]});
-            if (r.error) throw new Error(r.error);
-            success += r.translated || 0;
-            Object.keys(r.failed || {}).forEach(function (k) { failures.push(k + ": " + r.failed[k]); });
-          } catch (e) { failures.push(keys[i] + ": " + e.message); }
-          completed++; report(keys.length, false);
-        }
-        report(keys.length, true);
-        if (cur && cur.slug === slug) {
-          var fresh = await api("/api/studio/study?slug=" + encodeURIComponent(slug));
-          cur.cfg = fresh.cfg;
-          langPanel.data = await api("/api/studio/strings?study=" + encodeURIComponent(slug));
-          var host = document.getElementById("lang-tr-host");
-          if (host) host.innerHTML = trTableHtml();
-        }
-      }).catch(function (e) {
-        if (result) result.textContent = "Translation failed: " + e.message;
-      }).finally(function () { translationBusy = false; b.disabled = false; $$("#lang-tr-host input, #lang-tr-host textarea").forEach(function (n) { n.disabled = false; }); });
+  // ---- translation service status -------------------------------------------------
+  // Hosted deployments are the ones where AI translation breaks, so the panel says
+  // which provider will be used and offers a one-click reachability test instead of
+  // failing silently one string at a time.
+  var TR_STATUS = null;
+  function translationService(refresh, cb) {
+    if (TR_STATUS && !refresh) { if (cb) cb(TR_STATUS); return; }
+    api("/api/studio/translate/status").then(function (r) {
+      if (!r || r.error) return;
+      TR_STATUS = r;
+      paintTranslationService();
+      if (cb) cb(r);
+    }).catch(function () {});
+  }
+  function trServiceText(d) {
+    if (!d) return "Checking the translation service\\u2026";
+    if (!d.enabled) return "AI translation is switched off on this server. Use the manual editor, or download the CSV and translate it anywhere.";
+    var names = (d.providers || []).map(function (p) { return p.label || p.name; }).join(", ");
+    return "AI translation uses " + names + ". If a batch fails, the reason is shown below.";
+  }
+  function paintTranslationService() {
+    var host = document.getElementById("tr-service");
+    if (!host) return;
+    var d = TR_STATUS;
+    host.innerHTML = '<div class="st-note" id="tr-service-note">' + esc(trServiceText(d)) + "</div>" +
+      '<div class="st-lang-editor-head tr-service-tools">' +
+      '<button class="st-btn sm" data-act="tr-test">Test translation service</button>' +
+      '<button class="st-btn sm" data-act="tr-csv">Download CSV for translation</button>' +
+      '<label class="st-btn sm" style="cursor:pointer;margin:0">Import translated CSV' +
+      '<input type="file" id="tr-csv-file" accept=".csv,text/csv" hidden></label></div>' +
+      '<div id="tr-test-result" class="st-meta"></div>';
+  }
+  function probeTranslationService() {
+    var box = document.getElementById("tr-test-result");
+    if (box) box.textContent = "Contacting the translation service\\u2026";
+    api("/api/studio/translate/status?probe=Translate%20this%20question%20into%20the%20target%20language&lang=" +
+        encodeURIComponent(langPanel.lang || "hi")).then(function (r) {
+      if (!box) return;
+      if (r.probe && r.probe.ok) {
+        box.innerHTML = '<b style="color:#047857">Working</b> \\u2014 ' +
+          esc((r.probe.provider || "provider") + ": \\u201C" + (r.probe.text || "") + "\\u201D");
+      } else {
+        var attempts = ((r.probe || {}).attempts || []).map(function (a) {
+          return a.provider + ": " + a.error; }).join(" \\u00B7 ");
+        box.innerHTML = '<b style="color:#b91c1c">Not reachable from this server</b> \\u2014 ' +
+          esc((r.probe || {}).error || "no answer") + (attempts ? "<br><small>" + esc(attempts) + "</small>" : "") +
+          '<br><small>' + esc((r.hint || "") + " Add GOOGLE_TRANSLATE_API_KEY or DEEPL_API_KEY to use a quota-backed service.") + "</small>";
+      }
+    }).catch(function (e) {
+      if (box) box.textContent = "Test failed: " + e.message;
     });
   }
+  function downloadTranslationCsv(slug, lang) {
+    slug = slug || ((cur && cur.cfg && cur.cfg.parent) ? cur.slug : "");
+    lang = lang || langPanel.lang || (cur && cur.cfg && cur.cfg.language) || "";
+    if (!slug) { toast("Open the child survey first."); return; }
+    // fetch + Blob, not window.location: a 403 from the access gate or a server error
+    // would otherwise replace the builder with an error page (or a blank tab).
+    downloadExport("/api/studio/translations.csv?study=" + encodeURIComponent(slug) +
+                   "&lang=" + encodeURIComponent(lang), null,
+                   slug + "-" + (lang || "translations") + ".csv");
+  }
+  function importTranslationCsv(file) {
+    if (!file) return;
+    var slug = cur && cur.cfg && cur.cfg.parent ? cur.slug : "";
+    if (!slug) { toast("Open the child survey first."); return; }
+    var fd = new FormData();
+    fd.append("file", file);
+    fd.append("slug", slug);
+    fd.append("lang", langPanel.lang || cur.cfg.language || "");
+    api("/api/studio/translations/import", fd).then(function (r) {
+      if (r.error) { toast("Import failed: " + r.error); return; }
+      toast("Imported " + r.applied + " translations \\u00B7 " + r.coverage.translated + "/" +
+            r.coverage.total + " strings translated");
+      refreshTranslationEditor();
+    }).catch(function (e) { toast("Import failed: " + e.message); });
+  }
+  function refreshTranslationEditor() {
+    if (!cur) return;
+    api("/api/studio/strings?study=" + encodeURIComponent(cur.slug)).then(function (d) {
+      langPanel.data = d;
+      var host = document.getElementById("lang-tr-host");
+      if (host) host.innerHTML = trTableHtml();
+    });
+    if (cur.cfg && cur.cfg.parent) {
+      api("/api/studio/study?slug=" + encodeURIComponent(cur.slug)).then(function (s2) {
+        if (s2 && !s2.error && cur && cur.slug === s2.slug) cur.cfg = s2.cfg;
+      });
+    }
+  }
+
+  // Runs one string at a time so the progress line stays honest, and keeps every
+  // failure reason - "google: HTTP 403" is what tells an operator which firewall or
+  // quota to fix on the hosted server.
+  function runTranslationBatch(slug, lang, keys, ui) {
+    var i = 0, ok = 0, failed = {}, reasons = {};
+    function progress() {
+      if (!ui.el) return;
+      ui.el.innerHTML = '<progress max="' + Math.max(keys.length, 1) + '" value="' + i + '"></progress>' +
+        '<p>Translating ' + i + "/" + keys.length + " \\u00B7 " + ok + " done \\u00B7 " +
+        Object.keys(failed).length + " failed</p>";
+    }
+    function step() {
+      if (i >= keys.length) { ui.done(ok, failed, reasons, false); return; }
+      var key = keys[i++];
+      api("/api/studio/autotranslate", { slug: slug, lang: lang, keys: [key] })
+        .then(function (r) {
+          if (r && r.error) { failed[key] = r.error + (r.hint ? " \\u2014 " + r.hint : ""); reasons[r.error] = 1; return; }
+          ok += (r && r.translated) || 0;
+          Object.keys((r && r.failed) || {}).forEach(function (k) {
+            failed[k] = r.failed[k]; reasons[r.failed[k]] = 1;
+          });
+        })
+        .catch(function (e) { failed[key] = e.message; reasons[e.message] = 1; })
+        .then(function () {
+          progress();
+          // A blocked/firewalled translator fails every string the same way; stop after
+          // three empty-handed attempts instead of waiting out a timeout per string.
+          if (!ok && Object.keys(failed).length >= 3) { ui.done(ok, failed, reasons, true); return; }
+          step();
+        });
+    }
+    progress();
+    step();
+  }
+
+  function failureBanner(failed, reasons, slug, lang, aborted) {
+    var why = Object.keys(reasons)[0] || "";
+    return '<div class="st-note" style="border-left:4px solid #b91c1c;padding-left:10px">' +
+      "<b>" + Object.keys(failed).length + " strings could not be machine-translated" +
+      (aborted ? " (stopped early - the service looks unreachable)" : "") + ".</b><br>" +
+      esc(why) +
+      "<br><small>Nothing was lost: the untranslated rows stay editable. Use <b>Test translation service</b>, " +
+      "set a provider on the server, or download the CSV and translate it anywhere \\u2014 then import it back.</small></div>" +
+      '<div class="st-lang-editor-head"><button class="st-btn sm" data-act="tr-retry" data-slug="' + esc(slug) +
+      '" data-lang="' + esc(lang) + '">Retry failed</button>' +
+      '<button class="st-btn sm" data-act="tr-csv" data-slug="' + esc(slug) + '" data-lang="' +
+      esc(lang) + '">Download CSV</button></div>';
+  }
+
+  function translateChild(slug, lang, opts) {
+    opts = opts || {};
+    var el = opts.el || document.getElementById("translation-progress");
+    if (el) el.innerHTML = '<p>Checking which strings still need ' + esc(langMeta(lang).native) + "\\u2026</p>";
+    api("/api/studio/strings?study=" + encodeURIComponent(slug)).then(function (d) {
+      if (!d || d.error) { if (el) el.textContent = "Could not load strings: " + ((d && d.error) || "unknown error"); return; }
+      langPanel.data = d;
+      var keys = (d.strings || []).filter(function (x) {
+        return (d.excluded || []).indexOf(x.key) < 0 && !((d.translations || {})[x.key] || "").trim();
+      }).map(function (x) { return x.key; });
+      if (opts.keys) keys = opts.keys;
+      if (!keys.length) {
+        if (el) el.innerHTML = '<p><b>Every string is already translated.</b> Use the table below to review wording.</p>';
+        if (opts.done) opts.done(0, {});
+        return;
+      }
+      runTranslationBatch(slug, lang, keys, {
+        el: el,
+        done: function (ok, failed, reasons, aborted) {
+          if (opts.done) opts.done(ok, failed);
+          api("/api/studio/study?slug=" + encodeURIComponent(slug)).then(function (s2) {
+            if (s2 && !s2.error && cur && cur.slug === slug) cur.cfg = s2.cfg;
+            refreshTranslationEditor();
+            if (el) {
+              el.innerHTML = '<p><b>' + ok + " translated</b>" +
+                (Object.keys(failed).length ? " \\u00B7 " + Object.keys(failed).length + " still missing" : " \\u00B7 complete") + "</p>" +
+                (Object.keys(failed).length ? failureBanner(failed, reasons, slug, lang) : "");
+            }
+          });
+        }
+      });
+    });
+  }
+
+  // "AI-translate missing" on a parent row translates that child without making the
+  // author hunt for the child survey first.
+  function aiTranslate(b) {
+    if (translationBusy) return;
+    var lang = b.getAttribute("data-lang") || langPanel.lang;
+    if (!cur) return;
+    if (!(cur.cfg && cur.cfg.parent)) {
+      var child = (langPanel.children || []).filter(function (x) { return x.language === lang; })[0];
+      if (!child) { toast("Create the " + langMeta(lang).native + " child survey first."); return; }
+      openModal('<div class="st-modal-head"><strong>Translate ' + esc(langMeta(lang).native) + '</strong>' +
+        '<span class="st-meta">Child survey /' + esc(child.slug) + '</span>' +
+        '<button class="ex-close" data-act="modal-close" type="button">&times;</button></div>' +
+        '<div id="translation-progress" role="status" aria-live="polite"></div>' +
+        '<div class="st-modal-actions"><button class="st-btn" data-act="modal-close">Close</button></div>', "st-langmodal");
+      translationBusy = true;
+      b.disabled = true;
+      translateChild(child.slug, lang, {
+        done: function () {
+          translationBusy = false; b.disabled = false;
+          refreshLangPanel();
+        }
+      });
+      return;
+    }
+    translationBusy = true; b.disabled = true;
+    var host = document.getElementById("lang-tr-host");
+    if (host) host.querySelectorAll("input, textarea").forEach(function (n) { n.disabled = true; });
+    flushSave(function () {
+      translateChild(cur.slug, lang, {
+        done: function () {
+          translationBusy = false; b.disabled = false;
+          if (host) host.querySelectorAll("input, textarea").forEach(function (n) { n.disabled = false; });
+        }
+      });
+    });
+  }
+
   function syncTranslationsFromServer(then) {
     api("/api/studio/study?slug=" + encodeURIComponent(cur.slug)).then(function (s2) {
       cur.cfg = s2.cfg; cur.title = s2.title;
@@ -1314,6 +1502,7 @@
     });
   }
   function contextLabel(x) {
+    if (x.kind === "chrome") return "Interface button / label";
     if (x.kind === "study") return /welcome/.test(x.key) ? "Welcome page" : "Thank-you page";
     if (x.kind === "section") return "Page title";
     if (x.kind === "scene") return "Walkthrough scene";
@@ -1344,6 +1533,7 @@
     return '<div class="st-tr-row st-tr-head"><span>Context</span><span>' + esc(d.default_language) + " (parent \u00B7 source)</span><span>" + esc(langPanel.lang) + "</span></div>" + rows;
   }
   document.addEventListener("change", function (e) {
+    if (e.target.id === "tr-csv-file") { importTranslationCsv(e.target.files && e.target.files[0]); return; }
     if (!e.target.matches("[data-tr-enable]")) return;
     var d = langPanel.data, key = e.target.dataset.trEnable;
     d.excluded = (d.excluded || []).filter(function (k) { return k !== key; });
@@ -1460,11 +1650,14 @@
       '<input id="lang-search" placeholder="Search text\u2026" value="">' +
       '<label class="st-inline"><input type="checkbox" id="lang-missing"> missing only</label>' +
       '<span class="st-lang-grow"></span>' +
-      '<button class="st-btn sm" data-act="lang-ai">Translate selected missing</button>' +
-      '<button class="st-btn sm on" data-act="lang-save">Save translations</button></div>' +
+      '<button class="st-btn sm on" data-act="lang-ai">AI-translate missing</button>' +
+      '<button class="st-btn sm" data-act="lang-save">Save translations</button></div>' +
+      '<div id="tr-service"></div>' +
       '<div id="translation-progress" role="status" aria-live="polite"></div><p>Select which question text, options and labels to translate. Unchecked items use the original text. Save to apply; existing translations are preserved.</p><div class="st-tr-table" id="lang-tr-host"><div class="st-meta">Loading strings\u2026</div></div></div>' +
       "</div></div></div>";
     renderSaveState();
+    translationService(false);
+    paintTranslationService();
     api("/api/studio/strings?study=" + encodeURIComponent(cur.slug)).then(function (d) {
       langPanel.data = d;
       langPanel.lang = lang;
@@ -6296,6 +6489,19 @@
     if (act === "child-link") { copyLink(b.getAttribute("data-slug")); }
     if (act === "lang-del") { removeChild(b.getAttribute("data-lang")); }
     if (act === "lang-ai") { aiTranslate(b); }
+    if (act === "tr-test") { probeTranslationService(); }
+    if (act === "export-ppt") {
+      downloadExport("/api/workspace/export_ppt?study=" + encodeURIComponent(cur.slug) +
+                     "&scope=" + encodeURIComponent(b.getAttribute("data-scope") || "all"),
+                     b, cur.slug + "-report.pptx");
+    }
+    if (act === "tr-csv") { downloadTranslationCsv(b.getAttribute("data-slug"), b.getAttribute("data-lang")); }
+    if (act === "tr-retry") {
+      var rslug = b.getAttribute("data-slug") || cur.slug;
+      var rlang = b.getAttribute("data-lang") || langPanel.lang;
+      var box = document.getElementById("translation-progress");
+      translateChild(rslug, rlang, { el: box });
+    }
     if (act === "lang-save") { saveTranslations(); }
     if (act === "tl-save") {
       var nt = (val("tl-title") || "").trim();
@@ -6928,7 +7134,7 @@
                 '<option value="test"' + (scope === "test" ? " selected" : "") + '>Test only (' + (a.test_n || 0) + ')</option>' +
               '</select>' +
             '</label>' +
-            '<a class="st-btn on sm" href="/api/workspace/export_ppt?study=' + encodeURIComponent(cur.slug) + '&scope=' + scope + '">Download PPT deck ↓</a>' +
+            '<button type="button" class="st-btn on sm" data-act="export-ppt" data-scope="' + scope + '">Download PPT deck ↓</button>' +
           '</div>' +
         '</div>';
 
@@ -7277,6 +7483,20 @@
     if (act === "lang-del") { removeChild(b.getAttribute("data-lang")); return; }
     if (act === "lang-save") { saveTranslations(); return; }
     if (act === "lang-ai") { aiTranslate(b); return; }
+    if (act === "tr-test") { probeTranslationService(); return; }
+    if (act === "export-ppt") {
+      downloadExport("/api/workspace/export_ppt?study=" + encodeURIComponent(cur.slug) +
+                     "&scope=" + encodeURIComponent(b.getAttribute("data-scope") || "all"),
+                     b, cur.slug + "-report.pptx");
+      return;
+    }
+    if (act === "tr-csv") { downloadTranslationCsv(b.getAttribute("data-slug"), b.getAttribute("data-lang")); return; }
+    if (act === "tr-retry") {
+      translateChild(b.getAttribute("data-slug") || cur.slug,
+                     b.getAttribute("data-lang") || langPanel.lang,
+                     { el: document.getElementById("translation-progress") });
+      return;
+    }
     var i = Number(b.getAttribute("data-i"));
 
     if (act === "new") openNewStudy();

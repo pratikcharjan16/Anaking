@@ -85,6 +85,23 @@ CREATE TABLE IF NOT EXISTS invites (
     sent_at TEXT DEFAULT ''
 );
 CREATE INDEX IF NOT EXISTS ix_invites_study ON invites(study_slug, id);
+CREATE TABLE IF NOT EXISTS demo_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL DEFAULT '',
+    email TEXT NOT NULL DEFAULT '',
+    organization TEXT NOT NULL DEFAULT '',
+    role TEXT NOT NULL DEFAULT '',
+    team_size TEXT NOT NULL DEFAULT '',
+    message TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'landing',
+    ip TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'new',
+    note TEXT NOT NULL DEFAULT '',
+    handled_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT,
+    updated_at TEXT
+);
+CREATE INDEX IF NOT EXISTS ix_demo_requests_status ON demo_requests(status, id);
 CREATE TABLE IF NOT EXISTS public_survey_links (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     study_slug TEXT NOT NULL,
@@ -189,6 +206,12 @@ def init_db(path: str | None = None) -> None:
             conn.executescript(SCHEMA)
             from core.security import SCHEMA as SECURITY_SCHEMA
             conn.executescript(SECURITY_SCHEMA)
+            # Columns added after the first release of a table (SQLite has no
+            # "ADD COLUMN IF NOT EXISTS", so check the table info first).
+            for table, column, decl in (("demo_requests", "ip", "TEXT NOT NULL DEFAULT ''"),):
+                cols = {r[1] for r in conn.execute(f"PRAGMA table_info({table})")}
+                if cols and column not in cols:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
             from core.governance import SCHEMA as GOVERNANCE_SCHEMA
             conn.executescript(GOVERNANCE_SCHEMA)
             from core.data_validation import SCHEMA as VALIDATION_SCHEMA
@@ -696,9 +719,15 @@ class Respondent:
         self.study_id = row["study_id"]
         self.is_test = bool(row["is_test"])
         self.status = row["status"]
+        self._language = None        # set once set_language() writes a new value
 
     def __getitem__(self, key):           # keep dict-style access used by reporting
         return self.row[key]
+
+    @property
+    def language(self) -> str:
+        """The language this respondent is reading, including a mid-run switch."""
+        return self._language if self._language is not None else (self.row["language"] or "")
 
     # ---- lookups
     @staticmethod
@@ -817,6 +846,21 @@ class Respondent:
         with write_lock, conn:
             conn.execute("UPDATE respondents SET status='complete', completed_at=?, "
                          "elapsed_seconds=? WHERE id=?", (now(), seconds, self.id))
+
+    def set_language(self, language: str) -> None:
+        """Remember the language the respondent is actually reading.
+
+        A language switch in the middle of an interview used to live only in the browser,
+        so a reload elsewhere - or the exported dataset - still claimed the language the
+        session was opened in.
+        """
+        language = str(language or "")[:12]
+        if language == self.language or self.status in ("complete", "screened_out"):
+            return
+        conn = get_db()
+        with write_lock, conn:
+            conn.execute("UPDATE respondents SET language=? WHERE id=?", (language, self.id))
+        self._language = language
 
     def answers(self) -> dict:
         return Answer.for_respondent(self.id)

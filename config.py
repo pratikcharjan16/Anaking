@@ -50,6 +50,32 @@ class Config:
     DEV_LOGIN = (not PRODUCTION) and os.environ.get("DEV_LOGIN", "0") == "1"
     SECRET_KEY = os.environ.get("SECRET_KEY", "change-me-in-production")
 
+    # ---- machine translation (Globalize / child surveys) ----------------------
+    # AI translation runs server-side. A hosted server often cannot reach the keyless
+    # Google endpoint, so a quota-backed provider can be configured here; the
+    # translator falls back to the keyless endpoints when none is set.
+    #   TRANSLATE_PROVIDER = auto | google | google-cloud | deepl | libretranslate | mymemory | none
+    TRANSLATE_PROVIDER = os.environ.get("TRANSLATE_PROVIDER", "auto")
+    GOOGLE_TRANSLATE_API_KEY = os.environ.get("GOOGLE_TRANSLATE_API_KEY", "")
+    DEEPL_API_KEY = os.environ.get("DEEPL_API_KEY", "")
+    LIBRETRANSLATE_URL = os.environ.get("LIBRETRANSLATE_URL", "")
+    MYMEMORY_EMAIL = os.environ.get("MYMEMORY_EMAIL", "")
+
+    # ---- "Export to Google Sheets" -------------------------------------------
+    # The browser-side Google Identity flow needs an OAuth *web* client id whose
+    # authorised JavaScript origins include this deployment. The secret is never used
+    # for this flow and never sent to the browser.
+    GOOGLE_SHEETS_CLIENT_ID = (os.environ.get("GOOGLE_SHEETS_CLIENT_ID")
+                               or os.environ.get("GOOGLE_CLIENT_ID", ""))
+    GOOGLE_SHEETS_SCOPE = os.environ.get(
+        "GOOGLE_SHEETS_SCOPE", "https://www.googleapis.com/auth/spreadsheets")
+
+    # Team alerts that are not tied to one study: demo requests, new sign-ups.
+    # Falls back to ADMIN_EMAILS, so an existing install needs no new setting.
+    DEMO_NOTIFY_EMAIL = [e.strip().lower() for e in
+                         (os.environ.get("DEMO_NOTIFY_EMAIL") or "").split(",") if e.strip()]
+    DEMO_NOTIFY_EMAIL = DEMO_NOTIFY_EMAIL or ADMIN_EMAILS
+
     # SQLite database holding studies, respondents and answers.
     DB_PATH = os.environ.get("DB_PATH", os.path.join(DATA_DIR, "survey.db"))
     # Account-owned data (users, credentials, Kart ledger, password resets) lives in

@@ -136,6 +136,23 @@ The team apps (Projects / Studio / Monitor) are multi-user:
   place. Two rules keep it safe: an account that still owns projects cannot be deleted until
   they are transferred or deleted, and the master admin (`Anaking.admin`) can never be
   disabled, demoted or deleted.
+- **Demo requests are their own list** — the landing page's **Request a demo** buttons
+  (nav, hero and the join section) open a small dialog that posts to `/api/demo/request`.
+  Leads land in `demo_requests` and in a dedicated **Demo requests** block on the account
+  desk — never in "Waiting on you" beside registration approvals, because a sales lead and
+  an account to approve are different jobs. Each card carries name, organisation, e-mail,
+  role, team size, message, source page, IP and arrival time; the admin moves it through
+  *new → contacted → scheduled → closed* or deletes it. Only the first open request per
+  address is stored (repeat submissions answer `duplicate: true`), the form is rate-limited
+  (3 per address and 10 per IP per hour) and a hidden `website` field swallows bots. When
+  SMTP is configured the lead is also e-mailed to `DEMO_NOTIFY_EMAIL` (falling back to
+  `ADMIN_EMAILS`); the stored `note` records `notify:sent|queued|failed|no-recipient`.
+- **Mail & invitations settings** — the account desk's **Mail & invitations** panel writes
+  `data/mail.json` (0600) from the browser, verifies the connection and sends a test
+  message, so invites, reminders, approvals and demo alerts start flowing without a
+  redeploy. Passwords are never returned by the API. Provider recipes (Gmail App
+  Passwords, Microsoft 365, SendGrid, SES, Mailgun), deliverability and the meaning of every
+  error message are in [docs/smtp-setup.md](docs/smtp-setup.md).
 - **Support view** — *Open as person* swaps the admin's session to that account so they see
   exactly what the user sees (Workspace, Studio, Kart). A `Support view` strip is pinned to
   every team page with a one-click **Exit to account desk**; the admin desk is out of reach
@@ -253,7 +270,11 @@ radii, elevation, motion and focus treatment; app stylesheets only lay out their
 Two themes share those foundations — the team tools use the deep-green editorial identity, the
 respondent survey keeps its clinical navy instrument. The brand lockup, document head, section
 switcher and footer are shared macros, and every asset URL is stamped with one build version by
-`asset()` (no hand-typed `?v=` strings). See `docs/design-system.md`.
+`asset()` (no hand-typed `?v=` strings). The landing page is the one exception to the shared
+footer: it closes on a dark five-column directory (`templates/_footer_landing.html`, classes
+`.lnf-*`) that carries the product, use-case, resource, company and comparison directory; the
+cream `_footer.html` keeps serving Studio, Workspace, Monitor, the survey pages and home. See
+`docs/design-system.md`.
 
 Configuration (environment variables): `PORT`, `HOST`, `DB_PATH`, `USERS_DB_PATH`, `VOICE_DIR`, `NARRATION_DIR`,
 `MEDIA_DIR`, `SECRET_KEY`, `ASSET_VERSION`. Defaults put the database in `data/survey.db`, respondent recordings in
@@ -406,7 +427,8 @@ study's **Actions**: Preview Survey (opens the testing link in a new window), Du
 an optional message. Launching takes the study live and gives every recipient a personal
 `/survey/<slug>?rid=…` link, so responses can be attributed back to the person who was invited.
 Mail goes out over SMTP when it is configured (`BEACON_SMTP_HOST`, `_PORT`, `_USER`, `_PASSWORD`,
-`_FROM`, `_TLS`, or a `data/mail.json` with the same keys); without it every send is still recorded
+`_FROM`, `_TLS`, or `data/mail.json`, which the **Mail & invitations** panel writes for you;
+set-up recipes and troubleshooting: [docs/smtp-setup.md](docs/smtp-setup.md)); without it every send is still recorded
 in the built-in outbox — open **View invite log** on the card to see each recipient, its status
 (sent / queued / failed), its copyable link and a CSV download (`/api/studio/invites.csv`).
 **Send Reminder** nudges only the people who have not taken part yet, reuses their personal link and
@@ -441,10 +463,52 @@ language with its coverage bar and offers, per language:
 
 * **manual translation** - a searchable table (context · source · translation, *missing
   only* filter) that saves through `POST /api/studio/translate`;
-* **AI-translate missing** - server-side machine translation
-  (`core/translator.py`, keyless Google endpoint, tag-safe for rich text) that fills only
-  the gaps and never overwrites manual work; when the network is unavailable every string
-  is reported as failed and simply stays for manual translation.
+* **AI-translate missing** - server-side machine translation (`core/translator.py`,
+  tag-safe for rich text) that fills only the gaps and never overwrites manual work. The
+  provider chain runs **Google Cloud Translation** (`GOOGLE_TRANSLATE_API_KEY`), **DeepL**
+  (`DEEPL_API_KEY`, `DEEPL_FREE=1` for the free endpoint), **LibreTranslate**
+  (`LIBRETRANSLATE_URL`, optional key), the keyless Google web endpoint, then **MyMemory**
+  (optional `MYMEMORY_EMAIL`); `TRANSLATE_PROVIDER` pins one provider or `none`, and
+  `TRANSLATE_TIMEOUT` (8 s) bounds each attempt. Transient/5xx/network errors are retried
+  once; a provider that keeps failing is skipped, three empty results in a row abort the
+  run (so a blocked service cannot burn through a whole questionnaire), and every failure
+  comes back with the provider's own message instead of "translation failed". The panel's
+  service strip carries the live probe (`GET /api/studio/translate/status`) and a **Download
+  CSV** / **Import CSV** round trip (`/api/studio/translations.csv`), so a team can fill the
+  wording in a spreadsheet when the server has no outbound access.
+
+**The interface stays English.** Only questionnaire content follows the language: the
+buttons, listening controls and welcome-page fact strip (`Begin survey`, `Next`, `Back`,
+`Listen`, `Questions`, `Takes about` …) are product chrome defined in
+`core/i18n.CHROME_EN` and are identical in every language, so a Hindi child asks its
+questions in Hindi inside the same English interface the team already knows. Chrome keys are
+deliberately absent from the translation worksheet, the coverage figures and the CSV, and a
+translation saved by an older build (or imported from an old spreadsheet) is ignored.
+
+**Making a Hindi child survey (the five clicks).** Open the English parent in Studio, choose
+**Globalize Survey…** / the **Translations** tab, pick **हिन्दी (Hindi)** and **Create**. The
+child opens with the parent's strings listed; press **AI-translate missing** to fill every empty
+cell, or download the CSV, translate it anywhere and upload it back (**Translate → Download CSV /
+Import CSV**). The child is a real study: **Share survey preview** gives its own link, the
+questionnaire renders in Hindi while the buttons stay English, and editing the parent later
+**does not** overwrite the child's wording — only untranslated strings follow the parent live.
+
+**If a translated child still shows English.** Check, in this order:
+
+1. **Coverage** — the child's coverage bar (Translations tab) says how many strings have a
+   translation. Anything missing renders the parent's English wording by design; filter the
+   table by *missing only* to see it.
+2. **The AI service was reachable** — **Test translation service** in the panel calls
+   `GET /api/studio/translate/status?probe=…`. "Not reachable from this server" means the
+   *host* cannot open the connection, not that the browser or the study is at fault; configure
+   `GOOGLE_TRANSLATE_API_KEY`, `DEEPL_API_KEY` or a self-hosted `LIBRETRANSLATE_URL`, or use
+   the CSV round trip.
+3. **The child is older than the question** — a child created before a question, option or
+   gauge anchor was added has no row for it yet; run **AI-translate missing** again.
+4. **A published study** — translations saved after publishing are served live (the language
+   tables are never frozen into the snapshot), but a study still on an old build needs a
+   re-publish or an app restart.
+5. **The buttons are English on purpose** — only the questionnaire follows the language.
 
 Respondents pick their language on the welcome page (native names); the choice re-renders
 the survey (`/api/spec/<slug>?lang=es`), RTL languages flip the page direction, missing
@@ -717,11 +781,15 @@ python3 -m pytest tests/test_delta_grid.py        # Delta as a carried grid: ref
                                                  #   source, export, data dictionary, research summary, before/after Delta
 python3 -m pytest tests/test_sections.py        # sections start empty, naming, save validation
 python3 -m pytest tests/test_screening.py       # screening config on save, plain-English logic, outline & export
+python3 -m pytest tests/test_translation_providers.py  # provider chain, per-string failures, abort, status probe, CSV round trip
+python3 -m pytest tests/test_smtp.py            # mail settings file (0600), password never returned, verify/test-send errors
+python3 -m pytest tests/test_demo_requests.py   # demo leads stored apart from approvals, rate limits, honeypot, duplicate
 
 python3 app.py &                                # live-server scripts
 python3 scripts/e2e_live_server.py              # full flow, screen-outs, QC flags, exports
 python3 scripts/e2e_reuse_live_server.py        # test/real scopes, xlsx, reset & reuse
 python3 scripts/seed_demo.py                    # 7 demo respondents + sample workbook
+python3 scripts/dev_smtp_sink.py                # local SMTP sink: print invites / demo alerts instead of sending
 node scripts/dom/studio_workspace_test.js       # Studio workspace: outline/editor/preview, autosave (needs jsdom)
 node scripts/dom/studio_reorder_test.js         # option rows: drag / ▲▼ / keyboard reorder, delete button
 node scripts/dom/studio_colors_test.js          # font-colour & highlight palettes: standard grid, custom
@@ -790,6 +858,40 @@ language through the browser Web Speech API, requires microphone permission and
 browser support, and may depend on the browser's online speech service. Manual
 input remains available. Automated tests simulate recognition; real microphone
 accuracy and external translation availability must also be checked in deployment.
+
+### Exporting results: PowerPoint, Excel and Google Sheets
+
+Every export lives behind `routes/workspace.py` and is reachable from the study page in
+`/workspace/` (**Export** → the format dialogs):
+
+| Endpoint | What it returns |
+| --- | --- |
+| `GET /api/workspace/export_ppt?study=&scope=real\|all` | A real `.pptx` deck (13.33×7.5 in. widescreen, one chart per question, verbatim quotes, method notes) built by `core/ppt_export.py` with `python-pptx` |
+| `GET /api/workspace/export_status?study=` | Health probe: `powerpoint.available`, the engine, any import error and the last export error, plus Excel / Sheets counts |
+| `GET /api/workspace/export_sheets?study=&scope=` | The workbook as JSON — eight sheets (Responses, Data dictionary, Field summary, Quotas, Screening, Conjoint, Walkthrough, Analysis), capped at 5,000 rows each |
+| `GET /api/workspace/export_sheets.csv?study=&scope=&sheet=` | One sheet as a BOM-prefixed UTF-8 CSV (for Excel on Windows) |
+| `GET /api/admin/export.xlsx\|csv\|json?study=&scope=` | The classic Admin exports |
+
+**PowerPoint.** `python-pptx` (and `lxml`) are in `requirements.txt`; the import is lazy so a
+host missing the wheel does not break the whole app — the button then says *PowerPoint
+unavailable* with the import error, which the **Export notes** line now shows from
+`export_status`. The browser downloads through `downloadExport()` (same-origin `fetch` →
+`Blob` → `<a download>`) instead of `window.location`, so a 403 from the access gate, a proxy
+timeout or a server traceback is surfaced as a readable toast with the server's own
+`detail` rather than a blank tab. On a new host run
+`pip install -r requirements.txt && python -c "import pptx, lxml; print(pptx.__version__)"`
+before blaming the deck; behind nginx, allow long responses (`proxy_read_timeout`) for very
+large studies, or export scope-by-scope.
+
+**Google Sheets / Drive.** With `GOOGLE_SHEETS_CLIENT_ID` (an OAuth *Web application*
+client whose **Authorised JavaScript origins** include the deployment origin, e.g.
+`https://surveys.example.com`) the **Create in Google Sheets** button signs the user in with
+Google Identity Services, creates a spreadsheet in *their* Drive, writes every sheet and opens
+it in a new tab; the file belongs to the researcher, not the server. The dialog always offers
+**Download CSV instead**, so teams behind a firewall or without Google Workspace can hand the
+data to Sheets/Excel manually — `GOOGLE_SHEETS_SCOPE` defaults to
+`https://www.googleapis.com/auth/spreadsheets` and only the public client id is used; no
+client secret is needed in the browser and the token is never sent to the server.
 
 ### Updated research workspace (3.4 preview)
 

@@ -6,6 +6,7 @@ Word outline, Move survey, and the new question types end to end.
     python3 -m pytest tests/test_globalize.py
 """
 
+import copy
 import csv
 import io
 import json
@@ -397,3 +398,122 @@ def test_child_translation_selection_rich_labels_and_parent_language(client, mon
     assert d["translations"]["q:Q1:stem"] == "Manual"
     assert d["excluded"] == ["q:Q1:stem"]
     assert client.post("/api/studio/autotranslate", json={"slug": slug, "lang": "es", "keys": "bad"}).status_code == 400
+
+
+# ---------------------------------------------------------------- live (hosted) translation
+# Translations used to work only in the Studio test link: once a study was published and
+# real sessions existed, the published snapshot (and every response pinned to it) froze the
+# language tables too, and ?lang= was ignored for any respondent who already had a session.
+def _live_translated_study(client, slug="live-tr"):
+    cfg = copy.deepcopy(GLOBAL_CFG)
+    cfg["language"] = "en-US"
+    _save(client, cfg, slug=slug, title="Live translation")
+    assert client.post("/api/studio/status", json={"slug": slug, "status": "live"}).status_code == 200
+    assert client.post("/api/studio/globalize", json={"slug": slug, "lang": "es"}).get_json()["ok"]
+    client.post("/api/studio/translate", json={"slug": slug + "--es", "lang": "es",
+        "strings": {"study:welcome_text": "Diez minutos de su tiempo.",
+                    "q:Q1:stem": "Elige uno", "q:Q1:opt:1": "Opción A"}})
+    return slug
+
+
+def _publish(app, slug):
+    """Freeze the design the way /api/workspace/publish does (snapshot + revision)."""
+    from core.governance import effective_cfg, revision
+    from core.research import fingerprint
+    from models import Study, get_db, now
+    with app.app_context():
+        study = Study.get(slug)
+        db = get_db()
+        with db:
+            rid = revision(db, study.id, study.title, study.cfg)
+            db.execute("INSERT OR REPLACE INTO publications VALUES(?,?,?)", (study.id, rid, now()))
+            frozen = effective_cfg(study, True)
+            db.execute("INSERT OR REPLACE INTO publication_snapshots VALUES(?,?,?)",
+                       (study.id, json.dumps(frozen), fingerprint(frozen)))
+
+
+def test_live_spec_keeps_lang_for_a_respondent_who_already_started(client, app):
+    slug = _live_translated_study(client)
+    sid = client.post("/api/start", json={"study": slug, "is_test": False}).get_json()["session_id"]
+    # The in-survey language switch keeps the session and reloads with ?lang=es.
+    spec = client.get(f"/api/spec/{slug}", query_string={"sid": sid, "lang": "es"}).get_json()
+    assert spec["render_language"] == "es"
+    assert spec["welcome_text"] == "Diez minutos de su tiempo."
+    assert spec["questions"][1]["stem"] == "Elige uno"
+    # ... and a plain reload keeps that language instead of dropping back to English.
+    again = client.get(f"/api/spec/{slug}", query_string={"sid": sid}).get_json()
+    assert again["questions"][1]["stem"] == "Elige uno"
+    # Switching back to the parent language on the same session is honoured too.
+    back = client.get(f"/api/spec/{slug}", query_string={"sid": sid, "lang": "en-US"}).get_json()
+    assert back["render_language"] == "en-US" and back["questions"][1]["stem"] == "Pick one"
+    # A language that is not part of the study never breaks the page.
+    assert client.get(f"/api/spec/{slug}", query_string={"sid": sid, "lang": "de"}).get_json()["render_language"] == "en-US"
+
+
+def test_translation_published_after_go_live_is_served_to_respondents(client, app):
+    slug = _live_translated_study(client, slug="live-late")
+    _publish(app, slug)                       # published while still untranslated
+    assert client.get(f"/api/spec/{slug}", query_string={"lang": "es"}).get_json()["questions"][1]["stem"] == "Elige uno"
+    # A correction saved after publishing replaces the frozen table live - no re-publish.
+    client.post("/api/studio/translate", json={"slug": slug + "--es", "lang": "es",
+        "strings": {"q:Q1:stem": "Elija sólo uno"}})
+    spec = client.get(f"/api/spec/{slug}", query_string={"lang": "es"}).get_json()
+    assert spec["questions"][1]["stem"] == "Elija sólo uno"
+    sid = client.post("/api/start", json={"study": slug, "is_test": False}).get_json()["session_id"]
+    pinned = client.get(f"/api/spec/{slug}", query_string={"sid": sid, "lang": "es"}).get_json()
+    assert pinned["questions"][1]["stem"] == "Elija sólo uno"
+    # The frozen design itself is untouched: the parent's own wording never changes.
+    assert client.get(f"/api/spec/{slug}").get_json()["questions"][1]["stem"] == "Pick one"
+
+
+def test_child_survey_can_be_switched_back_to_the_original_language(client):
+    slug = _live_translated_study(client, slug="live-back")
+    spec = client.get(f"/api/spec/{slug}--es", query_string={"lang": "en-US"}).get_json()
+    assert spec["render_language"] == "en-US"
+    assert spec["questions"][1]["stem"] == "Pick one"
+    assert spec["default_text"] == {}
+
+
+def test_interface_wording_stays_english(client):
+    """Only questionnaire content follows the language; the buttons stay in English."""
+    from core.i18n import CHROME_EN, ui_strings
+    slug = _live_translated_study(client, slug="live-ui")
+    spec = client.get(f"/api/spec/{slug}", query_string={"lang": "es"}).get_json()
+    assert spec["ui"] == CHROME_EN                     # chrome is English in every language
+    # A legacy child that translated the buttons (or a CSV import with ui: keys) must not
+    # resurface translated chrome - the sentences below stay English.
+    client.post("/api/studio/translate", json={"slug": slug + "--es", "lang": "es",
+        "strings": {"ui:begin": "Comenzar la encuesta", "ui:next": "Siguiente"}})
+    spec = client.get(f"/api/spec/{slug}", query_string={"lang": "es"}).get_json()
+    assert spec["ui"]["begin"] == "Begin survey"
+    assert spec["ui"]["next"] == "Next"
+    # ...and the interface strings are not offered to translators or counted in coverage.
+    d = client.get("/api/studio/strings", query_string={"study": slug + "--es"}).get_json()
+    assert not any(x["key"].startswith("ui:") or x["kind"] == "chrome" for x in d["strings"])
+    assert all(not k.startswith("ui:") for k in d["coverage"].get("missing", []))
+    assert ui_strings({"ui": {"begin": "X"}})["begin"] == "Begin survey"
+
+def test_gauge_meter_anchor_labels_translate(client):
+    """Gauge anchors live on the question (q.min_label) while scales keep them in
+    q.scale - a translation has to reach whichever place the renderer reads."""
+    from core.i18n import apply_language, extract_strings
+    cfg = {
+        "language": "en-US", "sections": [{"id": "S1", "title": "Main"}],
+        "questions": [
+            {"id": "G1", "section": "S1", "type": "gauge_meter", "stem": "How was it?",
+             "min": 0, "max": 100, "min_label": "Poor", "mid_label": "Moderate",
+             "max_label": "Excellent"},
+            {"id": "R1", "section": "S1", "type": "rating_scale", "stem": "Rate it",
+             "scale": {"min": 1, "max": 5, "min_label": "Low", "max_label": "High"}},
+        ],
+    }
+    keys = {x["key"] for x in extract_strings(cfg)}
+    assert {"q:G1:min_label", "q:G1:mid_label", "q:G1:max_label", "q:R1:min_label"} <= keys
+    tr = {"q:G1:min_label": "खराब", "q:G1:mid_label": "सामान्य", "q:G1:max_label": "उत्कृष्ट",
+          "q:R1:min_label": "कम", "q:R1:max_label": "उच्च"}
+    out = apply_language(dict(cfg, translations={"hi": tr}), "hi")
+    g, r = out["questions"]
+    # the renderer reads q.min_label first, so it must be the Hindi text
+    assert (g["min_label"], g["mid_label"], g["max_label"]) == ("खराब", "सामान्य", "उत्कृष्ट")
+    # the scale keeps its labels in q.scale and must be updated there
+    assert (r["scale"]["min_label"], r["scale"]["max_label"]) == ("कम", "उच्च")

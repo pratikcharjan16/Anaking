@@ -24,6 +24,7 @@ node_modules/
 data/*.db
 data/*.db-shm
 data/*.db-wal
+data/*.log
 uploads/voice/
 uploads/narration/
 my_env

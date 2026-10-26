@@ -110,7 +110,7 @@ def init_security(app):
             from core import accounts
             g.user = accounts.by_id(session.get('uid'))
         path = request.path
-        if (path.startswith(('/auth/', '/api/auth/', '/share/'))
+        if (path.startswith(('/auth/', '/api/auth/', '/share/', '/api/demo/'))
                 or path in ('/api/me', '/api/kart/catalog', '/', '/welcome', '/admin-login',
                             '/sitemap', '/sitemap.html',
                             '/sitemap.xml', '/robots.txt', '/llms.txt', '/manifest.webmanifest')):

@@ -181,6 +181,9 @@ def admin_portal():
                             if str(e["created_at"])[:10] >= week_ago and e["actor"]}),
         "pending_point_requests": sum(1 for r in point_reqs if r["status"] == "pending"),
         "pending_recovery": len(recovery.pending_requests()),
+        "demo_new": db.execute(
+            "SELECT COUNT(*) FROM demo_requests WHERE status='new'").fetchone()[0],
+        "demo_total": db.execute("SELECT COUNT(*) FROM demo_requests").fetchone()[0],
         "users_db": (__import__("core.userdata", fromlist=["x"]).describe())["users_db"],
     }
     feed = []
@@ -518,6 +521,50 @@ def account_impersonate_end():
 # ====================================================================================
 # SIGN-IN & RECOVERY
 # ====================================================================================
+@bp.get("/api/admin/console/smtp")
+def smtp_view():
+    """What the console shows about mail: connection details, never the password."""
+    _require_admin()
+    from core import mailer
+    from flask import current_app
+    return jsonify({"smtp": mailer.smtp_status(),
+                    "demo_recipients": current_app.config.get("DEMO_NOTIFY_EMAIL") or [],
+                    "admin_recipients": current_app.config.get("ADMIN_EMAILS") or [],
+                    "from_env": bool(__import__("os").environ.get("BEACON_SMTP_HOST"))})
+
+
+@bp.post("/api/admin/console/smtp")
+def smtp_save():
+    """Save SMTP settings to data/mail.json (0600). Password is write-only."""
+    _require_admin()
+    from core import mailer
+    body = request.get_json(silent=True) or {}
+    try:
+        if body.get("clear"):
+            mailer.clear_settings()
+            audit("Cleared SMTP settings")
+            return jsonify({"ok": True, "smtp": mailer.smtp_status()})
+        view = mailer.save_settings(body)
+    except mailer.MailError as e:
+        return jsonify({"error": str(e)}), 400
+    audit("Saved SMTP settings", detail=str(view.get("host")))
+    v = mailer.verify()
+    return jsonify({"ok": True, "smtp": mailer.smtp_status(), "verify": v})
+
+
+@bp.post("/api/admin/console/smtp/test")
+def smtp_test():
+    _require_admin()
+    from core import mailer
+    body = request.get_json(silent=True) or {}
+    to = str(body.get("to") or "").strip()[:254]
+    if not to or "@" not in to:
+        return jsonify({"error": "give an e-mail address to send the test to"}), 400
+    result = mailer.send_test(to)
+    audit("Sent an SMTP test message", detail=to)
+    return jsonify(result), (200 if result.get("ok") else 400)
+
+
 @bp.get("/api/admin/console/recovery")
 def recovery_queue():
     """One-time recovery links waiting for a human (no SMTP configured) + the tally."""

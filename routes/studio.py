@@ -60,6 +60,7 @@ from core.research_agent import (build_from_brief, build_from_document, build_mo
 from core.reporting import (analysis_for, delta_source_columns, delta_source_rows,
                              delta_source_values)
 from core.translator import TranslationError, translate_string
+from core.translator import status as translator_status
 from core.walkthrough import DECK_MAX_BYTES, DeckError, steps_from_pptx
 from models import Respondent, Study, StudyError, get_db
 
@@ -1090,6 +1091,109 @@ def translate():
     return jsonify({"ok": True, "coverage": coverage(_merged_for(study, lang), lang)})
 
 
+def _translation_source(study) -> str:
+    return default_language(_base_of(study))
+
+
+@bp.get("/api/studio/translate/status")
+def translate_status():
+    """What the AI-translate button will actually use, plus an optional live probe.
+
+    Hosted deployments are usually the ones where machine translation fails; this
+    answers "is the translator reachable from *this* server, and through which
+    provider" without editing a survey.
+    """
+    study = Study.get(study_arg()) if (request.args.get("study") or request.args.get("slug")) else None
+    base_lang = _translation_source(study) if study else "en-US"
+    probe_lang = request.args.get("lang") or "hi"
+    if study and not valid_language(probe_lang):
+        probe_lang = "hi"
+    probe_text = str(request.args.get("probe") or "").strip()
+    out = translator_status(probe_text=probe_text[:200], probe_lang=probe_lang)
+    out["source_language"] = base_lang
+    out["target_language"] = probe_lang
+    if probe_text:
+        out["probe"]["text"] = str(out["probe"].get("text") or "")[:200]
+    return jsonify(out)
+
+
+@bp.get("/api/studio/translations.csv")
+def translations_csv():
+    """The translation table as a spreadsheet - works with any offline translator.
+
+    Columns: key, kind, context, source, translation.  Fill the ``translation``
+    column (Excel, Google Sheets, a translation agency) and import the file back;
+    the keys never change, so nothing can be applied to the wrong question.
+    """
+    import csv
+    from io import StringIO
+    study = Study.get(study_arg())
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    lang = request.args.get("lang") or (study.cfg.get("language") if study.is_child() else "")
+    if not valid_language(lang):
+        return jsonify({"error": "bad language"}), 400
+    base = _base_of(study)
+    table = (study.cfg.get("translations") or {}).get(lang) or {}
+    excluded = set((study.cfg.get("translation_excluded") or {}).get(lang) or [])
+    buf = StringIO()
+    w = csv.writer(buf)
+    w.writerow(["key", "kind", "context", "source", "translation"])
+    for x in extract_strings(base):
+        ctx = x["key"] if x["kind"] != "chrome" else "interface: " + x["key"].split(":", 1)[1]
+        w.writerow([x["key"], x["kind"], ctx, x["text"],
+                    "" if x["key"] in excluded else table.get(x["key"], "")])
+    data = ("\ufeff" + buf.getvalue()).encode("utf-8")     # BOM: Excel reads Hindi/Devanagari
+    return attachment(data, "text/csv; charset=utf-8", f"{study.slug}-{lang}-translations.csv")
+
+
+@bp.post("/api/studio/translations/import")
+def translations_import():
+    """Apply a filled-in translation spreadsheet (or explicit rows) to a child survey."""
+    if request.files.get("file"):
+        raw = request.files["file"].read().decode("utf-8-sig", "replace")
+        body = {"csv": raw}
+    else:
+        body = json_body()
+    slug = body.get("slug") or request.args.get("study") or ""
+    lang = body.get("lang") or request.args.get("lang") or ""
+    study = Study.get(slug)
+    if not study:
+        return jsonify({"error": "unknown study"}), 404
+    if not valid_language(lang) or lang == default_language(_base_of(study)):
+        return jsonify({"error": "bad language"}), 400
+    known = {x["key"]: x for x in extract_strings(_base_of(study))}
+    values: dict[str, str] = {}
+    if isinstance(body.get("rows"), list):
+        for row in body["rows"]:
+            if isinstance(row, dict) and str(row.get("key") or "") in known:
+                values[row["key"]] = str(row.get("translation") or row.get("text") or "")
+    elif isinstance(body.get("csv"), str):
+        import csv
+        from io import StringIO
+        reader = csv.reader(StringIO(body["csv"].lstrip("\ufeff")))
+        header = next(reader, None)
+        if not header:
+            return jsonify({"error": "the file is empty"}), 400
+        cols = [c.strip().lower() for c in header]
+        if "key" not in cols or "translation" not in cols:
+            return jsonify({"error": "the first row must contain 'key' and 'translation' columns"}), 400
+        ki, ti = cols.index("key"), cols.index("translation")
+        for row in reader:
+            if len(row) <= max(ki, ti) or not row[ki].strip() in known:
+                continue
+            values[row[ki].strip()] = row[ti]
+    else:
+        return jsonify({"error": "send a CSV file, a csv string or a rows list"}), 400
+    if not values:
+        return jsonify({"error": "no matching translation keys found in the file"}), 400
+    _save_translations(slug, lang, values)
+    filled = sum(1 for v in values.values() if (v or "").strip())
+    merged = _merged_for(Study.get(slug) or study, lang)
+    return jsonify({"ok": True, "applied": filled, "keys": len(values),
+                    "coverage": coverage(merged, lang)})
+
+
 @bp.post("/api/studio/autotranslate")
 def autotranslate():
     """AI-translate respondent-visible strings that have no manual translation yet.
@@ -1107,12 +1211,22 @@ def autotranslate():
     src = default_language(_base_of(study))
     if not valid_language(lang) or lang == src:
         return jsonify({"error": "bad language"}), 400
+    from core.translator import providers_for
+    chain = providers_for(src, lang)
+    # en-US -> en-GB and friends never leave the server: localise_english() rewrites the
+    # spelling, so they work even where every network provider is blocked.
+    offline_variant = (src.split("-")[0] == lang.split("-")[0] == "en" and src != lang)
+    if not chain and not offline_variant:
+        return jsonify({"error": "AI translation is switched off on this server",
+                        "hint": translator_status()["hint"],
+                        "mode": translator_status()["mode"]}), 409
     table = (cfg.get("translations") or {}).get(lang) or {}
     want = body.get("keys")
     if want is not None and (not isinstance(want, list) or any(not isinstance(k, str) for k in want)):
         return jsonify({"error": "keys must be a list"}), 400
     excluded = (cfg.get("translation_excluded") or {}).get(lang, [])
-    strings, failed, done = {}, {}, 0
+    strings, failed, done, aborted = {}, {}, 0, False
+    streak = 0
     for x in extract_strings(_base_of(study)):
         if x["key"] in excluded or (want is not None and x["key"] not in want):
             continue
@@ -1120,14 +1234,29 @@ def autotranslate():
             continue
         html = x["key"].endswith("_html") or bool(re.search(r"<[^>]+>", x["text"]))
         try:
-            strings[x["key"]] = translate_string(x["text"], lang, src,
-                                                 html=html)
+            strings[x["key"]] = translate_string(x["text"], lang, src, html=html)
             done += 1
+            streak = 0
         except TranslationError as e:
             failed[x["key"]] = str(e)
+            streak += 1
+            # A firewall that swallows the request would otherwise make every string
+            # wait for its own timeout.  Three failures with no success means the
+            # service is unreachable - stop and say so instead of grinding on.
+            if not done and streak >= 3:
+                aborted = True
+                break
+        except Exception as e:                 # never 500 mid-batch
+            failed[x["key"]] = "translation failed (" + e.__class__.__name__ + ")"
+            streak += 1
+            if not done and streak >= 3:
+                aborted = True
+                break
     if strings:
         _save_translations(slug, lang, strings)
-    return jsonify({"ok": True, "translated": done, "failed": failed,
+    reasons = sorted({str(v) for v in failed.values()})
+    return jsonify({"ok": True, "translated": done, "failed": failed, "aborted": aborted,
+                    "providers": chain, "reason": reasons[0] if reasons else "",
                     "coverage": coverage(_merged_for(study, lang), lang)})
 
 

@@ -335,6 +335,8 @@ def test_usage_portal_links_each_row_to_the_desk(app, client):
     ana_id = uid_of(app, "ana@research.co")
     assert f'/admin/console#user-{ana_id}' in html
     assert "Account desk" in html
+    # sales leads have their own KPI, separate from registrations and Kart requests
+    assert "Demo requests" in html
 
 
 # ------------------------------------------------------------------ Kart points

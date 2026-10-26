@@ -76,7 +76,14 @@ instrument.
   Studio's ▶ Test survey and the per-study test/preview links. The test-mode team strip
   carries a `.teambar-testlink` "Test view" marker instead (return target for that study's
   test link).
-* `.an-foot` — public footer.
+* `.an-foot` — the shared footer on the team surfaces (Studio, Workspace, Monitor, the
+  survey pages and the home page): cream ground, brand column plus three directory columns.
+* `.lnf` — the landing page footer (`templates/_footer_landing.html`, styles in
+  `landing.css`). A dark slab with five mint-headed link columns, a hairline, and a bottom
+  rail for the app entrances, quick destinations, the team contact and the copyright. It is
+  the only dark surface on the landing page below the hero stage, so the page closes with a
+  deliberate full stop instead of another cream panel. Every link there targets a page or
+  anchor that exists; the search-alias line is kept from the shared footer.
 * `.pill` — one status pill for every app; variants are semantic
   (`live`, `draft`, `closed`, `test`, `complete`, `in_progress`, `screened_out`, …).
 * `.linkbtn` — secondary action inside a bar.
@@ -186,6 +193,34 @@ therefore busts browser caches on the next start, with no hand-typed `?v=` strin
 5. Respect `prefers-reduced-motion` (the base layer already collapses animations).
 6. `tests/test_design_system.py` enforces the contract: one token file, one brand macro, one
    asset stamp, consistent chrome on every page.
+
+## Gauge meter geometry
+
+The gauge question type, the landing-page demo dial and the workspace "answer view" dial
+all draw the same dial: a 260×260 SVG viewBox, hub at `(130, 130)`, an arc band split into
+three zones and a needle `<g>` rotated from −90° (left, 0) to +90° (right, 100).
+
+Two rules keep the needle honest:
+
+1. **One rotation model per element.** The needle points along −y and is rotated with
+   `<g transform="rotate(angle 130 130)">`. The CSS for that group must not set
+   `transform-origin`; an SVG presentation `transform` becomes a CSS transform in current
+   browsers, so a CSS origin of `130px 130px` *wraps* the attribute rotation and the needle
+   pivots about `(260, 260)` — off the hub, outside the dial.
+2. **Geometry is computed once.** `chart-visuals.js` owns the value→angle mapping and the
+   zone thresholds (40 / 70); the survey question, the landing demo and the studio thumbnails
+   all call it, so a value never renders at a different angle in two places.
+
+![Gauge needle before and after](images/gauge-needle-fix.png)
+
+*Top row: the shipped behaviour. `transform-origin` compounded with the SVG rotation, so the
+pivot slid off the hub and the needle swung by roughly twice the intended angle — 0% pointed
+right, 55% only looked correct by accident and 82% pointed back to the left. Bottom row: the
+fix, each value landing where the scale says it should.*
+
+The landing demo dial additionally follows the pointer only while the visitor is dragging
+(or using the arrow keys) and eases back to a representative value when idle, so the page
+never looks frozen.
 
 ## The Studio preview skin
 

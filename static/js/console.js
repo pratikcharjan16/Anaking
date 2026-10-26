@@ -140,6 +140,117 @@
     document.getElementById("adk-queue-list").innerHTML = cards.join("");
   }
 
+  // ------------------------------------------------------------------ demo requests
+  // A demo request is a sales lead, not a registration: it lives in its own panel so
+  // nobody approves access for the wrong person or loses a lead in the approval queue.
+  function renderDemos(data) {
+    state.demos = data || state.demos || { requests: [], counts: {} };
+    var box = document.getElementById("adk-demos");
+    var list = document.getElementById("adk-demo-list");
+    if (!box || !list) return;
+    var rows = state.demos.requests || [];
+    box.hidden = rows.length === 0;
+    if (!rows.length) return;
+    var counts = state.demos.counts || {};
+    var bits = ["new", "contacted", "scheduled", "closed"]
+      .map(function (k) { return (counts[k] || 0) + " " + k; }).join(" \u00B7 ");
+    document.getElementById("adk-demo-count").textContent =
+      rows.length + " total \u00B7 " + bits + (state.demos.smtp_configured ? "" : " \u00B7 e-mail alerts are queued (no SMTP)");
+    list.innerHTML = rows.map(function (r) {
+      var cls = r.status === "new" ? "warn" : (r.status === "closed" ? "" : "ok");
+      return '<article class="adk-demo-card" data-demo="' + r.id + '">' +
+        '<div class="adk-demo-top"><b>' + esc(r.name) + "</b>" +
+          (cls ? '<span class="adk-tag ' + cls + '">' + esc(r.status) + "</span>" : "") +
+          '<span class="adk-demo-when">' + esc(when(r.created_at)) + "</span></div>" +
+        "<small>" + esc(r.email) + (r.organization ? " \u00B7 " + esc(r.organization) : "") +
+          (r.role ? " \u00B7 " + esc(r.role) : "") + (r.team_size ? " \u00B7 " + esc(r.team_size) : "") + "</small>" +
+        (r.message ? '<p class="adk-demo-msg">\u201C' + esc(r.message) + '\u201D</p>' : "") +
+        (r.note && r.note.indexOf("notify:") !== 0 ? '<small class="adk-demo-note">' + esc(r.note) + "</small>" : "") +
+        '<div class="adk-queue-acts">' +
+          '<input class="adk-input" data-demo-note="' + r.id + '" placeholder="Note (call outcome\u2026)" value="' +
+            esc(r.note && r.note.indexOf("notify:") !== 0 ? r.note : "") + '" style="min-width:180px">' +
+          ["contacted", "scheduled", "closed"].map(function (st) {
+            return '<button type="button" class="adk-btn sm' + (st === "closed" ? " ghost" : "") +
+              '" data-act="demo-status" data-id="' + r.id + '" data-status="' + st + '">' +
+              st.charAt(0).toUpperCase() + st.slice(1) + "</button>";
+          }).join("") +
+          '<button type="button" class="adk-btn ghost sm" data-act="demo-delete" data-id="' + r.id + '">Delete</button>' +
+        "</div></article>";
+    }).join("");
+  }
+
+  function loadDemos() {
+    return api("/api/admin/console/demo-requests").then(function (out) {
+      if (!out || out.error) return;
+      renderDemos(out);
+    });
+  }
+
+  // ------------------------------------------------------------------ mail / SMTP
+  function renderMail(data) {
+    state.mail = data;
+    var body = document.getElementById("adk-mail-body");
+    if (!body) return;
+    var smtp = data.smtp || {};
+    var stateText = document.getElementById("adk-mail-state");
+    if (stateText) {
+      stateText.textContent = smtp.configured
+        ? "Sending through " + smtp.host + " as " + smtp.from + " (" + smtp.tls + ", " +
+          (smtp.source || "saved") + ")"
+        : "Not configured - invitations, launches and demo alerts are recorded but not e-mailed";
+    }
+    var sample = smtp.user || (data.demo_recipients || [])[0] || "";
+    body.innerHTML =
+      '<div class="adk-mail-grid">' +
+        '<label>SMTP host<input id="adk-smtp-host" value="' + esc(smtp.host || "") + '" placeholder="smtp.gmail.com"></label>' +
+        '<label>Port<input id="adk-smtp-port" type="number" min="1" max="65535" value="' + (smtp.port || 587) + '"></label>' +
+        '<label>TLS<select id="adk-smtp-tls">' +
+          ['starttls', 'ssl', 'none'].map(function (v) {
+            return '<option value="' + v + '"' + (smtp.tls === v ? " selected" : "") + '>' + v + "</option>";
+          }).join("") + "</select></label>" +
+        '<label>Username<input id="adk-smtp-user" value="' + esc(smtp.user || "") + '" placeholder="apikey / team@company.com" autocomplete="off"></label>' +
+        '<label>Password / App password<input id="adk-smtp-pass" type="password" value="" autocomplete="new-password" placeholder="' +
+          (smtp.password_set ? "saved - leave blank to keep" : "not set") + '"></label>' +
+        '<label>From address<input id="adk-smtp-from" value="' + esc(smtp.from || "") + '" placeholder="research@company.com"></label>' +
+      "</div>" +
+      '<p class="adk-mail-note">' + (smtp.configured
+        ? 'Stored in <code>data/mail.json</code> with 0600 permissions (or the environment when set there). '
+        : 'Invitations are still saved in the outbox - the timeline and links work with no mail server. ') +
+        'Gmail / Google Workspace: use an <b>App Password</b> (2-Step Verification &rarr; App passwords), port 587 with STARTTLS. ' +
+        'Microsoft 365 needs SMTP AUTH enabled for the mailbox. Most hosts block port 25 - use 465/587.</p>' +
+      '<p class="adk-mail-note">Demo alerts go to ' +
+        (data.demo_recipients && data.demo_recipients.length
+          ? '<b>' + esc(data.demo_recipients.join(", ")) + '</b>'
+          : '<b>nobody yet</b> - set DEMO_NOTIFY_EMAIL (or ADMIN_EMAILS) on the server') + '.</p>' +
+      '<div class="adk-queue-acts">' +
+        '<button type="button" class="adk-btn primary sm" data-act="smtp-save">Save settings</button>' +
+        '<button type="button" class="adk-btn sm" data-act="smtp-verify">Test connection</button>' +
+        '<input class="adk-input" id="adk-smtp-to" placeholder="you@company.com" value="' + esc(sample) + '" style="min-width:180px">' +
+        '<button type="button" class="adk-btn sm" data-act="smtp-test-send">Send test e-mail</button>' +
+        (smtp.configured ? '<button type="button" class="adk-btn ghost sm" data-act="smtp-clear">Clear stored settings</button>' : "") +
+      "</div>" +
+      '<div class="adk-mail-result" id="adk-smtp-result" role="status" aria-live="polite"></div>';
+  }
+  function loadMail() {
+    return api("/api/admin/console/smtp").then(function (out) {
+      if (!out || out.error) return;
+      renderMail(out);
+    });
+  }
+  function smtpBody() {
+    return {
+      host: value("adk-smtp-host"), port: parseInt(value("adk-smtp-port"), 10) || 0,
+      tls: value("adk-smtp-tls"), user: value("adk-smtp-user"),
+      password: value("adk-smtp-pass"), from: value("adk-smtp-from")
+    };
+  }
+  function smtpResult(ok, text) {
+    var el = document.getElementById("adk-smtp-result");
+    if (!el) return;
+    el.className = "adk-mail-result " + (ok ? "ok" : "bad");
+    el.innerHTML = text;
+  }
+
   // ------------------------------------------------------------------ roster
   function matchesFilter(u) {
     switch (state.filter) {
@@ -831,6 +942,83 @@
   }
 
   var handlers = {
+    "smtp-save": function (btn) {
+      return run(btn, function () {
+        return api("/api/admin/console/smtp", smtpBody()).then(function (out) {
+          if (out.error) { fail(out); smtpResult(false, esc(out.error)); return; }
+          loadMail().then(function () {
+            var v = out.verify || {};
+            smtpResult(!!v.ok, v.ok
+              ? "Saved. Connection to " + esc(v.host) + ":" + v.port + " works."
+              : "Saved, but the connection test failed: " + esc(v.error || "") +
+                (v.hint ? " &mdash; " + esc(v.hint) : ""));
+            toast("SMTP settings saved.");
+          });
+        });
+      });
+    },
+    "smtp-verify": function (btn) {
+      return run(btn, function () {
+        return api("/api/admin/console/smtp", smtpBody()).then(function (out) {
+          if (out.error) { fail(out); smtpResult(false, esc(out.error)); return; }
+          loadMail();
+          var v = out.verify || {};
+          smtpResult(!!v.ok, v.ok
+            ? "Connection works: " + esc(v.host) + ":" + v.port + " over " + esc(v.tls) + "."
+            : esc(v.error || "connection failed") + (v.hint ? " &mdash; " + esc(v.hint) : "") +
+              (v.detail ? "<br><small>" + esc(v.detail) + "</small>" : ""));
+        });
+      });
+    },
+    "smtp-test-send": function (btn) {
+      var to = value("adk-smtp-to");
+      if (!to) { toast("Add an address to send the test to.", true); return Promise.resolve(); }
+      return run(btn, function () {
+        return api("/api/admin/console/smtp", smtpBody()).then(function (saved) {
+          if (saved.error) { fail(saved); return; }
+          return api("/api/admin/console/smtp/test", { to: to }).then(function (out) {
+            loadMail();
+            smtpResult(!!out.ok, out.ok
+              ? "Test message sent to " + esc(out.to) + " via " + esc(out.host) + "."
+              : "Send failed: " + esc(out.error || "") +
+                (out.hint ? " &mdash; " + esc(out.hint) : "") +
+                (out.detail ? "<br><small>" + esc(out.detail) + "</small>" : ""));
+          });
+        });
+      });
+    },
+    "smtp-clear": function (btn) {
+      if (!confirm("Remove the stored SMTP settings? Invitations will be queued again.")) return Promise.resolve();
+      return run(btn, function () {
+        return api("/api/admin/console/smtp", { clear: true }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          loadMail().then(function () { toast("Stored SMTP settings cleared."); });
+        });
+      });
+    },
+    "demo-status": function (btn) {
+      var id = +btn.getAttribute("data-id");
+      var status = btn.getAttribute("data-status");
+      var noteEl = document.querySelector('[data-demo-note="' + id + '"]');
+      return run(btn, function () {
+        return api("/api/admin/console/demo-requests/decide", {
+          id: id, status: status, note: noteEl ? noteEl.value : ""
+        }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          loadDemos().then(function () { toast("Demo request marked " + status + "."); });
+        });
+      });
+    },
+    "demo-delete": function (btn) {
+      var id = +btn.getAttribute("data-id");
+      if (!confirm("Delete this demo request? The lead will be lost.")) return Promise.resolve();
+      return run(btn, function () {
+        return api("/api/admin/console/demo-requests/delete", { id: id }).then(function (out) {
+          if (out.error) { fail(out); return; }
+          loadDemos().then(function () { toast("Demo request deleted."); });
+        });
+      });
+    },
     "tab": function (btn) {
       state.tab = btn.getAttribute("data-tab") || "overview";
       renderDetail();
@@ -1246,6 +1434,8 @@
 
   // ------------------------------------------------------------------ boot
   var initial = /^#user-(\d+)$/.exec(location.hash || "");
+  loadDemos();
+  loadMail();
   loadOverview().then(function (out) {
     if (out && out.error) return;
     var wanted = initial ? +initial[1] : 0;

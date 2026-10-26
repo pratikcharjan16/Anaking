@@ -35,19 +35,35 @@ def published_cfg(study, test=False):
     return study.cfg
 
 
+def live_translations(study) -> dict:
+    """The study's *current* language tables.
+
+    Translations are editorial content, not questionnaire design: a wording fix must reach
+    live respondents immediately, without re-publishing the frozen design snapshot.  Only
+    respondent-visible text lives in these tables, so overlaying them can never change a
+    question, an option or the flow of a published study.
+    """
+    cfg = study.cfg or {}
+    return {"translations": cfg.get("translations") or {},
+            "translation_excluded": cfg.get("translation_excluded") or {}}
+
+
 def effective_cfg(study, test=False):
     if not test:
         row = get_db().execute('SELECT cfg FROM publication_snapshots WHERE study_id=?', (study.id,)).fetchone()
         if row:
-            return json.loads(row['cfg'])
+            # Published wording stays frozen, translations do not: without this overlay a
+            # study translated after publishing (or corrected later) served the default
+            # language to every live respondent while the Studio preview looked fine.
+            return {**json.loads(row['cfg']), **live_translations(study)}
     cfg = dict(published_cfg(study, test))
     if study.is_child():
         parent = study.parent_study()
         if parent:
             base = dict(effective_cfg(parent, test))
-            base['translations'] = cfg.get('translations', {})
-            base['translation_excluded'] = cfg.get('translation_excluded', {})
+            base.update(live_translations(study))
             return base
+    cfg.update(live_translations(study))
     return cfg
 
 

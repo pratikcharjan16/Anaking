@@ -86,10 +86,19 @@
           location.href = location.pathname + '?lang=' + encodeURIComponent(lang) + '&keep=1';
         }
       } else {
-        store('session_id'); store('answers'); store('cur');
+        // Same for a live interview: save the run, then reload with ?lang=.  This branch
+        // used to call store() with no value - which *deletes* the key - so switching
+        // language on a hosted survey dropped the session id and every answer, and the
+        // respondent restarted from scratch in a new session.  The Studio test link never
+        // showed it because its branch keeps the values.
+        store('session_id', SESSION.session_id); store('answers', answers); store('cur', cur);
         var realQs = null;
         try { realQs = new URLSearchParams(location.search); } catch (e) { realQs = null; }
-        if (realQs) { realQs.set('lang', lang); location.href = location.pathname + '?' + realQs.toString(); }
+        if (realQs) {
+          realQs.set('lang', lang);
+          if (LINK_TOKEN && !realQs.get('rid')) realQs.set('rid', LINK_TOKEN);
+          location.href = location.pathname + '?' + realQs.toString();
+        }
         else location.href = location.pathname + '?lang=' + encodeURIComponent(lang) + (LINK_TOKEN ? '&rid=' + encodeURIComponent(LINK_TOKEN) : '');
       }
       return Promise.resolve();
@@ -149,8 +158,35 @@
     if (host && host.parentElement) host.parentElement.insertBefore(row, host);
   }
 
+  // The wording of the interface itself, in the respondent's language.  /api/spec sends the
+  // merged table (translated values over English defaults), so a translated study no longer
+  // shows English buttons around translated questions.
+  var UI_FALLBACK = {
+    begin: "Begin survey", next: "Next", back: "Back", prev: "Prev", done: "Done",
+    submit: "Submit survey",
+    listen: "Listen", stop: "Stop", replay: "Replay",
+    facts_questions: "Questions", facts_tasks: "Choice tasks",
+    facts_time: "Takes about", facts_audio: "Audio guide"
+  };
+  function ui(key) {
+    var t = SPEC && SPEC.ui && SPEC.ui[key];
+    return (typeof t === "string" && t) ? t : (UI_FALLBACK[key] || key);
+  }
+
+  function applyChromeCopy() {
+    if (!SPEC || !SPEC.ui) return;
+    var start = document.querySelector("#start-btn");
+    if (start) start.textContent = ui("begin") + " \u2192";
+    // welcome fact strip: labels only, the numbers are filled in with the live study
+    var labels = document.querySelectorAll("#welcome .facts div span");
+    ["facts_questions", "facts_tasks", "facts_time", "facts_audio"].forEach(function (k, i) {
+      if (labels[i]) labels[i].textContent = ui(k);
+    });
+  }
+
   function applyWelcomeCopy() {
     if (!SPEC) return;
+    applyChromeCopy();
     try {
       document.documentElement.dir = SPEC.render_dir || "ltr";
       // screen readers and hyphenation need the actual language, not always "en"
@@ -293,16 +329,16 @@
 
   function guideBar(textFn) {
     var bar = el("div", "guide");
-    var listen = el("button", "g-btn", '<span class="g-ico">&#9654;</span> Listen');
+    var listen = el("button", "g-btn", '<span class="g-ico">&#9654;</span> ' + ui("listen"));
     listen.type = "button";
-    var replay = el("button", "g-btn", '<span class="g-ico">&#8635;</span> Replay');
+    var replay = el("button", "g-btn", '<span class="g-ico">&#8635;</span> ' + ui("replay"));
     replay.type = "button";
     var hint = el("span", "g-hint", "or read at your own pace below");
 
     function setPlaying(on) {
       listen.classList.toggle("playing", on);
-      listen.innerHTML = on ? '<span class="g-ico">&#9632;</span> Stop'
-                            : '<span class="g-ico">&#9654;</span> Listen';
+      listen.innerHTML = on ? '<span class="g-ico">&#9632;</span> ' + ui("stop")
+                            : '<span class="g-ico">&#9654;</span> ' + ui("listen");
     }
     listen.addEventListener("click", function () {
       if (listen.classList.contains("playing")) { stopNarration(); return; }
@@ -2963,8 +2999,8 @@
       var curC = 0, curQ = 0, curIdx = 0;
       var stage = el("div");
       var nav = el("div","nav");
-      var prevBtn = el("button","btn","Prev");
-      var nextBtn = el("button","btn primary","Next");
+      var prevBtn = el("button","btn",ui("prev"));
+      var nextBtn = el("button","btn primary",ui("next"));
       prevBtn.type = "button"; nextBtn.type = "button";
       nav.appendChild(prevBtn); nav.appendChild(nextBtn);
       wrap.appendChild(stage);
@@ -3000,7 +3036,7 @@
         var card = renderQuestion(synth);
         stage.appendChild(card);
         prevBtn.disabled = curIdx===0;
-        nextBtn.textContent = curIdx===total-1 ? "Done" : "Next \u00BB";
+        nextBtn.textContent = curIdx===total-1 ? ui("done") : ui("next") + " \u00BB";
       }
       prevBtn.addEventListener("click", function(){
         if(curIdx>0){ curIdx--; curQ--; if(curQ<0){ curC--; curQ=cqs.length-1; } render(); }
@@ -3285,7 +3321,33 @@
   }
 
   // ============================================================ Gauge Meter Question Type
+  //
+  // A proper instrument dial: minimum at the left shoulder, midpoint at the crown and
+  // maximum at the right shoulder.  Every piece of geometry (track, zone bands, target
+  // tick, needle) is drawn from polar coordinates right here in the SVG.
+  //
+  // The old version rotated a needle <g> with transform="rotate(a 130 130)" while the
+  // stylesheet also carried `transform-origin: 130px 130px`.  Browsers apply the CSS
+  // origin to the attribute transform on top of the rotation's own centre, so the needle
+  // actually swung around (260, 260) - below and outside the dial, which is exactly the
+  // dangling needle respondents saw.  Direct coordinates can never regress like that,
+  // they keep the needle glued to the pivot at any viewport size, and they let the tip
+  // land exactly on the coloured band for the chosen value.
   function renderGaugeComponent(min, max, step, unit, target, val, minLabel, midLabel, maxLabel, onPick) {
+    var CX = 130, CY = 130, R = 95;
+    var TRACK_W = 16, ZONE_W = 15;
+    var TIP_R = R - 9;               // needle tip touches the inner edge of the band
+    var SHOULDER_R = 16;             // where the needle is widest, just above the hub
+    var HALF_W = 5;                  // half-width of the needle at the shoulder
+    var TAIL_R = 13;                 // short counterweight behind the pivot
+    // Zone bands and the verdict pill use the same 40 / 70 split, so the colour under the
+    // needle always agrees with the label underneath it.
+    var ZONES = [
+      { to: 0.4, color: "#ef4444", cls: "low" },
+      { to: 0.7, color: "#f59e0b", cls: "mid" },
+      { to: 1, color: "#10b981", cls: "high" }
+    ];
+
     var box = el("div", "gauge-box");
     box.setAttribute("role", "slider");
     box.setAttribute("aria-orientation", "horizontal");
@@ -3297,29 +3359,22 @@
       ". Use the arrow keys to adjust the value.");
     if (val !== undefined && val !== "") box.setAttribute("aria-valuenow", String(val));
 
-    var cx = 130, cy = 130, r = 95;
-    // The dial is an upward-facing semicircle: minimum at the left, midpoint at the
-    // crown, maximum at the right. SVG's y axis points down, so ordinary polar
-    // coordinates (180°..360°) trace the upper arc.
     function valueFraction(v) {
       return max === min ? 0.5 : Math.max(0, Math.min(1, (Number(v) - min) / (max - min)));
     }
+    // 180deg is the left shoulder, 270deg the crown, 360deg the right shoulder.  SVG's
+    // y axis points down, so a growing angle sweeps left -> top -> right.
     function valueToAngle(v) { return 180 + valueFraction(v) * 180; }
-    function polarToCartesian(centerX, centerY, radius, angleInDegrees) {
-      var angleInRadians = angleInDegrees * Math.PI / 180;
-      return {
-        x: centerX + (radius * Math.cos(angleInRadians)),
-        y: centerY + (radius * Math.sin(angleInRadians))
-      };
+    function polar(radius, angleInDegrees) {
+      var a = angleInDegrees * Math.PI / 180;
+      return { x: CX + radius * Math.cos(a), y: CY + radius * Math.sin(a) };
     }
-    function describeArc(x, y, radius, startAngle, endAngle) {
-      var start = polarToCartesian(x, y, radius, startAngle);
-      var end = polarToCartesian(x, y, radius, endAngle);
+    function describeArc(radius, startAngle, endAngle) {
+      var start = polar(radius, startAngle);
+      var end = polar(radius, endAngle);
       var largeArc = endAngle - startAngle > 180 ? 1 : 0;
-      // sweep=1 walks from left, over the top, to the right in SVG coordinates.
       return ["M", start.x, start.y, "A", radius, radius, 0, largeArc, 1, end.x, end.y].join(" ");
     }
-    function needleRotation(v) { return -90 + valueFraction(v) * 180; }
     function snapValue(v) {
       var safeStep = Number(step);
       if (!isFinite(safeStep) || safeStep <= 0) safeStep = 1;
@@ -3327,100 +3382,107 @@
       var snapped = min + Math.round((Number(v) - min) / safeStep) * safeStep;
       return Number(Math.max(min, Math.min(max, snapped)).toFixed(digits));
     }
+    function zoneFor(v) {
+      var frac = valueFraction(v);
+      var z = ZONES[ZONES.length - 1];
+      for (var i = 0; i < ZONES.length; i++) {
+        if (frac < ZONES[i].to || i === ZONES.length - 1) { z = ZONES[i]; break; }
+      }
+      var label = z.cls === "low" ? (minLabel || "Low")
+                : z.cls === "mid" ? (midLabel || "Moderate")
+                : (maxLabel || "High");
+      return { cls: z.cls, text: label, color: z.color };
+    }
 
     var svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
     svg.setAttribute("class", "gauge-svg");
     svg.setAttribute("viewBox", "0 0 260 155");
 
-    // Track background
-    var bgArc = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    bgArc.setAttribute("d", describeArc(cx, cy, r, 180, 360));
-    bgArc.setAttribute("fill", "none");
-    bgArc.setAttribute("stroke", "#e2e8f0");
-    bgArc.setAttribute("stroke-width", "16");
-    bgArc.setAttribute("stroke-linecap", "round");
-    svg.appendChild(bgArc);
-
-    // Zone 1: Low (180deg to 250deg)
-    var z1 = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    z1.setAttribute("d", describeArc(cx, cy, r, 182, 250));
-    z1.setAttribute("fill", "none");
-    z1.setAttribute("stroke", "#ef4444");
-    z1.setAttribute("stroke-width", "14");
-    z1.setAttribute("opacity", "0.85");
-    svg.appendChild(z1);
-
-    // Zone 2: Mid (254deg to 304deg)
-    var z2 = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    z2.setAttribute("d", describeArc(cx, cy, r, 254, 304));
-    z2.setAttribute("fill", "none");
-    z2.setAttribute("stroke", "#f59e0b");
-    z2.setAttribute("stroke-width", "14");
-    z2.setAttribute("opacity", "0.85");
-    svg.appendChild(z2);
-
-    // Zone 3: High (308deg to 358deg)
-    var z3 = document.createElementNS("http://www.w3.org/2000/svg", "path");
-    z3.setAttribute("d", describeArc(cx, cy, r, 308, 358));
-    z3.setAttribute("fill", "none");
-    z3.setAttribute("stroke", "#10b981");
-    z3.setAttribute("stroke-width", "14");
-    z3.setAttribute("opacity", "0.85");
-    svg.appendChild(z3);
-
-    // Target marker
-    if (target != null && target >= min && target <= max) {
-      var tAngle = valueToAngle(target);
-      var pt1 = polarToCartesian(cx, cy, r - 12, tAngle);
-      var pt2 = polarToCartesian(cx, cy, r + 12, tAngle);
-      var tLine = document.createElementNS("http://www.w3.org/2000/svg", "line");
-      tLine.setAttribute("x1", String(pt1.x)); tLine.setAttribute("y1", String(pt1.y));
-      tLine.setAttribute("x2", String(pt2.x)); tLine.setAttribute("y2", String(pt2.y));
-      tLine.setAttribute("stroke", "#0f2b48"); tLine.setAttribute("stroke-width", "3");
-      svg.appendChild(tLine);
+    function svgEl(tag, attrs) {
+      var node = document.createElementNS("http://www.w3.org/2000/svg", tag);
+      Object.keys(attrs || {}).forEach(function (k) { node.setAttribute(k, String(attrs[k])); });
+      return node;
     }
 
-    // Needle group
-    var needleGroup = document.createElementNS("http://www.w3.org/2000/svg", "g");
-    needleGroup.setAttribute("class", "gauge-needle");
-    var curVal = val !== undefined && val !== "" ? Number(val) : Math.round((min + max) / 2);
-    needleGroup.setAttribute("transform", "rotate(" + needleRotation(curVal) + " " + cx + " " + cy + ")");
+    // Neutral track sits under the coloured bands, with round caps so both shoulders
+    // finish cleanly.
+    var track = svgEl("path", { d: describeArc(R, 180, 360), "class": "gauge-track",
+      fill: "none", stroke: "#e2e8f0", "stroke-width": TRACK_W, "stroke-linecap": "round" });
+    svg.appendChild(track);
 
-    var needle = document.createElementNS("http://www.w3.org/2000/svg", "polygon");
-    needle.setAttribute("class", "gauge-needle-poly");
-    needle.setAttribute("points", (cx - 4) + "," + cy + " " + (cx + 4) + "," + cy + " " + cx + "," + (cy - r + 14));
-    needleGroup.appendChild(needle);
+    // Coloured zone bands: 0-40% red, 40-70% amber, 70-100% green.  Butt caps keep the
+    // three bands perfectly contiguous, so the needle never points into a gap.
+    ZONES.forEach(function (z, i) {
+      var from = i === 0 ? 180 : 180 + ZONES[i - 1].to * 180;
+      var to = 180 + z.to * 180;
+      svg.appendChild(svgEl("path", { d: describeArc(R, from, to), "class": "gauge-zone " + z.cls,
+        fill: "none", stroke: z.color, "stroke-width": ZONE_W, "stroke-linecap": "butt" }));
+    });
 
-    var pivot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    pivot.setAttribute("cx", String(cx)); pivot.setAttribute("cy", String(cy));
-    pivot.setAttribute("r", "10"); pivot.setAttribute("fill", "#0f2b48");
-    needleGroup.appendChild(pivot);
-    var pivotDot = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-    pivotDot.setAttribute("cx", String(cx)); pivotDot.setAttribute("cy", String(cy));
-    pivotDot.setAttribute("r", "3.5"); pivotDot.setAttribute("fill", "#ffffff");
-    needleGroup.appendChild(pivotDot);
+    // Target threshold: a white halo under a navy tick, so it reads on every band colour.
+    if (target != null && isFinite(Number(target)) && Number(target) >= min && Number(target) <= max) {
+      var tAngle = valueToAngle(Number(target));
+      var t1 = polar(R - 13, tAngle), t2 = polar(R + 13, tAngle);
+      svg.appendChild(svgEl("line", { x1: t1.x, y1: t1.y, x2: t2.x, y2: t2.y,
+        "class": "gauge-target-halo", stroke: "#ffffff", "stroke-width": 6,
+        "stroke-linecap": "round", opacity: 0.9 }));
+      svg.appendChild(svgEl("line", { x1: t1.x, y1: t1.y, x2: t2.x, y2: t2.y,
+        "class": "gauge-target", stroke: "#0f2b48", "stroke-width": 3, "stroke-linecap": "round" }));
+    }
 
-    svg.appendChild(needleGroup);
+    // Needle: a tapered 4-point polygon from the counterweight, through the pivot, to the
+    // tip.  Coordinates are recomputed for every value (no rotate transform at all).
+    var needle = svgEl("polygon", { "class": "gauge-needle-poly", points: "" });
+    svg.appendChild(needle);
+    var tipDot = svgEl("circle", { "class": "gauge-tip", r: 4.5, cx: CX, cy: CY,
+      fill: "#ef4444", stroke: "#ffffff", "stroke-width": 2 });
+    svg.appendChild(tipDot);
+    var hub = svgEl("circle", { "class": "gauge-hub", cx: CX, cy: CY, r: 10,
+      fill: "#0f2b48", stroke: "#ffffff", "stroke-width": 2 });
+    svg.appendChild(hub);
+    var hubDot = svgEl("circle", { "class": "gauge-hub-dot", cx: CX, cy: CY, r: 3.4, fill: "#ffffff" });
+    svg.appendChild(hubDot);
+
+    function needlePoints(frac) {
+      var deg = 180 + frac * 180;
+      var rad = deg * Math.PI / 180;
+      var ux = Math.cos(rad), uy = Math.sin(rad);
+      var nx = -uy, ny = ux;
+      var tip = polar(TIP_R, deg);
+      var tail = polar(-TAIL_R, deg);
+      var left = { x: CX + SHOULDER_R * ux + HALF_W * nx, y: CY + SHOULDER_R * uy + HALF_W * ny };
+      var right = { x: CX + SHOULDER_R * ux - HALF_W * nx, y: CY + SHOULDER_R * uy - HALF_W * ny };
+      function p(pt) { return pt.x.toFixed(1) + "," + pt.y.toFixed(1); }
+      return { tip: tip, points: [p(tail), p(left), p(tip), p(right)].join(" ") };
+    }
+
+    function paintNeedle(frac, zoneColor) {
+      var geo = needlePoints(frac);
+      needle.setAttribute("points", geo.points);
+      tipDot.setAttribute("cx", geo.tip.x.toFixed(1));
+      tipDot.setAttribute("cy", geo.tip.y.toFixed(1));
+      if (zoneColor) tipDot.setAttribute("fill", zoneColor);
+    }
+
     box.appendChild(svg);
 
-    // Readout & status pill
+    // Readout + verdict pill (only shown once a value exists, so an untouched dial never
+    // pretends the respondent chose the mid point).
     var readout = el("div", "gauge-readout");
-    var valEl = el("strong", "gauge-val", val !== undefined && val !== "" ? String(val) : "\u2013");
+    var hasValue = val !== undefined && val !== "";
+    var valEl = el("strong", "gauge-val", hasValue ? String(val) : "\u2013");
     var unitEl = el("span", "gauge-unit", unit || "");
     readout.appendChild(valEl); readout.appendChild(unitEl);
     box.appendChild(readout);
 
-    function getZone(v) {
-      var frac = max === min ? 0.5 : (v - min) / (max - min);
-      if (frac < 0.4) return { cls: "low", text: minLabel || "Low" };
-      if (frac < 0.7) return { cls: "mid", text: midLabel || "Moderate" };
-      return { cls: "high", text: maxLabel || "High" };
-    }
-    var zInfo = getZone(curVal);
-    var pill = el("div", "gauge-zone-pill " + zInfo.cls, zInfo.text);
+    var curVal = hasValue ? snapValue(val) : null;
+    var zInfo = curVal != null ? zoneFor(curVal) : null;
+    var pill = el("div", "gauge-zone-pill" + (zInfo ? " " + zInfo.cls : ""));
+    pill.textContent = zInfo ? zInfo.text : "";
+    pill.hidden = !zInfo;
     box.appendChild(pill);
-    box.setAttribute("aria-valuetext", val !== undefined && val !== ""
-      ? String(curVal) + (unit || "") + " — " + zInfo.text
+    box.setAttribute("aria-valuetext", curVal != null
+      ? String(curVal) + (unit || "") + " \u2014 " + zInfo.text
       : "Not answered");
 
     var ends = el("div", "gauge-ends");
@@ -3429,31 +3491,62 @@
     ends.appendChild(el("span", "g-max", (maxLabel || String(max))));
     box.appendChild(ends);
 
-    function place(nv, commit) {
+    // Swing the needle instead of teleporting it.  Pointer drags pass animate=false so the
+    // needle tracks the finger exactly; keyboard and voice input get the smooth swing.
+    var reduceMotion = false;
+    try {
+      reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+    } catch (e) {}
+    var shownFrac = curVal != null ? valueFraction(curVal) : 0;
+    var animRaf = null;
+    paintNeedle(shownFrac, zInfo ? zInfo.color : null);
+
+    function moveNeedle(frac, animate, zoneColor) {
+      if (animRaf) { cancelAnimationFrame(animRaf); animRaf = null; }
+      if (!animate || reduceMotion || Math.abs(frac - shownFrac) < 0.0005) {
+        shownFrac = frac;
+        paintNeedle(frac, zoneColor);
+        return;
+      }
+      var from = shownFrac, to = frac, started = null;
+      function step(now) {
+        if (started === null) started = now;
+        var t = Math.min(1, Math.max(0, (now - started) / 260));
+        var eased = 1 - Math.pow(1 - t, 3);
+        shownFrac = from + (to - from) * eased;
+        paintNeedle(shownFrac, zoneColor);
+        if (t < 1) animRaf = requestAnimationFrame(step);
+        else { shownFrac = to; paintNeedle(to, zoneColor); animRaf = null; }
+      }
+      animRaf = requestAnimationFrame(step);
+    }
+
+    function place(nv, commit, animate) {
       nv = snapValue(nv);
       curVal = nv;
-      needleGroup.setAttribute("transform", "rotate(" + needleRotation(nv) + " " + cx + " " + cy + ")");
+      var zi = zoneFor(nv);
+      moveNeedle(valueFraction(nv), animate !== false, zi.color);
       valEl.textContent = String(nv);
       box.setAttribute("aria-valuenow", String(nv));
-      var zi = getZone(nv);
       pill.className = "gauge-zone-pill " + zi.cls;
       pill.textContent = zi.text;
-      box.setAttribute("aria-valuetext", String(nv) + (unit || "") + " — " + zi.text);
+      pill.hidden = false;
+      box.setAttribute("aria-valuetext", String(nv) + (unit || "") + " \u2014 " + zi.text);
       if (commit) onPick(nv);
     }
 
-    box.addEventListener("voice-value", function (e) { place(e.detail, true); });
+    box.addEventListener("voice-value", function (e) { place(e.detail, true, true); });
 
     function fromPointerEvent(ev) {
       var rect = svg.getBoundingClientRect();
-      if (!rect.width || !rect.height) return curVal;
+      if (!rect.width || !rect.height) return curVal == null ? min : curVal;
       var px = (ev.clientX - rect.left) * 260 / rect.width;
       var py = (ev.clientY - rect.top) * 155 / rect.height;
-      var dx = px - cx;
+      var dx = px - CX;
       // Positive dy means the pointer is above the pivot. Clamp touches below the
       // dial baseline to the nearest endpoint; along the visible upper arc this
       // gives a continuous left-to-right 0..1 value instead of snapping to 0/100.
-      var dy = cy - py;
+      var dy = CY - py;
       var theta = Math.atan2(dy, dx);
       theta = Math.max(0, Math.min(Math.PI, theta));
       var frac = 1 - theta / Math.PI;
@@ -3463,8 +3556,8 @@
     svg.addEventListener("pointerdown", function (ev) {
       ev.preventDefault();
       try { svg.setPointerCapture(ev.pointerId); } catch (e) {}
-      place(fromPointerEvent(ev), true);
-      var move = function (e2) { place(fromPointerEvent(e2), true); };
+      place(fromPointerEvent(ev), true, false);
+      var move = function (e2) { place(fromPointerEvent(e2), true, false); };
       var up = function () {
         svg.removeEventListener("pointermove", move);
         svg.removeEventListener("pointerup", up);
@@ -3476,11 +3569,11 @@
     });
 
     box.addEventListener("keydown", function (ev) {
-      var v0 = curVal === undefined ? Math.round((min + max) / 2) : curVal;
-      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); place(v0 - step, true); }
-      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); place(v0 + step, true); }
-      if (ev.key === "Home") { ev.preventDefault(); place(min, true); }
-      if (ev.key === "End") { ev.preventDefault(); place(max, true); }
+      var v0 = curVal === null ? min : curVal;
+      if (ev.key === "ArrowLeft" || ev.key === "ArrowDown") { ev.preventDefault(); place(v0 - step, true, true); }
+      if (ev.key === "ArrowRight" || ev.key === "ArrowUp") { ev.preventDefault(); place(v0 + step, true, true); }
+      if (ev.key === "Home") { ev.preventDefault(); place(min, true, true); }
+      if (ev.key === "End") { ev.preventDefault(); place(max, true, true); }
     });
 
     return box;
@@ -4715,12 +4808,12 @@
     app.appendChild(node);
     if (!replace) {
       var nav = el("div", "nav");
-      var back = el("button", "btn ghost", "&larr; Back");
+      var back = el("button", "btn ghost", "&larr; " + ui("back"));
       back.type = "button";
       back.disabled = nextVisible(cur, -1) < 0;
       back.addEventListener("click", function () { var pv = nextVisible(cur, -1); if (pv >= 0) go(pv); });
       var last = nextVisible(cur, 1) < 0;
-      var fwd = el("button", "btn primary", last ? "Submit survey" : "Next &rarr;");
+      var fwd = el("button", "btn primary", last ? ui("submit") : ui("next") + " &rarr;");
       fwd.type = "button";
       fwd.addEventListener("click", next);
       nav.appendChild(back);
@@ -5140,7 +5233,7 @@
         proofreadSeen = false;
         go(stepIndexOf(rows[0].item.q));
       });
-      var done = el("button", "btn primary", "Submit survey &rarr;");
+      var done = el("button", "btn primary", ui("submit") + " &rarr;");
       done.type = "button";
       done.addEventListener("click", function () {
         rows.forEach(function (r) {

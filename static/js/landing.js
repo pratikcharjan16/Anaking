@@ -354,19 +354,22 @@
     var liveMeta = { keystrokes: 0, pasted_chars: 0, pastes: 0, input_events: 0, typed_ms: 0, blur_ms: 0, startedAt: 0, blurAt: 0 };
 
     // Direct-coordinate 60fps Gauge Needle & Arc Animator (immune to CSS/SVG transform bugs)
-    var gaugeCurrentScore = 18;
+    // Start at 89 because that is the scenario painted in the markup (and the first preset),
+    // so the needle never jumps on load before the first tween begins.
+    var gaugeCurrentScore = 89;
     var gaugeTargetScore = 89;
     var gaugeColor = "#e06c5a";
     var gaugeAnimRaf = null;
-    var gaugeStartScore = 18;
+    var gaugeStartScore = 89;
     var gaugeStartTime = 0;
     var GAUGE_ARC_LEN = 201.06; // pi * 64
 
     function drawGaugeAt(scoreVal, colorHex) {
       var clamped = Math.max(0, Math.min(100, scoreVal));
-      // Map 0..100 into 0.06..0.94 of the semicircle so the needle always points into the arc
-      // and never lies dead-flat on the horizontal floor (0 deg or 180 deg).
-      var visualFrac = 0.06 + (clamped / 100) * 0.88;
+      // 0 points at the left shoulder, 50 at the crown and 100 at the right shoulder.  The
+      // needle, the beacon and the progress fill all share this single fraction, so they
+      // always agree with each other and with the 35 / 60 threshold ticks on the ring.
+      var visualFrac = clamped / 100;
       var theta = Math.PI * (1 - visualFrac); // pi (left) -> 0 (right)
       var ux = Math.cos(theta);
       var uy = -Math.sin(theta);
@@ -374,7 +377,7 @@
       var ny = ux;
 
       var cx = 90, cy = 92;
-      var rTip = 56;
+      var rTip = 60;      // tip touches the value dot riding on the 64 arc
       var rArc = 64;
       var rTail = 9;
       var halfBase = 3.6;
@@ -1769,4 +1772,73 @@
       else location.href = out.redirect || (out.user && out.user.status !== "approved" ? "/welcome" : "/studio/");
     });
   });
+
+  // ---------------------------------------------------------------- Request a demo
+  // The form posts to its own endpoint: demo leads are stored apart from account
+  // registrations and appear in their own panel in the admin console.
+  var demoModal = document.getElementById("ln-demo-modal");
+  var demoForm = document.getElementById("ln-demo-form");
+  var demoStatus = document.getElementById("ln-demo-status");
+  function openDemo() {
+    if (!demoModal) return;
+    demoModal.hidden = false;
+    document.body.style.overflow = "hidden";
+    var first = demoModal.querySelector("input[name=name]");
+    if (first) setTimeout(function () { first.focus(); }, 30);
+    if (location.hash !== "#request-demo") history.replaceState(null, "", location.pathname + location.search + "#request-demo");
+  }
+  function closeDemo() {
+    if (!demoModal) return;
+    demoModal.hidden = true;
+    document.body.style.overflow = "";
+    if (location.hash === "#request-demo") history.replaceState(null, "", location.pathname + location.search);
+  }
+  document.addEventListener("click", function (e) {
+    var opener = e.target.closest("[data-demo-open]");
+    if (opener) { e.preventDefault(); openDemo(); return; }
+    if (e.target.closest("[data-demo-close]")) { e.preventDefault(); closeDemo(); }
+  });
+  document.addEventListener("keydown", function (e) {
+    if (e.key === "Escape" && demoModal && !demoModal.hidden) closeDemo();
+  });
+  if (location.hash === "#request-demo") openDemo();
+  if (demoForm) demoForm.addEventListener("submit", function (e) {
+    e.preventDefault();
+    var data = {};
+    ["name", "email", "organization", "role", "team_size", "message", "website"].forEach(function (k) {
+      var el = demoForm.querySelector('[name="' + k + '"]');
+      data[k] = el ? el.value : "";
+    });
+    var btn = demoForm.querySelector('button[type="submit"]');
+    if (demoStatus) { demoStatus.className = "ln-demo-status"; demoStatus.textContent = "Sending your request\u2026"; }
+    if (btn) btn.disabled = true;
+    fetch("/api/demo/request", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data)
+    }).then(function (r) { return r.json().then(function (j) { return { ok: r.ok, j: j }; }); })
+      .then(function (res) {
+        var out = res.j || {};
+        if (!res.ok || out.error) {
+          if (demoStatus) demoStatus.textContent = out.error || "That did not go through \u2014 please try again.";
+          return;
+        }
+        if (demoStatus) {
+          demoStatus.className = "ln-demo-status ok";
+          demoStatus.textContent = out.message || "Thank you \u2014 the team will contact you shortly.";
+        }
+        demoForm.reset();
+        var body = demoForm.querySelectorAll("label, .ln-demo-actions, .ln-demo-fine");
+        Array.prototype.forEach.call(body, function (n) { n.hidden = true; });
+        if (demoStatus) demoStatus.hidden = false;
+      })
+      .catch(function () {
+        if (demoStatus) demoStatus.textContent = "Network error \u2014 please try again or e-mail the team.";
+      })
+      .then(function () { if (btn) btn.disabled = false; });
+  });
+
+  // ---- footer: the copyright year is always the year people are reading it ----
+  var footYear = document.getElementById("lnf-year");
+  if (footYear) footYear.textContent = String(new Date().getFullYear());
 })();

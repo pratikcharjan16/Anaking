@@ -21,8 +21,10 @@ from .console import bp as console_bp
 from .workspace import bp as workspace_bp
 
 from .data_validation import bp as validation_bp
+from .demo import bp as demo_bp
 
-ALL_BLUEPRINTS = (validation_bp, workspace_bp, access_bp, auth_bp, console_bp, home_bp, survey_bp, studio_bp, admin_bp)
+ALL_BLUEPRINTS = (validation_bp, workspace_bp, access_bp, auth_bp, console_bp, demo_bp,
+                  home_bp, survey_bp, studio_bp, admin_bp)
 
 
 def register_routes(app) -> None:

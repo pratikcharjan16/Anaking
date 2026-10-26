@@ -1090,3 +1090,69 @@ body.adk-body main.adk {
   .adk-recovery-acts { width: 100%; }
   .adk-recovery-acts .adk-btn { flex: 1 1 auto; }
 }
+
+/* ---------------------------------------------------------- 2b. demo requests
+   Sales leads live in their own panel.  Deliberately not the amber approval
+   panel: approving an account and answering a demo request are different jobs. */
+.adk-demos {
+  margin: 0 0 18px;
+  padding: 14px 16px;
+  border: 1px solid var(--an-violet, #7c5cff);
+  border-radius: var(--an-radius-lg);
+  background: var(--an-panel);
+  box-shadow: var(--an-shadow-1);
+}
+.adk-demos .adk-queue-head h2 { color: var(--an-violet, #7c5cff); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.adk-demos .adk-queue-head h2 .adk-tag { text-transform: none; letter-spacing: 0; }
+.adk-demo-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(320px, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+}
+.adk-demo-card {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 11px 13px;
+  border: 1px solid var(--an-line);
+  border-left: 3px solid var(--an-violet, #7c5cff);
+  border-radius: var(--an-radius);
+  background: var(--an-panel);
+}
+.adk-demo-top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.adk-demo-top b { font-size: 12.5px; }
+.adk-demo-when { margin-left: auto; font-size: 10.5px; color: var(--an-muted); }
+.adk-demo-card > small { font-size: 10.5px; color: var(--an-muted); line-height: 1.45; }
+.adk-demo-msg { margin: 2px 0 0; font-size: 11.5px; color: var(--an-ink-soft); line-height: 1.5; }
+.adk-demo-note { color: var(--an-ink-soft); font-style: italic; }
+.adk-demo-card .adk-queue-acts { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 4px; align-items: center; }
+
+/* ---------------------------------------------------------- 2c. mail & SMTP */
+.adk-mail {
+  margin: 0 0 18px;
+  border: 1px solid var(--an-line);
+  border-radius: var(--an-radius-lg);
+  background: var(--an-panel);
+  box-shadow: var(--an-shadow-1);
+}
+.adk-mail > summary {
+  display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  padding: 12px 16px; cursor: pointer; list-style: none;
+}
+.adk-mail > summary::-webkit-details-marker { display: none; }
+.adk-mail > summary span { font-size: 11px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; color: var(--an-ink); }
+.adk-mail > summary small { font-size: 11.5px; color: var(--an-muted); }
+.adk-mail[open] > summary { border-bottom: 1px solid var(--an-line); }
+.adk-mail-body { padding: 14px 16px 16px; }
+.adk-mail-body .adk-mail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 10px 14px; }
+.adk-mail-body label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 700; color: var(--an-ink-soft); }
+.adk-mail-body input, .adk-mail-body select {
+  padding: 8px 10px; border: 1px solid var(--an-line-strong); border-radius: 8px;
+  font: inherit; font-size: 12.5px; color: var(--an-ink); background: #fff;
+}
+.adk-mail-body .adk-mail-note { font-size: 11.5px; color: var(--an-muted); line-height: 1.5; margin: 10px 0 0; }
+.adk-mail-body .adk-mail-result { font-size: 12px; margin-top: 10px; line-height: 1.5; }
+.adk-mail-body .adk-mail-result.ok { color: var(--an-good); }
+.adk-mail-body .adk-mail-result.bad { color: var(--an-bad); }
+.adk-mail-body .adk-queue-acts { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 12px; align-items: center; }

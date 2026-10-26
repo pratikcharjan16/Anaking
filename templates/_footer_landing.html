@@ -1,0 +1,134 @@
+{#- SurveyKart landing footer: five link columns, the web "get started" badges, quick
+    destinations and the copyright strip.  Only landing.html includes this file - the team
+    surfaces (Studio, Workspace, Admin, survey pages) keep the executive _footer.html.
+
+    Every destination here exists today: in-page demo anchors, the two app entrances, the
+    public catalog / sitemap / health endpoints and the "Request a demo" dialog.  Nothing
+    points at a page we do not serve, and no copy is borrowed from another product. -#}
+<footer class="lnf" role="contentinfo" aria-label="SurveyKart footer">
+  <div class="lnf-wrap">
+    <div class="lnf-cols">
+
+      <nav class="lnf-col" aria-labelledby="lnf-product">
+        <h2 class="lnf-h" id="lnf-product">The platform</h2>
+        <ul class="lnf-list">
+          <li><a href="/studio/" title="SurveyKart Studio — build, translate and launch a questionnaire">Survey Studio</a></li>
+          <li><a href="/#kart-demo" title="The 23-type question library and what each question costs in Kart points">Question library &amp; costs</a></li>
+          <li><a href="/#voice-open-demo" title="Answer by voice, continuous dictation and spoken navigation">Voice &amp; dictation</a></li>
+          <li><a href="/#demos" title="Screening rules, quota auto-pilot and live fieldwork in the product tour">Screening, quotas &amp; fieldwork</a></li>
+          <li><a href="/workspace/" title="Project hub: publishing, revision history and role-based access">Workspace &amp; versions</a></li>
+          <li><a href="/workspace/" title="Charts and tables exported as an editable PowerPoint deck or Excel workbook">PPT &amp; Excel reports</a></li>
+        </ul>
+      </nav>
+
+      <nav class="lnf-col" aria-labelledby="lnf-solutions">
+        <h2 class="lnf-h" id="lnf-solutions">What teams run</h2>
+        <ul class="lnf-list">
+          <li><a href="/#surveykart-flow-showcase" title="How a study moves from design to fieldwork to the report">Market &amp; brand research</a></li>
+          <li><a href="/#demos" title="Short feedback loops for product and customer teams">Customer &amp; product feedback</a></li>
+          <li><a href="/register" title="Create a SurveyKart account and start an internal survey">Employee &amp; internal surveys</a></li>
+          <li><a href="/register" title="Field academic and social research with a shareable respondent link">Academic &amp; social research</a></li>
+          <li><a href="/#straightline-demo" title="Straight-lining and quality checks that matter in clinical and healthcare studies">Healthcare &amp; clinical teams</a></li>
+          <li><a href="/workspace/" title="Invite a panel partner or agency to a project without spending Kart points">Panel &amp; agency fieldwork</a></li>
+        </ul>
+      </nav>
+
+      <nav class="lnf-col" aria-labelledby="lnf-resources">
+        <h2 class="lnf-h" id="lnf-resources">See it in action</h2>
+        <ul class="lnf-list">
+          <li><a href="/#demos" title="Watch the builder, routing, quota and analysis demos">Product tour</a></li>
+          <li><a href="/#surveykart-flow-showcase" title="The four engines behind a SurveyKart study, animated end to end">How SurveyKart works</a></li>
+          <li><a href="/#ai-detect-demo" title="Open-ended answers checked for AI generation and paste signals">AI answer check</a></li>
+          <li><a href="/#walkthrough-demo" title="Interactive walkthrough questions for concept and clinical briefings">Walkthrough questions</a></li>
+          <li><a href="/api/kart/catalog" title="Machine-readable catalog of every question type and its point cost">Question catalog (JSON)</a></li>
+          <li><a href="/sitemap" title="Every public page, demo and study in one searchable directory">Platform directory</a></li>
+          <li><a href="/healthz" title="Live service health of this SurveyKart deployment">Service status</a></li>
+        </ul>
+      </nav>
+
+      <nav class="lnf-col" aria-labelledby="lnf-company">
+        <h2 class="lnf-h" id="lnf-company">Account &amp; contact</h2>
+        <ul class="lnf-list">
+          <li><a href="/#surveykart-flow-showcase" title="What SurveyKart is and the thinking behind the point system">About the platform</a></li>
+          <li><button class="lnf-link" type="button" data-demo-open title="Ask for a guided walkthrough with the SurveyKart team">Request a live demo</button></li>
+          <li><button class="lnf-link" type="button" data-demo-open title="Reach the research team — messages land on the admin desk">Contact the team</button></li>
+          <li><a href="/register" title="Create an account — new accounts start with 100 Kart points">Create an account</a></li>
+          <li><a href="/signin" title="Sign in to Studio, Workspace or Monitor">Sign in</a></li>
+          <li><a href="/recover" title="Look up an account, recover a username or reset a password">Account recovery</a></li>
+        </ul>
+      </nav>
+
+      <nav class="lnf-col" aria-labelledby="lnf-compare">
+        <h2 class="lnf-h" id="lnf-compare">Why SurveyKart</h2>
+        <ul class="lnf-list">
+          <li><a href="/#surveykart-flow-showcase" title="Against generic form builders: screening, quotas and analysis ship in the same tool">vs. form builders</a></li>
+          <li><a href="/#kart-demo" title="Against per-seat subscriptions: pay per question with Kart points">vs. per-seat plans</a></li>
+          <li><a href="/workspace/" title="Against copying charts into slides by hand: the deck is generated from live data">vs. slide decks</a></li>
+          <li><a href="/studio/" title="Against outsourced translation: Hindi and 30+ languages inside the builder">vs. translation agencies</a></li>
+          <li><a href="/#voice-open-demo" title="Against plain text boxes: respondents can speak their answers">vs. plain forms</a></li>
+        </ul>
+      </nav>
+
+    </div>
+
+    <div class="lnf-bottom">
+      <div class="lnf-badges" aria-label="Get started with SurveyKart">
+        <a class="lnf-badge" href="/studio/" title="Open SurveyKart Studio in your browser — nothing to install">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h4L20 8a2.8 2.8 0 0 0-4-4L4 16v4Z" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"/><path d="m14 6 4 4" stroke="currentColor" stroke-width="1.7"/></svg>
+          <span><small>Open in any browser</small><b>Survey Studio</b></span>
+        </a>
+        <a class="lnf-badge" href="/register" title="Create an account and start with 100 Kart points">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.6L20.5 8H6" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/></svg>
+          <span><small>On signup</small><b>100 Kart points</b></span>
+        </a>
+      </div>
+
+      <ul class="lnf-social" aria-label="Quick destinations">
+        <li><a class="lnf-soc" href="/sitemap" title="Searchable directory of every SurveyKart page" aria-label="Platform directory">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 4-5 2v14l5-2 6 2 5-2V4l-5 2-6-2Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M9 4v14M15 6v14" stroke="currentColor" stroke-width="1.6"/></svg></a></li>
+        <li><a class="lnf-soc" href="/workspace/" title="Research workspace and project hub" aria-label="Research workspace">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7a2 2 0 0 1 2-2h3l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V7Z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></a></li>
+        <li><a class="lnf-soc" href="/healthz" title="Live service health" aria-label="Service health">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 12h4l2.5-6 4 12 2.5-6h5" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"/></svg></a></li>
+        <li><button class="lnf-soc" type="button" data-demo-open title="Request a demo — the message reaches the admin desk" aria-label="Request a demo">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg></button></li>
+      </ul>
+
+      <div class="lnf-legal">
+        <button class="lnf-contact" type="button" data-demo-open title="Talk to the SurveyKart team">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2.5" fill="none" stroke="currentColor" stroke-width="1.6"/><path d="m4 7 8 6 8-6" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/></svg>
+          Talk to the team
+        </button>
+        <p class="lnf-copy">&copy; <span id="lnf-year">2026</span> SurveyKart &middot; Insights Delivered</p>
+        <p class="lnf-fine">
+          <a href="/sitemap" title="Every page, demo and study in one directory">Sitemap</a>
+          <span aria-hidden="true">&middot;</span>
+          <a href="/sitemap.xml" title="Machine-readable sitemap for search engines">XML sitemap</a>
+          <span aria-hidden="true">&middot;</span>
+          <a href="/healthz" title="Live service health of this deployment">Service status</a>
+        </p>
+      </div>
+
+      <a class="lnf-mark" href="/" title="SurveyKart home" aria-label="SurveyKart home">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 4h2l2.2 10.1a2 2 0 0 0 2 1.6h7.9a2 2 0 0 0 2-1.6L20.5 8H6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="10" cy="20" r="1.4" fill="currentColor"/><circle cx="17" cy="20" r="1.4" fill="currentColor"/></svg>
+      </a>
+    </div>
+
+    {#- The platform name is also written the way people type it: kept from the shared
+        footer so a search for any spelling still lands on the home page. -#}
+    <p class="lnf-alias">
+      <strong>Also searched as</strong>
+      <a href="/" title="SurveyKart — the platform home">SurveyKart</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="/" title="Survey Kart — the platform home">Survey Kart</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="/" title="SurveyCart — the platform home">SurveyCart</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="/" title="Survey Cart — the platform home">Survey Cart</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="/sitemap" title="SurvayKart, SurveKart or SurveryKart — browse every page">SurvayKart / SurveKart / SurveryKart</a>
+      <span aria-hidden="true">&middot;</span>
+      <a href="/sitemap" title="Browse the whole SurveyKart directory">Full directory &rarr;</a>
+    </p>
+  </div>
+</footer>

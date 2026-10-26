@@ -936,12 +936,30 @@ body.voice-on .voice-active-row {
   overflow: visible;
   filter: drop-shadow(0 4px 10px rgba(15, 43, 72, 0.08));
 }
-.gauge-needle {
-  transform-origin: 130px 130px;
-  transition: transform 0.25s cubic-bezier(0.2, 1, 0.3, 1);
-}
+/* The needle, tip, hub and zone bands are positioned with direct SVG coordinates in
+   survey.js.  Never rotate the needle from CSS here: a transform-origin on an SVG group
+   is applied *in addition to* a rotate() attribute transform, which is what used to swing
+   the needle around a point outside the dial. */
 .gauge-needle-poly {
   fill: #0f2b48;
+  stroke: #0f2b48;
+  stroke-width: 1;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+.gauge-tip {
+  transition: fill 0.2s ease;
+  pointer-events: none;
+}
+.gauge-hub,
+.gauge-hub-dot {
+  pointer-events: none;
+}
+.gauge-zone,
+.gauge-track,
+.gauge-target,
+.gauge-target-halo {
+  pointer-events: none;
 }
 .gauge-readout {
   display: flex;

@@ -71,6 +71,41 @@ LANG_BY_CODE = {code: {"code": code, "name": name, "native": native, "dir": d}
                 for code, name, native, d in LANGUAGES}
 
 
+# The respondent interface around the questions - the buttons that move the interview
+# forward, the listening controls and the welcome-page fact strip.  These stay in English
+# in every language by design: only the questionnaire wording follows the study language, so
+# "Next"/"Back"/"Listen" are the same in the Hindi child as in its English parent.  The
+# wording lives here (not in the translation table) because it is product chrome, not content
+# - research teams asked for a predictable, English-only interface on every child survey.
+# Update this dict to change the interface wording for all languages at once.
+CHROME_EN = {
+    "begin": "Begin survey",
+    "next": "Next",
+    "back": "Back",
+    "prev": "Prev",
+    "done": "Done",
+    "submit": "Submit survey",
+    "listen": "Listen",
+    "stop": "Stop",
+    "replay": "Replay",
+    "facts_questions": "Questions",
+    "facts_tasks": "Choice tasks",
+    "facts_time": "Takes about",
+    "facts_audio": "Audio guide",
+}
+
+
+def ui_strings(cfg: dict | None = None) -> dict:
+    """The interface wording for every language.
+
+    Deliberately ignores ``cfg`` (and any stored ``cfg["ui"]``): chrome is English-only, so
+    a child survey opened in Hindi still says "Begin survey" / "Next" / "Listen".  The
+    argument is kept so callers do not have to change and old configs cannot re-enable
+    translated buttons.
+    """
+    return dict(CHROME_EN)
+
+
 def default_language(cfg: dict) -> str:
     return cfg.get("language") or DEFAULT_LANGUAGE
 
@@ -101,6 +136,8 @@ def extract_strings(cfg: dict) -> list[dict]:
     strings are never listed, so they can never be translated.
     """
     out: list[dict] = []
+    # Interface chrome is intentionally absent: buttons stay in English in every language
+    # (see CHROME_EN), so there is nothing here for a translator to touch.
     _put(out, "study:welcome_title", cfg.get("welcome_title"), "study")
     _put(out, "study:welcome_text", cfg.get("welcome_text"), "study")
     _put(out, "study:thanks_title", cfg.get("thanks_title"), "study")
@@ -162,6 +199,11 @@ def extract_strings(cfg: dict) -> list[dict]:
 def _set(cfg: dict, key: str, value: str) -> bool:
     """Write ``value`` at the path named by ``key``. Returns True when the path exists."""
     where, rest = (key.split(":", 1) + [""])[:2]
+    if where == "ui":
+        if rest in CHROME_EN:
+            cfg.setdefault("ui", {})[rest] = value
+            return True
+        return False
     if where == "study":
         if rest in cfg:
             cfg[rest] = value
@@ -196,12 +238,21 @@ def _set(cfg: dict, key: str, value: str) -> bool:
         if field in ("stem", "stem_html", "help", "placeholder", "vignette",
                      "concept", "concept_html", "body", "body_html", "min_label",
                      "mid_label", "max_label", "before_label", "after_label"):
-            if field in ("min_label", "mid_label", "max_label",
-                         "before_label", "after_label"):
-                if field in ("min_label", "mid_label", "max_label"):
-                    q.setdefault("scale", {})[field] = value
-                else:
+            if field in ("min_label", "mid_label", "max_label"):
+                # Gauge-meter questions keep their anchor labels on the question itself
+                # (q.min_label), rating scales keep them under q.scale, and some studies
+                # carry both.  Write wherever the wording already lives - otherwise a
+                # translated label would sit in q.scale while the gauge rendered
+                # q.min_label and the child survey stayed English.
+                wrote = False
+                if field in q:
                     q[field] = value
+                    wrote = True
+                if isinstance(q.get("scale"), dict) and field in q["scale"]:
+                    q["scale"][field] = value
+                    wrote = True
+                if not wrote:
+                    q.setdefault("scale", {})[field] = value
             else:
                 q[field] = value
             return True
@@ -265,8 +316,8 @@ def apply_language(cfg: dict, lang: str | None) -> dict:
     table = (cfg.get("translations") or {}).get(lang) or {}
     excluded = (cfg.get("translation_excluded") or {}).get(lang, [])
     for key, value in table.items():
-        if key in excluded:
-            continue
+        if key in excluded or key.startswith("ui:"):
+            continue          # chrome stays English even if an older child translated it
         if isinstance(value, str) and value.strip():
             _set(out, key, value)
     out["language"] = default_language(cfg)          # remember the authoring language

@@ -243,6 +243,32 @@ def create_or_invite_workspace_team():
     base_url = request.host_url.rstrip('/')
     uid = u['id'] if u else 0
     uemail = u.get('email', '') if u else ''
+    share_url = f"{base_url}/share/{tok}" if tok else ''
+    # Best-effort e-mail to the teammate.  The invite is already stored as a
+    # team_members row and the link is shown in the dialog, so a missing or broken
+    # SMTP server never blocks the collaboration.
+    invite_mail = ""
+    if invite_email and share_url:
+        from core import mailer
+        if mailer.smtp_settings():
+            team_name = (res.get('team') or {}).get('name') or 'a SurveyKart team'
+            who = (u.get('name') or u.get('email') or 'A teammate') if u else 'A teammate'
+            body = "\n".join([
+                f"{who} invited you to collaborate on {team_name} in SurveyKart.",
+                "", "Accept the invitation here:", share_url, "",
+                "Joining a team never debits Kart points from you - the project owner",
+                "sponsors the work. If you do not have an account yet, the link asks you",
+                "to sign in or register first, then joins you to the team.", "",
+                "If you were not expecting this invitation you can ignore this e-mail.",
+            ])
+            try:
+                mailer.send_mail(invite_email, f"{who} invited you to {team_name} on SurveyKart", body)
+                invite_mail = "sent"
+            except mailer.MailError as exc:
+                current_app.logger.warning("team invite e-mail failed for %s: %s", invite_email, exc)
+                invite_mail = "failed"
+        else:
+            invite_mail = "queued"        # no SMTP: the link in the dialog is the invite
     share_obj = res.get('share') or res.get('invite') or {'token': tok, 'points_debited': 0}
     if isinstance(share_obj, dict):
         share_obj = dict(share_obj)
@@ -254,7 +280,8 @@ def create_or_invite_workspace_team():
         invite=res['invite'],
         share=share_obj,
         token=tok,
-        share_url=f"{base_url}/share/{tok}" if tok else '',
+        share_url=share_url,
+        invite_mail=invite_mail,
         study_slug=final_slug,
         created_project_slug=created_slug,
         collaboration=list_teams_and_collaboration(uid, uemail),
@@ -428,7 +455,29 @@ def scoped_records(s):
 
 
 from core.datacut import analyze_with_datacut
-from core.ppt_export import build_ppt_report
+from core.reporting import build_sheets
+
+
+def _ppt_module():
+    """Import python-pptx lazily so a host missing the wheel cannot break the app.
+
+    A breakpoint import is what makes an export "not work" with no explanation: the
+    blueprint fails to load and every route answers 500.  Importing inside the handler
+    turns it into a readable error the UI can show instead.
+    """
+    global _PPT_IMPORT_ERROR
+    try:
+        import pptx  # noqa: F401
+        from core.ppt_export import build_ppt_report
+        _PPT_IMPORT_ERROR = ""
+        return build_ppt_report
+    except Exception as e:                 # ImportError, or a broken lxml build
+        _PPT_IMPORT_ERROR = f"{e.__class__.__name__}: {e}"
+        raise
+
+
+_PPT_IMPORT_ERROR = ""
+_LAST_EXPORT_ERROR = {"at": "", "study": "", "error": ""}
 
 
 @bp.get('/api/workspace/analysis')
@@ -476,6 +525,46 @@ def cross():
         abort(400, str(e))
 
 
+@bp.get('/api/workspace/export_status')
+def export_status():
+    """Why an export might not work on *this* server, without running a full deck."""
+    s = study()
+    from core import xlsx_export
+    try:
+        _ppt_module()
+        ppt_ok = True
+    except Exception:
+        ppt_ok = False
+    return jsonify({
+        "ok": True,
+        "study": s.slug,
+        "powerpoint": {"available": ppt_ok, "engine": _ppt_version(),
+                       "import_error": _PPT_IMPORT_ERROR,
+                       "last_error": _LAST_EXPORT_ERROR["error"],
+                       "last_error_at": _LAST_EXPORT_ERROR["at"]},
+        "excel": {"available": True, "engine": xlsx_export.backend() if hasattr(xlsx_export, "backend") else "xlsx"},
+        "google_sheets": sheets_config(),
+        "counts": {"real": len(records(s.slug, 'real')), "test": len(records(s.slug, 'test'))},
+    })
+
+
+def _ppt_version() -> str:
+    try:
+        import pptx
+        return "python-pptx " + getattr(pptx, "__version__", "")
+    except Exception:
+        return "unavailable"
+
+
+def sheets_config() -> dict:
+    cid = str(current_app.config.get("GOOGLE_SHEETS_CLIENT_ID") or "")
+    return {"configured": bool(cid), "client_id": cid,
+            "scope": current_app.config.get("GOOGLE_SHEETS_SCOPE") or
+                     "https://www.googleapis.com/auth/spreadsheets",
+            "hint": "" if cid else ("Set GOOGLE_SHEETS_CLIENT_ID (a Google OAuth web client id) to create "
+                                     "sheets in a respondent's Google account; the CSV download works without it.")}
+
+
 @bp.get('/api/workspace/export_ppt')
 def export_ppt():
     s = study()
@@ -496,17 +585,103 @@ def export_ppt():
     elif multi_qs:
         q_list = [x.strip() for x in multi_qs.split(',') if x.strip()]
 
-    ppt_bytes = build_ppt_report(s.title, analysis_data, questions_to_include=q_list, scope=request.args.get('scope', 'real'))
+    try:
+        build_ppt_report = _ppt_module()
+        ppt_bytes = build_ppt_report(s.title, analysis_data, questions_to_include=q_list,
+                                     scope=request.args.get('scope', 'real'))
+    except Exception as e:                       # never a blank page or a half ZIP
+        _LAST_EXPORT_ERROR.update({"at": now(), "study": s.slug,
+                                   "error": f"{e.__class__.__name__}: {e}"})
+        current_app.logger.exception("PowerPoint export failed for %s", s.slug)
+        detail = f"{e.__class__.__name__}: {e}"
+        if "pptx" in detail.lower() or "pptx" in _PPT_IMPORT_ERROR.lower():
+            detail += (" — python-pptx is not importable on this server. Run "
+                       "'pip install -r requirements.txt' in the deployed environment.")
+        return jsonify({"error": "PowerPoint export failed", "detail": detail[:500],
+                        "study": s.slug}), 500
     fn = f"{s.slug}-report"
     if single_q:
         fn += f"-{single_q}"
     fn += ".pptx"
     audit('Exported PowerPoint presentation', s.slug)
+    from werkzeug.utils import secure_filename
+    fn = secure_filename(fn) or "survey-report.pptx"     # ASCII-safe on every WSGI server
     return Response(
         ppt_bytes,
         mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation",
-        headers={"Content-Disposition": f'attachment; filename="{fn}"'}
+        headers={"Content-Disposition": f'attachment; filename="{fn}"',
+                 "Cache-Control": "no-store"}
     )
+
+
+@bp.get('/api/workspace/export_sheets')
+def export_sheets():
+    """The workbook as JSON, ready for the browser-side Google Sheets/Drive flow.
+
+    Same sheets as the .xlsx download, so a Google Sheet and the file a researcher
+    downloads contain identical tables.
+    """
+    s = study()
+    if current_app.config['STAFF_AUTH'] and effective_role() not in ('owner', 'editor', 'analyst'):
+        abort(403)
+    scope = request.args.get('scope', 'real')
+    if scope not in ('real', 'test', 'all'):
+        abort(400, 'Invalid data scope.')
+    recs = records(s.slug, scope, include_invalid=request.args.get('include_invalid') == '1')
+    sheets = build_sheets(recs, scope, base(s))
+    cap = 5000
+    out, truncated = [], False
+    for name, headers, rows, _w in sheets:
+        if len(rows) > cap:
+            rows = rows[:cap]
+            truncated = True
+        out.append({"name": name, "columns": [str(h) for h in headers],
+                    "rows": [[_cell(v) for v in row] for row in rows]})
+    return jsonify({
+        "title": f"{s.title} — {scope} export",
+        "study": s.slug, "scope": scope, "generated_at": now(),
+        "sheets": out, "truncated": truncated,
+        "limit": cap, "google": sheets_config(),
+    })
+
+
+def _cell(value):
+    """JSON/Sheets-safe cell: numbers stay numbers, everything else becomes text."""
+    if value is None:
+        return ""
+    if isinstance(value, bool):
+        return "yes" if value else "no"
+    if isinstance(value, (int, float)):
+        return value
+    return str(value)[:50000]
+
+
+@bp.get('/api/workspace/export_sheets.csv')
+def export_sheets_csv():
+    """One sheet as CSV - the no-OAuth path into Google Sheets (File -> Import)."""
+    s = study()
+    if current_app.config['STAFF_AUTH'] and effective_role() not in ('owner', 'editor', 'analyst'):
+        abort(403)
+    scope = request.args.get('scope', 'real')
+    if scope not in ('real', 'test', 'all'):
+        abort(400, 'Invalid data scope.')
+    want = (request.args.get('sheet') or 'Responses').strip()
+    recs = records(s.slug, scope, include_invalid=request.args.get('include_invalid') == '1')
+    sheets = {name: (headers, rows) for name, headers, rows, _w in build_sheets(recs, scope, base(s))}
+    if want not in sheets:
+        want = 'Responses'
+    headers, rows = sheets[want]
+    buf = io.StringIO()
+    w = csv.writer(buf)
+    w.writerow(headers)
+    for row in rows:
+        w.writerow([_cell(v) for v in row])
+    from werkzeug.utils import secure_filename
+    fn = secure_filename(f"{s.slug}-{want}.csv") or "export.csv"
+    return Response(("\ufeff" + buf.getvalue()).encode("utf-8"),
+                    mimetype="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": f'attachment; filename="{fn}"',
+                             "Cache-Control": "no-store"})
 
 
 @bp.get('/api/workspace/export')
